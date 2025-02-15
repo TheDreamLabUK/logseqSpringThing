@@ -27,7 +27,7 @@ const logger = createLogger('SceneManager');
 
 // Constants
 const BACKGROUND_COLOR = 0x212121;  // Material Design Grey 900
-const LOW_PERF_FPS_THRESHOLD = 45;  // FPS threshold for low performance mode
+const LOW_PERF_FPS_THRESHOLD = 30;  // Lower FPS threshold for low performance mode
 
 export class SceneManager {
   private static instance: SceneManager;
@@ -117,9 +117,9 @@ export class SceneManager {
     // Initialize bloom with default state
     this.bloomPass = new UnrealBloomPass(
       new Vector2(window.innerWidth, window.innerHeight),
-      3.0,  // Higher default strength for heavy bloom
-      2.0,  // Higher default radius for wider bloom
-      0     // Threshold at 0 for maximum bloom effect
+      1.5,  // Default strength (will be overridden by settings)
+      0.4,  // Default radius (will be overridden by settings)
+      0.1   // Small threshold to prevent over-blooming
     );
     
     // Initialize custom bloom properties
@@ -510,13 +510,11 @@ export class SceneManager {
       if (object instanceof Mesh) {
         const material = object.material as Material;
         if (material) {
-          // Disable expensive material features using type assertion
-          (material as any).fog = false;
-          (material as any).side = 0; // FrontSide = 0
+          // Keep material features that affect visual quality
+          material.needsUpdate = true;
           
           // Disable shadows
-          (object as any).castShadow = false;
-          (object as any).receiveShadow = false;
+          (object as any).castShadow = (object as any).receiveShadow = false;
           
           // Force material update
           material.needsUpdate = true;
@@ -527,8 +525,8 @@ export class SceneManager {
     // Optimize renderer
     (this.renderer as any).shadowMap.enabled = false;
     
-    // Disable bloom in low performance mode
-    if (this.bloomPass && this.currentFps < 30) {
+    // Only disable bloom at very low FPS
+    if (this.bloomPass?.enabled && this.currentFps < 20) {
       this.bloomPass.enabled = false;
     }
 

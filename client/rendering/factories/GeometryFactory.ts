@@ -29,20 +29,20 @@ export class GeometryFactory {
         
         switch (quality) {
             case 'low':
-               detail = context === 'ar' ? 0 : 1;
+               detail = context === 'ar' ? 1 : 2;
                  break;
             case 'medium':
-                detail = context === 'ar' ? 1 : 2;
+                detail = context === 'ar' ? 2 : 3;
                 break;
             case 'high':
-                detail = context === 'ar' ? 1 : 2;
+                detail = context === 'ar' ? 2 : 4;
                 break;
             default:
                 detail = context === 'ar' ? 1 : 2;
         }
         // Use IcosahedronGeometry for better performance while maintaining visual quality
         // Convert from native units (40-120) to scene scale (0.4-1.2)
-        geometry = new IcosahedronGeometry(size / 100, detail);
+        geometry = new IcosahedronGeometry(size / 80, detail);
         this.geometryCache.set(cacheKey, geometry);
         return geometry;
     }

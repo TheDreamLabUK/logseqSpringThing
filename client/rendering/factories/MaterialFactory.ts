@@ -1,5 +1,11 @@
 import { HologramShaderMaterial } from '../materials/HologramShaderMaterial';
-import { Color, Material, MeshBasicMaterial, LineBasicMaterial } from 'three';
+import { 
+    Color, 
+    Material, 
+    MeshStandardMaterial, 
+    LineBasicMaterial,
+    DoubleSide
+} from 'three';
 
 export class MaterialFactory {
     private static instance: MaterialFactory;
@@ -57,12 +63,14 @@ export class MaterialFactory {
         if (this.materialCache.has(cacheKey)) {
             return this.materialCache.get(cacheKey)!;
         }
-        const material = new MeshBasicMaterial({
-            wireframe: true,
+        const material = new MeshStandardMaterial({
             color: settings.visualization?.hologram?.ringColor || 0xffffff,
             transparent: true,
             depthWrite: true,
-            opacity: settings.visualization?.hologram?.opacity || 0.8
+            opacity: settings.visualization?.hologram?.opacity || 0.8,
+            metalness: 0.1,
+            roughness: 0.8,
+            side: DoubleSide,
         });
         this.materialCache.set(cacheKey, material);
         return material;
@@ -89,11 +97,13 @@ export class MaterialFactory {
 
         const opacity = context === 'ar' ? (settings.visualization?.nodes?.opacity || 0.9) * 0.8 : (settings.visualization?.nodes?.opacity || 0.9);
 
-        const material = new MeshBasicMaterial({
+        const material = new MeshStandardMaterial({
             color: settings.visualization?.nodes?.baseColor || 0x4287f5,
             transparent: true,
             opacity,
-            wireframe: true,
+            metalness: settings.visualization?.nodes?.metalness || 0.2,
+            roughness: settings.visualization?.nodes?.roughness || 0.7,
+            side: DoubleSide,
             depthWrite: true // Improve depth sorting
         });
         
@@ -107,10 +117,13 @@ export class MaterialFactory {
             return this.materialCache.get(cacheKey)!;
         }
 
-        const material = new MeshBasicMaterial({
+        const material = new MeshStandardMaterial({
             color: 0xffffff,
             transparent: true,
             depthWrite: true,
+            metalness: 0.1,
+            roughness: 0.8,
+            side: DoubleSide, 
             opacity: 0.7 // Slightly reduced opacity for better performance
         });
 
@@ -125,8 +138,10 @@ export class MaterialFactory {
         switch (type) {
             case 'node-basic':
             case 'node-phong': {
-                const nodeMaterial = material as LineBasicMaterial;
-                nodeMaterial.color = this.hexToRgb(settings.visualization?.nodes?.baseColor || '#4287f5');
+                const nodeMaterial = material as MeshStandardMaterial;
+                nodeMaterial.color.set(settings.visualization?.nodes?.baseColor || '#4287f5');
+                nodeMaterial.metalness = settings.visualization?.nodes?.metalness || 0.2;
+                nodeMaterial.roughness = settings.visualization?.nodes?.roughness || 0.7;
                 nodeMaterial.opacity = type.includes('ar') ? (settings.visualization?.nodes?.opacity || 0.9) * 0.8 : (settings.visualization?.nodes?.opacity || 0.9);
                 nodeMaterial.needsUpdate = true;
                 break;
