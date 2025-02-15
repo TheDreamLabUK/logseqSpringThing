@@ -62,10 +62,10 @@ visualization:
   bloom:
     edge_bloom_strength: 0.4
     enabled: true
-    environment_bloom_strength: 1.0
-    node_bloom_strength: 2.0
-    radius: 1.0
-    strength: 1.0
+    environment_bloom_strength: 2.0
+    node_bloom_strength: 3.0
+    radius: 2.0
+    strength: 3.0
   hologram:
     ring_count: 2
     ring_color: '#c2a200'

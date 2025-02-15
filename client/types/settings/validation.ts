@@ -58,6 +58,28 @@ const validationRules: Record<string, Record<string, ValidationRule>> = {
             validate: (value: number) => value >= 0 && value <= 2,
             message: 'Ambient light intensity must be between 0 and 2'
         }
+    },
+    'visualization.bloom': {
+        'visualization.bloom.strength': {
+            validate: (value: number) => value >= 0 && value <= 5,
+            message: 'Bloom strength must be between 0 and 5'
+        },
+        'visualization.bloom.radius': {
+            validate: (value: number) => value >= 0 && value <= 3,
+            message: 'Bloom radius must be between 0 and 3'
+        },
+        'visualization.bloom.edge_bloom_strength': {
+            validate: (value: number) => value >= 0 && value <= 5,
+            message: 'Edge bloom strength must be between 0 and 5'
+        },
+        'visualization.bloom.node_bloom_strength': {
+            validate: (value: number) => value >= 0 && value <= 5,
+            message: 'Node bloom strength must be between 0 and 5'
+        },
+        'visualization.bloom.environment_bloom_strength': {
+            validate: (value: number) => value >= 0 && value <= 5,
+            message: 'Environment bloom strength must be between 0 and 5'
+        }
     }
 };
 

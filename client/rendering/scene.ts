@@ -117,9 +117,9 @@ export class SceneManager {
     // Initialize bloom with default state
     this.bloomPass = new UnrealBloomPass(
       new Vector2(window.innerWidth, window.innerHeight),
-      1.5,  // Default strength
-      0.4,  // Default radius
-      0.85  // Default threshold
+      3.0,  // Higher default strength for heavy bloom
+      2.0,  // Higher default radius for wider bloom
+      0     // Threshold at 0 for maximum bloom effect
     );
     
     // Initialize custom bloom properties
@@ -411,7 +411,7 @@ export class SceneManager {
         enabled: newBloom.enabled,
         strength: newBloom.enabled ? (newBloom.strength || 1.5) : 0,
         radius: newBloom.enabled ? (newBloom.radius || 0.4) : 0,
-        threshold: newBloom.enabled ? 0.3 : 1.0,
+        threshold: 0, // Always keep threshold at 0 for maximum bloom effect
         edgeStrength: newBloom.enabled ? (newBloom.edgeBloomStrength || 3.0) : 0,
         nodeStrength: newBloom.enabled ? (newBloom.nodeBloomStrength || 2.0) : 0,
         environmentStrength: newBloom.enabled ? (newBloom.environmentBloomStrength || 1.0) : 0

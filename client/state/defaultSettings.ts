@@ -78,12 +78,12 @@ export const defaultSettings: Settings = {
             billboardMode: 'camera' 
         },
         bloom: {
-            edgeBloomStrength: 1.1,
+            edgeBloomStrength: 2.0,
             enabled: true,
-            environmentBloomStrength: 2.0,
+            environmentBloomStrength: 3.0,
             nodeBloomStrength: 3.0,
-            radius: 0.8,
-            strength: 1.2,
+            radius: 2.0,
+            strength: 3.0,
             threshold: 0.3
         },
         hologram: {

@@ -26,8 +26,8 @@ out
 # Data directories
 data/markdown/
 data/runtime/
-data/piper/*.onnx
 data/public/dist/
+data/metadata/metadata.json
 
 # Documentation and assets
 docs/*.gif
