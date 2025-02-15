@@ -45,6 +45,7 @@
 
 ```mermaid
 graph TB
+    %% Frontend Components
     subgraph Frontend
         UI[User Interface Layer]
         VR[WebXR Controller]
@@ -53,7 +54,7 @@ graph TB
         ThreeJS[Three.js Renderer]
         ChatUI[Chat Interface]
         GraphUI[Graph Interface]
-        ControlPanel[Modular Control Panel (with Nostr Auth)]
+        ControlPanel["Modular Control Panel (with Nostr Auth)"]
         VRControls[VR Control System]
         WSService[WebSocket Service]
         DataManager[Graph Data Manager]
@@ -70,6 +71,7 @@ graph TB
         SettingsStore[Settings Store]
     end
 
+    %% Backend Components
     subgraph Backend
         Server[Actix Web Server]
         FileH[File Handler]
@@ -97,6 +99,7 @@ graph TB
         ProtectedSettings[Protected Settings]
     end
 
+    %% External Components
     subgraph External
         GitHub[GitHub API]
         Perplexity[Perplexity AI]
@@ -105,6 +108,7 @@ graph TB
         NostrAPI[Nostr API]
     end
 
+    %% Connections between Frontend Components
     UI --> ChatUI
     UI --> GraphUI
     UI --> ControlPanel
@@ -114,6 +118,7 @@ graph TB
     WS --> WSService
     WSService --> Server
 
+    %% Connections between Backend Components
     Server --> FileH
     Server --> GraphH
     Server --> WSH
@@ -132,12 +137,14 @@ graph TB
     RagFlowH --> RagFlowS
     NostrH --> NostrS
 
+    %% Connections to External Components
     FileS --> GitHub
     PerplexityS --> Perplexity
     RagFlowS --> RagFlow
     SpeechS --> OpenAI
     NostrS --> NostrAPI
 
+    %% Styling for clarity
     style Frontend fill:#f9f,stroke:#333,stroke-width:2px
     style Backend fill:#bbf,stroke:#333,stroke-width:2px
     style External fill:#bfb,stroke:#333,stroke-width:2px
