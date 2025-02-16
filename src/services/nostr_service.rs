@@ -10,6 +10,7 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use chrono::Utc;
 use thiserror::Error;
+use log::{debug, error};
 use uuid::Uuid;
 
 #[derive(Debug, Error)]
@@ -52,13 +53,13 @@ pub struct NostrService {
 
 impl NostrService {
     pub fn new() -> Self {
-        let power_users = std::env::var("NOSTR_POWER_USER_PUBKEYS")
+        let power_users = std::env::var("POWER_USER_PUBKEYS")
             .unwrap_or_default()
             .split(',')
             .map(|s| s.trim().to_string())
             .collect();
 
-        let token_expiry = std::env::var("NOSTR_TOKEN_EXPIRY")
+        let token_expiry = std::env::var("AUTH_TOKEN_EXPIRY")
             .unwrap_or_else(|_| "3600".to_string())
             .parse()
             .unwrap_or(3600);
@@ -73,12 +74,30 @@ impl NostrService {
     pub async fn verify_auth_event(&self, event: AuthEvent) -> Result<NostrUser, NostrError> {
         // Convert to Nostr Event for verification
         // Convert to JSON string and parse as Nostr Event
-        let json_str = serde_json::to_string(&event)?;
-        let nostr_event = Event::from_json(&json_str)
-            .map_err(|e| NostrError::InvalidEvent(e.to_string()))?;
+        debug!("Verifying auth event: {:?}", event);
 
-        // Verify the event signature
-        nostr_event.verify().map_err(|_| NostrError::InvalidSignature)?;
+        let json_str = match serde_json::to_string(&event) {
+            Ok(s) => s,
+            Err(e) => {
+                error!("Failed to serialize auth event: {}", e);
+                return Err(NostrError::JsonError(e));
+            }
+        };
+
+        debug!("Event JSON for verification: {}", json_str);
+
+        let nostr_event = match Event::from_json(&json_str) {
+            Ok(e) => e,
+            Err(e) => {
+                error!("Failed to parse Nostr event: {}", e);
+                return Err(NostrError::InvalidEvent(format!("Parse error: {}", e)));
+            }
+        };
+
+        if let Err(e) = nostr_event.verify() {
+            error!("Signature verification failed: {}", e);
+            return Err(NostrError::InvalidSignature);
+        }
 
         let now = Utc::now();
         let is_power_user = self.power_user_pubkeys.contains(&event.pubkey);

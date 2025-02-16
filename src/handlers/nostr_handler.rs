@@ -119,7 +119,7 @@ async fn login(
     match nostr_service.verify_auth_event(event.into_inner()).await {
         Ok(user) => {
             let token = user.session_token.clone().unwrap_or_default();
-            let expires_at = user.last_seen + std::env::var("NOSTR_TOKEN_EXPIRY")
+            let expires_at = user.last_seen + std::env::var("AUTH_TOKEN_EXPIRY")
                 .unwrap_or_else(|_| "3600".to_string())
                 .parse::<i64>()
                 .unwrap_or(3600);
@@ -209,7 +209,7 @@ async fn refresh(
     match nostr_service.refresh_session(&req.pubkey).await {
         Ok(new_token) => {
             if let Some(user) = nostr_service.get_user(&req.pubkey).await {
-                let expires_at = user.last_seen + std::env::var("NOSTR_TOKEN_EXPIRY")
+                let expires_at = user.last_seen + std::env::var("AUTH_TOKEN_EXPIRY")
                     .unwrap_or_else(|_| "3600".to_string())
                     .parse::<i64>()
                     .unwrap_or(3600);

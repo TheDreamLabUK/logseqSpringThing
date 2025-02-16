@@ -93,19 +93,31 @@ export class NostrAuthService {
             ['challenge', Date.now().toString()]
         ];
 
+        // Create event with required fields
         const event = {
             kind: 27235,
             created_at: createdAt,
             tags,
             content: `Authenticate with ${window.location.hostname} at ${new Date().toISOString()}`,
-            pubkey
+            pubkey,
         };
+
+        // Log the event for debugging
+        logger.debug('Creating auth event:', {
+            kind: event.kind,
+            created_at: event.created_at,
+            tags: event.tags,
+            content: event.content,
+            pubkey: event.pubkey
+        });
 
         // Sign the event using the Alby extension
         const signedEvent = await window.nostr?.signEvent(event);
         if (!signedEvent) {
             throw new Error('Failed to sign authentication event');
         }
+
+        logger.debug('Signed event:', JSON.stringify(signedEvent, null, 2));
 
         return signedEvent;
     }
@@ -128,6 +140,7 @@ export class NostrAuthService {
 
             // Create and sign the authentication event
             const signedEvent = await this.createAuthEvent(pubkey);
+            logger.debug('Sending auth request with event:', JSON.stringify(signedEvent, null, 2));
 
             // Send authentication request to server
             const response = await fetch(buildApiUrl(API_ENDPOINTS.AUTH_NOSTR), {
@@ -140,7 +153,8 @@ export class NostrAuthService {
 
             if (!response.ok) {
                 const errorText = await response.text();
-                throw new Error(`Authentication failed: ${errorText}`);
+                logger.error('Server response:', { status: response.status, body: errorText });
+                throw new Error(`Authentication failed (${response.status}): ${errorText}`);
             }
 
             const authData = await response.json();
