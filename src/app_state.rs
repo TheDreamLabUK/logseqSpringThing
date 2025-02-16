@@ -41,7 +41,6 @@ impl AppState {
         ragflow_conversation_id: String,
     ) -> Self {
         // Initialize FeatureAccess from environment variables
-        let feature_access = web::Data::new(FeatureAccess::from_env());
         Self {
             graph_service: GraphService::new(),
             gpu_compute,

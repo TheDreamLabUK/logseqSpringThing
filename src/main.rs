@@ -26,7 +26,7 @@ use webxr::utils::logging::{init_logging_with_config, LogConfig};
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
-    dotenv().ok();
+    dotenv().expect("Failed to load .env file");
 
     // Load settings first to get the log level
     let settings = match Settings::new() {
@@ -172,6 +172,8 @@ async fn main() -> std::io::Result<()> {
             .app_data(app_state.clone())
             .app_data(web::Data::new(github_client.clone()))
             .app_data(web::Data::new(content_api.clone()))
+            .app_data(app_state.nostr_service.clone().unwrap())
+            .app_data(app_state.feature_access.clone())
             .route("/wss", web::get().to(socket_flow_handler))
             .service(
                 web::scope("")
