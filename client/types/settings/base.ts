@@ -113,9 +113,6 @@ export interface PhysicsSettings {
     collisionRadius: number;
     enableBounds: boolean;
     boundsSize: number;
-    repulsionDistance: number;  // Maximum distance for repulsion forces
-    massScale: number;         // Scaling factor for node masses
-    boundaryDamping: number;   // Damping factor near boundaries
 }
 
 export interface RenderingSettings {
