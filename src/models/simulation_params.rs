@@ -4,9 +4,9 @@ use bytemuck::{Pod, Zeroable};
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub enum SimulationMode {
-    Remote,  // GPU-accelerated remote computation
-    GPU,     // Local GPU computation
-    Local,   // CPU-based computation
+    Remote,  // GPU-accelerated remote computation (default)
+    GPU,     // Local GPU computation (deprecated)
+    Local,   // CPU-based computation (disabled)
 }
 
 impl Default for SimulationMode {
@@ -34,25 +34,37 @@ impl Default for SimulationPhase {
 #[derive(Default, Clone, Copy, Pod, Zeroable, Debug)]
 pub struct GPUSimulationParams {
     pub iterations: u32,
-    pub spring_length: f32,
     pub spring_strength: f32,
     pub repulsion: f32,
-    pub attraction: f32,
     pub damping: f32,
-    pub time_step: f32,
-    pub padding: u32,  // For alignment
+    pub max_repulsion_distance: f32,
+    pub viewport_bounds: f32,
+    pub mass_scale: f32,
+    pub boundary_damping: f32,
 }
 
 #[derive(Default, Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct SimulationParams {
+    // Core iteration parameters
     pub iterations: u32,           // Range: 1-500, Default: varies by phase
-    pub spring_length: f32,        // Range: 10-500, Default: 100
-    pub spring_strength: f32,      // Range: 0.1-10, Default: 0.5
-    pub repulsion: f32,           // Range: 1-1000, Default: 100
-    pub attraction: f32,          // Range: 0.1-10, Default: 1.0
-    pub damping: f32,             // Range: 0-1, Default: 0.5
     pub time_step: f32,           // Range: 0.01-1, Default: 0.2 (5fps)
+    
+    // Force parameters
+    pub spring_strength: f32,      // Range: 0.1-10, Default: 0.5
+    pub repulsion: f32,           // Range: 1-2000, Default: 100
+    pub max_repulsion_distance: f32, // Range: 100-2000, Default: 500
+    
+    // Mass and damping
+    pub mass_scale: f32,          // Range: 0.1-5, Default: 1.0, Affects force scaling
+    pub damping: f32,             // Range: 0-1, Default: 0.5
+    pub boundary_damping: f32,    // Range: 0.5-1, Default: 0.9
+    
+    // Boundary control
+    pub viewport_bounds: f32,     // Range: 100-5000, Default: 1000
+    pub enable_bounds: bool,      // Default: true
+    
+    // Simulation state
     pub phase: SimulationPhase,   // Current simulation phase
     pub mode: SimulationMode,     // Computation mode
 }
@@ -61,12 +73,15 @@ impl SimulationParams {
     pub fn new() -> Self {
         Self {
             iterations: 100,
-            spring_length: 100.0,
+            time_step: 0.2,
             spring_strength: 0.5,
             repulsion: 100.0,
-            attraction: 1.0,
+            max_repulsion_distance: 500.0,
+            mass_scale: 1.0,
             damping: 0.5,
-            time_step: 0.2,        // Updated to 5fps
+            boundary_damping: 0.9,
+            viewport_bounds: 1000.0,
+            enable_bounds: true,
             phase: SimulationPhase::Initial,
             mode: SimulationMode::Remote,
         }
@@ -75,35 +90,44 @@ impl SimulationParams {
     pub fn with_phase(phase: SimulationPhase) -> Self {
         match phase {
             SimulationPhase::Initial => Self {
-                iterations: 300,           // Reduced from 500
-                spring_length: 100.0,
-                spring_strength: 0.5,      // Reduced from 1.0
-                repulsion: 100.0,          // Reduced from 200.0
-                attraction: 1.0,           // Reduced from 2.0
-                damping: 0.95,            // Increased from 0.9
-                time_step: 0.2,           // Updated to 5fps
+                iterations: 300,
+                time_step: 0.2,
+                spring_strength: 0.3,      // Reduced for initial spread
+                repulsion: 200.0,          // Increased for better separation
+                max_repulsion_distance: 800.0, // Larger range for initial layout
+                mass_scale: 1.2,           // Slightly higher mass influence
+                damping: 0.95,             // High damping for stability
+                boundary_damping: 0.95,
+                viewport_bounds: 1000.0,
+                enable_bounds: true,
                 phase,
                 mode: SimulationMode::Remote,
             },
             SimulationPhase::Dynamic => Self {
                 iterations: 50,
-                spring_length: 100.0,
+                time_step: 0.2,
                 spring_strength: 0.5,
                 repulsion: 100.0,
-                attraction: 1.0,
+                max_repulsion_distance: 500.0,
+                mass_scale: 1.0,
                 damping: 0.5,
-                time_step: 0.2,           // Updated to 5fps
+                boundary_damping: 0.9,
+                viewport_bounds: 1000.0,
+                enable_bounds: true,
                 phase,
                 mode: SimulationMode::Remote,
             },
             SimulationPhase::Finalize => Self {
                 iterations: 200,
-                spring_length: 100.0,
-                spring_strength: 0.1,
-                repulsion: 50.0,
-                attraction: 0.5,
-                damping: 0.95,
-                time_step: 0.2,           // Updated to 5fps
+                time_step: 0.2,
+                spring_strength: 0.1,      // Minimal spring forces
+                repulsion: 50.0,           // Reduced repulsion
+                max_repulsion_distance: 300.0, // Tighter packing
+                mass_scale: 0.8,           // Reduced mass influence
+                damping: 0.95,             // High damping for stability
+                boundary_damping: 0.95,
+                viewport_bounds: 1000.0,
+                enable_bounds: true,
                 phase,
                 mode: SimulationMode::Remote,
             },
@@ -114,13 +138,13 @@ impl SimulationParams {
     pub fn to_gpu_params(&self) -> GPUSimulationParams {
         GPUSimulationParams {
             iterations: self.iterations,
-            spring_length: self.spring_length,
             spring_strength: self.spring_strength,
             repulsion: self.repulsion,
-            attraction: self.attraction,
             damping: self.damping,
-            time_step: self.time_step,
-            padding: 0,
+            max_repulsion_distance: self.max_repulsion_distance,
+            viewport_bounds: if self.enable_bounds { self.viewport_bounds } else { 0.0 },
+            mass_scale: self.mass_scale,
+            boundary_damping: self.boundary_damping,
         }
     }
 }

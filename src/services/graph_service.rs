@@ -31,14 +31,17 @@ impl GraphService {
         tokio::spawn(async move {
             let params = SimulationParams {
                 iterations: 1,  // One iteration per frame
-                spring_length: 50.0,  // Match ideal_length in CPU layout
-                spring_strength: 0.05,  // Reduced for stability
-                repulsion: 10.0,  // Significantly reduced repulsion
-                attraction: 0.2,  // Reduced attraction
-                damping: 0.95,  // Higher damping for more stability
-                time_step: 0.1,  // Match dt in CPU layout
+                spring_strength: 0.5,            // Moderate spring force
+                repulsion: 700.0,                // Strong repulsion for good spacing
+                damping: 0.95,                   // High damping for stability
+                max_repulsion_distance: 1000.0,  // Large repulsion range
+                viewport_bounds: 1000.0,         // Reasonable bounds size
+                mass_scale: 1.0,                 // Default mass scaling
+                boundary_damping: 0.9,           // Strong boundary damping
+                enable_bounds: true,             // Enable bounds by default
+                time_step: 0.1,                  // Match dt in CPU layout
                 phase: SimulationPhase::Dynamic,
-                mode: SimulationMode::Local,  // Use CPU for continuous updates
+                mode: SimulationMode::Remote,    // Force GPU-accelerated computation
             };
 
             loop {
@@ -265,14 +268,16 @@ impl GraphService {
             },
             None => {
                 warn!("GPU not available. Falling back to CPU-based layout calculation.");
-                Self::calculate_layout_cpu(graph, params.iterations, params.spring_strength, params.damping)?;
-                Ok(())
+                Err(Box::new(std::io::Error::new(std::io::ErrorKind::Unsupported, 
+                    "GPU computation is required. CPU fallback is disabled.")))
             }
         }
     }
 
     fn calculate_layout_cpu(graph: &mut GraphData, iterations: u32, spring_strength: f32, damping: f32) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        let repulsion_strength = spring_strength * 1000.0; // Reduced repulsion strength
+        let repulsion_strength = 700.0; // Match CUDA implementation
+        let max_repulsion_distance = 1000.0; // Match CUDA implementation
+        let bounds = 1000.0; // Match viewport_bounds
         let min_distance = 0.1; // Minimum distance to prevent division by zero
         
         for _ in 0..iterations {
@@ -289,8 +294,14 @@ impl GraphService {
                     let distance_squared = dx * dx + dy * dy + dz * dz;
                     let distance = distance_squared.sqrt().max(min_distance);
                     
-                    // Use inverse square law with clamped maximum force
-                    let force = (repulsion_strength / distance_squared).min(100.0);
+                    if distance < max_repulsion_distance {
+                        // Quadratic falloff matching CUDA implementation
+                        let falloff = 1.0 - (distance / max_repulsion_distance);
+                        let falloff = falloff * falloff;
+                        
+                        // Mass-weighted repulsion
+                        let force = repulsion_strength * falloff / distance_squared;
+
                     
                     // Normalize direction vector
                     let fx = (dx / distance) * force;
@@ -304,12 +315,13 @@ impl GraphService {
                     forces[j].0 += fx;
                     forces[j].1 += fy;
                     forces[j].2 += fz;
+                    }
                 }
             }
 
             // Calculate spring forces along edges
-            let ideal_length = 50.0; // Ideal spring length
-            let max_spring_force = 10.0; // Maximum spring force
+            let rest_length = 100.0; // Base rest length
+            let max_spring_force = spring_strength * 10.0; // Scale with spring strength
             
             for edge in &graph.edges {
                 // Find indices of source and target nodes
@@ -328,8 +340,8 @@ impl GraphService {
                     let distance = distance_squared.sqrt().max(0.1); // Prevent division by zero
                     
                     // Calculate spring force with ideal length and weight
-                    let displacement = distance - ideal_length;
-                    let force = (spring_strength * displacement * edge.weight)
+                    let mass_adjusted_length = rest_length * (1.0 + 0.5 * (edge.weight / 10.0));
+                    let force = (spring_strength * (distance - mass_adjusted_length) * edge.weight)
                         .clamp(-max_spring_force, max_spring_force);
                     
                     // Normalize direction vector and apply force
@@ -348,7 +360,6 @@ impl GraphService {
             }
             
             // Apply forces and update positions with stability constraints
-            let max_velocity = 5.0; // Maximum allowed velocity
             let dt = 0.1; // Time step for integration
             
             for (i, node) in graph.nodes.iter_mut().enumerate() {
@@ -362,6 +373,9 @@ impl GraphService {
                 vy *= damping;
                 vz *= damping;
                 
+                // Mass-aware velocity limiting
+                let mass = node.size.unwrap_or(1.0);
+                let max_velocity = 2.0 / (0.5 + mass);
                 // Clamp velocity magnitude
                 let v_mag = (vx * vx + vy * vy + vz * vz).sqrt();
                 if v_mag > max_velocity {
@@ -371,10 +385,25 @@ impl GraphService {
                     vz *= scale;
                 }
                 
-                // Update position using clamped velocity
-                let x = node.x() + vx * dt;
-                let y = node.y() + vy * dt;
-                let z = node.z() + vz * dt;
+                // Update position
+                let mut x = node.x() + vx * dt;
+                let mut y = node.y() + vy * dt;
+                let mut z = node.z() + vz * dt;
+                
+                // Apply boundary constraints with additional damping
+                if bounds > 0.0 {
+                    let near_boundary = x.abs() > bounds * 0.9 || 
+                                      y.abs() > bounds * 0.9 || 
+                                      z.abs() > bounds * 0.9;
+                    if near_boundary {
+                        vx *= 0.9;
+                        vy *= 0.9;
+                        vz *= 0.9;
+                    }
+                    x = x.clamp(-bounds, bounds);
+                    y = y.clamp(-bounds, bounds);
+                    z = z.clamp(-bounds, bounds);
+                }
                 
                 // Store updated values
                 node.set_vx(vx);

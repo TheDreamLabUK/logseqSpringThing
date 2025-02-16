@@ -60,7 +60,7 @@ impl GPUCompute {
             .map_err(|e| Error::new(std::io::ErrorKind::Other, e.to_string()))?);
 
         debug!("Loading force computation kernel");
-        let ptx = Ptx::from_file("/app/compute_forces.ptx");
+        let ptx = Ptx::from_file("/app/compute_forces/compute_forces.ptx");
             
         device.load_ptx(ptx, "compute_forces", &["compute_forces"])
             .map_err(|e| Error::new(std::io::ErrorKind::Other, e.to_string()))?;
@@ -124,19 +124,22 @@ impl GPUCompute {
             shared_mem_bytes: SHARED_MEM_SIZE,
         };
 
-        // Adjust simulation parameters for stability
-        let mut params = self.simulation_params.clone();
-        params.spring_strength *= 0.1; // Reduce force strength
-        params.repulsion *= 0.1;      // Reduce repulsion force
-        params.damping = params.damping.max(0.95); // Increase damping for stability
+        // Use parameters directly without scaling
+        let params = &self.simulation_params;
 
         unsafe {
             self.force_kernel.clone().launch(cfg, (
                 &mut self.node_data,
                 self.num_nodes as i32,
-                params.spring_strength,
-                params.repulsion,
-                params.damping,
+                params.spring_strength,        // Spring force strength
+                params.repulsion,             // Repulsion force strength
+                params.damping,               // Velocity damping
+                params.max_repulsion_distance, // Maximum distance for repulsion
+                if params.enable_bounds {      // Viewport bounds (0 if disabled)
+                    params.viewport_bounds
+                } else {
+                    0.0
+                }
             )).map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
         }
         

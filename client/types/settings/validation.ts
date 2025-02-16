@@ -18,67 +18,53 @@ interface ValidationRule {
 
 const validationRules: Record<string, Record<string, ValidationRule>> = {
     visualization: {
-        'nodes.baseSize': {
-            validate: (value: number) => value >= 0.1 && value <= 10,
-            message: 'Base size must be between 0.1 and 10'
-        },
-        'nodes.opacity': {
-            validate: (value: number) => value >= 0 && value <= 1,
-            message: 'Opacity must be between 0 and 1'
-        },
-        'nodes.metalness': {
-            validate: (value: number) => value >= 0 && value <= 1,
-            message: 'Metalness must be between 0 and 1'
-        },
-        'nodes.roughness': {
-            validate: (value: number) => value >= 0 && value <= 1,
-            message: 'Roughness must be between 0 and 1'
-        },
-        'edges.width': {
-            validate: (value: number) => value >= 0.1 && value <= 5,
-            message: 'Edge width must be between 0.1 and 5'
-        },
-        'physics.attractionStrength': {
-            validate: (value: number) => value >= 0 && value <= 2,
-            message: 'Attraction strength must be between 0 and 2'
-        },
-        'physics.repulsionStrength': {
-            validate: (value: number) => value >= 0 && value <= 2,
-            message: 'Repulsion strength must be between 0 and 2'
+        'physics.iterations': {
+            validate: (value: number) => value >= 1 && value <= 500,
+            message: 'Iterations must be between 1 and 500'
         },
         'physics.springStrength': {
-            validate: (value: number) => value >= 0 && value <= 2,
-            message: 'Spring strength must be between 0 and 2'
+            validate: (value: number) => value >= 0.1 && value <= 10,
+            message: 'Spring strength must be between 0.1 and 10'
         },
-        'rendering.quality': {
-            validate: (value: string) => ['low', 'medium', 'high'].includes(value),
-            message: 'Quality must be low, medium, or high'
+        'physics.repulsionStrength': {
+            validate: (value: number) => value >= 1 && value <= 2000,
+            message: 'Repulsion strength must be between 1 and 2000'
         },
-        'rendering.ambientLightIntensity': {
-            validate: (value: number) => value >= 0 && value <= 2,
-            message: 'Ambient light intensity must be between 0 and 2'
-        }
-    },
-    'visualization.bloom': {
-        'visualization.bloom.strength': {
-            validate: (value: number) => value >= 0 && value <= 5,
-            message: 'Bloom strength must be between 0 and 5'
+        'physics.repulsionDistance': {
+            validate: (value: number) => value >= 100 && value <= 2000,
+            message: 'Repulsion distance must be between 100 and 2000'
         },
-        'visualization.bloom.radius': {
-            validate: (value: number) => value >= 0 && value <= 3,
-            message: 'Bloom radius must be between 0 and 3'
+        'physics.massScale': {
+            validate: (value: number) => value >= 0.1 && value <= 5,
+            message: 'Mass scale must be between 0.1 and 5'
         },
-        'visualization.bloom.edge_bloom_strength': {
-            validate: (value: number) => value >= 0 && value <= 5,
-            message: 'Edge bloom strength must be between 0 and 5'
+        'physics.damping': {
+            validate: (value: number) => value >= 0 && value <= 1,
+            message: 'Damping must be between 0 and 1'
         },
-        'visualization.bloom.node_bloom_strength': {
-            validate: (value: number) => value >= 0 && value <= 5,
-            message: 'Node bloom strength must be between 0 and 5'
+        'physics.boundaryDamping': {
+            validate: (value: number) => value >= 0.5 && value <= 1,
+            message: 'Boundary damping must be between 0.5 and 1'
         },
-        'visualization.bloom.environment_bloom_strength': {
-            validate: (value: number) => value >= 0 && value <= 5,
-            message: 'Environment bloom strength must be between 0 and 5'
+        'physics.boundsSize': {
+            validate: (value: number) => value >= 100 && value <= 5000,
+            message: 'Bounds size must be between 100 and 5000'
+        },
+        'physics.enableBounds': {
+            validate: (value: boolean) => typeof value === 'boolean',
+            message: 'Enable bounds must be a boolean'
+        },
+        'physics.collisionRadius': {
+            validate: (value: number) => value >= 0.1 && value <= 100,
+            message: 'Collision radius must be between 0.1 and 100'
+        },
+        'physics.maxVelocity': {
+            validate: (value: number) => value >= 0.1 && value <= 10,
+            message: 'Max velocity must be between 0.1 and 10'
+        },
+        'physics.attractionStrength': {
+            validate: (value: number) => value >= 0.1 && value <= 10,
+            message: 'Attraction strength must be between 0.1 and 10'
         }
     }
 };
@@ -86,14 +72,12 @@ const validationRules: Record<string, Record<string, ValidationRule>> = {
 export function validateSettings(settings: Partial<Settings>): ValidationResult {
     const errors: ValidationError[] = [];
     
-    // Recursively validate all settings
     function validateObject(obj: any, path: string = '') {
         if (!obj || typeof obj !== 'object') return;
         
         Object.entries(obj).forEach(([key, value]) => {
             const currentPath = path ? `${path}.${key}` : key;
             
-            // Check if there's a validation rule for this path
             for (const [category, rules] of Object.entries(validationRules)) {
                 if (currentPath.startsWith(category)) {
                     const rule = rules[currentPath];
@@ -107,7 +91,6 @@ export function validateSettings(settings: Partial<Settings>): ValidationResult 
                 }
             }
             
-            // Recursively validate nested objects
             if (value && typeof value === 'object' && !Array.isArray(value)) {
                 validateObject(value, currentPath);
             }
@@ -125,7 +108,6 @@ export function validateSettings(settings: Partial<Settings>): ValidationResult 
 export function validateSettingValue(path: string, value: any, currentSettings: Settings): ValidationError[] {
     const errors: ValidationError[] = [];
     
-    // Find matching validation rule
     for (const [category, rules] of Object.entries(validationRules)) {
         if (path.startsWith(category)) {
             const rule = rules[path];
@@ -139,11 +121,8 @@ export function validateSettingValue(path: string, value: any, currentSettings: 
         }
     }
     
-    // Special validation for interdependent settings
     if (path.includes('physics')) {
         validatePhysicsSettings(path, value, currentSettings, errors);
-    } else if (path.includes('rendering')) {
-        validateRenderingSettings(path, value, currentSettings, errors);
     }
     
     return errors;
@@ -157,33 +136,41 @@ function validatePhysicsSettings(
 ): void {
     const physics = settings.visualization.physics;
     
-    // Example: Ensure attraction and repulsion strengths are balanced
-    if (path === 'visualization.physics.attractionStrength' && physics.repulsionStrength) {
-        const ratio = value / physics.repulsionStrength;
-        if (ratio > 3 || ratio < 0.33) {
+    // Validate repulsion and distance relationship
+    if (path === 'visualization.physics.repulsionStrength' && physics.repulsionDistance) {
+        if (value > physics.repulsionDistance) {
             errors.push({
                 path,
-                message: 'Attraction and repulsion strengths should be relatively balanced',
+                message: 'Repulsion strength should not exceed repulsion distance for stability',
                 value
             });
         }
     }
-}
 
-function validateRenderingSettings(
-    path: string,
-    value: any,
-    settings: Settings,
-    errors: ValidationError[]
-): void {
-    const rendering = settings.visualization.rendering;
-    
-    // Example: Warn about performance impact of combined settings
-    if (path === 'visualization.rendering.quality' && value === 'high') {
-        if (rendering.enableShadows && rendering.enableAmbientOcclusion) {
+    // Validate performance impact of iterations
+    if (path === 'visualization.physics.iterations' && value > 200) {
+        errors.push({
+            path,
+            message: 'High iteration count may impact performance',
+            value
+        });
+    }
+
+    // Validate mass scale impact on forces
+    if (path === 'visualization.physics.massScale' && value > 2) {
+        errors.push({
+            path,
+            message: 'High mass scale values may cause unstable behavior',
+            value
+        });
+    }
+
+    // Validate bounds size and repulsion distance relationship
+    if (path === 'visualization.physics.boundsSize' && physics.repulsionDistance) {
+        if (value < physics.repulsionDistance * 0.5) {
             errors.push({
                 path,
-                message: 'High quality with shadows and ambient occlusion may impact performance',
+                message: 'Bounds size should be at least half of repulsion distance',
                 value
             });
         }

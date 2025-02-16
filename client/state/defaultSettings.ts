@@ -7,12 +7,12 @@ export const defaultSettings: Settings = {
             metalness: 0.8,
             opacity: 1.0,
             roughness: 0.2,
-            sizeRange: [200, 700], // Wider range for better size differentiation
-            quality: 'medium', // Default to medium quality for better performance
+            sizeRange: [200, 700],
+            quality: 'medium',
             enableInstancing: true,
             enableHologram: true,
             enableMetadataShape: false,
-            enableMetadataVisualization: false, // Disable for performance
+            enableMetadataVisualization: false,
             colorRangeAge: ['#ff0000', '#00ff00'],
             colorRangeLinks: ['#0000ff', '#ff00ff']
         },
@@ -24,7 +24,6 @@ export const defaultSettings: Settings = {
             opacity: 0.8,
             widthRange: [1.5, 4.0],
             quality: 'medium',
-            // New shader-based edge settings
             enableFlowEffect: true,
             flowSpeed: 1.0,
             flowIntensity: 0.6,
@@ -34,16 +33,19 @@ export const defaultSettings: Settings = {
             gradientColors: ['#888888', '#aaaaaa']
         },
         physics: {
-            attractionStrength: 0.015,
-            boundsSize: 100.0,
-            collisionRadius: 0.25,
-            damping: 0.5,
-            enableBounds: false,
             enabled: true,
-            iterations: 100,
-            maxVelocity: 2.0,
-            repulsionStrength: 0.4,
-            springStrength: 0.6
+            iterations: 100,                // Balanced for performance and stability
+            attractionStrength: 0.5,        // Moderate attraction for connected nodes
+            repulsionStrength: 700.0,       // Strong repulsion for good spacing
+            repulsionDistance: 1000.0,      // Large enough for initial layout
+            springStrength: 0.5,            // Moderate spring force for stability
+            damping: 0.8,                   // Higher damping for stability
+            boundaryDamping: 0.9,           // Strong boundary damping to prevent oscillation
+            massScale: 1.0,                 // Default mass scaling
+            maxVelocity: 2.0,               // Moderate velocity limit
+            collisionRadius: 1.0,           // Default collision detection radius
+            enableBounds: true,             // Enable bounds by default
+            boundsSize: 1000.0              // Large enough for typical graphs
         },
         rendering: {
             ambientLightIntensity: 0.2,
@@ -75,7 +77,7 @@ export const defaultSettings: Settings = {
             textOutlineWidth: 0.1,
             textResolution: 16,
             textPadding: 2,
-            billboardMode: 'camera' 
+            billboardMode: 'camera'
         },
         bloom: {
             edgeBloomStrength: 2.0,
@@ -88,18 +90,18 @@ export const defaultSettings: Settings = {
         },
         hologram: {
             ringCount: 2,
-            sphereSizes: [40, 80],  // Reduced to 2 layers
+            sphereSizes: [40, 80],
             ringRotationSpeed: 1.0,
             ringColor: '#00ffff',
             ringOpacity: 0.6,
             enableBuckminster: false,
             enableGeodesic: false,
-            buckminsterSize: 0,  // Keep but set to 0 since disabled
-            buckminsterOpacity: 0,  // Keep but set to 0 since disabled
-            geodesicSize: 0,  // Keep but set to 0 since disabled
-            geodesicOpacity: 0,  // Keep but set to 0 since disabled
+            buckminsterSize: 0,
+            buckminsterOpacity: 0,
+            geodesicSize: 0,
+            geodesicOpacity: 0,
             enableTriangleSphere: true,
-            triangleSphereSize: 80,  // Single size for instanced geometry
+            triangleSphereSize: 80,
             triangleSphereOpacity: 0.15,
             globalRotationSpeed: 0.03
         }

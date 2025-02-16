@@ -27,6 +27,10 @@ struct alignas(16) Vec3 {
         float inv_len = 1.0f / len;
         return Vec3(x * inv_len, y * inv_len, z * inv_len);
     }
+    
+    __device__ float dot(const Vec3& other) const {
+        return x * other.x + y * other.y + z * other.z;
+    }
 };
 
 // Node data structure with Vec3
@@ -43,7 +47,9 @@ extern "C" __global__ void compute_forces(
     int num_nodes,
     float spring_strength,
     float repulsion,
-    float damping
+    float damping,
+    float max_repulsion_distance,
+    float viewport_bounds
 ) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     if (idx >= num_nodes) return;
@@ -51,7 +57,7 @@ extern "C" __global__ void compute_forces(
     // Load node data
     NodeData node_i = nodes[idx];
     Vec3 pos_i = node_i.position;
-    float mass_i = static_cast<float>(node_i.mass);
+    float mass_i = static_cast<float>(node_i.mass) / 255.0f; // Normalize mass to [0,1]
     Vec3 force;
 
     __shared__ Vec3 shared_positions[256];
@@ -65,7 +71,7 @@ extern "C" __global__ void compute_forces(
         if (shared_idx < num_nodes) {
             NodeData shared_node = nodes[shared_idx];
             shared_positions[threadIdx.x] = shared_node.position;
-            shared_masses[threadIdx.x] = static_cast<float>(shared_node.mass);
+            shared_masses[threadIdx.x] = static_cast<float>(shared_node.mass) / 255.0f;
         }
         __syncthreads();
 
@@ -85,16 +91,36 @@ extern "C" __global__ void compute_forces(
             
             // Calculate force magnitude with minimum distance clamp
             float dist = fmaxf(diff.length(), 0.0001f);
-            float force_mag = repulsion * mass_i * mass_j / (dist * dist);
+            
+            // Calculate bounded repulsion force
+            float force_mag = 0.0f;
+            if (dist < max_repulsion_distance) {
+                // Smooth falloff near max distance
+                float falloff = 1.0f - (dist / max_repulsion_distance);
+                falloff = falloff * falloff; // Quadratic falloff
+                
+                // Mass-weighted repulsion
+                float effective_mass = sqrtf(mass_i * mass_j); // Geometric mean of masses
+                force_mag = repulsion * effective_mass * falloff / (dist * dist);
+            }
 
             // Add spring force if nodes are connected (check flags)
             if ((node_i.flags & 0x2) && (nodes[tile * blockDim.x + j].flags & 0x2)) {
-                float spring_force = spring_strength * (dist - 1.0f); // Natural length = 1.0
+                // Mass-weighted spring force
+                float rest_length = 1.0f + 0.5f * (mass_i + mass_j); // Heavier nodes prefer more distance
+                float spring_force = spring_strength * (dist - rest_length);
+                spring_force *= sqrtf(mass_i * mass_j); // Scale by geometric mean of masses
                 force_mag += spring_force;
             }
 
             // Accumulate force using normalized direction
-            force = force + diff.normalized() * force_mag;
+            Vec3 force_dir = diff.normalized();
+            force = force + force_dir * force_mag;
+            
+            // Add mass-dependent inertial damping
+            float velocity_alignment = node_i.velocity.dot(force_dir);
+            if (velocity_alignment > 0)
+                force = force + force_dir * (-velocity_alignment * mass_i * 0.1f);
         }
         __syncthreads();
     }
@@ -102,8 +128,29 @@ extern "C" __global__ void compute_forces(
     // Update velocity with damping
     Vec3 new_velocity = (node_i.velocity + force) * damping;
 
+    // Apply mass-based velocity limiting
+    float max_velocity = 2.0f / (0.5f + mass_i); // Heavier nodes move slower
+    float velocity_mag = new_velocity.length();
+    if (velocity_mag > max_velocity) {
+        new_velocity = new_velocity * (max_velocity / velocity_mag);
+    }
+
     // Update position
     Vec3 new_position = pos_i + new_velocity;
+
+    // Apply viewport bounds
+    if (viewport_bounds > 0.0f) {
+        new_position.x = fmaxf(fminf(new_position.x, viewport_bounds), -viewport_bounds);
+        new_position.y = fmaxf(fminf(new_position.y, viewport_bounds), -viewport_bounds);
+        new_position.z = fmaxf(fminf(new_position.z, viewport_bounds), -viewport_bounds);
+    }
+
+    // Apply additional damping for nodes near bounds
+    if (viewport_bounds > 0.0f && (fabsf(new_position.x) > viewport_bounds * 0.9f ||
+                                  fabsf(new_position.y) > viewport_bounds * 0.9f ||
+                                  fabsf(new_position.z) > viewport_bounds * 0.9f)) {
+        new_velocity = new_velocity * 0.9f; // Extra damping near bounds
+    }
 
     // Store updated position and velocity
     nodes[idx].position = new_position;

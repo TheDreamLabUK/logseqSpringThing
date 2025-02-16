@@ -465,6 +465,25 @@ fi
 GIT_HASH=$(git rev-parse HEAD 2>/dev/null || echo "development")
 export GIT_HASH
 
+# Compile CUDA to PTX
+log "${YELLOW}Compiling CUDA to PTX...${NC}"
+if ! command -v nvcc &>/dev/null; then
+    log "${RED}Error: NVIDIA CUDA Compiler (nvcc) not found${NC}"
+    log "${YELLOW}Please install CUDA toolkit to compile PTX files${NC}"
+    exit 1
+fi
+
+# Compile CUDA to PTX with optimizations
+if ! nvcc \
+    -arch=sm_86 \
+    -O3 \
+    --use_fast_math \
+    -ptx src/utils/compute_forces.cu \
+    -o src/utils/compute_forces.ptx; then
+    log "${RED}Failed to compile CUDA to PTX${NC}"
+    exit 1
+fi
+
 # Build client code before building container
 log "${YELLOW}Building client code...${NC}"
 pnpm build || { log "${RED}Client build failed${NC}"; exit 1; }

@@ -70,6 +70,7 @@ RUN mkdir src && \
 
 # Now copy the real source code and build
 COPY src ./src
+
 RUN GIT_HASH=$(git rev-parse HEAD || echo "development") \
     cargo build --release --jobs $(nproc) || \
     (sleep 2 && GIT_HASH=$(git rev-parse HEAD || echo "development") cargo build --release --jobs $(nproc)) || \
@@ -159,7 +160,7 @@ WORKDIR /app
 RUN mkdir -p /app/data/public/dist \
              /app/data/markdown \
              /app/data/runtime \
-             /app/src/utils \
+             /app/compute_forces \
              /app/data/piper \
              /tmp/runtime && \
     chown -R webxr:webxr /app /tmp/runtime && \
@@ -173,7 +174,7 @@ RUN mkdir -p /app/data/markdown /app/data/metadata && \
 
 # Copy built artifacts
 COPY --from=rust-deps-builder /usr/src/app/target/release/webxr /app/
-COPY src/utils/compute_forces.ptx /app/compute_forces.ptx
+COPY src/utils/compute_forces.ptx /app/compute_forces/compute_forces.ptx
 COPY --from=frontend-builder /app/data/public/dist /app/data/public/dist
 
 # Copy start script
