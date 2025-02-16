@@ -36,7 +36,7 @@ pub struct ValidateRequest {
 
 pub fn config(cfg: &mut web::ServiceConfig) {
     cfg.service(
-        web::scope("/auth/nostr")
+        web::scope("/auth/nostr")  // Now mounted under /api/auth/nostr due to API handler configuration
             .route("", web::post().to(login))
             .route("", web::delete().to(logout))
             .route("/verify", web::post().to(verify))

@@ -86,7 +86,7 @@ export const defaultSettings: Settings = {
             nodeBloomStrength: 3.0,
             radius: 2.0,
             strength: 3.0,
-            threshold: 0.3
+            threshold: 0.0
         },
         hologram: {
             ringCount: 2,

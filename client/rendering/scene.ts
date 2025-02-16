@@ -21,6 +21,7 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass';
 import { createLogger } from '../core/utils';
 import { Settings } from '../types/settings';
+import { defaultSettings } from '../state/defaultSettings';
 import { VisualizationController } from './VisualizationController';
 
 const logger = createLogger('SceneManager');
@@ -114,18 +115,20 @@ export class SceneManager {
     const renderPass = new RenderPass(this.scene, this.camera);
     this.composer.addPass(renderPass);
 
+    const bloomSettings = defaultSettings.visualization.bloom;
+
     // Initialize bloom with default state
     this.bloomPass = new UnrealBloomPass(
       new Vector2(window.innerWidth, window.innerHeight),
-      1.5,  // Default strength (will be overridden by settings)
-      0.4,  // Default radius (will be overridden by settings)
-      0   // Small threshold to prevent over-blooming
+      bloomSettings.strength,
+      bloomSettings.radius,
+      bloomSettings.threshold
     );
-    
+
     // Initialize custom bloom properties
-    (this.bloomPass as any).edgeStrength = 3.0;
-    (this.bloomPass as any).nodeStrength = 2.0;
-    (this.bloomPass as any).environmentStrength = 1.0;
+    (this.bloomPass as any).edgeStrength = bloomSettings.edgeBloomStrength;
+    (this.bloomPass as any).nodeStrength = bloomSettings.nodeBloomStrength;
+    (this.bloomPass as any).environmentStrength = bloomSettings.environmentBloomStrength;
     
     this.composer.addPass(this.bloomPass);
 
@@ -409,12 +412,12 @@ export class SceneManager {
 
       const newBloomSettings = {
         enabled: newBloom.enabled,
-        strength: newBloom.enabled ? (newBloom.strength || 1.5) : 0,
-        radius: newBloom.enabled ? (newBloom.radius || 0.4) : 0,
-        threshold: 0, // Always keep threshold at 0 for maximum bloom effect
-        edgeStrength: newBloom.enabled ? (newBloom.edgeBloomStrength || 3.0) : 0,
-        nodeStrength: newBloom.enabled ? (newBloom.nodeBloomStrength || 2.0) : 0,
-        environmentStrength: newBloom.enabled ? (newBloom.environmentBloomStrength || 1.0) : 0
+        strength: newBloom.enabled ? (newBloom.strength || defaultSettings.visualization.bloom.strength) : 0,
+        radius: newBloom.enabled ? (newBloom.radius || defaultSettings.visualization.bloom.radius) : 0,
+        threshold: newBloom.threshold, // Use threshold from settings
+        edgeStrength: newBloom.enabled ? (newBloom.edgeBloomStrength || defaultSettings.visualization.bloom.edgeBloomStrength) : 0,
+        nodeStrength: newBloom.enabled ? (newBloom.nodeBloomStrength || defaultSettings.visualization.bloom.nodeBloomStrength) : 0,
+        environmentStrength: newBloom.enabled ? (newBloom.environmentBloomStrength || defaultSettings.visualization.bloom.environmentBloomStrength) : 0
       };
 
       const hasBloomChanged = JSON.stringify(currentBloom) !== JSON.stringify(newBloomSettings);
