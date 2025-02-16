@@ -26,7 +26,8 @@ use webxr::utils::logging::{init_logging_with_config, LogConfig};
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
-    dotenv().expect("Failed to load .env file");
+    // Make dotenv optional since env vars can come from Docker
+    dotenv().ok();
 
     // Load settings first to get the log level
     let settings = match Settings::new() {
