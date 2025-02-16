@@ -96,6 +96,7 @@ export class MaterialFactory {
         }
 
         const opacity = context === 'ar' ? (settings.visualization?.nodes?.opacity || 0.9) * 0.8 : (settings.visualization?.nodes?.opacity || 0.9);
+        const baseColor = settings.visualization?.nodes?.baseColor || 0x4287f5;
 
         const material = new MeshStandardMaterial({
             color: settings.visualization?.nodes?.baseColor || 0x4287f5,
@@ -104,8 +105,12 @@ export class MaterialFactory {
             metalness: settings.visualization?.nodes?.metalness || 0.2,
             roughness: settings.visualization?.nodes?.roughness || 0.7,
             side: DoubleSide,
-            depthWrite: true // Improve depth sorting
+            depthWrite: true, // Improve depth sorting
+            emissive: new Color(baseColor)
         });
+        
+        // Set emissive intensity after creation
+        (material as any).emissiveIntensity = 1.0;
         
         this.materialCache.set(cacheKey, material);
         return material;
@@ -139,9 +144,11 @@ export class MaterialFactory {
             case 'node-basic':
             case 'node-phong': {
                 const nodeMaterial = material as MeshStandardMaterial;
-                nodeMaterial.color.set(settings.visualization?.nodes?.baseColor || '#4287f5');
+                const baseColor = settings.visualization?.nodes?.baseColor || '#4287f5';
+                nodeMaterial.color.set(baseColor);
                 nodeMaterial.metalness = settings.visualization?.nodes?.metalness || 0.2;
                 nodeMaterial.roughness = settings.visualization?.nodes?.roughness || 0.7;
+                nodeMaterial.emissive.set(baseColor);
                 nodeMaterial.opacity = type.includes('ar') ? (settings.visualization?.nodes?.opacity || 0.9) * 0.8 : (settings.visualization?.nodes?.opacity || 0.9);
                 nodeMaterial.needsUpdate = true;
                 break;

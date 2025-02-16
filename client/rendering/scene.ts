@@ -36,7 +36,7 @@ export class SceneManager {
   private scene: Scene;
   private camera: PerspectiveCamera;
   private renderer: WebGLRenderer;
-  private canvas: HTMLCanvasElement;
+  private readonly canvas: HTMLCanvasElement;
   private currentRenderingSettings: Settings['visualization']['rendering'] | null = null;
   private controls: OrbitControls;
   private sceneGrid: GridHelper | null = null;
@@ -80,7 +80,7 @@ export class SceneManager {
 
     // Create renderer with WebXR support
     this.renderer = new WebGLRenderer({
-      canvas,
+      canvas: this.canvas,
       antialias: true,
       alpha: true,
       powerPreference: 'high-performance',
@@ -119,7 +119,7 @@ export class SceneManager {
       new Vector2(window.innerWidth, window.innerHeight),
       1.5,  // Default strength (will be overridden by settings)
       0.4,  // Default radius (will be overridden by settings)
-      0.1   // Small threshold to prevent over-blooming
+      0   // Small threshold to prevent over-blooming
     );
     
     // Initialize custom bloom properties
@@ -453,14 +453,11 @@ export class SceneManager {
 
       // Update renderer settings
       if (this.renderer) {
-        // Note: Some settings can only be changed at renderer creation
-        if (newRendering.enableAntialiasing) {
-          logger.warn('Antialiasing setting change requires renderer recreation');
-          this.recreateRenderer();
+        // Log settings changes that can't be updated at runtime
+        if (newRendering.enableAntialiasing !== this.currentRenderingSettings?.enableAntialiasing) {
+          logger.warn('Antialiasing setting can only be changed at renderer creation');
         }
-        if (newRendering.enableShadows) {
-          logger.warn('Shadow settings change requires renderer recreation');
-        }
+        (this.renderer as any).shadowMap.enabled = newRendering.enableShadows || false;
       }
     }
 
@@ -474,34 +471,6 @@ export class SceneManager {
         }
       });
     }
-  }
-
-  private recreateRenderer(): void {
-    logger.log('Recreating renderer with updated settings');
-    
-    // Store current XR state
-    const wasXREnabled = this.renderer.xr.enabled;
-    
-    // Dispose of current renderer
-    this.renderer.dispose();
-    
-    // Create new renderer with updated settings
-    this.renderer = new WebGLRenderer({
-      canvas: this.canvas,
-      antialias: this.currentRenderingSettings?.enableAntialiasing || true,
-      alpha: true,
-      powerPreference: 'high-performance',
-      xr: {
-        enabled: wasXREnabled
-      }
-    });
-    this.renderer.setSize(window.innerWidth, window.innerHeight);
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    
-    // Recreate composer with new renderer
-    this.composer = new EffectComposer(this.renderer);
-    this.composer.addPass(new RenderPass(this.scene, this.camera));
-    this.composer.addPass(this.bloomPass);
   }
 
   private applyLowPerformanceOptimizations(): void {
