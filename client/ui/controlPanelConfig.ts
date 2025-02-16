@@ -50,6 +50,10 @@ export const settingsMap: Record<string, Record<string, SettingControl | Record<
             maxVelocity: { label: 'Max Velocity', type: 'slider', min: 0, max: 1, step: 0.01, tooltip: 'The maximum velocity of the nodes.' },
             repulsionStrength: { label: 'Repulsion Strength', type: 'number', min: 0, tooltip: 'The strength of the repulsion force between nodes.' },
             springStrength: { label: 'Spring Strength', type: 'slider', min: 0, max: 0.1, step: 0.001, tooltip: 'The strength of the spring force that keeps connected nodes together.' },
+            repulsionDistance: { label: 'Repulsion Distance', type: 'slider', min: 0, max: 100, step: 0.1, tooltip: 'The distance at which nodes start repelling each other.' },
+            massScale: { label: 'Mass Scale', type: 'slider', min: 0, max: 10, step: 0.1, tooltip: 'Scales the mass of nodes, affecting their inertia.' },
+            boundaryDamping: { label: 'Boundary Damping', type: 'slider', min: 0, max: 1, step: 0.01, tooltip: 'Damping factor applied when nodes hit the boundary.' },
+
         },
         rendering: {
             ambientLightIntensity: { label: 'Ambient Light', type: 'slider', min: 0, max: 1, step: 0.01, tooltip: 'The intensity of the ambient light.' },

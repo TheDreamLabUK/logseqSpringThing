@@ -35,15 +35,15 @@ export const defaultSettings: Settings = {
         physics: {
             enabled: true,
             iterations: 100,                // Balanced for performance and stability
-            attractionStrength: 0.5,        // Moderate attraction for connected nodes
-            repulsionStrength: 700.0,       // Strong repulsion for good spacing
-            repulsionDistance: 1000.0,      // Large enough for initial layout
-            springStrength: 0.5,            // Moderate spring force for stability
-            damping: 0.8,                   // Higher damping for stability
-            boundaryDamping: 0.9,           // Strong boundary damping to prevent oscillation
+            attractionStrength: 0.015,        // Moderate attraction for connected nodes
+            repulsionStrength: 1500.0,       // Strong repulsion for good spacing
+            repulsionDistance: 50.0,      // Large enough for initial layout
+            springStrength: 0.018,            // Moderate spring force for stability
+            damping: 0.88,                   // Higher damping for stability
+            maxVelocity: 2.5,               // Moderate velocity limit
+            collisionRadius: 0.25,           // Default collision detection radius
             massScale: 1.0,                 // Default mass scaling
-            maxVelocity: 2.0,               // Moderate velocity limit
-            collisionRadius: 1.0,           // Default collision detection radius
+            boundaryDamping: 0.5,           // Strong boundary damping to prevent oscillation
             enableBounds: true,             // Enable bounds by default
             boundsSize: 1000.0              // Large enough for typical graphs
         },

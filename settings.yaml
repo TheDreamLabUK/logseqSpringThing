@@ -33,6 +33,9 @@ visualization:
     max_velocity: 0.4
     repulsion_strength: 700.0
     spring_strength: 0.02
+    repulsion_distance: 50.0
+    mass_scale: 1.0
+    boundary_damping: 0.5
   rendering:
     ambient_light_intensity: 0.41
     background_color: '#1a1a2e'

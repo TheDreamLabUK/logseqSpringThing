@@ -113,6 +113,9 @@ export interface PhysicsSettings {
     collisionRadius: number;
     enableBounds: boolean;
     boundsSize: number;
+    repulsionDistance: number;
+    massScale: number;
+    boundaryDamping: number;
 }
 
 export interface RenderingSettings {

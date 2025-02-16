@@ -50,6 +50,18 @@ const validationRules: Record<string, Record<string, ValidationRule>> = {
             validate: (value: number) => value >= 0 && value <= 2,
             message: 'Spring strength must be between 0 and 2'
         },
+        'physics.repulsionDistance': {
+            validate: (value: number) => value >= 0 && value <= 100,
+            message: 'Repulsion distance must be between 0 and 100'
+        },
+        'physics.massScale': {
+            validate: (value: number) => value >= 0 && value <= 10,
+            message: 'Mass scale must be between 0 and 10'
+        },
+        'physics.boundaryDamping': {
+            validate: (value: number) => value >= 0 && value <= 1,
+            message: 'Boundary damping must be between 0 and 1'
+        },
         'rendering.quality': {
             validate: (value: string) => ['low', 'medium', 'high'].includes(value),
             message: 'Quality must be low, medium, or high'
@@ -168,6 +180,16 @@ function validatePhysicsSettings(
             });
         }
     }
+    if (path === 'visualization.physics.repulsionDistance' && physics.repulsionStrength) {
+            const ratio = value / physics.repulsionStrength;
+            if (ratio > 50 || ratio < 0.02) {
+                errors.push({
+                    path,
+                    message: 'Repulsion distance and repulsion strength should be relatively balanced. Consider adjusting one or the other.',
+                    value
+                });
+            }
+        }
 }
 
 function validateRenderingSettings(

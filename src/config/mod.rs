@@ -84,6 +84,9 @@ pub struct PhysicsSettings {
     pub max_velocity: f32,
     pub repulsion_strength: f32,
     pub spring_strength: f32,
+    pub repulsion_distance: f32,
+    pub mass_scale: f32,
+    pub boundary_damping: f32,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -428,6 +431,9 @@ impl Default for Settings {
                     max_velocity: 2.5,
                     repulsion_strength: 1500.0,
                     spring_strength: 0.018,
+                    repulsion_distance: 50.0,
+                    mass_scale: 1.0,
+                    boundary_damping: 0.5,
                 },
                 rendering: RenderingSettings {
                     ambient_light_intensity: 0.3,
