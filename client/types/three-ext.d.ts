@@ -1,117 +1,113 @@
-declare module 'three/examples/jsm/controls/OrbitControls' {
-  import { Camera, EventDispatcher, MOUSE, TOUCH, Vector3 } from 'three';
+import { Texture, BufferGeometry, BufferAttribute, Camera, Scene, WebGLRenderer, Object3D, Material, Vector2 } from 'three';
 
-  export class OrbitControls extends EventDispatcher {
-    constructor(object: Camera, domElement?: HTMLElement);
+declare module 'three' {
+    export const NearestFilter: TextureFilter;
+    export const LinearFilter: TextureFilter;
+    export const ClampToEdgeWrapping: TextureWrapping;
+    
+    export type TextureFilter = number;
+    export type TextureWrapping = number;
+    
+    export interface Texture {
+        minFilter: TextureFilter;
+        magFilter: TextureFilter;
+        wrapS: TextureWrapping;
+        wrapT: TextureWrapping;
+    }
+    
+    export interface BufferGeometry {
+        getAttribute(name: string): BufferAttribute;
+    }
+    
+    export interface Color {
+        toArray(array?: number[], offset?: number): number[];
+    }
+    
+    export interface PlaneGeometry extends BufferGeometry {
+        getAttribute(name: string): BufferAttribute;
+    }
 
-    object: Camera;
-    domElement: HTMLElement | HTMLDocument;
+    // OrbitControls
+    export class OrbitControls {
+        constructor(camera: Camera, domElement: HTMLElement);
+        enabled: boolean;
+        target: Vector3;
+        minDistance: number;
+        maxDistance: number;
+        enableDamping: boolean;
+        dampingFactor: number;
+        update(): void;
+        dispose(): void;
+    }
 
-    enabled: boolean;
-    target: Vector3;
+    // Effect Composer
+    export class EffectComposer {
+        constructor(renderer: WebGLRenderer);
+        addPass(pass: Pass): void;
+        render(deltaTime?: number): void;
+        setSize(width: number, height: number): void;
+        dispose(): void;
+    }
 
-    minDistance: number;
-    maxDistance: number;
+    export class Pass {
+        enabled: boolean;
+        needsSwap: boolean;
+        clear: boolean;
+        renderToScreen: boolean;
+    }
 
-    minZoom: number;
-    maxZoom: number;
+    export class RenderPass extends Pass {
+        constructor(scene: Scene, camera: Camera);
+    }
 
-    minPolarAngle: number;
-    maxPolarAngle: number;
+    export class UnrealBloomPass extends Pass {
+        constructor(resolution: Vector2, strength: number, radius: number, threshold: number);
+        strength: number;
+        radius: number;
+        threshold: number;
+        resolution: Vector2;
+    }
 
-    minAzimuthAngle: number;
-    maxAzimuthAngle: number;
+    // XR Controller Model Factory
+    export class XRControllerModelFactory {
+        constructor();
+        createControllerModel(controller: Object3D): Object3D;
+    }
 
-    enableDamping: boolean;
-    dampingFactor: number;
+    // Grip Space
+    export interface Group {
+        grip?: Object3D;
+    }
 
-    enableZoom: boolean;
-    zoomSpeed: number;
-
-    enableRotate: boolean;
-    rotateSpeed: number;
-
-    enablePan: boolean;
-    panSpeed: number;
-    screenSpacePanning: boolean;
-    keyPanSpeed: number;
-
-    autoRotate: boolean;
-    autoRotateSpeed: number;
-
-    enableKeys: boolean;
-
-    keys: { LEFT: number; UP: number; RIGHT: number; BOTTOM: number };
-    mouseButtons: { LEFT: MOUSE; MIDDLE: MOUSE; RIGHT: MOUSE };
-    touches: { ONE: TOUCH; TWO: TOUCH };
-
-    update(): boolean;
-    dispose(): void;
-  }
+    // WebXR Manager
+    export interface WebGLRenderer {
+        xr: {
+            enabled: boolean;
+            isPresenting: boolean;
+            setReferenceSpaceType(type: string): void;
+            setSession(session: any): Promise<void>;
+            getCamera(): Camera;
+        };
+    }
 }
 
-declare module 'three/examples/jsm/webxr/XRControllerModelFactory' {
-  import { Group, Texture } from 'three';
-
-  export class XRControllerModelFactory {
-    constructor();
-    createControllerModel(controller: Group): Group;
-  }
+// Declare modules for examples
+declare module 'three/examples/jsm/controls/OrbitControls' {
+    export { OrbitControls } from 'three';
 }
 
 declare module 'three/examples/jsm/postprocessing/EffectComposer' {
-  import { WebGLRenderer, WebGLRenderTarget } from 'three';
-
-  export class Pass {
-    enabled: boolean;
-    needsSwap: boolean;
-    clear: boolean;
-    renderToScreen: boolean;
-
-    setSize(width: number, height: number): void;
-    render(renderer: WebGLRenderer, writeBuffer: WebGLRenderTarget, readBuffer: WebGLRenderTarget, deltaTime?: number, maskActive?: boolean): void;
-  }
-
-  export class EffectComposer {
-    constructor(renderer: WebGLRenderer, renderTarget?: WebGLRenderTarget);
-    
-    renderTarget1: WebGLRenderTarget;
-    renderTarget2: WebGLRenderTarget;
-    writeBuffer: WebGLRenderTarget;
-    readBuffer: WebGLRenderTarget;
-    passes: Pass[];
-    
-    swapBuffers(): void;
-    addPass(pass: Pass): void;
-    insertPass(pass: Pass, __index: number): void;
-    removePass(pass: Pass): void;
-    render(deltaTime?: number): void;
-    reset(renderTarget?: WebGLRenderTarget): void;
-    setSize(width: number, height: number): void;
-    dispose(): void;
-  }
+    export { EffectComposer } from 'three';
 }
 
 declare module 'three/examples/jsm/postprocessing/RenderPass' {
-  import { Scene, Camera } from 'three';
-  import { Pass } from 'three/examples/jsm/postprocessing/EffectComposer';
-
-  export class RenderPass extends Pass {
-    constructor(scene: Scene, camera: Camera);
-    scene: Scene;
-    camera: Camera;
-  }
+    export { RenderPass } from 'three';
 }
 
 declare module 'three/examples/jsm/postprocessing/UnrealBloomPass' {
-  import { Vector2 } from 'three';
-  import { Pass } from 'three/examples/jsm/postprocessing/EffectComposer';
+    export { UnrealBloomPass } from 'three';
+}
 
-  export class UnrealBloomPass extends Pass {
-    constructor(resolution: Vector2, strength?: number, radius?: number, threshold?: number);
-    resolution: Vector2;
-    strength: number;
-    radius: number;
-    threshold: number;
-  }
+declare module 'three/examples/jsm/webxr/XRControllerModelFactory' {
+    export { XRControllerModelFactory } from 'three';
 }

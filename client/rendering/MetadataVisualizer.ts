@@ -1,61 +1,47 @@
-import * as THREE from 'three';
 import {
-    Mesh,
     Group,
-    MeshBasicMaterial,
+    Scene,
+    PerspectiveCamera,
     Vector3,
-    DoubleSide, 
-    BufferGeometry,
+    Color,
     Object3D
 } from 'three';
-import { TextGeometry } from 'three/examples/jsm/geometries/TextGeometry.js';
-import { FontLoader, Font } from 'three/examples/jsm/loaders/FontLoader.js';
 import { NodeMetadata } from '../types/metadata';
 import { Settings } from '../types/settings';
 import { platformManager } from '../platform/platformManager';
+import { UnifiedTextRenderer } from './UnifiedTextRenderer';
 
 interface MetadataLabelGroup extends Group {
     name: string;
     userData: {
         isMetadata: boolean;
+        nodeId?: string;
     };
 }
 
 export type MetadataLabelCallback = (group: MetadataLabelGroup) => void;
 
-interface ExtendedTextGeometry extends TextGeometry {
-    computeBoundingBox: () => void;
-    boundingBox: {
-        max: { x: number };
-        min: { x: number };
-    } | null;
-}
-
 export class MetadataVisualizer {
-    private scene: THREE.Scene;
-    private camera: THREE.PerspectiveCamera;
-    private fontLoader: FontLoader;
-    private font: Font | null;
-    private fontPath: string;
-    private labelGroup: THREE.Group;
+    private scene: Scene;
+    private labelGroup: Group;
     private settings: Settings;
-    private fontLoadAttempts: number = 0;
+    private textRenderer: UnifiedTextRenderer;
+    private metadataGroups: Map<string, MetadataLabelGroup>;
 
-    constructor(camera: THREE.PerspectiveCamera, scene: THREE.Scene, settings: Settings) {
-        this.camera = camera;
+    constructor(camera: PerspectiveCamera, scene: Scene, settings: Settings) {
         this.scene = scene;
-        this.fontLoader = new FontLoader();
-        this.font = null;
-        this.fontPath = '/fonts/helvetiker_regular.typeface.json';
-        this.labelGroup = new THREE.Group();
         this.settings = settings;
+        this.metadataGroups = new Map();
+        
+        this.labelGroup = new Group();
+        this.scene.add(this.labelGroup);
+        
+        // Initialize text renderer
+        this.textRenderer = new UnifiedTextRenderer(camera, scene, settings.visualization.labels);
         
         // Enable both layers by default for desktop mode
         this.labelGroup.layers.enable(0);
         this.labelGroup.layers.enable(1);
-        
-        this.scene.add(this.labelGroup);
-        this.loadFont();
         
         // Set initial layer mode
         this.setXRMode(platformManager.isXRMode);
@@ -66,44 +52,13 @@ export class MetadataVisualizer {
         });
     }
 
-    private async loadFont(): Promise<void> {
-        try {
-            await this.attemptFontLoad();
-        } catch (error) {
-            console.error('Initial font load failed:', error);
-            await this.retryFontLoad();
-        }
-    }
-
-    private async attemptFontLoad(): Promise<void> {
-        this.font = await new Promise((resolve, reject) => {
-            this.fontLoader.load(
-                this.fontPath,
-                resolve,
-                undefined,
-                reject
-            );
-        });
-    }
-
-    private async retryFontLoad(maxAttempts: number = 3): Promise<void> {
-        while (this.fontLoadAttempts < maxAttempts && !this.font) {
-            this.fontLoadAttempts++;
-            await new Promise(resolve => setTimeout(resolve, 1000));
-            try {
-                await this.attemptFontLoad();
-                console.log('Font loaded successfully after retry');
-                break;
-            } catch (error) {
-                console.error(`Font load attempt ${this.fontLoadAttempts} failed:`, error);
-            }
-        }
-    }
-
-    public async createMetadataLabel(metadata: NodeMetadata): Promise<MetadataLabelGroup> {
+    public async createMetadataLabel(metadata: NodeMetadata, nodeId: string): Promise<MetadataLabelGroup> {
         const group = new Group() as MetadataLabelGroup;
         group.name = 'metadata-label';
-        group.userData = { isMetadata: true };
+        group.userData = { 
+            isMetadata: true,
+            nodeId
+        };
 
         // Format file size
         const fileSizeFormatted = metadata.fileSize > 1024 * 1024 
@@ -112,134 +67,28 @@ export class MetadataVisualizer {
                 ? `${(metadata.fileSize / 1024).toFixed(1)}KB`
                 : `${metadata.fileSize}B`;
 
-        // Create text for file name and size
-        const nameMesh = await this.createTextMesh(`${metadata.name} (${fileSizeFormatted})`);
-        if (nameMesh) {
-            nameMesh.position.y = 1.5;
-            nameMesh.scale.setScalar(0.8);
-            group.add(nameMesh);
-        }
+        // Create text labels using UnifiedTextRenderer
+        const labelTexts = [
+            `${metadata.name} (${fileSizeFormatted})`,
+            `Size: ${metadata.nodeSize.toFixed(1)}`,
+            `${metadata.hyperlinkCount} links`
+        ];
 
-        // Create text for node size
-        const nodeSizeMesh = await this.createTextMesh(`Size: ${metadata.nodeSize.toFixed(1)}`);
-        if (nodeSizeMesh) {
-            nodeSizeMesh.position.y = 1.0;
-            nodeSizeMesh.scale.setScalar(0.7);
-            group.add(nodeSizeMesh);
-        }
+        const labelPositions = [1.5, 1.0, 0.5]; // Y positions for each label
 
-        // Create text for hyperlink count
-        const linksMesh = await this.createTextMesh(`${metadata.hyperlinkCount} links`);
-        if (linksMesh) {
-            linksMesh.position.y = 0.5;
-            linksMesh.scale.setScalar(0.7);
-            group.add(linksMesh);
-        }
-
-        // Center all text meshes horizontally
-        group.children.forEach(child => {
-            if (child instanceof Mesh) {
-                const geometry = child.geometry as BufferGeometry;
-                if (!geometry.boundingSphere) {
-                    geometry.computeBoundingSphere();
-                }
-                if (geometry.boundingSphere) {
-                    child.position.x = -geometry.boundingSphere.radius;
-                }
-            }
+        labelTexts.forEach((text, index) => {
+            const position = new Vector3(0, labelPositions[index], 0);
+            const labelId = `${nodeId}-label-${index}`;
+            this.textRenderer.updateLabel(
+                labelId,
+                text,
+                position,
+                new Color(this.settings.visualization.labels.textColor)
+            );
         });
 
-        // Set up billboarding
-        const tempVec = new Vector3();
-        const billboardMode = this.settings.visualization.labels.billboardMode;
-
-        const updateBillboard = () => {
-            if (billboardMode === 'camera') {
-                // Full billboard - always face camera
-                group.quaternion.copy(this.camera.quaternion);
-            } else {
-                // Vertical billboard - only rotate around Y axis
-                tempVec.copy(this.camera.position).sub(group.position);
-                tempVec.y = 0;
-                group.lookAt(tempVec.add(group.position));
-            }
-        };
-
-        // Add to render loop
-        group.onBeforeRender = updateBillboard;
-
-        // Set initial layer
-        this.setGroupLayer(group, platformManager.isXRMode);
-
+        this.metadataGroups.set(nodeId, group);
         return group;
-    }
-
-    private async createTextMesh(text: string): Promise<Mesh | Group | null> {
-        if (!this.font) {
-            console.warn('Font not loaded yet');
-            return null;
-        }
-
-        const textGeometry = new TextGeometry(text, {
-            font: this.font,
-            size: this.settings.visualization.labels.desktopFontSize / 12 || 0.4,
-            height: 0.01,
-            curveSegments: Math.max(4, this.settings.visualization.labels.textResolution || 4),
-            bevelEnabled: false
-        }) as ExtendedTextGeometry;
-
-        textGeometry.computeBoundingBox();
-
-        const material = new MeshBasicMaterial({
-            color: this.settings.visualization.labels.textColor || '#ffffff',
-            transparent: true,
-            opacity: 1.0,
-            side: DoubleSide,
-            depthWrite: true,
-            depthTest: true
-        });
-
-        // Add outline for better visibility
-        if (this.settings.visualization.labels.textOutlineWidth > 0) {
-            const outlineMaterial = new MeshBasicMaterial({
-                color: this.settings.visualization.labels.textOutlineColor || '#000000',
-                side: DoubleSide
-            });
-            
-            const outlineWidth = this.settings.visualization.labels.textOutlineWidth;
-            const outlineGeometry = new TextGeometry(text, {
-                font: this.font,
-                size: this.settings.visualization.labels.desktopFontSize / 12 || 0.4,
-                height: 0.01,
-                curveSegments: Math.max(4, this.settings.visualization.labels.textResolution || 4),
-                bevelEnabled: false
-            }) as unknown as BufferGeometry;
-            
-            const outlineMesh = new Mesh(outlineGeometry, outlineMaterial);
-            outlineMesh.scale.multiplyScalar(1 + outlineWidth);
-            const textMesh = new Mesh(textGeometry as unknown as BufferGeometry, material);
-            
-            const group = new Group();
-            group.add(outlineMesh);
-            group.add(textMesh);
-            
-            // Center the group if bounding box exists
-            if (textGeometry.boundingBox) {
-                const width = textGeometry.boundingBox.max.x - textGeometry.boundingBox.min.x;
-                group.position.x -= width / 2;
-            }
-            return group;
-        }
-
-        // Create mesh with the text geometry and center it
-        const mesh = new Mesh(textGeometry as unknown as BufferGeometry, material);
-        
-        // Center the mesh if bounding box exists
-        if (textGeometry.boundingBox) {
-            const width = textGeometry.boundingBox.max.x - textGeometry.boundingBox.min.x;
-            mesh.position.x -= width / 2;
-        }
-        return mesh;
     }
 
     private setGroupLayer(group: Object3D, enabled: boolean): void {
@@ -261,32 +110,49 @@ export class MetadataVisualizer {
     }
 
     public setXRMode(enabled: boolean): void {
-        if (enabled) {
-            this.labelGroup.traverse(child => {
-                child.layers.disable(0);
-                child.layers.enable(1);
+        this.setGroupLayer(this.labelGroup, enabled);
+        // Text renderer handles its own XR mode
+    }
+
+    public updateMetadataPosition(nodeId: string, position: Vector3): void {
+        const group = this.metadataGroups.get(nodeId);
+        if (group) {
+            group.position.copy(position);
+            
+            // Update text positions
+            const labelPositions = [1.5, 1.0, 0.5];
+            labelPositions.forEach((yOffset, index) => {
+                const labelId = `${nodeId}-label-${index}`;
+                const labelPosition = position.clone().add(new Vector3(0, yOffset, 0));
+                this.textRenderer.updateLabel(labelId, '', labelPosition); // Text content remains unchanged
             });
-            this.labelGroup.layers.disable(0);
-            this.labelGroup.layers.enable(1);
-        } else {
-            this.labelGroup.traverse(child => {
-                child.layers.enable(0);
-                child.layers.enable(1);
+        }
+    }
+
+    public removeMetadata(nodeId: string): void {
+        const group = this.metadataGroups.get(nodeId);
+        if (group) {
+            this.labelGroup.remove(group);
+            this.metadataGroups.delete(nodeId);
+            
+            // Remove text labels
+            [0, 1, 2].forEach(index => {
+                const labelId = `${nodeId}-label-${index}`;
+                this.textRenderer.removeLabel(labelId);
             });
-            this.labelGroup.layers.enable(0);
-            this.labelGroup.layers.enable(1);
         }
     }
 
     public dispose(): void {
-        this.labelGroup.traverse(child => {
-            if (child instanceof THREE.Mesh) {
-                child.geometry.dispose();
-                if (child.material instanceof THREE.Material) {
-                    child.material.dispose();
-                }
+        this.metadataGroups.forEach(group => {
+            if (group.userData.nodeId) {
+                this.removeMetadata(group.userData.nodeId);
             }
         });
-        this.scene.remove(this.labelGroup);
+        this.metadataGroups.clear();
+        this.textRenderer.dispose();
+        if (this.labelGroup.parent) {
+            this.labelGroup.parent.remove(this.labelGroup);
+        }
     }
 }
