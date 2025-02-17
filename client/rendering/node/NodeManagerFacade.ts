@@ -2,7 +2,8 @@ import {
     Scene,
     Camera,
     Material,
-    InstancedMesh
+    InstancedMesh,
+    Vector3
 } from 'three';
 import { NodeGeometryManager } from './geometry/NodeGeometryManager';
 import { NodeInstanceManager } from './instance/NodeInstanceManager';
@@ -27,6 +28,9 @@ export class NodeManagerFacade implements NodeManagerInterface {
     private metadataManager: NodeMetadataManager;
     private interactionManager: NodeInteractionManager;
     private isInitialized: boolean = false;
+    private frameCount: number = 0;
+    private nodeIndices: Map<string, string> = new Map();
+    private tempVector = new Vector3();
 
     private constructor(scene: Scene, camera: Camera, material: Material) {
         this.camera = camera;
@@ -35,7 +39,7 @@ export class NodeManagerFacade implements NodeManagerInterface {
             // Initialize managers in the correct order
             this.geometryManager = NodeGeometryManager.getInstance();
             this.instanceManager = NodeInstanceManager.getInstance(scene, material);
-            this.metadataManager = NodeMetadataManager.getInstance();
+            this.metadataManager = NodeMetadataManager.getInstance(scene);
             
             // Initialize interaction manager with instance mesh
             const instanceMesh = this.instanceManager.getInstanceMesh();
@@ -65,6 +69,7 @@ export class NodeManagerFacade implements NodeManagerInterface {
         try {
             const instanceMesh = this.instanceManager.getInstanceMesh();
             instanceMesh.layers.set(enabled ? 1 : 0);
+            this.metadataManager.setXRMode(enabled);
             logger.debug(`XR mode ${enabled ? 'enabled' : 'disabled'}`);
         } catch (error) {
             throw new NodeManagerError(
@@ -75,12 +80,19 @@ export class NodeManagerFacade implements NodeManagerInterface {
         }
     }
 
-    public handleSettingsUpdate(_settings: any): void {
+    public handleSettingsUpdate(settings: any): void {
         if (!this.isInitialized) return;
 
-        // Update settings in each manager as needed
-        // This will be implemented based on what settings each manager needs
-        logger.debug('Settings update not yet implemented');
+        try {
+            // Update metadata visibility threshold if needed
+            if (settings.visualization?.labels?.visibilityThreshold) {
+                this.metadataManager.updateVisibilityThreshold(
+                    settings.visualization.labels.visibilityThreshold
+                );
+            }
+        } catch (error) {
+            logger.error('Failed to update settings:', error);
+        }
     }
 
     /**
@@ -92,6 +104,12 @@ export class NodeManagerFacade implements NodeManagerInterface {
 
         const calculateNodeSize = (fileSize?: number) => 
             fileSize ? Math.min(700, Math.max(200, Math.log2(fileSize + 1) * 50)) : 200;
+
+        // Track node IDs
+        nodes.forEach(node => {
+            this.nodeIndices.set(node.id, node.id);
+            logger.debug(`Tracking node ${node.id}`);
+        });
 
         // Update instance positions
         this.instanceManager.updateNodePositions(nodes.map(node => ({
@@ -116,6 +134,7 @@ export class NodeManagerFacade implements NodeManagerInterface {
             if (node.data.metadata) {
                 const nodeSize = calculateNodeSize(node.data.metadata.fileSize);
                 
+                logger.debug(`Updating metadata for node ${node.id}`);
                 // Update metadata with calculated node size
                 this.metadataManager.updateMetadata(node.id, {
                     id: node.id,
@@ -179,6 +198,27 @@ export class NodeManagerFacade implements NodeManagerInterface {
         // Update instance visibility and LOD
         this.instanceManager.update(this.camera, deltaTime);
 
+        // Update metadata positions to match instances
+        try {
+            // Only update positions every few frames for performance
+            if (this.frameCount % 5 === 0) {
+                this.nodeIndices.forEach((id) => {
+                    const position = this.instanceManager.getNodePosition(id);
+                    if (position) {
+                        this.tempVector.copy(position);
+                        this.tempVector.y += 1.5; // Offset above node
+                        // Update individual label position
+                        this.metadataManager.updatePosition(id, this.tempVector);
+                    }
+                });
+                logger.debug('Updated metadata positions');
+            }
+            this.frameCount++;
+        } catch (error) {
+            logger.error('Error updating metadata positions:', error);
+        }
+        
+
         // Update metadata labels
         this.metadataManager.update(this.camera);
     }
@@ -194,6 +234,7 @@ export class NodeManagerFacade implements NodeManagerInterface {
             this.instanceManager.dispose();
             this.metadataManager.dispose();
             this.interactionManager.dispose();
+            this.nodeIndices.clear();
 
             NodeManagerFacade.instance = null!;
             this.isInitialized = false;

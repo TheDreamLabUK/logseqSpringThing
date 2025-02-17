@@ -11,7 +11,7 @@ visualization:
     enable_instancing: true
     enable_hologram: true
     enable_metadata_shape: false
-    enable_metadata_visualization: false
+    enable_metadata_visualization: true
   edges:
     arrow_size: 2.0
     base_width: 2.0
@@ -69,7 +69,6 @@ visualization:
     node_bloom_strength: 3.0
     radius: 2.0
     strength: 3.0
-    threshold: 0.0
   hologram:
     ring_count: 2
     ring_color: '#c2a200'

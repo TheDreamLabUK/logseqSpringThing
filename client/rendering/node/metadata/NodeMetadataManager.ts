@@ -1,10 +1,12 @@
 import {
     Object3D,
     Camera,
+    Scene,
     Vector3,
     Sprite,
     SpriteMaterial,
-    Texture
+    Texture,
+    Matrix4
 } from 'three';
 import { NodeMetadata } from '../../../types/metadata';
 import { createLogger } from '../../../core/logger';
@@ -15,22 +17,26 @@ interface MetadataLabel {
     sprite: Sprite;
     metadata: NodeMetadata;
     lastUpdateDistance: number;
+    lastVisible?: boolean;
 }
 
 export class NodeMetadataManager {
     private static instance: NodeMetadataManager;
     private labels: Map<string, MetadataLabel> = new Map();
-    private readonly VISIBILITY_THRESHOLD = 50;  // Maximum distance for label visibility
+    private VISIBILITY_THRESHOLD = 50;  // Maximum distance for label visibility
     private readonly UPDATE_INTERVAL = 5;        // Frames between visibility updates
     private readonly LABEL_SCALE = 0.5;         // Base scale for labels
     private frameCount = 0;
 
+    private matrix = new Matrix4();
+    private worldPosition = new Vector3();
     // Reusable objects
     private tempVector = new Vector3();
     private labelCanvas: HTMLCanvasElement;
     private labelContext: CanvasRenderingContext2D;
+    private scene: Scene;
 
-    private constructor() {
+    private constructor(scene: Scene) {
         // Create canvas for label textures
         this.labelCanvas = document.createElement('canvas');
         this.labelCanvas.width = 256;
@@ -46,11 +52,13 @@ export class NodeMetadataManager {
         this.labelContext.textAlign = 'center';
         this.labelContext.textBaseline = 'middle';
         this.labelContext.font = 'bold 24px Arial';
+        
+        this.scene = scene;
     }
 
-    public static getInstance(): NodeMetadataManager {
+    public static getInstance(scene?: Scene): NodeMetadataManager {
         if (!NodeMetadataManager.instance) {
-            NodeMetadataManager.instance = new NodeMetadataManager();
+            NodeMetadataManager.instance = new NodeMetadataManager(scene || new Scene());
         }
         return NodeMetadataManager.instance;
     }
@@ -90,11 +98,18 @@ export class NodeMetadataManager {
         sprite.scale.set(this.LABEL_SCALE, this.LABEL_SCALE * 0.5, 1);
         sprite.position.y = 1.5; // Position above node
 
+        // Enable both layers for desktop mode
+        sprite.layers.enable(0);
+        sprite.layers.enable(1);
+
         const label: MetadataLabel = {
             sprite,
             metadata,
             lastUpdateDistance: Infinity
         };
+
+        // Add to scene
+        this.scene.add(sprite);
 
         this.labels.set(metadata.id, label);
         return sprite;
@@ -108,18 +123,29 @@ export class NodeMetadataManager {
 
         this.labels.forEach((label) => {
             const { sprite, metadata } = label;
+            console.log('Updating label for:', metadata.name);
             
-            // Calculate distance to camera
-            this.tempVector.set(
-                metadata.position.x,
-                metadata.position.y,
-                metadata.position.z
+            // Get actual world position from metadata
+            this.worldPosition.set(
+                metadata.position.x || 0,
+                metadata.position.y || 0,
+                metadata.position.z || 0
             );
-            const distance = this.tempVector.distanceTo(cameraPosition);
+            
+            // Update sprite position
+            sprite.position.copy(this.worldPosition);
+            sprite.position.y += 1.5; // Offset above node
+            
+            const distance = this.worldPosition.distanceTo(cameraPosition);
 
             // Update visibility based on distance
             const visible = distance < this.VISIBILITY_THRESHOLD;
             sprite.visible = visible;
+
+            if (label.lastVisible !== visible) {
+                console.log('Label visibility changed:', metadata.name, visible);
+                label.lastVisible = visible;
+            }
 
             if (visible) {
                 // Scale based on distance
@@ -141,7 +167,11 @@ export class NodeMetadataManager {
 
     public updateMetadata(id: string, metadata: NodeMetadata): void {
         const label = this.labels.get(id);
-        if (!label) return;
+        console.log('Updating metadata for node:', id, metadata);
+        if (!label) {
+            this.createMetadataLabel(metadata);
+            return;
+        }
 
         // Update metadata
         label.metadata = metadata;
@@ -152,6 +182,42 @@ export class NodeMetadataManager {
         (label.sprite.material as SpriteMaterial).map = texture;
     }
 
+    public updatePosition(id: string, position: Vector3): void {
+        const label = this.labels.get(id);
+        if (!label) {
+            logger.debug(`No label found for node ${id}`);
+            return;
+        }
+
+        // Update metadata position
+        label.metadata.position = { x: position.x, y: position.y, z: position.z };
+        // Update sprite position
+        label.sprite.position.copy(position);
+    }
+
+    public updateVisibilityThreshold(threshold: number): void {
+        if (threshold > 0) {
+            this.VISIBILITY_THRESHOLD = threshold;
+            logger.debug(`Updated visibility threshold to ${threshold}`);
+        }
+    }
+
+    public setXRMode(enabled: boolean): void {
+        console.log('Setting XR mode for metadata labels:', enabled);
+        this.labels.forEach((label) => {
+            const sprite = label.sprite;
+            if (enabled) {
+                // XR mode - only layer 1
+                sprite.layers.disable(0);
+                sprite.layers.enable(1);
+            } else {
+                // Desktop mode - both layers
+                sprite.layers.enable(0);
+                sprite.layers.enable(1);
+            }
+        });
+    }
+
     public removeLabel(id: string): void {
         const label = this.labels.get(id);
         if (!label) return;
@@ -159,6 +225,9 @@ export class NodeMetadataManager {
         // Clean up resources
         (label.sprite.material as SpriteMaterial).map?.dispose();
         label.sprite.material.dispose();
+
+        // Remove from scene
+        this.scene.remove(label.sprite);
         
         // Remove from tracking
         this.labels.delete(id);
@@ -169,6 +238,9 @@ export class NodeMetadataManager {
         this.labels.forEach((label) => {
             (label.sprite.material as SpriteMaterial).map?.dispose();
             label.sprite.material.dispose();
+            
+            // Remove from scene
+            this.scene.remove(label.sprite);
         });
         this.labels.clear();
 
