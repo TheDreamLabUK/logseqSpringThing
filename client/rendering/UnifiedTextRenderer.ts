@@ -113,6 +113,13 @@ export class UnifiedTextRenderer {
         this.scene = scene;
         this.camera = camera;
         this.settings = settings;
+        logger.info('UnifiedTextRenderer settings:', {
+            enableLabels: this.settings.enableLabels,
+            desktopFontSize: this.settings.desktopFontSize,
+            textColor: this.settings.textColor,
+            billboardMode: this.settings.billboardMode
+        });
+
         this.labels = new Map();
         this.maxInstances = 1000;
         this.currentInstanceCount = 0;

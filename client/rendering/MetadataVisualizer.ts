@@ -4,11 +4,16 @@ import {
     PerspectiveCamera,
     Vector3,
     Color,
-    Object3D
+    Object3D,
+    SphereGeometry,
+    MeshBasicMaterial,
+    Mesh
 } from 'three';
 import { NodeMetadata } from '../types/metadata';
 import { Settings } from '../types/settings';
 import { platformManager } from '../platform/platformManager';
+import { createLogger, Logger } from '../core/logger';
+import { debugState } from '../core/debugState';
 import { UnifiedTextRenderer } from './UnifiedTextRenderer';
 
 interface MetadataLabelGroup extends Group {
@@ -27,12 +32,23 @@ export class MetadataVisualizer {
     private settings: Settings;
     private textRenderer: UnifiedTextRenderer;
     private metadataGroups: Map<string, MetadataLabelGroup>;
+    private logger: Logger;
+    private debugHelpers: Map<string, Object3D>;
 
     constructor(camera: PerspectiveCamera, scene: Scene, settings: Settings) {
         this.scene = scene;
         this.settings = settings;
         this.metadataGroups = new Map();
+        this.logger = createLogger('MetadataVisualizer');
         
+        this.debugHelpers = new Map();
+        
+        this.logger.info('Initializing MetadataVisualizer with settings:', {
+            enableLabels: settings.visualization.labels.enableLabels,
+            textColor: settings.visualization.labels.textColor,
+            desktopFontSize: settings.visualization.labels.desktopFontSize
+        });
+
         this.labelGroup = new Group();
         this.scene.add(this.labelGroup);
         
@@ -66,6 +82,16 @@ export class MetadataVisualizer {
             : metadata.fileSize > 1024
                 ? `${(metadata.fileSize / 1024).toFixed(1)}KB`
                 : `${metadata.fileSize}B`;
+
+        this.logger.info('Creating metadata label:', {
+            nodeId,
+            metadata: {
+                name: metadata.name,
+                fileSize: fileSizeFormatted,
+                nodeSize: metadata.nodeSize,
+                hyperlinkCount: metadata.hyperlinkCount
+            }
+        });
 
         // Create text labels using UnifiedTextRenderer
         const labelTexts = [
@@ -125,6 +151,27 @@ export class MetadataVisualizer {
                 const labelId = `${nodeId}-label-${index}`;
                 const labelPosition = position.clone().add(new Vector3(0, yOffset, 0));
                 this.textRenderer.updateLabel(labelId, '', labelPosition); // Text content remains unchanged
+                this.logger.debug('Updating label position:', {
+                    nodeId,
+                    labelId,
+                    position: [labelPosition.x, labelPosition.y, labelPosition.z],
+                    yOffset
+                });
+                
+                // Only show debug helpers when debug is enabled
+                if (debugState.isEnabled()) {
+                    const debugId = `${labelId}-debug`;
+                    let debugSphere = this.debugHelpers.get(debugId) as Mesh | undefined;
+                    if (!debugSphere) {
+                        const geometry = new SphereGeometry(0.1);
+                        const material = new MeshBasicMaterial({ color: 0xff0000 });
+                        debugSphere = new Mesh(geometry, material) as Mesh;
+                        this.labelGroup.add(debugSphere);
+                        this.debugHelpers.set(debugId, debugSphere);
+                    }
+                    debugSphere.position.copy(labelPosition);
+                    debugSphere.visible = true;
+                }
             });
         }
     }
@@ -139,6 +186,14 @@ export class MetadataVisualizer {
             [0, 1, 2].forEach(index => {
                 const labelId = `${nodeId}-label-${index}`;
                 this.textRenderer.removeLabel(labelId);
+                const debugId = `${labelId}-debug`;
+                
+                if (debugState.isEnabled()) {
+                    // Remove debug helpers
+                    const debugHelper = this.debugHelpers.get(debugId);
+                    if (debugHelper) this.labelGroup.remove(debugHelper);
+                }
+                if (this.debugHelpers.has(debugId)) this.debugHelpers.delete(debugId);
             });
         }
     }
@@ -152,6 +207,12 @@ export class MetadataVisualizer {
         this.metadataGroups.clear();
         this.textRenderer.dispose();
         if (this.labelGroup.parent) {
+            // Clean up debug helpers
+            this.debugHelpers.forEach(helper => {
+                this.labelGroup.remove(helper);
+            });
+            this.debugHelpers.clear();
+            
             this.labelGroup.parent.remove(this.labelGroup);
         }
     }
