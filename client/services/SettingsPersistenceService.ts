@@ -70,7 +70,11 @@ export class SettingsPersistenceService {
     public async loadSettings(): Promise<Settings> {
         try {            
             // Try to load from server
-            try {
+            // Use public settings endpoint if not authenticated
+            if (!this.currentPubkey) {
+                logger.debug('No pubkey available, loading public settings');
+                return await this.loadPublicSettings();
+            } try {
                 const serverSettings = await this.loadFromServer();
                 if (serverSettings) {                        
                     return serverSettings;
@@ -145,6 +149,32 @@ export class SettingsPersistenceService {
         } catch (error) {
             logger.error('Failed to sync settings to server:', error);
             throw error;
+        }
+    }
+
+    private async loadPublicSettings(): Promise<Settings> {
+        try {
+            const response = await fetch(buildApiUrl(API_ENDPOINTS.SETTINGS_ROOT), {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            });
+
+            if (!response.ok) {
+                throw new Error(`Server returned ${response.status}: ${await response.text()}`);
+            }
+
+            const settings = await response.json();
+            const validation = validateSettings(settings);
+            if (!validation.isValid) {
+                throw new Error(`Invalid server settings: ${JSON.stringify(validation.errors)}`);
+            }
+
+            return settings;
+        } catch (error) {
+            logger.error('Failed to load public settings:', error);
+            return { ...defaultSettings };
         }
     }
 

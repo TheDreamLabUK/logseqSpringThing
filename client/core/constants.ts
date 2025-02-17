@@ -10,7 +10,7 @@ export const API_BASE = '';  // Base URL is constructed in buildApiUrl
 
 // API paths
 export const API_PATHS = {
-    SETTINGS: 'settings',
+    SETTINGS: 'user-settings',
     WEBSOCKET: 'websocket',
     GRAPH: 'graph',
     FILES: 'files'

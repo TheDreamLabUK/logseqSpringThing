@@ -9,7 +9,7 @@ use std::env;
 pub fn config(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::resource("/user-settings")
-            .route(web::get().to(get_settings))
+            .route(web::get().to(get_public_settings))
             .route(web::post().to(update_settings))
     ).service(
         web::resource("/user-settings/sync")
@@ -38,7 +38,7 @@ async fn verify_power_user(pubkey: &str) -> Result<bool, String> {
     }
 }
 
-async fn get_settings(state: web::Data<AppState>) -> Result<HttpResponse, Error> {
+pub async fn get_public_settings(state: web::Data<AppState>) -> Result<HttpResponse, Error> {
     let settings_guard = state.settings.read().await;
     
     // Convert to UI settings
@@ -94,8 +94,10 @@ async fn update_user_settings(
     let pubkey = match req.headers().get("X-Nostr-Pubkey") {
         Some(value) => value.to_str().unwrap_or("").to_string(),
         None => {
-            warn!("Missing Nostr pubkey in request headers");
-            return Ok(HttpResponse::BadRequest().body("Missing Nostr pubkey"));
+            debug!("No Nostr pubkey in headers, returning default settings");
+            let settings_guard = state.settings.read().await;
+            let ui_settings = UISettings::from(&*settings_guard);
+            return Ok(HttpResponse::Ok().json(ui_settings));
         }
     };
 
@@ -155,7 +157,10 @@ async fn update_settings(
     let pubkey = match req.headers().get("X-Nostr-Pubkey") {
         Some(value) => value.to_str().unwrap_or("").to_string(),
         None => {
-            warn!("Missing Nostr pubkey in request headers");
+            warn!("Attempt to update settings without authentication");
+            // For updates, we do require authentication
+            // This prevents unauthenticated users from modifying settings
+            // They can still read public settings via get endpoints
             return Ok(HttpResponse::BadRequest().body("Missing Nostr pubkey"));
         }
     };
