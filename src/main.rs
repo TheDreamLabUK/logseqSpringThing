@@ -6,6 +6,7 @@ use webxr::{
         pages_handler,
         socket_flow_handler::socket_flow_handler,
         nostr_handler,
+        settings_handler,
     },
     GPUCompute, GraphData,
     services::{
@@ -180,6 +181,7 @@ async fn main() -> std::io::Result<()> {
                 web::scope("")
                     .configure(api_handler::config)
                     .configure(nostr_handler::config)
+                    .configure(settings_handler::config)
                     .service(web::scope("/health").configure(health_handler::config))
                     .service(web::scope("/pages").configure(pages_handler::config))
             )

@@ -1,5 +1,5 @@
 use config::{ConfigBuilder, ConfigError, Environment};
-use log::{debug, info};
+use log::debug;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use serde_yaml;
@@ -8,14 +8,14 @@ use std::path::PathBuf;
 pub mod feature_access;
 
 // XR movement axes configuration
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
 pub struct MovementAxes {
     pub horizontal: i32,
     pub vertical: i32,
 }
 
 // Core visualization settings
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
 pub struct VisualizationSettings {
     pub nodes: NodeSettings,
     pub edges: EdgeSettings,
@@ -47,7 +47,7 @@ pub struct Settings {
     pub openai: OpenAISettings,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
 pub struct NodeSettings {
     pub base_color: String,
     pub metalness: f32,
@@ -61,7 +61,7 @@ pub struct NodeSettings {
     pub enable_metadata_visualization: bool,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
 pub struct EdgeSettings {
     pub arrow_size: f32,
     pub base_width: f32,
@@ -72,7 +72,7 @@ pub struct EdgeSettings {
     pub quality: String
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
 pub struct PhysicsSettings {
     pub attraction_strength: f32,
     pub bounds_size: f32,
@@ -89,7 +89,7 @@ pub struct PhysicsSettings {
     pub boundary_damping: f32,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
 pub struct RenderingSettings {
     pub ambient_light_intensity: f32,
     pub background_color: String,
@@ -100,7 +100,7 @@ pub struct RenderingSettings {
     pub environment_intensity: f32,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
 pub struct AnimationSettings {
     pub enable_motion_blur: bool,
     pub enable_node_animations: bool,
@@ -112,7 +112,7 @@ pub struct AnimationSettings {
     pub wave_speed: f32
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
 pub struct LabelSettings {
     pub desktop_font_size: u32,
     pub enable_labels: bool,
@@ -124,7 +124,7 @@ pub struct LabelSettings {
     pub billboard_mode: String
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
 pub struct BloomSettings {
     pub edge_bloom_strength: f32,
     pub enabled: bool,
@@ -134,7 +134,7 @@ pub struct BloomSettings {
     pub strength: f32,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
 pub struct HologramSettings {
     pub ring_count: u32,
     pub ring_color: String,
@@ -203,7 +203,7 @@ pub struct SecuritySettings {
     pub session_timeout: u32,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
 pub struct DebugSettings {
     pub enabled: bool,
     pub enable_data_debug: bool,
@@ -214,7 +214,7 @@ pub struct DebugSettings {
     pub log_format: String,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
 pub struct XRSettings {
     pub mode: String,
     pub room_scale: f32,

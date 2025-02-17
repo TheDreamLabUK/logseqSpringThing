@@ -1,4 +1,7 @@
 use std::env;
+use std::fs;
+use std::path::PathBuf;
+use log::{info, warn};
 
 /// Represents the access control configuration for various features and user roles
 pub struct FeatureAccess {
@@ -41,6 +44,60 @@ impl FeatureAccess {
             .map(|s| s.trim().to_string())
             .filter(|s| !s.is_empty())
             .collect()
+    }
+
+    /// Registers a new user with basic access and default features
+    pub fn register_new_user(&mut self, pubkey: &str) -> bool {
+        let pubkey = pubkey.to_string();
+        
+        // Don't register if already approved
+        if self.approved_pubkeys.contains(&pubkey) {
+            return false;
+        }
+
+        // Add to approved pubkeys
+        self.approved_pubkeys.push(pubkey.clone());
+        
+        // Grant RAGFlow access by default
+        self.ragflow_enabled.push(pubkey.clone());
+        
+        // Grant OpenAI (Kokoros) access by default
+        self.openai_enabled.push(pubkey.clone());
+
+        // Update the environment file
+        self.save_to_env_file();
+
+        info!("Registered new user: {}", pubkey);
+        true
+    }
+
+    /// Saves the current access configuration back to the .env file
+    fn save_to_env_file(&self) {
+        let env_path = PathBuf::from(".env");
+        if let Ok(content) = fs::read_to_string(&env_path) {
+            let mut lines: Vec<String> = content
+                .lines()
+                .map(|line| line.to_string())
+                .collect();
+
+            // Update the relevant lines
+            self.update_env_line(&mut lines, "APPROVED_PUBKEYS", &self.approved_pubkeys);
+            self.update_env_line(&mut lines, "RAGFLOW_ENABLED_PUBKEYS", &self.ragflow_enabled);
+            self.update_env_line(&mut lines, "OPENAI_ENABLED_PUBKEYS", &self.openai_enabled);
+
+            if let Err(e) = fs::write(&env_path, lines.join("\n")) {
+                warn!("Failed to update .env file: {}", e);
+            }
+        }
+    }
+
+    fn update_env_line(&self, lines: &mut Vec<String>, var_name: &str, pubkeys: &[String]) {
+        let new_line = format!("{}={}", var_name, pubkeys.join(","));
+        if let Some(pos) = lines.iter().position(|line| line.starts_with(var_name)) {
+            lines[pos] = new_line;
+        } else {
+            lines.push(new_line);
+        }
     }
 
     /// Checks if a pubkey has basic access

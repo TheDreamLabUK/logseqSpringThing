@@ -1,8 +1,8 @@
 use crate::models::protected_settings::{NostrUser, ApiKeys};
+use crate::config::feature_access::FeatureAccess;
 use nostr_sdk::{
     prelude::*,
     event::Error as EventError,
-    Keys
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -10,7 +10,7 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use chrono::Utc;
 use thiserror::Error;
-use log::{debug, error};
+use log::{debug, error, info};
 use uuid::Uuid;
 
 #[derive(Debug, Error)]
@@ -49,6 +49,7 @@ pub struct NostrService {
     users: Arc<RwLock<HashMap<String, NostrUser>>>,
     power_user_pubkeys: Vec<String>,
     token_expiry: i64,
+    feature_access: Arc<RwLock<FeatureAccess>>,
 }
 
 impl NostrService {
@@ -64,9 +65,11 @@ impl NostrService {
             .parse()
             .unwrap_or(3600);
 
+        let feature_access = Arc::new(RwLock::new(FeatureAccess::from_env()));
         Self {
             users: Arc::new(RwLock::new(HashMap::new())),
             power_user_pubkeys: power_users,
+            feature_access,
             token_expiry,
         }
     }
@@ -97,6 +100,12 @@ impl NostrService {
         if let Err(e) = nostr_event.verify() {
             error!("Signature verification failed: {}", e);
             return Err(NostrError::InvalidSignature);
+        }
+
+        // Register new user if not already registered
+        let mut feature_access = self.feature_access.write().await;
+        if feature_access.register_new_user(&event.pubkey) {
+            info!("Registered new user with basic access: {}", event.pubkey);
         }
 
         let now = Utc::now();

@@ -5,8 +5,7 @@ import {
     Vector3,
     Sprite,
     SpriteMaterial,
-    Texture,
-    Matrix4
+    Texture
 } from 'three';
 import { NodeMetadata } from '../../../types/metadata';
 import { createLogger } from '../../../core/logger';
@@ -28,10 +27,7 @@ export class NodeMetadataManager {
     private readonly LABEL_SCALE = 0.5;         // Base scale for labels
     private frameCount = 0;
 
-    private matrix = new Matrix4();
     private worldPosition = new Vector3();
-    // Reusable objects
-    private tempVector = new Vector3();
     private labelCanvas: HTMLCanvasElement;
     private labelContext: CanvasRenderingContext2D;
     private scene: Scene;

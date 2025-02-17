@@ -169,8 +169,9 @@ RUN mkdir -p /app/data/public/dist \
     chmod 777 /app/data/markdown
 
 # Create necessary directories and set permissions
-RUN mkdir -p /app/data/markdown /app/data/metadata && \
-    chmod -R 777 /app/data
+RUN mkdir -p /app/data/markdown /app/data/metadata /app/user_settings && \
+    chmod -R 777 /app/data && \
+    chmod 777 /app/user_settings
 
 # Copy built artifacts
 COPY --from=rust-deps-builder /usr/src/app/target/release/webxr /app/

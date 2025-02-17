@@ -1,4 +1,5 @@
 import { SettingsEventEmitter, SettingsEventType } from './SettingsEventEmitter';
+import { SettingsStore } from '../state/SettingsStore';
 import { SettingsPersistenceService } from './SettingsPersistenceService';
 import { createLogger } from '../core/logger';
 import { buildApiUrl } from '../core/api';
@@ -41,9 +42,11 @@ export class NostrAuthService {
     private currentUser: NostrUser | null = null;
     private eventEmitter: SettingsEventEmitter;
     private settingsPersistence: SettingsPersistenceService;
+    private settingsStore: SettingsStore;
 
     private constructor() {
         this.eventEmitter = SettingsEventEmitter.getInstance();
+        this.settingsStore = SettingsStore.getInstance();
         this.settingsPersistence = SettingsPersistenceService.getInstance();
     }
 
@@ -166,8 +169,9 @@ export class NostrAuthService {
 
             localStorage.setItem('nostr_pubkey', pubkey);
             localStorage.setItem('nostr_token', authData.token);
-            this.settingsPersistence.setCurrentPubkey(pubkey);
             
+            // Update both services
+            this.settingsPersistence.setCurrentUser(pubkey, authData.user.is_power_user);
             this.eventEmitter.emit(SettingsEventType.AUTH_STATE_CHANGED, {
                 authState: {
                     isAuthenticated: true,
@@ -215,8 +219,8 @@ export class NostrAuthService {
         localStorage.removeItem('nostr_pubkey');
         localStorage.removeItem('nostr_token');
         this.currentUser = null;
-        this.settingsPersistence.setCurrentPubkey(null);
         
+        this.settingsPersistence.setCurrentUser(null, false);
         this.eventEmitter.emit(SettingsEventType.AUTH_STATE_CHANGED, {
             authState: {
                 isAuthenticated: false
@@ -226,6 +230,7 @@ export class NostrAuthService {
         // If user was using server settings, revert to local settings
         if (currentPubkey) {
             await this.settingsPersistence.loadSettings();
+            await this.settingsStore.initialize(); // Reinitialize UI store
         }
     }
 
@@ -291,11 +296,12 @@ export class NostrAuthService {
             // Set currentUser before emitting event
             this.currentUser = {
                 pubkey,
-                isPowerUser: verifyData.is_power_user,
+                isPowerUser: verifyData.user.is_power_user,
                 features: verifyData.features
             };
-
-            this.settingsPersistence.setCurrentPubkey(pubkey);
+            
+            // Update persistence service with verified user
+            this.settingsPersistence.setCurrentUser(pubkey, verifyData.user.is_power_user);
         } catch (error) {
             logger.error('Auth check failed:', error);
             await this.logout();

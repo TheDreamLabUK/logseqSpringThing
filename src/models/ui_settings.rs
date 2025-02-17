@@ -3,20 +3,20 @@ use crate::config::{
     DebugSettings, Settings, VisualizationSettings, XRSettings,
 };
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct UISettings {
     pub visualization: VisualizationSettings,
     pub system: UISystemSettings,
     pub xr: XRSettings,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct UISystemSettings {
     pub websocket: WebSocketClientSettings,
     pub debug: DebugSettings,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct WebSocketClientSettings {
     pub reconnect_attempts: u32,
     pub reconnect_delay: u64,

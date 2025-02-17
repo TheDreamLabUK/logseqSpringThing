@@ -24,8 +24,8 @@ export const API_ENDPOINTS = {
     GRAPH_PAGINATED: '/api/graph/data/paginated',
     
     // Settings endpoints
-    SETTINGS_ROOT: '/api/settings',
-    VISUALIZATION_SETTINGS: '/api/settings/visualization',
+    SETTINGS_ROOT: '/api/user-settings',
+    VISUALIZATION_SETTINGS: '/api/user-settings/visualization',
     WEBSOCKET_SETTINGS: '/api/settings/websocket',
     
     // WebSocket endpoints

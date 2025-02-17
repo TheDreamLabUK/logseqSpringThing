@@ -2,6 +2,8 @@ import { Settings } from '../types/settings/base';
 import { defaultSettings } from '../state/defaultSettings';
 import { createLogger } from '../core/logger';
 import { validateSettings } from '../types/settings/validation';
+import { buildApiUrl } from '../core/api';
+import { API_ENDPOINTS } from '../core/constants';
 
 const logger = createLogger('SettingsPersistenceService');
 
@@ -16,6 +18,7 @@ export class SettingsPersistenceService {
     private static instance: SettingsPersistenceService | null = null;
     private readonly LOCAL_STORAGE_KEY = 'logseq_spring_settings';
     private readonly SETTINGS_VERSION = '1.0.0';
+    private isPowerUser: boolean = false;
     private currentPubkey: string | null = null;
 
     private constructor() {}
@@ -27,8 +30,9 @@ export class SettingsPersistenceService {
         return SettingsPersistenceService.instance;
     }
 
-    public setCurrentPubkey(pubkey: string | null): void {
+    public setCurrentUser(pubkey: string | null, isPowerUser: boolean = false): void {
         this.currentPubkey = pubkey;
+        this.isPowerUser = isPowerUser;
     }
 
     public async saveSettings(settings: Settings): Promise<void> {
@@ -49,9 +53,11 @@ export class SettingsPersistenceService {
             // Save locally
             localStorage.setItem(this.LOCAL_STORAGE_KEY, JSON.stringify(storedSettings));
 
-            // If user is authenticated, sync to server
-            if (this.currentPubkey) {
+            // Always sync to server, endpoint depends on auth status
+            try {
                 await this.syncToServer(storedSettings);
+            } catch (error) {
+                logger.warn('Failed to sync settings to server:', error);
             }
 
             logger.info('Settings saved successfully');
@@ -62,17 +68,15 @@ export class SettingsPersistenceService {
     }
 
     public async loadSettings(): Promise<Settings> {
-        try {
-            // Try to load from server if authenticated
-            if (this.currentPubkey) {
-                try {
-                    const serverSettings = await this.loadFromServer();
-                    if (serverSettings) {
-                        return serverSettings;
-                    }
-                } catch (error) {
-                    logger.warn('Failed to load settings from server:', error);
+        try {            
+            // Try to load from server
+            try {
+                const serverSettings = await this.loadFromServer();
+                if (serverSettings) {                        
+                    return serverSettings;
                 }
+            } catch (error) {
+                logger.warn('Failed to load settings from server:', error);
             }
 
             // Fall back to local storage
@@ -112,17 +116,29 @@ export class SettingsPersistenceService {
 
     private async syncToServer(storedSettings: StoredSettings): Promise<void> {
         try {
-            const response = await fetch('/api/settings/sync', {
+            // Use different endpoint based on auth status
+            // Power users use /settings to modify global settings
+            // Regular users use /settings/sync for their personal settings
+            const endpoint = this.isPowerUser ? 
+                API_ENDPOINTS.SETTINGS_ROOT : 
+                `${API_ENDPOINTS.SETTINGS_ROOT}/sync`;
+
+            const response = await fetch(buildApiUrl(endpoint), {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'X-Nostr-Pubkey': this.currentPubkey!
+                    ...(this.currentPubkey && { 'X-Nostr-Pubkey': this.currentPubkey })
                 },
-                body: JSON.stringify(storedSettings)
+                body: JSON.stringify(storedSettings.settings)
             });
 
             if (!response.ok) {
-                throw new Error(`Server returned ${response.status}: ${await response.text()}`);
+                const errorText = await response.text();
+                if (response.status === 403) {
+                    throw new Error(`Permission denied: ${this.isPowerUser ? 'Power user validation failed' : 'Regular user attempted to modify global settings'}`);
+                } else {
+                    throw new Error(`Server returned ${response.status}: ${errorText}`);
+                }
             }
 
             logger.info('Settings synced to server');
@@ -134,27 +150,43 @@ export class SettingsPersistenceService {
 
     private async loadFromServer(): Promise<Settings | null> {
         try {
-            const response = await fetch('/api/settings/sync', {
-                headers: {
-                    'X-Nostr-Pubkey': this.currentPubkey!
-                }
+            // Use different endpoint based on auth status
+            // Power users get global settings from /settings
+            // Regular users get personal settings from /settings/sync
+            const endpoint = this.isPowerUser ? 
+                API_ENDPOINTS.SETTINGS_ROOT : 
+                `${API_ENDPOINTS.SETTINGS_ROOT}/sync`;
+
+            const response = await fetch(buildApiUrl(endpoint), {
+                headers: this.currentPubkey ? 
+                    { 'X-Nostr-Pubkey': this.currentPubkey } : {}
             });
 
             if (!response.ok) {
                 if (response.status === 404) {
                     return null;
                 }
-                throw new Error(`Server returned ${response.status}: ${await response.text()}`);
+                const errorText = await response.text();
+                if (response.status === 403) {
+                    throw new Error(`Permission denied: ${this.isPowerUser ? 'Power user validation failed' : 'Regular user attempted to access global settings'}`);
+                } else {
+                    throw new Error(`Server returned ${response.status}: ${errorText}`);
+                }
             }
 
-            const stored: StoredSettings = await response.json();
-            
-            // Version check
-            if (stored.version !== this.SETTINGS_VERSION) {
-                return this.migrateSettings(stored.settings);
+            const serverSettings = await response.json();
+
+            // Validate server settings
+            const validation = validateSettings(serverSettings);
+            if (!validation.isValid) {
+                throw new Error(`Invalid server settings: ${JSON.stringify(validation.errors)}`);
             }
 
-            return stored.settings;
+            // Store in local storage with version and pubkey
+            const storedSettings = { settings: serverSettings, timestamp: Date.now(), version: this.SETTINGS_VERSION, pubkey: this.currentPubkey };
+            localStorage.setItem(this.LOCAL_STORAGE_KEY, JSON.stringify(storedSettings));
+
+            return serverSettings;
         } catch (error) {
             logger.error('Failed to load settings from server:', error);
             throw error;
