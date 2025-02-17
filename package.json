@@ -18,13 +18,11 @@
     "@types/webxr": "^0.5.21",
     "alby-js-sdk": "^2.3.0",
     "pako": "^2.1.0",
-    "react": "^18.2.0",
-    "three": "0.170.0"
+    "three": "0.173.0"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
-    "@types/react": "^18.2.61",
-    "@types/three": "0.170.0",
+    "@types/three": "0.173.0",
     "@typescript-eslint/eslint-plugin": "^8.16.0",
     "@typescript-eslint/parser": "^8.16.0",
     "eslint": "^8.57.0",

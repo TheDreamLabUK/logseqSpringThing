@@ -15,10 +15,10 @@ import {
   Mesh,
   Object3D
 } from 'three';
-import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
-import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer';
-import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass';
-import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass';
+import * as OrbitControlsModule from 'three/examples/jsm/controls/OrbitControls';
+import * as EffectComposerModule from 'three/examples/jsm/postprocessing/EffectComposer';
+import * as RenderPassModule from 'three/examples/jsm/postprocessing/RenderPass';
+import * as UnrealBloomPassModule from 'three/examples/jsm/postprocessing/UnrealBloomPass';
 import { createLogger } from '../core/utils';
 import { Settings } from '../types/settings';
 import { defaultSettings } from '../state/defaultSettings';
@@ -39,12 +39,12 @@ export class SceneManager {
   private renderer: WebGLRenderer;
   private readonly canvas: HTMLCanvasElement;
   private currentRenderingSettings: Settings['visualization']['rendering'] | null = null;
-  private controls: OrbitControls;
+  private controls!: OrbitControlsModule.OrbitControls & { dispose: () => void };
   private sceneGrid: GridHelper | null = null;
   
   // Post-processing
-  private composer: EffectComposer;
-  private bloomPass: UnrealBloomPass;
+  private composer: EffectComposerModule.EffectComposer;
+  private bloomPass: UnrealBloomPassModule.UnrealBloomPass;
   
   // Animation
   private animationFrameId: number | null = null;
@@ -97,7 +97,7 @@ export class SceneManager {
     (this.renderer as any).physicallyCorrectLights = false;  // Disable physically correct lighting
 
     // Create controls
-    this.controls = new OrbitControls(this.camera, canvas);
+    this.controls = new OrbitControlsModule.OrbitControls(this.camera, canvas);
     this.controls.enableDamping = true;
     this.controls.dampingFactor = 0.1;
     this.controls.screenSpacePanning = true;
@@ -111,14 +111,14 @@ export class SceneManager {
     this.controls.panSpeed = 0.8;
 
     // Setup post-processing
-    this.composer = new EffectComposer(this.renderer);
-    const renderPass = new RenderPass(this.scene, this.camera);
+    this.composer = new EffectComposerModule.EffectComposer(this.renderer);
+    const renderPass = new RenderPassModule.RenderPass(this.scene, this.camera);
     this.composer.addPass(renderPass);
 
     const bloomSettings = defaultSettings.visualization.bloom;
 
     // Initialize bloom with default state
-    this.bloomPass = new UnrealBloomPass(
+    this.bloomPass = new UnrealBloomPassModule.UnrealBloomPass(
       new Vector2(window.innerWidth, window.innerHeight),
       bloomSettings.strength,
       bloomSettings.radius,
@@ -306,7 +306,7 @@ export class SceneManager {
     return this.renderer;
   }
 
-  getControls(): OrbitControls {
+  getControls(): OrbitControlsModule.OrbitControls {
     return this.controls;
   }
 

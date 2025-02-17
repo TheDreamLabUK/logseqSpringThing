@@ -31,10 +31,7 @@ export type MetadataLabelCallback = (group: MetadataLabelGroup) => void;
 
 interface ExtendedTextGeometry extends TextGeometry {
     computeBoundingBox: () => void;
-    boundingBox: {
-        max: { x: number };
-        min: { x: number };
-    } | null;
+    boundingBox: THREE.Box3 | null;
 }
 
 export class MetadataVisualizer {
@@ -121,7 +118,7 @@ export class MetadataVisualizer {
         const textGeometry = new TextGeometry(text, {
             font: this.font,
             size: this.settings.visualization.labels.desktopFontSize / 10 || 0.5,
-            height: 0.01 // Fixed thin height for better readability
+            depth: 0.01 // Fixed thin depth for better readability
         });
 
         const material = new THREE.MeshStandardMaterial({

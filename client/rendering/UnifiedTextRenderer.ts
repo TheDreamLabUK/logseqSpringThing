@@ -156,7 +156,7 @@ export class UnifiedTextRenderer {
     
     private async initializeFontAtlas(): Promise<void> {
         try {
-            const { texture, glyphInfoMap } = await this.fontAtlasGenerator.generateAtlas(
+            const { texture } = await this.fontAtlasGenerator.generateAtlas(
                 'Arial',
                 32 // Base font size for SDF
             );

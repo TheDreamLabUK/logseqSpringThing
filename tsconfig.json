@@ -34,10 +34,11 @@
     "forceConsistentCasingInFileNames": true,
     "baseUrl": ".",
     "paths": {
-      "@/*": ["client/*"]
+      "@/*": ["client/*"],
+      "three/examples/jsm/*": ["node_modules/three/examples/jsm/*"]
     },
     "types": ["vite/client", "node", "three"]
   },
-  "include": ["client/**/*.ts", "client/**/*.d.ts"],
+  "include": ["client/**/*.ts", "client/**/*.d.ts", "node_modules/three/examples/jsm/**/*.d.ts"],
   "exclude": ["node_modules", "dist"]
 }
