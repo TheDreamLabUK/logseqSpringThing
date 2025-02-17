@@ -5,11 +5,15 @@ import {
     Texture,
     ShaderMaterial,
     BufferGeometry,
+    NearestFilter,
+    ClampToEdgeWrapping,
     InstancedBufferAttribute,
     PlaneGeometry,
     Mesh,
     Vector3,
-    Color
+    Color,
+    AdditiveBlending,
+    NormalBlending
 } from 'three';
 import { createLogger } from '../core/logger';
 import { LabelSettings } from '../types/settings';
@@ -21,6 +25,7 @@ const logger = createLogger('UnifiedTextRenderer');
 
 // Vertex shader for SDF text rendering with instancing
 const vertexShader = `
+    uniform vec3 cameraPosition;
     attribute vec4 textureCoord;
     attribute vec3 instancePosition;
     attribute vec4 instanceColor;
@@ -34,25 +39,26 @@ const vertexShader = `
         vUv = uv;
         vColor = instanceColor;
         vScale = instanceScale;
-        
-        vec4 mvPosition = modelViewMatrix * vec4(instancePosition, 1.0);
+
+        // Scale the position first
         vec3 scale = vec3(instanceScale);
         vec3 vertexPosition = position * scale;
+        vertexPosition += instancePosition;  // Add instance position after scaling
         
         #ifdef BILLBOARD_VERTICAL
-            float angle = atan(mvPosition.x, mvPosition.z);
+            // Calculate billboard rotation based on camera position
+            vec4 worldPosition = modelMatrix * vec4(vertexPosition, 1.0);
+            float angle = atan(cameraPosition.x - worldPosition.x, cameraPosition.z - worldPosition.z);
             mat4 billboardMatrix = mat4(
                 cos(angle), 0.0, sin(angle), 0.0,
                 0.0, 1.0, 0.0, 0.0,
                 -sin(angle), 0.0, cos(angle), 0.0,
                 0.0, 0.0, 0.0, 1.0
             );
-            mvPosition = modelViewMatrix * billboardMatrix * vec4(vertexPosition + instancePosition, 1.0);
-        #else
-            mvPosition = modelViewMatrix * vec4(vertexPosition + instancePosition, 1.0);
-            mvPosition.xyz += position * scale;
+            vertexPosition = (billboardMatrix * vec4(vertexPosition, 1.0)).xyz;
         #endif
         
+        vec4 mvPosition = modelViewMatrix * vec4(vertexPosition, 1.0);
         gl_Position = projectionMatrix * mvPosition;
     }
 `;
@@ -107,6 +113,7 @@ export class UnifiedTextRenderer {
     private settings: LabelSettings;
     private maxInstances: number;
     private currentInstanceCount: number;
+    private logger = createLogger('UnifiedTextRenderer');
     private fontAtlasGenerator: SDFFontAtlasGenerator;
     
     constructor(camera: Camera, scene: Scene, settings: LabelSettings) {
@@ -129,6 +136,15 @@ export class UnifiedTextRenderer {
         this.scene.add(this.group);
         
         this.fontAtlasGenerator = new SDFFontAtlasGenerator(1024, 4, 8);
+
+        this.logger.info('Initializing material with settings:', {
+            billboardMode: settings.billboardMode,
+            sdfThreshold: 0.5,
+            sdfSpread: 0.1,
+            outlineColor: settings.textOutlineColor,
+            outlineWidth: settings.textOutlineWidth,
+            depthTest: true
+        });
         
         // Initialize the material with a temporary texture
         this.material = new ShaderMaterial({
@@ -138,17 +154,30 @@ export class UnifiedTextRenderer {
                 fontAtlas: { value: null },
                 sdfThreshold: { value: 0.5 },
                 sdfSpread: { value: 0.1 },
+                cameraPosition: { value: this.camera.position },
                 outlineColor: { value: new Color(settings.textOutlineColor) },
                 outlineWidth: { value: settings.textOutlineWidth }
             },
             transparent: true,
             depthTest: true,
+            depthWrite: false,
+            blending: NormalBlending,
+            isInstancedMesh: true,
             defines: {
                 BILLBOARD_VERTICAL: settings.billboardMode === 'vertical'
             }
         });
         
         this.geometry = this.createInstancedGeometry();
+        
+        // Debug log instance buffer setup
+        this.logger.info('Created instanced geometry:', {
+            maxInstances: this.maxInstances,
+            instancePosition: this.geometry.getAttribute('instancePosition')?.count,
+            instanceColor: this.geometry.getAttribute('instanceColor')?.count,
+            instanceScale: this.geometry.getAttribute('instanceScale')?.count
+        });
+        
         this.mesh = new Mesh(this.geometry, this.material);
         this.group.add(this.mesh);
         
@@ -163,13 +192,34 @@ export class UnifiedTextRenderer {
     
     private async initializeFontAtlas(): Promise<void> {
         try {
+            this.logger.info('Starting font atlas generation with params:', {
+                fontFamily: 'Arial',
+                fontSize: 32,
+                textureSize: (this.fontAtlasGenerator as any)['atlasSize'],
+                padding: (this.fontAtlasGenerator as any)['padding'],
+                spread: (this.fontAtlasGenerator as any)['spread']
+            });
+
             const { texture } = await this.fontAtlasGenerator.generateAtlas(
                 'Arial',
                 32 // Base font size for SDF
             );
             
+            // Configure texture parameters
+            texture.minFilter = NearestFilter;
+            texture.magFilter = NearestFilter;
+            texture.wrapS = ClampToEdgeWrapping;
+            texture.wrapT = ClampToEdgeWrapping;
+            
             this.fontAtlas = texture;
             this.material.uniforms.fontAtlas.value = texture;
+            
+            this.logger.info('Font atlas generated successfully:', {
+                textureWidth: (texture as any).image?.width,
+                textureHeight: (texture as any).image?.height,
+                format: (texture as any).format,
+                mipmaps: (texture as any).mipmaps?.length || 0
+            });
             
             // Update all existing labels
             this.labels.forEach((label, id) => {
@@ -184,6 +234,7 @@ export class UnifiedTextRenderer {
         const baseGeometry = new PlaneGeometry(1, 1);
         const instancedGeometry = new BufferGeometry();
         
+        // Copy attributes from base geometry
         const position = baseGeometry.getAttribute('position');
         const uv = baseGeometry.getAttribute('uv');
         instancedGeometry.setAttribute('position', position);
@@ -193,6 +244,7 @@ export class UnifiedTextRenderer {
         const instanceColors = new Float32Array(this.maxInstances * 4);
         const instanceScales = new Float32Array(this.maxInstances);
         
+        // Set up instanced attributes
         instancedGeometry.setAttribute(
             'instancePosition',
             new InstancedBufferAttribute(instancePositions, 3)
@@ -205,16 +257,24 @@ export class UnifiedTextRenderer {
             'instanceScale',
             new InstancedBufferAttribute(instanceScales, 1)
         );
-        
+                
         return instancedGeometry;
     }
     
     public updateLabel(id: string, text: string, position: Vector3, color?: Color): void {
+        this.logger.debug('Updating label:', {
+            id,
+            text,
+            position: [position.x, position.y, position.z],
+            color: color ? [(color as any).r, (color as any).g, (color as any).b] : undefined,
+            hasAtlas: !!this.fontAtlas
+        });
+        
         let label = this.labels.get(id);
         
         if (!label) {
             if (this.currentInstanceCount >= this.maxInstances) {
-                logger.warn('Maximum instance count reached');
+                this.logger.warn(`Maximum instance count (${this.maxInstances}) reached, cannot add more labels`);
                 return;
             }
             
@@ -226,6 +286,13 @@ export class UnifiedTextRenderer {
                 color: color || new Color(this.settings.textColor),
                 visible: true
             };
+            
+            this.logger.debug('Created new label instance:', {
+                id,
+                instanceIndex: this.currentInstanceCount,
+                position: [position.x, position.y, position.z],
+                color: color ? [(color as any).r, (color as any).g, (color as any).b] : undefined
+            });
             
             this.labels.set(id, label);
             this.currentInstanceCount++;
@@ -242,6 +309,14 @@ export class UnifiedTextRenderer {
         const positions = (this.geometry.getAttribute('instancePosition') as InstancedBufferAttribute).array as Float32Array;
         const colors = (this.geometry.getAttribute('instanceColor') as InstancedBufferAttribute).array as Float32Array;
         const scales = (this.geometry.getAttribute('instanceScale') as InstancedBufferAttribute).array as Float32Array;
+
+        // Debug log instance updates
+        this.logger.debug('Updating instance attributes:', {
+            currentInstanceCount: this.currentInstanceCount,
+            labelsCount: this.labels.size,
+            positionsLength: positions.length,
+            colorsLength: colors.length
+        });
         
         let index = 0;
         this.labels.forEach(label => {
@@ -257,6 +332,15 @@ export class UnifiedTextRenderer {
                 scales[index] = label.scale;
                 index++;
             }
+        });
+        
+        // Set instance count on the mesh
+        (this.mesh as any).instanceCount = this.currentInstanceCount;
+        
+        // Debug log final state
+        this.logger.debug('Instance attributes updated:', {
+            instanceCount: (this.mesh as any).instanceCount,
+            visibleLabels: index
         });
         
         (this.geometry.getAttribute('instancePosition') as InstancedBufferAttribute).needsUpdate = true;
@@ -283,6 +367,23 @@ export class UnifiedTextRenderer {
     
     public update(): void {
         this.camera.updateMatrixWorld();
+        
+        // Update camera position uniform
+        this.material.uniforms.cameraPosition.value.copy(this.camera.position);
+        
+        // Log material and mesh state periodically (every ~100 frames)
+        if (Math.random() < 0.01) {
+            this.logger.debug('Renderer state:', {
+                materialUniforms: {
+                    sdfThreshold: this.material.uniforms.sdfThreshold.value,
+                    sdfSpread: this.material.uniforms.sdfSpread.value,
+                    hasTexture: !!this.material.uniforms.fontAtlas.value
+                },
+                meshInstanceCount: (this.mesh as any).instanceCount,
+                totalLabels: this.labels.size,
+                visibleLabels: Array.from(this.labels.values()).filter(l => l.visible).length
+            });
+        }
     }
     
     public dispose(): void {
