@@ -18,9 +18,13 @@ interface ValidationRule {
 
 const validationRules: Record<string, Record<string, ValidationRule>> = {
     visualization: {
-        'nodes.baseSize': {
-            validate: (value: number) => value >= 0.1 && value <= 10,
-            message: 'Base size must be between 0.1 and 10'
+        'nodes.sizeRange': {
+            validate: (value: [number, number]) => 
+                Array.isArray(value) && 
+                value.length === 2 && 
+                value[0] >= 0.01 && value[0] <= 0.5 &&  // 1cm to 50cm
+                value[1] >= value[0] && value[1] <= 0.5,
+            message: 'Node size range must be between 0.01m and 0.5m (1cm to 50cm), with min <= max'
         },
         'nodes.opacity': {
             validate: (value: number) => value >= 0 && value <= 1,
@@ -34,25 +38,45 @@ const validationRules: Record<string, Record<string, ValidationRule>> = {
             validate: (value: number) => value >= 0 && value <= 1,
             message: 'Roughness must be between 0 and 1'
         },
-        'edges.width': {
-            validate: (value: number) => value >= 0.1 && value <= 5,
-            message: 'Edge width must be between 0.1 and 5'
+        'edges.baseWidth': {
+            validate: (value: number) => value >= 0.001 && value <= 0.02,  // 1mm to 20mm
+            message: 'Edge width must be between 0.001m and 0.02m (1mm to 20mm)'
+        },
+        'edges.widthRange': {
+            validate: (value: [number, number]) => 
+                Array.isArray(value) && 
+                value.length === 2 && 
+                value[0] >= 0.001 && value[0] <= 0.02 &&  // 1mm to 20mm
+                value[1] >= value[0] && value[1] <= 0.02,
+            message: 'Edge width range must be between 0.001m and 0.02m (1mm to 20mm), with min <= max'
+        },
+        'edges.arrowSize': {
+            validate: (value: number) => value >= 0.005 && value <= 0.05,  // 5mm to 50mm
+            message: 'Arrow size must be between 0.005m and 0.05m (5mm to 50mm)'
         },
         'physics.attractionStrength': {
-            validate: (value: number) => value >= 0 && value <= 2,
-            message: 'Attraction strength must be between 0 and 2'
+            validate: (value: number) => value >= 0 && value <= 0.1,
+            message: 'Attraction strength must be between 0 and 0.1'
         },
         'physics.repulsionStrength': {
             validate: (value: number) => value >= 0 && value <= 2,
             message: 'Repulsion strength must be between 0 and 2'
         },
         'physics.springStrength': {
-            validate: (value: number) => value >= 0 && value <= 2,
-            message: 'Spring strength must be between 0 and 2'
+            validate: (value: number) => value >= 0 && value <= 0.1,
+            message: 'Spring strength must be between 0 and 0.1'
         },
         'physics.repulsionDistance': {
-            validate: (value: number) => value >= 0 && value <= 100,
-            message: 'Repulsion distance must be between 0 and 100'
+            validate: (value: number) => value >= 0.1 && value <= 1.0,  // 10cm to 1m
+            message: 'Repulsion distance must be between 0.1m and 1.0m (10cm to 1m)'
+        },
+        'physics.collisionRadius': {
+            validate: (value: number) => value >= 0.01 && value <= 0.2,  // 1cm to 20cm
+            message: 'Collision radius must be between 0.01m and 0.2m (1cm to 20cm)'
+        },
+        'physics.boundsSize': {
+            validate: (value: number) => value >= 0.1 && value <= 2.0,  // 10cm to 2m
+            message: 'Bounds size must be between 0.1m and 2.0m (10cm to 2m)'
         },
         'physics.massScale': {
             validate: (value: number) => value >= 0 && value <= 10,
@@ -62,35 +86,50 @@ const validationRules: Record<string, Record<string, ValidationRule>> = {
             validate: (value: number) => value >= 0 && value <= 1,
             message: 'Boundary damping must be between 0 and 1'
         },
-        'rendering.quality': {
-            validate: (value: string) => ['low', 'medium', 'high'].includes(value),
-            message: 'Quality must be low, medium, or high'
+        'hologram.sphereSizes': {
+            validate: (value: number[]) => 
+                Array.isArray(value) && 
+                value.every(size => size >= 0.02 && size <= 0.5) &&  // 2cm to 50cm
+                value.length >= 1,
+            message: 'Hologram sphere sizes must be between 0.02m and 0.5m (2cm to 50cm)'
         },
-        'rendering.ambientLightIntensity': {
-            validate: (value: number) => value >= 0 && value <= 2,
-            message: 'Ambient light intensity must be between 0 and 2'
+        'hologram.triangleSphereSize': {
+            validate: (value: number) => value >= 0.02 && value <= 0.5,  // 2cm to 50cm
+            message: 'Triangle sphere size must be between 0.02m and 0.5m (2cm to 50cm)'
+        },
+        'hologram.buckminsterSize': {
+            validate: (value: number) => value >= 0 && value <= 0.5,  // 0 to 50cm
+            message: 'Buckminster size must be between 0m and 0.5m (0 to 50cm)'
+        },
+        'hologram.geodesicSize': {
+            validate: (value: number) => value >= 0 && value <= 0.5,  // 0 to 50cm
+            message: 'Geodesic size must be between 0m and 0.5m (0 to 50cm)'
         }
     },
-    'visualization.bloom': {
-        'visualization.bloom.strength': {
-            validate: (value: number) => value >= 0 && value <= 5,
-            message: 'Bloom strength must be between 0 and 5'
+    xr: {
+        'roomScale': {
+            validate: (value: number) => value >= 0.1 && value <= 2.0,
+            message: 'Room scale must be between 0.1 and 2.0 (prefer 1.0 for real-world scale)'
         },
-        'visualization.bloom.radius': {
-            validate: (value: number) => value >= 0 && value <= 3,
-            message: 'Bloom radius must be between 0 and 3'
+        'handPointSize': {
+            validate: (value: number) => value >= 0.001 && value <= 0.02,  // 1mm to 20mm
+            message: 'Hand point size must be between 0.001m and 0.02m (1mm to 20mm)'
         },
-        'visualization.bloom.edge_bloom_strength': {
-            validate: (value: number) => value >= 0 && value <= 5,
-            message: 'Edge bloom strength must be between 0 and 5'
+        'handRayWidth': {
+            validate: (value: number) => value >= 0.001 && value <= 0.01,  // 1mm to 10mm
+            message: 'Hand ray width must be between 0.001m and 0.01m (1mm to 10mm)'
         },
-        'visualization.bloom.node_bloom_strength': {
-            validate: (value: number) => value >= 0 && value <= 5,
-            message: 'Node bloom strength must be between 0 and 5'
+        'interactionRadius': {
+            validate: (value: number) => value >= 0.05 && value <= 0.5,  // 5cm to 50cm
+            message: 'Interaction radius must be between 0.05m and 0.5m (5cm to 50cm)'
         },
-        'visualization.bloom.environment_bloom_strength': {
-            validate: (value: number) => value >= 0 && value <= 5,
-            message: 'Environment bloom strength must be between 0 and 5'
+        'portalSize': {
+            validate: (value: number) => value >= 0.5 && value <= 5.0,  // 50cm to 5m
+            message: 'Portal size must be between 0.5m and 5.0m'
+        },
+        'portalEdgeWidth': {
+            validate: (value: number) => value >= 0.005 && value <= 0.05,  // 5mm to 50mm
+            message: 'Portal edge width must be between 0.005m and 0.05m (5mm to 50mm)'
         }
     }
 };
@@ -169,27 +208,29 @@ function validatePhysicsSettings(
 ): void {
     const physics = settings.visualization.physics;
     
-    // Example: Ensure attraction and repulsion strengths are balanced
+    // Ensure attraction and repulsion strengths are balanced
     if (path === 'visualization.physics.attractionStrength' && physics.repulsionStrength) {
         const ratio = value / physics.repulsionStrength;
-        if (ratio > 3 || ratio < 0.33) {
+        if (ratio > 0.2 || ratio < 0.01) {  // Updated for new scale
             errors.push({
                 path,
-                message: 'Attraction and repulsion strengths should be relatively balanced',
+                message: 'Attraction strength should be 1-20% of repulsion strength',
                 value
             });
         }
     }
-    if (path === 'visualization.physics.repulsionDistance' && physics.repulsionStrength) {
-            const ratio = value / physics.repulsionStrength;
-            if (ratio > 50 || ratio < 0.02) {
-                errors.push({
-                    path,
-                    message: 'Repulsion distance and repulsion strength should be relatively balanced. Consider adjusting one or the other.',
-                    value
-                });
-            }
+    
+    // Validate repulsion distance relative to collision radius
+    if (path === 'visualization.physics.repulsionDistance' && physics.collisionRadius) {
+        const ratio = value / physics.collisionRadius;
+        if (ratio < 2 || ratio > 10) {
+            errors.push({
+                path,
+                message: 'Repulsion distance should be 2-10x the collision radius',
+                value
+            });
         }
+    }
 }
 
 function validateRenderingSettings(

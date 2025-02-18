@@ -201,7 +201,7 @@ Directories:
 
 # Project Codebase
 
-Generated: Tue 18 Feb 14:38:28 GMT 2025
+Generated: Tue 18 Feb 17:46:00 GMT 2025
 
 ## Project Structure
 
@@ -1357,35 +1357,35 @@ visualization:
     opacity: 1.0
     roughness: 0.7
     size_range:
-    - 200.0
-    - 700.0
+    - 0.05
+    - 0.2
     quality: medium
     enable_instancing: true
     enable_hologram: true
     enable_metadata_shape: false
     enable_metadata_visualization: true
   edges:
-    arrow_size: 2.0
-    base_width: 2.0
+    arrow_size: 0.02
+    base_width: 0.005
     color: '#0c2140'
     enable_arrows: true
     opacity: 0.5
     width_range:
-    - 2.0
-    - 3.0
+    - 0.005
+    - 0.01
     quality: high
   physics:
     attraction_strength: 0.02
     bounds_size: 0.33
-    collision_radius: 1.0
+    collision_radius: 0.1
     damping: 1.0
     enable_bounds: true
     enabled: true
     iterations: 100
     max_velocity: 0.4
-    repulsion_strength: 700.0
+    repulsion_strength: 0.7
     spring_strength: 0.02
-    repulsion_distance: 50.0
+    repulsion_distance: 0.5
     mass_scale: 1.0
     boundary_damping: 0.5
   rendering:
@@ -1426,8 +1426,8 @@ visualization:
     ring_color: '#c2a200'
     ring_opacity: 0.001
     sphere_sizes:
-    - 40.0
-    - 80.0
+    - 0.08
+    - 0.16
     ring_rotation_speed: 10.0
     enable_buckminster: false
     buckminster_size: 0.0
@@ -1436,7 +1436,7 @@ visualization:
     geodesic_size: 0.0
     geodesic_opacity: 0.0
     enable_triangle_sphere: true
-    triangle_sphere_size: 80.0
+    triangle_sphere_size: 0.16
     triangle_sphere_opacity: 0.15
     global_rotation_speed: 0.03
 system:
@@ -1493,17 +1493,17 @@ system:
     log_format: json
 xr:
   mode: inline
-  room_scale: 0.6
+  room_scale: 1.0
   space_type: local-floor
   quality: medium
   enable_hand_tracking: true
   hand_mesh_enabled: true
   hand_mesh_color: '#4287f5'
   hand_mesh_opacity: 0.3
-  hand_point_size: 3.0
+  hand_point_size: 0.006
   hand_ray_enabled: true
   hand_ray_color: '#4287f5'
-  hand_ray_width: 1.5
+  hand_ray_width: 0.003
   gesture_smoothing: 0.7
   enable_haptics: true
   haptic_intensity: 0.3
@@ -1530,7 +1530,7 @@ xr:
   passthrough_contrast: 1.2
   portal_size: 2.5
   portal_edge_color: '#4287f5'
-  portal_edge_width: 0.5
+  portal_edge_width: 0.02
 ragflow:
   api_key: ''
   api_base_url: ''
@@ -2619,6 +2619,13 @@ exec /app/webxr
                 "IPv4Address": "172.19.0.6/16",
                 "IPv6Address": ""
             },
+            "24ad684ccaa357ae3608bc2632a16ba568a0191f32b6b01f323b77633588c907": {
+                "Name": "cloudflared-tunnel",
+                "EndpointID": "f0142947b233417922570f5c991f6338e47398d7a8b586d2e8ebe5202ec5d9d6",
+                "MacAddress": "02:42:ac:13:00:0a",
+                "IPv4Address": "172.19.0.10/16",
+                "IPv6Address": ""
+            },
             "37236cd15a632531557445eceb52798043a3c05aeac3e621a1b44a97b325abb4": {
                 "Name": "ragflow-server",
                 "EndpointID": "14559c2ca7a236a11494c18af4efc366169efd9c6bc96cc0e7205027efe55529",
@@ -2647,13 +2654,6 @@ exec /app/webxr
                 "IPv4Address": "172.19.0.8/16",
                 "IPv6Address": ""
             },
-            "72b4e93af742061cee263ec610ee241afd5048d7fe48791f28c4b39806f8a95d": {
-                "Name": "logseq-xr-webxr",
-                "EndpointID": "6386cce1311bb6c564b67cde01db02f46bae5bb49a0ffe9b0e53fed3498fdbbf",
-                "MacAddress": "02:42:ac:13:00:0c",
-                "IPv4Address": "172.19.0.12/16",
-                "IPv6Address": ""
-            },
             "8b7cea10b14ce843b477c50ab0f47c3c606494e101acaaf074d75481d9c65f80": {
                 "Name": "ragflow-redis",
                 "EndpointID": "cafc82a072427660b2c728e66765dab0ab1847d0c837e9f9f65dd23a0d7018f7",
@@ -2675,18 +2675,18 @@ exec /app/webxr
                 "IPv4Address": "172.19.0.4/16",
                 "IPv6Address": ""
             },
-            "958679a67db2ba8d64b56cdc5a1800cacdf48942968b313569b23b1efaf95d84": {
-                "Name": "cloudflared-tunnel",
-                "EndpointID": "fc13df4053826d2629d89aceff32cc195877931a8c0c3c59af06ac33ecf48e31",
-                "MacAddress": "02:42:ac:13:00:0a",
-                "IPv4Address": "172.19.0.10/16",
-                "IPv6Address": ""
-            },
             "c5b92a96025baeae548518eaafe88ef76e70e6d90e5951a8750d01c56b6c8d4a": {
                 "Name": "xinference",
                 "EndpointID": "44cee519c20433e6f98f813ce2d313f091996b2779ce3e3be8b6d4ac9c0888e5",
                 "MacAddress": "02:42:ac:13:00:09",
                 "IPv4Address": "172.19.0.9/16",
+                "IPv6Address": ""
+            },
+            "ee62cffbcc870d14bfabeb49e58060a739330ee3a384a5b211efe7865f6e23b6": {
+                "Name": "logseq-xr-webxr",
+                "EndpointID": "f2da403cc31efd7fff9d216a280fc6879ec9ce1d3d0f957c851318e0120dee48",
+                "MacAddress": "02:42:ac:13:00:0c",
+                "IPv4Address": "172.19.0.12/16",
                 "IPv6Address": ""
             }
         },
@@ -3216,6 +3216,7 @@ import { Settings } from '../types/settings';
 import { GeometryFactory } from '../rendering/factories/GeometryFactory';
 import { MaterialFactory } from '../rendering/factories/MaterialFactory';
 import { HologramShaderMaterial } from '../rendering/materials/HologramShaderMaterial';
+import { SettingsStore } from '../state/SettingsStore';
 
 export class HologramManager {
     private readonly group = new Group();
@@ -3226,6 +3227,7 @@ export class HologramManager {
     private readonly tempMatrix = new Matrix4();
     private readonly instanceCount = 3;
     private readonly materialFactory: MaterialFactory;
+    private readonly settingsStore: SettingsStore;
 
     constructor(
         private readonly scene: Scene,
@@ -3234,11 +3236,26 @@ export class HologramManager {
     ) {
         this.geometryFactory = GeometryFactory.getInstance();
         this.materialFactory = MaterialFactory.getInstance();
+        this.settingsStore = SettingsStore.getInstance();
         
         // Enable bloom layer
         this.group.layers.enable(1);
         this.createHolograms();
         this.scene.add(this.group);
+
+        // Subscribe to settings changes
+        this.settingsStore.subscribe('visualization.hologram', (path: string, settings: any) => {
+            if (settings && typeof settings === 'object') {
+                this.settings = {
+                    ...this.settings,
+                    visualization: {
+                        ...this.settings.visualization,
+                        hologram: settings
+                    }
+                };
+                this.updateSettings(this.settings);
+            }
+        });
     }
 
     private createHolograms() {
@@ -3259,16 +3276,19 @@ export class HologramManager {
         
         // Create one ring instance for each size
         sphereSizes.forEach(size => {
+            // Get unit-sized geometry and scale it
             const ring = new InstancedMesh(
-                this.geometryFactory.getHologramGeometry('ring', quality, size),
+                this.geometryFactory.getHologramGeometry('ring', quality),
                 baseMaterial.clone(),
                 this.instanceCount
             );
             
-            // Set up ring instances with different rotations
+            // Set up ring instances with different rotations and scales
             for (let j = 0; j < this.instanceCount; j++) {
                 this.tempMatrix.makeRotationX(Math.PI / 3 * j);
                 this.tempMatrix.multiply(new Matrix4().makeRotationY(Math.PI / 6 * j));
+                // Apply size in meters from settings
+                this.tempMatrix.multiply(new Matrix4().makeScale(size, size, size));
                 ring.setMatrixAt(j, this.tempMatrix);
             }
             
@@ -3279,16 +3299,18 @@ export class HologramManager {
         });
 
         if (this.settings.visualization.hologram.enableTriangleSphere) {
-            const size = this.settings.visualization.hologram.triangleSphereSize;
+            const baseSize = this.settings.visualization.hologram.triangleSphereSize;
             const sphereMesh = new InstancedMesh(
-                this.geometryFactory.getHologramGeometry('triangleSphere', quality, size),
+                this.geometryFactory.getHologramGeometry('triangleSphere', quality),
                 baseMaterial.clone(),
                 this.instanceCount
             );
             
             // Set up sphere instances with different scales and rotations
             for (let i = 0; i < this.instanceCount; i++) {
-                this.tempMatrix.makeScale(0.8 + (i * 0.2), 0.8 + (i * 0.2), 0.8 + (i * 0.2));
+                // Scale each instance relative to the base size (80%, 100%, 120%)
+                const scale = baseSize * (0.8 + (i * 0.2));
+                this.tempMatrix.makeScale(scale, scale, scale);
                 this.tempMatrix.multiply(new Matrix4().makeRotationX(Math.PI / 4 * i));
                 this.tempMatrix.multiply(new Matrix4().makeRotationY(Math.PI / 3 * i));
                 sphereMesh.setMatrixAt(i, this.tempMatrix);
@@ -3319,10 +3341,11 @@ export class HologramManager {
     }
 
     handleInteraction(position: Vector3) {
+        const interactionRadius = this.settings.xr.interactionRadius;
         this.group.traverse(child => {
             if (child instanceof Mesh && child.material instanceof HologramShaderMaterial) {
                 const distance = position.distanceTo(child.position);
-                if (distance < 0.5 && child.material.uniforms) {
+                if (distance < interactionRadius && child.material.uniforms) {
                     child.material.uniforms.pulseIntensity.value = 0.4;
                     setTimeout(() => {
                         if (child.material instanceof HologramShaderMaterial && child.material.uniforms) {
@@ -6545,6 +6568,7 @@ import { Edge } from '../core/types';
 import { Settings } from '../types/settings';
 import { EdgeShaderMaterial } from './materials/EdgeShaderMaterial';
 import { NodeInstanceManager } from './node/instance/NodeInstanceManager';
+import { SettingsStore } from '../state/SettingsStore';
 
 export class EdgeManager {
     private scene: Scene;
@@ -6553,6 +6577,7 @@ export class EdgeManager {
     private nodeManager: NodeInstanceManager;
     private edgeData: Map<string, Edge> = new Map();
     private settings: Settings;
+    private settingsStore: SettingsStore;
     private updateFrameCount = 0;
     private readonly UPDATE_FREQUENCY = 2; // Update every other frame
 
@@ -6560,6 +6585,7 @@ export class EdgeManager {
         this.scene = scene;
         this.nodeManager = nodeManager;
         this.settings = settings;
+        this.settingsStore = SettingsStore.getInstance();
         this.edgeGroup = new Group();
         
         // Enable both layers by default for desktop mode
@@ -6567,6 +6593,26 @@ export class EdgeManager {
         this.edgeGroup.layers.enable(1);
         
         scene.add(this.edgeGroup);
+
+        // Subscribe to settings changes
+        this.settingsStore.subscribe('visualization.edges', (path: string, settings: any) => {
+            if (settings && typeof settings === 'object') {
+                this.settings = {
+                    ...this.settings,
+                    visualization: {
+                        ...this.settings.visualization,
+                        edges: settings
+                    }
+                };
+                this.handleSettingsUpdate(this.settings);
+                this.updateAllEdgeGeometries();
+            }
+        });
+    }
+
+    private getEdgeWidth(): number {
+        // Use base width from settings (already in meters)
+        return this.settings.visualization.edges.baseWidth;
     }
 
     private createEdgeGeometry(source: Vector3, target: Vector3): BufferGeometry {
@@ -6574,11 +6620,11 @@ export class EdgeManager {
         
         // Calculate direction and create vertices directly in world space
         const direction = new Vector3().subVectors(target, source);
-        const width = this.settings.visualization.edges.baseWidth * 0.1;
+        const width = this.getEdgeWidth(); // Width in meters from settings
         
         // Calculate perpendicular vector for width
         const up = new Vector3(0, 1, 0);
-        const right = new Vector3().crossVectors(direction, up).normalize().multiplyScalar(width);
+        const right = new Vector3().crossVectors(direction, up).normalize().multiplyScalar(width / 2);
         
         // Create vertices for a thin rectangular prism along the edge
         const vertices = new Float32Array([
@@ -6589,10 +6635,10 @@ export class EdgeManager {
             target.x - right.x, target.y - right.y, target.z - right.z,
             
             // Back face (slightly offset)
-            source.x - right.x, source.y - right.y, source.z - right.z + 0.001,
-            source.x + right.x, source.y + right.y, source.z + right.z + 0.001,
-            target.x + right.x, target.y + right.y, target.z + right.z + 0.001,
-            target.x - right.x, target.y - right.y, target.z - right.z + 0.001
+            source.x - right.x, source.y - right.y, source.z - right.z + width, // Use width for offset
+            source.x + right.x, source.y + right.y, source.z + right.z + width,
+            target.x + right.x, target.y + right.y, target.z + right.z + width,
+            target.x - right.x, target.y - right.y, target.z - right.z + width
         ]);
         
         // Create indices for both faces
@@ -6634,6 +6680,28 @@ export class EdgeManager {
         return new EdgeShaderMaterial(this.settings, 
             this.settings.visualization.rendering.context || 'desktop'
         );
+    }
+
+    private updateAllEdgeGeometries(): void {
+        this.edgeData.forEach((edgeData, edgeId) => {
+            const mesh = this.edges.get(edgeId);
+            if (!mesh) return;
+
+            const sourcePos = this.nodeManager.getNodePosition(edgeData.source);
+            const targetPos = this.nodeManager.getNodePosition(edgeData.target);
+
+            if (sourcePos && targetPos) {
+                // Update edge geometry
+                const oldGeometry = mesh.geometry;
+                mesh.geometry = this.createEdgeGeometry(sourcePos, targetPos);
+                oldGeometry.dispose();
+
+                // Update shader material source/target
+                if (mesh.material instanceof EdgeShaderMaterial) {
+                    mesh.material.setSourceTarget(sourcePos, targetPos);
+                }
+            }
+        });
     }
 
     public updateEdges(edges: Edge[]): void {
@@ -8797,8 +8865,12 @@ export class GeometryFactory {
         return GeometryFactory.instance;
     }
 
-    getNodeGeometry(quality: 'low' | 'medium' | 'high', context: 'ar' | 'desktop' = 'desktop', size: number = 40): BufferGeometry {
-        const cacheKey = `node-${quality}-${context}-${size}`;
+    /**
+     * Creates a node geometry with radius 1, which can be scaled by the NodeInstanceManager
+     * to match the desired size from settings.
+     */
+    getNodeGeometry(quality: 'low' | 'medium' | 'high', context: 'ar' | 'desktop' = 'desktop'): BufferGeometry {
+        const cacheKey = `node-${quality}-${context}`;
         if (this.geometryCache.has(cacheKey)) {
             return this.geometryCache.get(cacheKey)!;
         }
@@ -8819,15 +8891,19 @@ export class GeometryFactory {
             default:
                 detail = context === 'ar' ? 1 : 2;
         }
-        // Use IcosahedronGeometry for better performance while maintaining visual quality
-        // Convert from native units (40-120) to scene scale (0.4-1.2)
-        geometry = new IcosahedronGeometry(size / 80, detail);
+        
+        // Create unit-sized geometry (radius = 1) that will be scaled by NodeInstanceManager
+        geometry = new IcosahedronGeometry(1, detail);
         this.geometryCache.set(cacheKey, geometry);
         return geometry;
     }
 
-    getHologramGeometry(type: string, quality: string, size: number = 40): BufferGeometry {
-        const cacheKey = `hologram-${type}-${quality}-${size}`;
+    /**
+     * Creates a hologram geometry with radius 1, which can be scaled by the HologramManager
+     * to match the desired size from settings.
+     */
+    getHologramGeometry(type: string, quality: string): BufferGeometry {
+        const cacheKey = `hologram-${type}-${quality}`;
         if (this.geometryCache.has(cacheKey)) {
             return this.geometryCache.get(cacheKey)!;
         }
@@ -8841,35 +8917,41 @@ export class GeometryFactory {
         let geometry: BufferGeometry;
         switch (type) {
             case 'ring':
-                geometry = new TorusGeometry(size, size * 0.05, segments.ring, segments.ring * 2);
+                // Create unit-sized torus (radius = 1) with proportional tube radius
+                geometry = new TorusGeometry(1, 0.05, segments.ring, segments.ring * 2);
                 break;
             case 'triangleSphere':
-                geometry = new IcosahedronGeometry(size, 1); // One subdivision for all spheres
+                // Create unit-sized icosahedron (radius = 1)
+                geometry = new IcosahedronGeometry(1, 1);
                 break;
             default:
-                geometry = new IcosahedronGeometry(size, 1); // Base size
+                // Create unit-sized icosahedron (radius = 1)
+                geometry = new IcosahedronGeometry(1, 1);
         }
 
         this.geometryCache.set(cacheKey, geometry);
         return geometry;
     }
 
+    /**
+     * Creates an edge geometry with radius 1 and height 1, which can be scaled by the EdgeManager
+     * to match the desired width from settings.
+     */
     getEdgeGeometry(context: 'ar' | 'desktop' = 'desktop', quality?: 'low' | 'medium' | 'high'): BufferGeometry {
         const cacheKey = `edge-${context}-${quality || 'medium'}`;
         if (this.geometryCache.has(cacheKey)) {
             return this.geometryCache.get(cacheKey)!;
         }
 
-        // Use CylinderGeometry for more reliable edge rendering
-        const baseRadius = context === 'ar' ? 0.5 : 1.0; // Native units for edge thickness
-        
         // Adjust segments based on quality
         const segments = {
             low: context === 'ar' ? 4 : 5,
             medium: context === 'ar' ? 5 : 6,
             high: context === 'ar' ? 6 : 8
         }[quality || 'medium'];
-        const geometry = new CylinderGeometry(baseRadius, baseRadius, 1, segments);
+
+        // Create unit-sized cylinder (radius = 1, height = 1) that will be scaled by EdgeManager
+        const geometry = new CylinderGeometry(1, 1, 1, segments);
         
         // Rotate 90 degrees to align with Z-axis
         geometry.rotateX(Math.PI / 2);
@@ -9562,6 +9644,7 @@ import { NodeInteractionManager } from './interaction/NodeInteractionManager';
 import { NodeManagerInterface, NodeManagerError, NodeManagerErrorType } from './NodeManagerInterface';
 import { NodeData } from '../../core/types';
 import { XRHandWithHaptics } from '../../types/xr';
+import { platformManager } from '../../platform/platformManager';
 import { createLogger } from '../../core/logger';
 
 const logger = createLogger('NodeManagerFacade');
@@ -9652,8 +9735,13 @@ export class NodeManagerFacade implements NodeManagerInterface {
     public updateNodes(nodes: { id: string, data: NodeData }[]): void {
         if (!this.isInitialized) return;
 
-        const calculateNodeSize = (fileSize?: number) => 
-            fileSize ? Math.min(700, Math.max(200, Math.log2(fileSize + 1) * 50)) : 200;
+        // Calculate node size based on file size and mode
+        const calculateNodeSize = (fileSize?: number) => {
+            const baseSize = fileSize ? Math.log2(fileSize + 1) * 0.05 : 0.2;
+            // Use larger size for desktop mode, meter scale for AR
+            const scale = platformManager.isXRMode ? 1.0 : 100.0;
+            return Math.min(0.7 * scale, Math.max(0.2 * scale, baseSize * scale));
+        };
 
         // Track node IDs
         nodes.forEach(node => {
@@ -9715,7 +9803,8 @@ export class NodeManagerFacade implements NodeManagerInterface {
                 id: node.id,
                 position: node.data.position,
                 metadata: {
-                    nodeSize: 200 // Default size for position-only updates
+                    // Default size with mode-based scaling
+                    nodeSize: platformManager.isXRMode ? 0.2 : 20.0
                 },
                 velocity: node.data.velocity
             })));
@@ -9838,9 +9927,9 @@ const logger = createLogger('NodeGeometryManager');
 
 // LOD level definitions
 export enum LODLevel {
-    HIGH = 0,    // < 10 units: Full detail
-    MEDIUM = 1,  // 10-30 units: Medium detail
-    LOW = 2      // > 30 units: Low detail
+    HIGH = 0,    // < 1 meter: Full detail
+    MEDIUM = 1,  // 1-3 meters: Medium detail
+    LOW = 2      // > 3 meters: Low detail
 }
 
 interface LODThresholds {
@@ -9860,14 +9949,14 @@ export class NodeGeometryManager {
     private currentLOD: LODLevel = LODLevel.HIGH;
     
     private readonly lodThresholds: LODThresholds = {
-        [LODLevel.HIGH]: 10,
-        [LODLevel.MEDIUM]: 30,
-        [LODLevel.LOW]: 50
+        [LODLevel.HIGH]: 1.0,    // 1 meter
+        [LODLevel.MEDIUM]: 3.0,  // 3 meters
+        [LODLevel.LOW]: 5.0      // 5 meters
     };
 
     private readonly qualitySettings: Record<LODLevel, GeometryQuality> = {
-        [LODLevel.HIGH]: { segments: 1, radius: 1 },     // 1 subdivision for icosahedron
-        [LODLevel.MEDIUM]: { segments: 0, radius: 1 },   // Basic octahedron
+        [LODLevel.HIGH]: { segments: 1, radius: 0.1 },   // 10cm radius with 1 subdivision
+        [LODLevel.MEDIUM]: { segments: 0, radius: 0.1 }, // 10cm radius basic octahedron
         [LODLevel.LOW]: { segments: 0, radius: 0.8 }     // Smaller octahedron for distance
     };
 
@@ -9980,6 +10069,9 @@ import {
 } from 'three';
 import { NodeGeometryManager, LODLevel } from '../geometry/NodeGeometryManager';
 import { createLogger } from '../../../core/logger';
+import { SettingsStore } from '../../../state/SettingsStore';
+import { NodeSettings } from '../../../types/settings/base';
+import { scaleOps } from '../../../core/utils';
 
 const logger = createLogger('NodeInstanceManager');
 
@@ -9993,14 +10085,13 @@ const position = new Vector3();
 const quaternion = new Quaternion();
 const velocity = new Vector3();
 const scale = new Vector3();
-const BASE_SCALE = 0.01; // Scale factor to convert from units to scene scale
 
 // Visibility states (using setRGB for proper initialization)
 const VISIBLE = new Color(0xffffff);
 const INVISIBLE = new Color(0x000000);
 
 interface NodeUpdateMetadata {
-    nodeSize: number;
+    nodeSize: number;  // Value between 0 and 1, will be mapped to sizeRange
 }
 
 interface NodeUpdate {
@@ -10021,10 +10112,14 @@ export class NodeInstanceManager {
     private updateScheduled: boolean = false;
     private velocities: Map<number, Vector3> = new Map();
     private lastUpdateTime: number = performance.now();
+    private settingsStore: SettingsStore;
+    private nodeSettings: NodeSettings;
 
     private constructor(scene: Scene, material: Material) {
         this.scene = scene;
         this.geometryManager = NodeGeometryManager.getInstance();
+        this.settingsStore = SettingsStore.getInstance();
+        this.nodeSettings = this.settingsStore.get('visualization.nodes') as NodeSettings;
 
         // Initialize InstancedMesh with high-detail geometry
         const initialGeometry = this.geometryManager.getGeometryForDistance(0);
@@ -10036,6 +10131,14 @@ export class NodeInstanceManager {
         // Add to scene
         this.scene.add(this.nodeInstances);
         logger.info('Initialized NodeInstanceManager');
+
+        // Subscribe to settings changes
+        this.settingsStore.subscribe('visualization.nodes', (path: string, settings: any) => {
+            if (settings && typeof settings === 'object') {
+                this.nodeSettings = settings as NodeSettings;
+                this.updateAllNodeScales();
+            }
+        });
     }
 
     public static getInstance(scene: Scene, material: Material): NodeInstanceManager {
@@ -10043,6 +10146,37 @@ export class NodeInstanceManager {
             NodeInstanceManager.instance = new NodeInstanceManager(scene, material);
         }
         return NodeInstanceManager.instance;
+    }
+
+    private getNodeScale(nodeSize: number = 0.5): number {
+        // Map the node size (0-1) to the configured size range
+        const [minSize, maxSize] = this.nodeSettings.sizeRange;
+        return scaleOps.mapRange(nodeSize, 0, 1, minSize, maxSize);
+    }
+
+    private updateAllNodeScales(): void {
+        // Update all existing nodes with new scale based on current settings
+        for (let i = 0; i < this.nodeInstances.count; i++) {
+            this.nodeInstances.getMatrixAt(i, matrix);
+            matrix.decompose(position, quaternion, scale);
+            
+            // Get current scale and map it back to 0-1 range
+            const currentSize = scale.x; // Assuming uniform scale
+            const [oldMin, oldMax] = this.nodeSettings.sizeRange;
+            const normalizedSize = scaleOps.mapRange(currentSize, oldMin, oldMax, 0, 1);
+            
+            // Apply new scale
+            const newScale = this.getNodeScale(normalizedSize);
+            scale.set(newScale, newScale, newScale);
+            
+            matrix.compose(position, quaternion, scale);
+            this.nodeInstances.setMatrixAt(i, matrix);
+            this.pendingUpdates.add(i);
+        }
+        
+        if (this.pendingUpdates.size > 0) {
+            this.scheduleBatchUpdate();
+        }
     }
 
     public updateNodePositions(updates: NodeUpdate[]): void {
@@ -10057,13 +10191,13 @@ export class NodeInstanceManager {
                     
                     // Set initial position
                     position.fromArray(update.position);
-                    const nodeScale = update.metadata?.nodeSize || 200;
-                    const scaleValue = nodeScale * BASE_SCALE;
+                    const scaleValue = this.getNodeScale(update.metadata?.nodeSize);
                     scale.set(scaleValue, scaleValue, scaleValue);
                     if (update.velocity) {
                         const vel = new Vector3().fromArray(update.velocity);
                         this.velocities.set(newIndex, vel);
                     }
+                    matrix.compose(position, quaternion, scale);
                     this.nodeInstances.setMatrixAt(newIndex, matrix);
                     this.nodeInstances.setColorAt(newIndex, VISIBLE);
                     
@@ -10082,8 +10216,7 @@ export class NodeInstanceManager {
                 this.velocities.set(index, vel);
             }
             
-            const nodeScale = update.metadata?.nodeSize || 200;
-            const scaleValue = nodeScale * BASE_SCALE;
+            const scaleValue = this.getNodeScale(update.metadata?.nodeSize);
             scale.set(scaleValue, scaleValue, scaleValue);
             matrix.compose(position, quaternion, scale);
             this.nodeInstances.setMatrixAt(index, matrix);
@@ -10134,7 +10267,7 @@ export class NodeInstanceManager {
         this.velocities.forEach((nodeVelocity, index) => {
             if (nodeVelocity.lengthSq() > 0) {
                 this.nodeInstances.getMatrixAt(index, matrix);
-                position.setFromMatrixPosition(matrix);
+                matrix.decompose(position, quaternion, scale);
                 
                 // Apply velocity
                 velocity.copy(nodeVelocity).multiplyScalar(deltaTime);
@@ -11813,7 +11946,7 @@ export const defaultSettings: Settings = {
             metalness: 0.8,
             opacity: 1.0,
             roughness: 0.2,
-            sizeRange: [200, 700],
+            sizeRange: [0.05, 0.2],  // 5cm to 20cm
             quality: 'medium',
             enableInstancing: true,
             enableHologram: true,
@@ -11823,12 +11956,12 @@ export const defaultSettings: Settings = {
             colorRangeLinks: ['#0000ff', '#ff00ff']
         },
         edges: {
-            arrowSize: 5.0,
-            baseWidth: 3.0,
+            arrowSize: 0.02,         // 2cm
+            baseWidth: 0.005,        // 5mm
             color: '#888888',
             enableArrows: false,
             opacity: 0.8,
-            widthRange: [1.5, 4.0],
+            widthRange: [0.005, 0.01],  // 5mm to 10mm
             quality: 'medium',
             enableFlowEffect: true,
             flowSpeed: 1.0,
@@ -11840,18 +11973,18 @@ export const defaultSettings: Settings = {
         },
         physics: {
             enabled: true,
-            iterations: 100,                // Balanced for performance and stability
-            attractionStrength: 0.015,        // Moderate attraction for connected nodes
-            repulsionStrength: 1500.0,       // Strong repulsion for good spacing
-            repulsionDistance: 50.0,      // Large enough for initial layout
-            springStrength: 0.018,            // Moderate spring force for stability
-            damping: 0.88,                   // Higher damping for stability
-            maxVelocity: 2.5,               // Moderate velocity limit
-            collisionRadius: 0.25,           // Default collision detection radius
-            massScale: 1.0,                 // Default mass scaling
-            boundaryDamping: 0.5,           // Strong boundary damping to prevent oscillation
-            enableBounds: true,             // Enable bounds by default
-            boundsSize: 1000.0              // Large enough for typical graphs
+            iterations: 100,              // Balanced for performance and stability
+            attractionStrength: 0.02,     // Moderate attraction for connected nodes
+            repulsionStrength: 0.7,       // Moderate repulsion for good spacing
+            repulsionDistance: 0.5,       // 50cm for initial layout
+            springStrength: 0.02,         // Moderate spring force for stability
+            damping: 0.88,                // Higher damping for stability
+            maxVelocity: 0.4,             // 40cm/s maximum velocity
+            collisionRadius: 0.1,         // 10cm collision detection radius
+            massScale: 1.0,               // Default mass scaling
+            boundaryDamping: 0.5,         // Moderate boundary damping
+            enableBounds: true,           // Enable bounds by default
+            boundsSize: 0.33              // 33cm cube (matches settings.yaml)
         },
         rendering: {
             ambientLightIntensity: 0.2,
@@ -11896,18 +12029,18 @@ export const defaultSettings: Settings = {
         },
         hologram: {
             ringCount: 2,
-            sphereSizes: [40, 80],
+            sphereSizes: [0.08, 0.16],    // 8cm and 16cm
             ringRotationSpeed: 1.0,
             ringColor: '#00ffff',
             ringOpacity: 0.6,
             enableBuckminster: false,
             enableGeodesic: false,
-            buckminsterSize: 0,
+            buckminsterSize: 0.0,         // Disabled by default
             buckminsterOpacity: 0,
-            geodesicSize: 0,
+            geodesicSize: 0.0,            // Disabled by default
             geodesicOpacity: 0,
             enableTriangleSphere: true,
-            triangleSphereSize: 80,
+            triangleSphereSize: 0.16,     // 16cm
             triangleSphereOpacity: 0.15,
             globalRotationSpeed: 0.03
         }
@@ -11933,7 +12066,7 @@ export const defaultSettings: Settings = {
     },
     xr: {
         mode: 'immersive-vr',
-        roomScale: 0.01,
+        roomScale: 1.0,                   // Real-world 1:1 scale
         spaceType: 'local-floor',
         quality: 'high',
         autoEnterAR: false,
@@ -11943,22 +12076,22 @@ export const defaultSettings: Settings = {
         handMeshEnabled: true,
         handMeshColor: '#4287f5',
         handMeshOpacity: 0.3,
-        handPointSize: 3.0,
+        handPointSize: 0.006,             // 6mm
         handRayEnabled: true,
         handRayColor: '#4287f5',
-        handRayWidth: 1.5,
+        handRayWidth: 0.003,              // 3mm
         gestureSmoothing: 0.5,
         enableHaptics: true,
         hapticIntensity: 0.5,
-        dragThreshold: 0.02,
-        pinchThreshold: 0.5,
-        rotationThreshold: 0.1,
-        interactionRadius: 0.5,
-        movementSpeed: 0.05,
-        deadZone: 0.1,
+        dragThreshold: 0.02,              // 2cm movement required to start drag
+        pinchThreshold: 0.3,              // 30% pinch required for activation
+        rotationThreshold: 0.08,          // 8% rotation required for activation
+        interactionRadius: 0.15,          // 15cm interaction sphere
+        movementSpeed: 0.08,              // 8cm per frame at full stick deflection
+        deadZone: 0.12,                   // 12% stick movement required
         movementAxes: {
-            horizontal: 2,
-            vertical: 3
+            horizontal: 2,                 // Right joystick X
+            vertical: 3                    // Right joystick Y
         },
         enableLightEstimation: false,
         enablePlaneDetection: true,
@@ -11967,14 +12100,14 @@ export const defaultSettings: Settings = {
         planeOpacity: 0.5,
         showPlaneOverlay: false,
         snapToFloor: false,
-        planeDetectionDistance: 3.0,
+        planeDetectionDistance: 3.0,      // 3m maximum plane detection distance
         enablePassthroughPortal: false,
         passthroughOpacity: 0.8,
         passthroughBrightness: 1.1,
         passthroughContrast: 1.0,
-        portalSize: 2.0,
+        portalSize: 2.5,                  // 2.5m portal size
         portalEdgeColor: '#ffffff',
-        portalEdgeWidth: 2.0
+        portalEdgeWidth: 0.02             // 2cm edge width
     }
 };
 
@@ -15325,7 +15458,7 @@ import { XRSessionMode } from '../xr';
 export interface XRSettings {
     // Session Settings
     mode: XRSessionMode;
-    roomScale: number;
+    roomScale: number;  // Scale factor for the entire XR scene (1.0 = real-world scale)
     spaceType: 'viewer' | 'local' | 'local-floor' | 'bounded-floor' | 'unbounded';
     quality: 'low' | 'medium' | 'high';
     
@@ -15339,10 +15472,10 @@ export interface XRSettings {
     handMeshEnabled: boolean;
     handMeshColor: string;
     handMeshOpacity: number;
-    handPointSize: number;
+    handPointSize: number;  // In meters (e.g., 0.006 for 6mm)
     handRayEnabled: boolean;
     handRayColor: string;
-    handRayWidth: number;
+    handRayWidth: number;  // In meters (e.g., 0.003 for 3mm)
     gestureSmoothing: number;
     
     // Interaction
@@ -15351,7 +15484,7 @@ export interface XRSettings {
     dragThreshold: number;
     pinchThreshold: number;
     rotationThreshold: number;
-    interactionRadius: number;
+    interactionRadius: number;  // In meters (e.g., 0.15 for 15cm)
     movementSpeed: number;
     deadZone: number;
     movementAxes: {
@@ -15367,16 +15500,16 @@ export interface XRSettings {
     planeOpacity: number;
     showPlaneOverlay: boolean;
     snapToFloor: boolean;
-    planeDetectionDistance?: number;  // Maximum distance for plane detection
+    planeDetectionDistance?: number;  // In meters (e.g., 3.0 for 3m)
     
     // Passthrough
     enablePassthroughPortal: boolean;
     passthroughOpacity: number;
     passthroughBrightness: number;
     passthroughContrast: number;
-    portalSize: number;
+    portalSize: number;  // In meters (e.g., 2.5 for 2.5m)
     portalEdgeColor: string;
-    portalEdgeWidth: number;
+    portalEdgeWidth: number;  // In meters (e.g., 0.02 for 2cm)
 }
 
 // Platform-specific XR settings
@@ -15396,7 +15529,7 @@ export interface WebXRSettings extends XRSettings {
 export const defaultXRSettings: XRSettings = {
     // Session Settings
     mode: 'immersive-ar',
-    roomScale: 0.01,  // Updated: Scale factor of 0.01 for AR visualization (1/100th scaling)
+    roomScale: 1.0,  // Real-world 1:1 scale
     spaceType: 'local-floor',
     quality: 'high',
     
@@ -15410,24 +15543,24 @@ export const defaultXRSettings: XRSettings = {
     handMeshEnabled: true,
     handMeshColor: '#ffffff',
     handMeshOpacity: 0.5,
-    handPointSize: 5,
+    handPointSize: 0.006,  // 6mm
     handRayEnabled: true,
     handRayColor: '#00ff00',
-    handRayWidth: 2,
+    handRayWidth: 0.003,  // 3mm
     gestureSmoothing: 0.5,
     
     // Interaction
     enableHaptics: true,
     hapticIntensity: 0.5,
-    dragThreshold: 0.02,
-    pinchThreshold: 0.5,  // Updated: Reduced pinch threshold for improved responsiveness
-    rotationThreshold: 0.1,
-    interactionRadius: 0.5,
-    movementSpeed: 0.05,
-    deadZone: 0.1,
+    dragThreshold: 0.02,  // 2cm movement required to start drag
+    pinchThreshold: 0.3,  // 30% pinch required for activation
+    rotationThreshold: 0.08,  // 8% rotation required for activation
+    interactionRadius: 0.15,  // 15cm interaction sphere
+    movementSpeed: 0.08,  // 8cm per frame at full stick deflection
+    deadZone: 0.12,  // 12% stick movement required
     movementAxes: {
-        horizontal: 2, // Right joystick X
-        vertical: 3   // Right joystick Y
+        horizontal: 2,  // Right joystick X
+        vertical: 3    // Right joystick Y
     },
     
     // Scene Understanding
@@ -15438,16 +15571,16 @@ export const defaultXRSettings: XRSettings = {
     planeOpacity: 0.5,
     showPlaneOverlay: true,
     snapToFloor: true,
-    planeDetectionDistance: 3.0,
+    planeDetectionDistance: 3.0,  // 3 meters
     
     // Passthrough
     enablePassthroughPortal: false,
     passthroughOpacity: 1.0,
     passthroughBrightness: 1.0,
     passthroughContrast: 1.0,
-    portalSize: 2.0,
+    portalSize: 2.5,  // 2.5 meters
     portalEdgeColor: '#ffffff',
-    portalEdgeWidth: 2.0
+    portalEdgeWidth: 0.02  // 2cm
 };
 
 ----
@@ -15479,7 +15612,7 @@ export interface NodeSettings {
     enableHologram: boolean;
     enableMetadataShape: boolean;
     enableMetadataVisualization: boolean;
-    sizeRange: [number, number];
+    sizeRange: [number, number];  // In meters (e.g., [0.05, 0.2] for 5cm to 20cm)
     baseColor: string;
     opacity: number;
     colorRangeAge: [string, string];
@@ -15491,10 +15624,10 @@ export interface NodeSettings {
 export interface EdgeSettings {
     color: string;
     opacity: number;
-    arrowSize: number;
-    baseWidth: number;
+    arrowSize: number;  // In meters (e.g., 0.02 for 2cm)
+    baseWidth: number;  // In meters (e.g., 0.005 for 5mm)
     enableArrows: boolean;
-    widthRange: [number, number];
+    widthRange: [number, number];  // In meters (e.g., [0.005, 0.01] for 5-10mm)
     quality: 'low' | 'medium' | 'high';
     // New shader-based edge settings
     enableFlowEffect: boolean;
@@ -15540,19 +15673,19 @@ export interface BloomSettings {
 
 export interface HologramSettings {
     ringCount: number;
-    sphereSizes: number[];  // Native world units (e.g. [40, 80, 120])
+    sphereSizes: number[];  // In meters (e.g., [0.08, 0.16] for 8cm and 16cm)
     ringRotationSpeed: number;
     globalRotationSpeed: number;
     ringColor: string;
     ringOpacity: number;
     enableBuckminster: boolean;
-    buckminsterSize: number;  // Native world units (e.g. 120)
+    buckminsterSize: number;  // In meters (e.g., 0.16 for 16cm)
     buckminsterOpacity: number;
     enableGeodesic: boolean;
-    geodesicSize: number;  // Native world units (e.g. 100)
+    geodesicSize: number;  // In meters (e.g., 0.16 for 16cm)
     geodesicOpacity: number;
     enableTriangleSphere: boolean;
-    triangleSphereSize: number;  // Native world units (e.g. 140)
+    triangleSphereSize: number;  // In meters (e.g., 0.16 for 16cm)
     triangleSphereOpacity: number;
 }
 
@@ -15564,10 +15697,10 @@ export interface PhysicsSettings {
     damping: number;
     iterations: number;
     maxVelocity: number;
-    collisionRadius: number;
+    collisionRadius: number;  // In meters (e.g., 0.1 for 10cm)
     enableBounds: boolean;
-    boundsSize: number;
-    repulsionDistance: number;
+    boundsSize: number;  // In meters (e.g., 0.33 for 33cm)
+    repulsionDistance: number;  // In meters (e.g., 0.5 for 50cm)
     massScale: number;
     boundaryDamping: number;
 }
@@ -15632,9 +15765,13 @@ interface ValidationRule {
 
 const validationRules: Record<string, Record<string, ValidationRule>> = {
     visualization: {
-        'nodes.baseSize': {
-            validate: (value: number) => value >= 0.1 && value <= 10,
-            message: 'Base size must be between 0.1 and 10'
+        'nodes.sizeRange': {
+            validate: (value: [number, number]) => 
+                Array.isArray(value) && 
+                value.length === 2 && 
+                value[0] >= 0.01 && value[0] <= 0.5 &&  // 1cm to 50cm
+                value[1] >= value[0] && value[1] <= 0.5,
+            message: 'Node size range must be between 0.01m and 0.5m (1cm to 50cm), with min <= max'
         },
         'nodes.opacity': {
             validate: (value: number) => value >= 0 && value <= 1,
@@ -15648,25 +15785,45 @@ const validationRules: Record<string, Record<string, ValidationRule>> = {
             validate: (value: number) => value >= 0 && value <= 1,
             message: 'Roughness must be between 0 and 1'
         },
-        'edges.width': {
-            validate: (value: number) => value >= 0.1 && value <= 5,
-            message: 'Edge width must be between 0.1 and 5'
+        'edges.baseWidth': {
+            validate: (value: number) => value >= 0.001 && value <= 0.02,  // 1mm to 20mm
+            message: 'Edge width must be between 0.001m and 0.02m (1mm to 20mm)'
+        },
+        'edges.widthRange': {
+            validate: (value: [number, number]) => 
+                Array.isArray(value) && 
+                value.length === 2 && 
+                value[0] >= 0.001 && value[0] <= 0.02 &&  // 1mm to 20mm
+                value[1] >= value[0] && value[1] <= 0.02,
+            message: 'Edge width range must be between 0.001m and 0.02m (1mm to 20mm), with min <= max'
+        },
+        'edges.arrowSize': {
+            validate: (value: number) => value >= 0.005 && value <= 0.05,  // 5mm to 50mm
+            message: 'Arrow size must be between 0.005m and 0.05m (5mm to 50mm)'
         },
         'physics.attractionStrength': {
-            validate: (value: number) => value >= 0 && value <= 2,
-            message: 'Attraction strength must be between 0 and 2'
+            validate: (value: number) => value >= 0 && value <= 0.1,
+            message: 'Attraction strength must be between 0 and 0.1'
         },
         'physics.repulsionStrength': {
             validate: (value: number) => value >= 0 && value <= 2,
             message: 'Repulsion strength must be between 0 and 2'
         },
         'physics.springStrength': {
-            validate: (value: number) => value >= 0 && value <= 2,
-            message: 'Spring strength must be between 0 and 2'
+            validate: (value: number) => value >= 0 && value <= 0.1,
+            message: 'Spring strength must be between 0 and 0.1'
         },
         'physics.repulsionDistance': {
-            validate: (value: number) => value >= 0 && value <= 100,
-            message: 'Repulsion distance must be between 0 and 100'
+            validate: (value: number) => value >= 0.1 && value <= 1.0,  // 10cm to 1m
+            message: 'Repulsion distance must be between 0.1m and 1.0m (10cm to 1m)'
+        },
+        'physics.collisionRadius': {
+            validate: (value: number) => value >= 0.01 && value <= 0.2,  // 1cm to 20cm
+            message: 'Collision radius must be between 0.01m and 0.2m (1cm to 20cm)'
+        },
+        'physics.boundsSize': {
+            validate: (value: number) => value >= 0.1 && value <= 2.0,  // 10cm to 2m
+            message: 'Bounds size must be between 0.1m and 2.0m (10cm to 2m)'
         },
         'physics.massScale': {
             validate: (value: number) => value >= 0 && value <= 10,
@@ -15676,35 +15833,50 @@ const validationRules: Record<string, Record<string, ValidationRule>> = {
             validate: (value: number) => value >= 0 && value <= 1,
             message: 'Boundary damping must be between 0 and 1'
         },
-        'rendering.quality': {
-            validate: (value: string) => ['low', 'medium', 'high'].includes(value),
-            message: 'Quality must be low, medium, or high'
+        'hologram.sphereSizes': {
+            validate: (value: number[]) => 
+                Array.isArray(value) && 
+                value.every(size => size >= 0.02 && size <= 0.5) &&  // 2cm to 50cm
+                value.length >= 1,
+            message: 'Hologram sphere sizes must be between 0.02m and 0.5m (2cm to 50cm)'
         },
-        'rendering.ambientLightIntensity': {
-            validate: (value: number) => value >= 0 && value <= 2,
-            message: 'Ambient light intensity must be between 0 and 2'
+        'hologram.triangleSphereSize': {
+            validate: (value: number) => value >= 0.02 && value <= 0.5,  // 2cm to 50cm
+            message: 'Triangle sphere size must be between 0.02m and 0.5m (2cm to 50cm)'
+        },
+        'hologram.buckminsterSize': {
+            validate: (value: number) => value >= 0 && value <= 0.5,  // 0 to 50cm
+            message: 'Buckminster size must be between 0m and 0.5m (0 to 50cm)'
+        },
+        'hologram.geodesicSize': {
+            validate: (value: number) => value >= 0 && value <= 0.5,  // 0 to 50cm
+            message: 'Geodesic size must be between 0m and 0.5m (0 to 50cm)'
         }
     },
-    'visualization.bloom': {
-        'visualization.bloom.strength': {
-            validate: (value: number) => value >= 0 && value <= 5,
-            message: 'Bloom strength must be between 0 and 5'
+    xr: {
+        'roomScale': {
+            validate: (value: number) => value >= 0.1 && value <= 2.0,
+            message: 'Room scale must be between 0.1 and 2.0 (prefer 1.0 for real-world scale)'
         },
-        'visualization.bloom.radius': {
-            validate: (value: number) => value >= 0 && value <= 3,
-            message: 'Bloom radius must be between 0 and 3'
+        'handPointSize': {
+            validate: (value: number) => value >= 0.001 && value <= 0.02,  // 1mm to 20mm
+            message: 'Hand point size must be between 0.001m and 0.02m (1mm to 20mm)'
         },
-        'visualization.bloom.edge_bloom_strength': {
-            validate: (value: number) => value >= 0 && value <= 5,
-            message: 'Edge bloom strength must be between 0 and 5'
+        'handRayWidth': {
+            validate: (value: number) => value >= 0.001 && value <= 0.01,  // 1mm to 10mm
+            message: 'Hand ray width must be between 0.001m and 0.01m (1mm to 10mm)'
         },
-        'visualization.bloom.node_bloom_strength': {
-            validate: (value: number) => value >= 0 && value <= 5,
-            message: 'Node bloom strength must be between 0 and 5'
+        'interactionRadius': {
+            validate: (value: number) => value >= 0.05 && value <= 0.5,  // 5cm to 50cm
+            message: 'Interaction radius must be between 0.05m and 0.5m (5cm to 50cm)'
         },
-        'visualization.bloom.environment_bloom_strength': {
-            validate: (value: number) => value >= 0 && value <= 5,
-            message: 'Environment bloom strength must be between 0 and 5'
+        'portalSize': {
+            validate: (value: number) => value >= 0.5 && value <= 5.0,  // 50cm to 5m
+            message: 'Portal size must be between 0.5m and 5.0m'
+        },
+        'portalEdgeWidth': {
+            validate: (value: number) => value >= 0.005 && value <= 0.05,  // 5mm to 50mm
+            message: 'Portal edge width must be between 0.005m and 0.05m (5mm to 50mm)'
         }
     }
 };
@@ -15783,27 +15955,29 @@ function validatePhysicsSettings(
 ): void {
     const physics = settings.visualization.physics;
     
-    // Example: Ensure attraction and repulsion strengths are balanced
+    // Ensure attraction and repulsion strengths are balanced
     if (path === 'visualization.physics.attractionStrength' && physics.repulsionStrength) {
         const ratio = value / physics.repulsionStrength;
-        if (ratio > 3 || ratio < 0.33) {
+        if (ratio > 0.2 || ratio < 0.01) {  // Updated for new scale
             errors.push({
                 path,
-                message: 'Attraction and repulsion strengths should be relatively balanced',
+                message: 'Attraction strength should be 1-20% of repulsion strength',
                 value
             });
         }
     }
-    if (path === 'visualization.physics.repulsionDistance' && physics.repulsionStrength) {
-            const ratio = value / physics.repulsionStrength;
-            if (ratio > 50 || ratio < 0.02) {
-                errors.push({
-                    path,
-                    message: 'Repulsion distance and repulsion strength should be relatively balanced. Consider adjusting one or the other.',
-                    value
-                });
-            }
+    
+    // Validate repulsion distance relative to collision radius
+    if (path === 'visualization.physics.repulsionDistance' && physics.collisionRadius) {
+        const ratio = value / physics.collisionRadius;
+        if (ratio < 2 || ratio > 10) {
+            errors.push({
+                path,
+                message: 'Repulsion distance should be 2-10x the collision radius',
+                value
+            });
         }
+    }
 }
 
 function validateRenderingSettings(

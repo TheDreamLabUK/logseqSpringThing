@@ -12,10 +12,15 @@ import { NodeInteractionManager } from './interaction/NodeInteractionManager';
 import { NodeManagerInterface, NodeManagerError, NodeManagerErrorType } from './NodeManagerInterface';
 import { NodeData } from '../../core/types';
 import { XRHandWithHaptics } from '../../types/xr';
-import { platformManager } from '../../platform/platformManager';
 import { createLogger } from '../../core/logger';
 
 const logger = createLogger('NodeManagerFacade');
+
+// Constants for size calculation
+const DEFAULT_FILE_SIZE = 1000; // 1KB default
+const MAX_FILE_SIZE = 10485760; // 10MB max for scaling
+const MIN_NODE_SIZE = 0;
+const MAX_NODE_SIZE = 50;
 
 /**
  * NodeManagerFacade provides a unified interface to the node management system.
@@ -64,6 +69,13 @@ export class NodeManagerFacade implements NodeManagerInterface {
         return NodeManagerFacade.instance;
     }
 
+    private calculateNodeSize(fileSize: number = DEFAULT_FILE_SIZE): number {
+        // Map file size logarithmically to 0-1 range
+        const normalizedSize = Math.log(Math.min(fileSize, MAX_FILE_SIZE)) / Math.log(MAX_FILE_SIZE);
+        // Map to metadata node size range (0-50)
+        return MIN_NODE_SIZE + normalizedSize * (MAX_NODE_SIZE - MIN_NODE_SIZE);
+    }
+
     public setXRMode(enabled: boolean): void {
         if (!this.isInitialized) return;
 
@@ -103,14 +115,6 @@ export class NodeManagerFacade implements NodeManagerInterface {
     public updateNodes(nodes: { id: string, data: NodeData }[]): void {
         if (!this.isInitialized) return;
 
-        // Calculate node size based on file size and mode
-        const calculateNodeSize = (fileSize?: number) => {
-            const baseSize = fileSize ? Math.log2(fileSize + 1) * 0.05 : 0.2;
-            // Use larger size for desktop mode, meter scale for AR
-            const scale = platformManager.isXRMode ? 1.0 : 100.0;
-            return Math.min(0.7 * scale, Math.max(0.2 * scale, baseSize * scale));
-        };
-
         // Track node IDs
         nodes.forEach(node => {
             this.nodeIndices.set(node.id, node.id);
@@ -120,9 +124,7 @@ export class NodeManagerFacade implements NodeManagerInterface {
         // Update instance positions
         this.instanceManager.updateNodePositions(nodes.map(node => ({
             id: node.id,
-            metadata: {
-                nodeSize: calculateNodeSize(node.data.metadata?.fileSize)
-            },
+            metadata: node.data.metadata,
             position: [
                 node.data.position.x,
                 node.data.position.y,
@@ -138,10 +140,8 @@ export class NodeManagerFacade implements NodeManagerInterface {
         // Update metadata for each node
         nodes.forEach(node => {
             if (node.data.metadata) {
-                const nodeSize = calculateNodeSize(node.data.metadata.fileSize);
-                
+                const fileSize = node.data.metadata.fileSize || DEFAULT_FILE_SIZE;
                 logger.debug(`Updating metadata for node ${node.id}`);
-                // Update metadata with calculated node size
                 this.metadataManager.updateMetadata(node.id, {
                     id: node.id,
                     name: node.data.metadata.name || '',
@@ -149,8 +149,8 @@ export class NodeManagerFacade implements NodeManagerInterface {
                     commitAge: 0,
                     hyperlinkCount: node.data.metadata.links?.length || 0,
                     importance: 0,
-                    fileSize: node.data.metadata.fileSize || 0,
-                    nodeSize: nodeSize
+                    fileSize: fileSize,
+                    nodeSize: this.calculateNodeSize(fileSize)
                 });
             }
         });
@@ -170,10 +170,6 @@ export class NodeManagerFacade implements NodeManagerInterface {
             this.instanceManager.updateNodePositions(nodes.map(node => ({
                 id: node.id,
                 position: node.data.position,
-                metadata: {
-                    // Default size with mode-based scaling
-                    nodeSize: platformManager.isXRMode ? 0.2 : 20.0
-                },
                 velocity: node.data.velocity
             })));
         } catch (error) {
@@ -184,7 +180,6 @@ export class NodeManagerFacade implements NodeManagerInterface {
             );
         }
     }
-
 
     /**
      * Handle XR hand interactions
@@ -224,7 +219,6 @@ export class NodeManagerFacade implements NodeManagerInterface {
         } catch (error) {
             logger.error('Error updating metadata positions:', error);
         }
-        
 
         // Update metadata labels
         this.metadataManager.update(this.camera);
@@ -253,7 +247,6 @@ export class NodeManagerFacade implements NodeManagerInterface {
                 error
             );
         }
-        logger.info('NodeManagerFacade disposed');
     }
 
     /**

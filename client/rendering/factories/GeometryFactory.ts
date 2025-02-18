@@ -18,8 +18,12 @@ export class GeometryFactory {
         return GeometryFactory.instance;
     }
 
-    getNodeGeometry(quality: 'low' | 'medium' | 'high', context: 'ar' | 'desktop' = 'desktop', size: number = 40): BufferGeometry {
-        const cacheKey = `node-${quality}-${context}-${size}`;
+    /**
+     * Creates a node geometry with radius 1, which can be scaled by the NodeInstanceManager
+     * to match the desired size from settings.
+     */
+    getNodeGeometry(quality: 'low' | 'medium' | 'high', context: 'ar' | 'desktop' = 'desktop'): BufferGeometry {
+        const cacheKey = `node-${quality}-${context}`;
         if (this.geometryCache.has(cacheKey)) {
             return this.geometryCache.get(cacheKey)!;
         }
@@ -40,15 +44,19 @@ export class GeometryFactory {
             default:
                 detail = context === 'ar' ? 1 : 2;
         }
-        // Use IcosahedronGeometry for better performance while maintaining visual quality
-        // Convert from native units (40-120) to scene scale (0.4-1.2)
-        geometry = new IcosahedronGeometry(size / 80, detail);
+        
+        // Create unit-sized geometry (radius = 1) that will be scaled by NodeInstanceManager
+        geometry = new IcosahedronGeometry(1, detail);
         this.geometryCache.set(cacheKey, geometry);
         return geometry;
     }
 
-    getHologramGeometry(type: string, quality: string, size: number = 40): BufferGeometry {
-        const cacheKey = `hologram-${type}-${quality}-${size}`;
+    /**
+     * Creates a hologram geometry with radius 1, which can be scaled by the HologramManager
+     * to match the desired size from settings.
+     */
+    getHologramGeometry(type: string, quality: string): BufferGeometry {
+        const cacheKey = `hologram-${type}-${quality}`;
         if (this.geometryCache.has(cacheKey)) {
             return this.geometryCache.get(cacheKey)!;
         }
@@ -62,35 +70,41 @@ export class GeometryFactory {
         let geometry: BufferGeometry;
         switch (type) {
             case 'ring':
-                geometry = new TorusGeometry(size, size * 0.05, segments.ring, segments.ring * 2);
+                // Create unit-sized torus (radius = 1) with proportional tube radius
+                geometry = new TorusGeometry(1, 0.05, segments.ring, segments.ring * 2);
                 break;
             case 'triangleSphere':
-                geometry = new IcosahedronGeometry(size, 1); // One subdivision for all spheres
+                // Create unit-sized icosahedron (radius = 1)
+                geometry = new IcosahedronGeometry(1, 1);
                 break;
             default:
-                geometry = new IcosahedronGeometry(size, 1); // Base size
+                // Create unit-sized icosahedron (radius = 1)
+                geometry = new IcosahedronGeometry(1, 1);
         }
 
         this.geometryCache.set(cacheKey, geometry);
         return geometry;
     }
 
+    /**
+     * Creates an edge geometry with radius 1 and height 1, which can be scaled by the EdgeManager
+     * to match the desired width from settings.
+     */
     getEdgeGeometry(context: 'ar' | 'desktop' = 'desktop', quality?: 'low' | 'medium' | 'high'): BufferGeometry {
         const cacheKey = `edge-${context}-${quality || 'medium'}`;
         if (this.geometryCache.has(cacheKey)) {
             return this.geometryCache.get(cacheKey)!;
         }
 
-        // Use CylinderGeometry for more reliable edge rendering
-        const baseRadius = context === 'ar' ? 0.5 : 1.0; // Native units for edge thickness
-        
         // Adjust segments based on quality
         const segments = {
             low: context === 'ar' ? 4 : 5,
             medium: context === 'ar' ? 5 : 6,
             high: context === 'ar' ? 6 : 8
         }[quality || 'medium'];
-        const geometry = new CylinderGeometry(baseRadius, baseRadius, 1, segments);
+
+        // Create unit-sized cylinder (radius = 1, height = 1) that will be scaled by EdgeManager
+        const geometry = new CylinderGeometry(1, 1, 1, segments);
         
         // Rotate 90 degrees to align with Z-axis
         geometry.rotateX(Math.PI / 2);
