@@ -31,15 +31,15 @@ impl GraphService {
         tokio::spawn(async move {
             let params = SimulationParams {
                 iterations: 1,  // One iteration per frame
-                spring_strength: 0.5,            // Moderate spring force
-                repulsion: 700.0,                // Strong repulsion for good spacing
-                damping: 0.95,                   // High damping for stability
-                max_repulsion_distance: 1000.0,  // Large repulsion range
-                viewport_bounds: 1000.0,         // Reasonable bounds size
+                spring_strength: 5.0,            // Strong spring force for tight clustering
+                repulsion: 0.05,                 // Minimal repulsion
+                damping: 0.98,                   // Very high damping for stability
+                max_repulsion_distance: 0.1,     // Small repulsion range
+                viewport_bounds: 1.0,            // Small bounds for tight clustering
                 mass_scale: 1.0,                 // Default mass scaling
-                boundary_damping: 0.9,           // Strong boundary damping
+                boundary_damping: 0.95,          // Strong boundary damping
                 enable_bounds: true,             // Enable bounds by default
-                time_step: 0.1,                  // Match dt in CPU layout
+                time_step: 0.01,                 // Smaller timestep for stability
                 phase: SimulationPhase::Dynamic,
                 mode: SimulationMode::Remote,    // Force GPU-accelerated computation
             };
@@ -210,7 +210,7 @@ impl GraphService {
     fn initialize_random_positions(graph: &mut GraphData) {
         let mut rng = rand::thread_rng();
         let node_count = graph.nodes.len() as f32;
-        let initial_radius = 100.0; // Larger initial radius
+        let initial_radius = 0.5; // Half of viewport bounds
         let golden_ratio = (1.0 + 5.0_f32.sqrt()) / 2.0;
         
         // Use Fibonacci sphere distribution for more uniform initial positions
@@ -275,9 +275,9 @@ impl GraphService {
     }
 
     fn calculate_layout_cpu(graph: &mut GraphData, iterations: u32, spring_strength: f32, damping: f32) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        let repulsion_strength = 700.0; // Match CUDA implementation
-        let max_repulsion_distance = 1000.0; // Match CUDA implementation
-        let bounds = 1000.0; // Match viewport_bounds
+        let repulsion_strength = 0.05; // Match CUDA implementation
+        let max_repulsion_distance = 0.1; // Match CUDA implementation
+        let bounds = 1.0; // Match viewport_bounds
         let min_distance = 0.1; // Minimum distance to prevent division by zero
         
         for _ in 0..iterations {

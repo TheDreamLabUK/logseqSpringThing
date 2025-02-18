@@ -55,16 +55,16 @@ const validationRules: Record<string, Record<string, ValidationRule>> = {
             message: 'Arrow size must be between 0.005m and 0.05m (5mm to 50mm)'
         },
         'physics.attractionStrength': {
-            validate: (value: number) => value >= 0 && value <= 0.05,
-            message: 'Attraction strength must be between 0 and 5cm/s²'
+            validate: (value: number) => value >= 0 && value <= 1.0,
+            message: 'Attraction strength must be between 0 and 100cm/s²'
         },
         'physics.repulsionStrength': {
-            validate: (value: number) => value >= 0 && value <= 0.2,
-            message: 'Repulsion strength must be between 0 and 20cm/s² (before 1/d² falloff)'
+            validate: (value: number) => value >= 0 && value <= 0.5,
+            message: 'Repulsion strength must be between 0 and 50cm/s² (before 1/d² falloff)'
         },
         'physics.springStrength': {
-            validate: (value: number) => value >= 0 && value <= 0.1,
-            message: 'Spring strength must be between 0 and 10cm/s² per meter'
+            validate: (value: number) => value >= 0 && value <= 1.0,
+            message: 'Spring strength must be between 0 and 100cm/s² per meter'
         },
         'physics.repulsionDistance': {
             validate: (value: number) => value >= 0.2 && value <= 1.0,  // 20cm to 1m
@@ -207,18 +207,6 @@ function validatePhysicsSettings(
     errors: ValidationError[]
 ): void {
     const physics = settings.visualization.physics;
-    
-    // Ensure attraction and repulsion strengths are balanced
-    if (path === 'visualization.physics.attractionStrength' && physics.repulsionStrength) {
-        const ratio = value / physics.repulsionStrength;
-        if (ratio > 0.2 || ratio < 0.05) {  // Keep attraction 5-20% of repulsion
-            errors.push({
-                path,
-                message: 'Attraction strength should be 5-20% of repulsion strength (due to quadratic falloff)',
-                value
-            });
-        }
-    }
     
     // Validate repulsion distance relative to collision radius
     if (path === 'visualization.physics.repulsionDistance' && physics.collisionRadius) {
