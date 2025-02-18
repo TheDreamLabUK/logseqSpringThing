@@ -23,17 +23,17 @@ visualization:
     - 0.01
     quality: high
   physics:
-    attraction_strength: 0.02
-    bounds_size: 0.5
-    collision_radius: 0.1
-    damping: 0.85
+    attraction_strength: 0.01
+    bounds_size: 2.0
+    collision_radius: 0.05
+    damping: 0.95
     enable_bounds: true
     enabled: true
     iterations: 100
-    max_velocity: 0.2
-    repulsion_strength: 0.05
-    spring_strength: 0.08
-    repulsion_distance: 0.2
+    max_velocity: 0.1
+    repulsion_strength: 0.1
+    spring_strength: 0.05
+    repulsion_distance: 0.5
     mass_scale: 1.0
     boundary_damping: 0.9
   rendering:

@@ -35,17 +35,17 @@ export const defaultSettings: Settings = {
         physics: {
             enabled: true,
             iterations: 100,              // Balanced for performance and stability
-            attractionStrength: 0.02,     // Balanced with quadratic repulsion
-            repulsionStrength: 0.05,      // Reduced due to quadratic distance falloff
-            repulsionDistance: 0.2,       // 20cm for tighter layout
-            springStrength: 0.08,         // Linear spring force for edge following
-            damping: 0.85,                // Balanced damping for stability
-            maxVelocity: 0.2,             // 20cm/s maximum velocity
-            collisionRadius: 0.1,         // 10cm collision detection radius
+            attractionStrength: 0.01,     // 1cm/s² base attraction
+            repulsionStrength: 0.1,       // Base repulsion (with 1/d² falloff)
+            repulsionDistance: 0.5,       // 50cm repulsion range
+            springStrength: 0.05,         // 5cm/s² per meter of stretch
+            damping: 0.95,                // 95% velocity retention
+            maxVelocity: 0.1,             // 10cm/s maximum
+            collisionRadius: 0.05,        // 5cm collision radius
             massScale: 1.0,               // Default mass scaling
-            boundaryDamping: 0.9,         // Strong boundary damping
+            boundaryDamping: 0.9,         // 90% velocity retention at bounds
             enableBounds: true,           // Enable bounds by default
-            boundsSize: 0.5               // 50cm cube for better spacing
+            boundsSize: 2.0               // 2m bounds (4m cube)
         },
         rendering: {
             ambientLightIntensity: 0.2,

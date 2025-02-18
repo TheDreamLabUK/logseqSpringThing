@@ -1,12 +1,12 @@
-// Physics parameter ranges and defaults based on GPU-accelerated implementations
+// Physics parameter ranges and defaults in base units (meters, m/s)
 export const PHYSICS_CONSTANTS = {
-    // Attraction force (cohesion between nodes)
+    // Attraction force (supplementary cohesion)
     ATTRACTION: {
         MIN: 0.001,
-        MAX: 0.1,
-        DEFAULT: 0.02,  // Balanced with quadratic repulsion
+        MAX: 0.05,
+        DEFAULT: 0.01,  // 1cm/s² base attraction
         RECOMMENDED_RANGE: {
-            MIN: 0.01,
+            MIN: 0.005,
             MAX: 0.05
         }
     },
@@ -14,76 +14,77 @@ export const PHYSICS_CONSTANTS = {
     // Repulsion force (separation between nodes)
     REPULSION: {
         MIN: 0.1,
-        MAX: 0.5,
-        DEFAULT: 0.05,  // Reduced due to quadratic distance falloff
-        RECOMMENDED_RANGE: {
-            MIN: 0.03,
-            MAX: 0.1
-        }
-    },
-
-    // Spring force (edge elasticity)
-    SPRING: {
-        MIN: 0.001,
-        MAX: 0.15,
-        DEFAULT: 0.08,  // Linear spring force for edge following
-        RECOMMENDED_RANGE: {
-            MIN: 0.05,
-            MAX: 0.12
-        }
-    },
-
-    // Damping (velocity decay)
-    DAMPING: {
-        MIN: 0.5,
-        MAX: 0.95,
-        DEFAULT: 0.85,  // Balanced for CUDA implementation
-        RECOMMENDED_RANGE: {
-            MIN: 0.85,
-            MAX: 0.92
-        }
-    },
-
-    // Simulation iterations
-    ITERATIONS: {
-        MIN: 1,
-        MAX: 1000,
-        DEFAULT: 100,  // Balanced for performance
-        RECOMMENDED_RANGE: {
-            MIN: 50,
-            MAX: 200
-        }
-    },
-
-    // Maximum velocity
-    MAX_VELOCITY: {
-        MIN: 0.1,
-        MAX: 5.0,
-        DEFAULT: 0.2,  // 20cm/s maximum velocity
-        RECOMMENDED_RANGE: {
-            MIN: 0.1,
-            MAX: 0.3
-        }
-    },
-
-    // Additional physics parameters
-    COLLISION_RADIUS: {
-        MIN: 0.1,
-        MAX: 1.0,
-        DEFAULT: 0.1,  // 10cm radius
+        MAX: 0.2,
+        DEFAULT: 0.1,  // Base repulsion (with 1/d² falloff)
         RECOMMENDED_RANGE: {
             MIN: 0.05,
             MAX: 0.15
         }
     },
 
-    BOUNDS_SIZE: {
-        MIN: 0.1,
-        MAX: 2.0,
-        DEFAULT: 0.5,  // 50cm bounds
+    // Spring force (linear with distance)
+    SPRING: {
+        MIN: 0.001,
+        MAX: 0.1,
+        DEFAULT: 0.05,  // 5cm/s² per meter of stretch
         RECOMMENDED_RANGE: {
-            MIN: 0.3,
-            MAX: 1.0
+            MIN: 0.02,
+            MAX: 0.08
+        }
+    },
+
+    // Damping (unitless, fraction of velocity retained)
+    DAMPING: {
+        MIN: 0.5,
+        MAX: 0.95,
+        DEFAULT: 0.95,  // 95% velocity retention
+        RECOMMENDED_RANGE: {
+            MIN: 0.9,
+            MAX: 0.98
+        }
+    },
+
+    // Simulation iterations per frame
+    ITERATIONS: {
+        MIN: 1,
+        MAX: 200,
+        DEFAULT: 100,  // Balance of stability and performance
+        RECOMMENDED_RANGE: {
+            MIN: 50,
+            MAX: 150
+        }
+    },
+
+    // Maximum velocity (meters per second)
+    MAX_VELOCITY: {
+        MIN: 0.01,
+        MAX: 0.5,
+        DEFAULT: 0.1,  // 10cm/s maximum
+        RECOMMENDED_RANGE: {
+            MIN: 0.05,
+            MAX: 0.2
+        }
+    },
+
+    // Collision radius (meters)
+    COLLISION_RADIUS: {
+        MIN: 0.01,
+        MAX: 0.2,
+        DEFAULT: 0.05,  // 5cm radius
+        RECOMMENDED_RANGE: {
+            MIN: 0.03,
+            MAX: 0.1
+        }
+    },
+
+    // Bounds size (meters, half-width of cubic bounds)
+    BOUNDS_SIZE: {
+        MIN: 0.5,
+        MAX: 5.0,
+        DEFAULT: 2.0,  // 2m bounds (4m cube)
+        RECOMMENDED_RANGE: {
+            MIN: 1.0,
+            MAX: 3.0
         }
     }
 };

@@ -55,28 +55,28 @@ const validationRules: Record<string, Record<string, ValidationRule>> = {
             message: 'Arrow size must be between 0.005m and 0.05m (5mm to 50mm)'
         },
         'physics.attractionStrength': {
-            validate: (value: number) => value >= 0 && value <= 0.2,
-            message: 'Attraction strength must be between 0 and 0.2'
+            validate: (value: number) => value >= 0 && value <= 0.05,
+            message: 'Attraction strength must be between 0 and 5cm/s²'
         },
         'physics.repulsionStrength': {
-            validate: (value: number) => value >= 0 && value <= 2,
-            message: 'Repulsion strength must be between 0 and 2'
+            validate: (value: number) => value >= 0 && value <= 0.2,
+            message: 'Repulsion strength must be between 0 and 20cm/s² (before 1/d² falloff)'
         },
         'physics.springStrength': {
             validate: (value: number) => value >= 0 && value <= 0.1,
-            message: 'Spring strength must be between 0 and 0.2'
+            message: 'Spring strength must be between 0 and 10cm/s² per meter'
         },
         'physics.repulsionDistance': {
-            validate: (value: number) => value >= 0.1 && value <= 1.0,  // 10cm to 1m
-            message: 'Repulsion distance must be between 0.1m and 1.0m (10cm to 1m)'
+            validate: (value: number) => value >= 0.2 && value <= 1.0,  // 20cm to 1m
+            message: 'Repulsion distance must be between 20cm and 1m'
         },
         'physics.collisionRadius': {
             validate: (value: number) => value >= 0.01 && value <= 0.2,  // 1cm to 20cm
-            message: 'Collision radius must be between 0.01m and 0.2m (1cm to 20cm)'
+            message: 'Collision radius must be between 1cm and 20cm'
         },
         'physics.boundsSize': {
-            validate: (value: number) => value >= 0.1 && value <= 2.0,  // 10cm to 2m
-            message: 'Bounds size must be between 0.1m and 2.0m (10cm to 2m)'
+            validate: (value: number) => value >= 0.5 && value <= 5.0,  // 50cm to 5m
+            message: 'Bounds size (half-width) must be between 50cm and 5m'
         },
         'physics.massScale': {
             validate: (value: number) => value >= 0 && value <= 10,
@@ -84,7 +84,7 @@ const validationRules: Record<string, Record<string, ValidationRule>> = {
         },
         'physics.boundaryDamping': {
             validate: (value: number) => value >= 0 && value <= 1,
-            message: 'Boundary damping must be between 0 and 1'
+            message: 'Boundary damping (velocity retention) must be between 0% and 100%'
         },
         'hologram.sphereSizes': {
             validate: (value: number[]) => 
@@ -211,10 +211,10 @@ function validatePhysicsSettings(
     // Ensure attraction and repulsion strengths are balanced
     if (path === 'visualization.physics.attractionStrength' && physics.repulsionStrength) {
         const ratio = value / physics.repulsionStrength;
-        if (ratio > 0.5 || ratio < 0.1) {  // Allow stronger attraction relative to repulsion
+        if (ratio > 0.2 || ratio < 0.05) {  // Keep attraction 5-20% of repulsion
             errors.push({
                 path,
-                message: 'Attraction strength should be 10-50% of repulsion strength',
+                message: 'Attraction strength should be 5-20% of repulsion strength (due to quadratic falloff)',
                 value
             });
         }
@@ -223,10 +223,10 @@ function validatePhysicsSettings(
     // Validate repulsion distance relative to collision radius
     if (path === 'visualization.physics.repulsionDistance' && physics.collisionRadius) {
         const ratio = value / physics.collisionRadius;
-        if (ratio < 2 || ratio > 10) {
+        if (ratio < 4 || ratio > 10) {
             errors.push({
                 path,
-                message: 'Repulsion distance should be 2-10x the collision radius',
+                message: 'Repulsion distance should be 4-10x the collision radius for stable spacing',
                 value
             });
         }
