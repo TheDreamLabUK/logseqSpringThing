@@ -3,33 +3,33 @@ export const PHYSICS_CONSTANTS = {
     // Attraction force (cohesion between nodes)
     ATTRACTION: {
         MIN: 0.001,
-        MAX: 0.2,
-        DEFAULT: 0.1,  // Balanced for CUDA implementation
+        MAX: 0.1,
+        DEFAULT: 0.02,  // Balanced with quadratic repulsion
         RECOMMENDED_RANGE: {
-            MIN: 0.05,
-            MAX: 0.15
+            MIN: 0.01,
+            MAX: 0.05
         }
     },
 
     // Repulsion force (separation between nodes)
     REPULSION: {
         MIN: 0.1,
-        MAX: 2.0,
-        DEFAULT: 0.3,  // Balanced for CUDA implementation
+        MAX: 0.5,
+        DEFAULT: 0.05,  // Reduced due to quadratic distance falloff
         RECOMMENDED_RANGE: {
-            MIN: 0.2,
-            MAX: 0.5
+            MIN: 0.03,
+            MAX: 0.1
         }
     },
 
     // Spring force (edge elasticity)
     SPRING: {
         MIN: 0.001,
-        MAX: 0.2,
-        DEFAULT: 0.15,  // Balanced for CUDA implementation
+        MAX: 0.15,
+        DEFAULT: 0.08,  // Linear spring force for edge following
         RECOMMENDED_RANGE: {
-            MIN: 0.1,
-            MAX: 0.2
+            MIN: 0.05,
+            MAX: 0.12
         }
     },
 
@@ -59,10 +59,10 @@ export const PHYSICS_CONSTANTS = {
     MAX_VELOCITY: {
         MIN: 0.1,
         MAX: 5.0,
-        DEFAULT: 0.4,  // In meters per second
+        DEFAULT: 0.2,  // 20cm/s maximum velocity
         RECOMMENDED_RANGE: {
-            MIN: 0.2,
-            MAX: 0.6
+            MIN: 0.1,
+            MAX: 0.3
         }
     },
 
@@ -70,7 +70,7 @@ export const PHYSICS_CONSTANTS = {
     COLLISION_RADIUS: {
         MIN: 0.1,
         MAX: 1.0,
-        DEFAULT: 0.1,  // 10cm collision radius
+        DEFAULT: 0.1,  // 10cm radius
         RECOMMENDED_RANGE: {
             MIN: 0.05,
             MAX: 0.15
@@ -83,7 +83,7 @@ export const PHYSICS_CONSTANTS = {
         DEFAULT: 0.5,  // 50cm bounds
         RECOMMENDED_RANGE: {
             MIN: 0.3,
-            MAX: 0.7
+            MAX: 1.0
         }
     }
 };
