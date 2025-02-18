@@ -23,19 +23,19 @@ visualization:
     - 0.01
     quality: high
   physics:
-    attraction_strength: 5.0
+    attraction_strength: 0.05
     bounds_size: 1.0
     collision_radius: 0.05
-    damping: 0.99
+    damping: 0.95
     enable_bounds: true
     enabled: true
-    iterations: 200
-    max_velocity: 0.2
-    repulsion_strength: 0.01
-    spring_strength: 10.0
-    repulsion_distance: 0.1
+    iterations: 100
+    max_velocity: 0.5
+    repulsion_strength: 0.1
+    spring_strength: 10
+    repulsion_distance: 1.0
     mass_scale: 1.0
-    boundary_damping: 0.98
+    boundary_damping: 0.95
   rendering:
     ambient_light_intensity: 0.41
     background_color: '#1a1a2e'

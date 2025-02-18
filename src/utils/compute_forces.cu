@@ -100,36 +100,19 @@ extern "C" __global__ void compute_forces(
             // Calculate bounded repulsion force
             float force_mag = 0.0f;
             if (dist < max_repulsion_distance) {
-                // Smooth falloff near max distance
-                float falloff = 1.0f - (dist / max_repulsion_distance);
-                falloff = falloff * falloff; // Quadratic falloff
-                
-                // Mass-weighted repulsion
-                float effective_mass = sqrtf(mass_i * mass_j); // Geometric mean of masses
-                float repulsion_force = repulsion * effective_mass * falloff / (dist * dist);
-                force_mag -= repulsion_force; // Repulsion pushes nodes apart
-                
-                if (idx == 0 && j == 0) {
-                    printf("Node 0: repulsion_force=%f\n", repulsion_force);
-                }
+                // Direct mass product for repulsion
+                force_mag = -repulsion * mass_i * mass_j / (dist * dist);
             }
 
             // Add spring force if nodes are connected (check flags)
             if ((node_i.flags & 0x2) && (nodes[tile * blockDim.x + j].flags & 0x2)) {
-                // Mass-weighted spring force
-                float rest_length = 0.05f * (mass_i + mass_j); // Further reduced rest length
+                // Simple spring force with fixed rest length
+                float rest_length = 1.0f; // Fixed rest length for all edges
                 float spring_force = spring_strength * (dist - rest_length);
-                
-                // Scale by geometric mean of masses and add weight influence
-                float mass_factor = sqrtf(mass_i * mass_j);
-                float weight_factor = 1.0f + mass_factor; // Stronger springs for heavier nodes
-                spring_force *= weight_factor;
-                
-                force_mag += spring_force; // Spring pulls nodes together
+                force_mag += spring_force;
                 
                 if (idx == 0 && j == 0) {
-                    printf("Node 0: spring_force=%f, mass_factor=%f, weight_factor=%f\n",
-                           spring_force, mass_factor, weight_factor);
+                    printf("Node 0: spring_force=%f\n", spring_force);
                 }
             }
 
@@ -137,10 +120,12 @@ extern "C" __global__ void compute_forces(
             Vec3 force_dir = diff.normalized();
             force = force + force_dir * force_mag;
             
-            // Add stronger mass-dependent inertial damping
+            // Add mass-dependent momentum damping (file size affects movement)
             float velocity_alignment = node_i.velocity.dot(force_dir);
-            if (velocity_alignment > 0)
-                force = force + force_dir * (-velocity_alignment * mass_i * 0.2f);
+            if (velocity_alignment > 0) {
+                float momentum_damping = -velocity_alignment * mass_i * 0.1f;
+                force = force + force_dir * momentum_damping;
+            }
         }
         __syncthreads();
     }
