@@ -39,7 +39,7 @@ export class HologramManager {
         this.scene.add(this.group);
 
         // Subscribe to settings changes
-        this.settingsStore.subscribe('visualization.hologram', (path: string, settings: any) => {
+        this.settingsStore.subscribe('visualization.hologram', (_path: string, settings: any) => {
             if (settings && typeof settings === 'object') {
                 this.settings = {
                     ...this.settings,

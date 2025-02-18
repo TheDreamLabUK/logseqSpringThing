@@ -55,8 +55,8 @@ const validationRules: Record<string, Record<string, ValidationRule>> = {
             message: 'Arrow size must be between 0.005m and 0.05m (5mm to 50mm)'
         },
         'physics.attractionStrength': {
-            validate: (value: number) => value >= 0 && value <= 0.1,
-            message: 'Attraction strength must be between 0 and 0.1'
+            validate: (value: number) => value >= 0 && value <= 0.2,
+            message: 'Attraction strength must be between 0 and 0.2'
         },
         'physics.repulsionStrength': {
             validate: (value: number) => value >= 0 && value <= 2,
@@ -64,7 +64,7 @@ const validationRules: Record<string, Record<string, ValidationRule>> = {
         },
         'physics.springStrength': {
             validate: (value: number) => value >= 0 && value <= 0.1,
-            message: 'Spring strength must be between 0 and 0.1'
+            message: 'Spring strength must be between 0 and 0.2'
         },
         'physics.repulsionDistance': {
             validate: (value: number) => value >= 0.1 && value <= 1.0,  // 10cm to 1m
@@ -211,10 +211,10 @@ function validatePhysicsSettings(
     // Ensure attraction and repulsion strengths are balanced
     if (path === 'visualization.physics.attractionStrength' && physics.repulsionStrength) {
         const ratio = value / physics.repulsionStrength;
-        if (ratio > 0.2 || ratio < 0.01) {  // Updated for new scale
+        if (ratio > 0.5 || ratio < 0.1) {  // Allow stronger attraction relative to repulsion
             errors.push({
                 path,
-                message: 'Attraction strength should be 1-20% of repulsion strength',
+                message: 'Attraction strength should be 10-50% of repulsion strength',
                 value
             });
         }

@@ -51,12 +51,22 @@ export class EdgeManager {
                 this.handleSettingsUpdate(this.settings);
                 this.updateAllEdgeGeometries();
             }
-        const width = this.getEdgeWidth(); // Width in meters from settings
-        
+        });
+    }
+
+    private getEdgeWidth(): number {
+        return this.settings.visualization.edges.baseWidth || 0.005; // Default width in meters (5mm)
+    }
+
+    private createEdgeGeometry(source: Vector3, target: Vector3): BufferGeometry {
+        const geometry = new BufferGeometry();
+        const direction = new Vector3().subVectors(target, source).normalize();
+        const width = this.getEdgeWidth();
+
         // Calculate perpendicular vector for width
         const up = new Vector3(0, 1, 0);
         const right = new Vector3().crossVectors(direction, up).normalize().multiplyScalar(width / 2);
-        
+
         // Create vertices for a thin rectangular prism along the edge
         const vertices = new Float32Array([
             // Front face
@@ -66,12 +76,12 @@ export class EdgeManager {
             target.x - right.x, target.y - right.y, target.z - right.z,
             
             // Back face (slightly offset)
-            source.x - right.x, source.y - right.y, source.z - right.z + width, // Use width for offset
+            source.x - right.x, source.y - right.y, source.z - right.z + width,
             source.x + right.x, source.y + right.y, source.z + right.z + width,
             target.x + right.x, target.y + right.y, target.z + right.z + width,
             target.x - right.x, target.y - right.y, target.z - right.z + width
         ]);
-        
+
         // Create indices for both faces
         const indices = new Uint16Array([
             // Front face
@@ -90,10 +100,10 @@ export class EdgeManager {
             3, 7, 0,
             0, 7, 4
         ]);
-        
+
         geometry.setAttribute('position', new BufferAttribute(vertices, 3));
         geometry.setIndex(new BufferAttribute(indices, 1));
-        
+
         // Calculate normals for proper lighting
         const normals = new Float32Array(vertices.length);
         for (let i = 0; i < vertices.length; i += 3) {
@@ -103,7 +113,7 @@ export class EdgeManager {
             normals[i + 2] = right.z;
         }
         geometry.setAttribute('normal', new BufferAttribute(normals, 3));
-        
+
         return geometry;
     }
 

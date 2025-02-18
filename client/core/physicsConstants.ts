@@ -3,33 +3,33 @@ export const PHYSICS_CONSTANTS = {
     // Attraction force (cohesion between nodes)
     ATTRACTION: {
         MIN: 0.001,
-        MAX: 1.0,
-        DEFAULT: 0.015,  // Proven stable in Rust backend
+        MAX: 0.2,
+        DEFAULT: 0.1,  // Balanced for CUDA implementation
         RECOMMENDED_RANGE: {
-            MIN: 0.01,
-            MAX: 0.05
+            MIN: 0.05,
+            MAX: 0.15
         }
     },
 
     // Repulsion force (separation between nodes)
     REPULSION: {
-        MIN: 1.0,
-        MAX: 10000.0,
-        DEFAULT: 1500.0,  // Proven stable in Rust backend
+        MIN: 0.1,
+        MAX: 2.0,
+        DEFAULT: 0.3,  // Balanced for CUDA implementation
         RECOMMENDED_RANGE: {
-            MIN: 1000.0,
-            MAX: 2000.0
+            MIN: 0.2,
+            MAX: 0.5
         }
     },
 
     // Spring force (edge elasticity)
     SPRING: {
         MIN: 0.001,
-        MAX: 1.0,
-        DEFAULT: 0.018,  // Proven stable in Rust backend
+        MAX: 0.2,
+        DEFAULT: 0.15,  // Balanced for CUDA implementation
         RECOMMENDED_RANGE: {
-            MIN: 0.01,
-            MAX: 0.05
+            MIN: 0.1,
+            MAX: 0.2
         }
     },
 
@@ -37,7 +37,7 @@ export const PHYSICS_CONSTANTS = {
     DAMPING: {
         MIN: 0.5,
         MAX: 0.95,
-        DEFAULT: 0.88,  // Proven stable in Rust backend
+        DEFAULT: 0.85,  // Balanced for CUDA implementation
         RECOMMENDED_RANGE: {
             MIN: 0.85,
             MAX: 0.92
@@ -48,10 +48,10 @@ export const PHYSICS_CONSTANTS = {
     ITERATIONS: {
         MIN: 1,
         MAX: 1000,
-        DEFAULT: 500,  // Proven stable in Rust backend
+        DEFAULT: 100,  // Balanced for performance
         RECOMMENDED_RANGE: {
-            MIN: 200,
-            MAX: 600
+            MIN: 50,
+            MAX: 200
         }
     },
 
@@ -59,10 +59,10 @@ export const PHYSICS_CONSTANTS = {
     MAX_VELOCITY: {
         MIN: 0.1,
         MAX: 5.0,
-        DEFAULT: 2.5,  // Proven stable in Rust backend
+        DEFAULT: 0.4,  // In meters per second
         RECOMMENDED_RANGE: {
-            MIN: 1.0,
-            MAX: 3.0
+            MIN: 0.2,
+            MAX: 0.6
         }
     },
 
@@ -70,20 +70,20 @@ export const PHYSICS_CONSTANTS = {
     COLLISION_RADIUS: {
         MIN: 0.1,
         MAX: 1.0,
-        DEFAULT: 0.25,
+        DEFAULT: 0.1,  // 10cm collision radius
         RECOMMENDED_RANGE: {
-            MIN: 0.2,
-            MAX: 0.4
+            MIN: 0.05,
+            MAX: 0.15
         }
     },
 
     BOUNDS_SIZE: {
-        MIN: 5.0,
-        MAX: 50.0,
-        DEFAULT: 12.0,
+        MIN: 0.1,
+        MAX: 2.0,
+        DEFAULT: 0.5,  // 50cm bounds
         RECOMMENDED_RANGE: {
-            MIN: 10.0,
-            MAX: 15.0
+            MIN: 0.3,
+            MAX: 0.7
         }
     }
 };

@@ -35,17 +35,17 @@ export const defaultSettings: Settings = {
         physics: {
             enabled: true,
             iterations: 100,              // Balanced for performance and stability
-            attractionStrength: 0.02,     // Moderate attraction for connected nodes
-            repulsionStrength: 0.7,       // Moderate repulsion for good spacing
-            repulsionDistance: 0.5,       // 50cm for initial layout
-            springStrength: 0.02,         // Moderate spring force for stability
-            damping: 0.88,                // Higher damping for stability
+            attractionStrength: 0.1,      // Stronger attraction for better cohesion
+            repulsionStrength: 0.3,       // Reduced repulsion to prevent spreading
+            repulsionDistance: 0.3,       // 30cm for tighter layout
+            springStrength: 0.15,         // Increased spring force for edge following
+            damping: 0.85,                // Balanced damping for stability
             maxVelocity: 0.4,             // 40cm/s maximum velocity
             collisionRadius: 0.1,         // 10cm collision detection radius
             massScale: 1.0,               // Default mass scaling
-            boundaryDamping: 0.5,         // Moderate boundary damping
+            boundaryDamping: 0.7,         // Increased boundary damping
             enableBounds: true,           // Enable bounds by default
-            boundsSize: 0.33              // 33cm cube (matches settings.yaml)
+            boundsSize: 0.5               // 50cm cube for better spacing
         },
         rendering: {
             ambientLightIntensity: 0.2,
