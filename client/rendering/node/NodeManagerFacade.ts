@@ -12,6 +12,7 @@ import { NodeInteractionManager } from './interaction/NodeInteractionManager';
 import { NodeManagerInterface, NodeManagerError, NodeManagerErrorType } from './NodeManagerInterface';
 import { NodeData } from '../../core/types';
 import { XRHandWithHaptics } from '../../types/xr';
+import { platformManager } from '../../platform/platformManager';
 import { createLogger } from '../../core/logger';
 
 const logger = createLogger('NodeManagerFacade');
@@ -102,8 +103,13 @@ export class NodeManagerFacade implements NodeManagerInterface {
     public updateNodes(nodes: { id: string, data: NodeData }[]): void {
         if (!this.isInitialized) return;
 
-        const calculateNodeSize = (fileSize?: number) => 
-            fileSize ? Math.min(700, Math.max(200, Math.log2(fileSize + 1) * 50)) : 200;
+        // Calculate node size based on file size and mode
+        const calculateNodeSize = (fileSize?: number) => {
+            const baseSize = fileSize ? Math.log2(fileSize + 1) * 0.05 : 0.2;
+            // Use larger size for desktop mode, meter scale for AR
+            const scale = platformManager.isXRMode ? 1.0 : 100.0;
+            return Math.min(0.7 * scale, Math.max(0.2 * scale, baseSize * scale));
+        };
 
         // Track node IDs
         nodes.forEach(node => {
@@ -165,7 +171,8 @@ export class NodeManagerFacade implements NodeManagerInterface {
                 id: node.id,
                 position: node.data.position,
                 metadata: {
-                    nodeSize: 200 // Default size for position-only updates
+                    // Default size with mode-based scaling
+                    nodeSize: platformManager.isXRMode ? 0.2 : 20.0
                 },
                 velocity: node.data.velocity
             })));

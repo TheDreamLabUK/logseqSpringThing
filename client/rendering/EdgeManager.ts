@@ -41,7 +41,7 @@ export class EdgeManager {
         
         // Calculate direction and create vertices directly in world space
         const direction = new Vector3().subVectors(target, source);
-        const width = this.settings.visualization.edges.baseWidth * 0.1;
+        const width = this.settings.visualization.edges.baseWidth * 0.001; // Convert mm to meters
         
         // Calculate perpendicular vector for width
         const up = new Vector3(0, 1, 0);
@@ -56,10 +56,10 @@ export class EdgeManager {
             target.x - right.x, target.y - right.y, target.z - right.z,
             
             // Back face (slightly offset)
-            source.x - right.x, source.y - right.y, source.z - right.z + 0.001,
-            source.x + right.x, source.y + right.y, source.z + right.z + 0.001,
-            target.x + right.x, target.y + right.y, target.z + right.z + 0.001,
-            target.x - right.x, target.y - right.y, target.z - right.z + 0.001
+            source.x - right.x, source.y - right.y, source.z - right.z + 0.0001, // Reduced offset to 0.1mm
+            source.x + right.x, source.y + right.y, source.z + right.z + 0.0001,
+            target.x + right.x, target.y + right.y, target.z + right.z + 0.0001,
+            target.x - right.x, target.y - right.y, target.z - right.z + 0.0001
         ]);
         
         // Create indices for both faces

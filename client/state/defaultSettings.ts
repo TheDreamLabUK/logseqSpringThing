@@ -7,7 +7,7 @@ export const defaultSettings: Settings = {
             metalness: 0.8,
             opacity: 1.0,
             roughness: 0.2,
-            sizeRange: [200, 700],
+            sizeRange: [0.2, 0.7], // In meters
             quality: 'medium',
             enableInstancing: true,
             enableHologram: true,
@@ -37,7 +37,7 @@ export const defaultSettings: Settings = {
             iterations: 100,                // Balanced for performance and stability
             attractionStrength: 0.015,        // Moderate attraction for connected nodes
             repulsionStrength: 1500.0,       // Strong repulsion for good spacing
-            repulsionDistance: 50.0,      // Large enough for initial layout
+            repulsionDistance: 0.5,      // In meters (0.5m) for initial layout
             springStrength: 0.018,            // Moderate spring force for stability
             damping: 0.88,                   // Higher damping for stability
             maxVelocity: 2.5,               // Moderate velocity limit
@@ -45,7 +45,7 @@ export const defaultSettings: Settings = {
             massScale: 1.0,                 // Default mass scaling
             boundaryDamping: 0.5,           // Strong boundary damping to prevent oscillation
             enableBounds: true,             // Enable bounds by default
-            boundsSize: 1000.0              // Large enough for typical graphs
+            boundsSize: 10.0                // In meters (10m cube)
         },
         rendering: {
             ambientLightIntensity: 0.2,
@@ -90,18 +90,18 @@ export const defaultSettings: Settings = {
         },
         hologram: {
             ringCount: 2,
-            sphereSizes: [40, 80],
+            sphereSizes: [0.04, 0.08],      // In meters
             ringRotationSpeed: 1.0,
             ringColor: '#00ffff',
             ringOpacity: 0.6,
             enableBuckminster: false,
             enableGeodesic: false,
-            buckminsterSize: 0,
+            buckminsterSize: 0.0,           // In meters
             buckminsterOpacity: 0,
-            geodesicSize: 0,
+            geodesicSize: 0.0,              // In meters
             geodesicOpacity: 0,
             enableTriangleSphere: true,
-            triangleSphereSize: 80,
+            triangleSphereSize: 0.08,       // In meters
             triangleSphereOpacity: 0.15,
             globalRotationSpeed: 0.03
         }
@@ -127,7 +127,7 @@ export const defaultSettings: Settings = {
     },
     xr: {
         mode: 'immersive-vr',
-        roomScale: 0.01,
+        roomScale: 1.0,                     // Base scale in meters (1.0 = real-world scale)
         spaceType: 'local-floor',
         quality: 'high',
         autoEnterAR: false,

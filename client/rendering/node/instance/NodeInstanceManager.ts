@@ -23,7 +23,6 @@ const position = new Vector3();
 const quaternion = new Quaternion();
 const velocity = new Vector3();
 const scale = new Vector3();
-const BASE_SCALE = 0.01; // Scale factor to convert from units to scene scale
 
 // Visibility states (using setRGB for proper initialization)
 const VISIBLE = new Color(0xffffff);
@@ -87,8 +86,8 @@ export class NodeInstanceManager {
                     
                     // Set initial position
                     position.fromArray(update.position);
-                    const nodeScale = update.metadata?.nodeSize || 200;
-                    const scaleValue = nodeScale * BASE_SCALE;
+                    // Use meters: default to 0.2m if no size specified
+                    const scaleValue = update.metadata?.nodeSize || 0.2;
                     scale.set(scaleValue, scaleValue, scaleValue);
                     if (update.velocity) {
                         const vel = new Vector3().fromArray(update.velocity);
@@ -112,8 +111,8 @@ export class NodeInstanceManager {
                 this.velocities.set(index, vel);
             }
             
-            const nodeScale = update.metadata?.nodeSize || 200;
-            const scaleValue = nodeScale * BASE_SCALE;
+            // Use meters: default to 0.2m if no size specified
+            const scaleValue = update.metadata?.nodeSize || 0.2;
             scale.set(scaleValue, scaleValue, scaleValue);
             matrix.compose(position, quaternion, scale);
             this.nodeInstances.setMatrixAt(index, matrix);

@@ -12,7 +12,6 @@ import {
     Mesh,
     Vector3,
     Color,
-    AdditiveBlending,
     NormalBlending
 } from 'three';
 import { createLogger } from '../core/logger';
