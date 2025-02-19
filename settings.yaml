@@ -32,7 +32,7 @@ visualization:
     iterations: 100
     max_velocity: 0.5
     repulsion_strength: 0.1
-    spring_strength: 10
+    spring_strength: 10.0
     repulsion_distance: 1.0
     mass_scale: 1.0
     boundary_damping: 0.95

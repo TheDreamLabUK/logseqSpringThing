@@ -18,16 +18,37 @@ use crate::models::pagination::PaginatedGraphData;
 #[derive(Clone)]
 pub struct GraphService {
     pub graph_data: Arc<RwLock<GraphData>>,
+    gpu_compute: Option<Arc<RwLock<GPUCompute>>>,
 }
 
 impl GraphService {
     pub fn new() -> Self {
-        let graph_service = Self {
-            graph_data: Arc::new(RwLock::new(GraphData::default())),
+        let graph_data = Arc::new(RwLock::new(GraphData::default()));
+        let mut graph_service = Self {
+            graph_data: graph_data.clone(),
+            gpu_compute: None,
         };
+
+        // Initialize GPU compute
+        let gpu_compute = tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(async {
+                match GPUCompute::new(&GraphData::default()).await {
+                    Ok(gpu) => {
+                        info!("GPU compute initialized successfully");
+                        Some(gpu)
+                    }
+                    Err(e) => {
+                        warn!("Failed to initialize GPU compute: {}", e);
+                        None
+                    }
+                }
+            });
 
         // Start simulation loop
         let graph_data = graph_service.graph_data.clone();
+        let gpu_compute_clone = gpu_compute.clone();
+        graph_service.gpu_compute = gpu_compute;
         tokio::spawn(async move {
             let params = SimulationParams {
                 iterations: 1,  // One iteration per frame
@@ -47,12 +68,7 @@ impl GraphService {
             loop {
                 // Update positions
                 let mut graph = graph_data.write().await;
-                if let Err(e) = Self::calculate_layout_cpu(
-                    &mut graph,
-                    params.iterations,
-                    params.spring_strength,
-                    params.damping
-                ) {
+                if let Err(e) = Self::calculate_layout(&gpu_compute_clone, &mut graph, &params).await {
                     warn!("[Graph] Error updating positions: {}", e);
                 }
                 drop(graph); // Release lock
