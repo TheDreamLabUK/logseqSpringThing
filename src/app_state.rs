@@ -31,7 +31,7 @@ pub struct AppState {
 }
 
 impl AppState {
-    pub fn new(
+    pub async fn new(
         settings: Arc<RwLock<Settings>>,
         github_client: Arc<GitHubClient>,
         content_api: Arc<ContentAPI>,
@@ -39,10 +39,12 @@ impl AppState {
         ragflow_service: Option<Arc<RAGFlowService>>,
         gpu_compute: Option<Arc<RwLock<GPUCompute>>>,
         ragflow_conversation_id: String,
-    ) -> Self {
-        // Initialize FeatureAccess from environment variables
-        Self {
-            graph_service: GraphService::new(),
+    ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
+        // Initialize GraphService asynchronously
+        let graph_service = GraphService::new().await;
+        
+        Ok(Self {
+            graph_service,
             gpu_compute,
             settings,
             protected_settings: Arc::new(RwLock::new(ProtectedSettings::default())),
@@ -55,7 +57,7 @@ impl AppState {
             feature_access: web::Data::new(FeatureAccess::from_env()),
             ragflow_conversation_id,
             active_connections: Arc::new(AtomicUsize::new(0)),
-        }
+        })
     }
 
     pub fn increment_connections(&self) -> usize {

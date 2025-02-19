@@ -90,6 +90,15 @@ impl GPUCompute {
     pub fn update_graph_data(&mut self, graph: &GraphData) -> Result<(), Error> {
         debug!("Updating graph data for {} nodes", graph.nodes.len());
 
+        // Reallocate buffer if node count changed
+        if graph.nodes.len() as u32 != self.num_nodes {
+            debug!("Reallocating GPU buffer for {} nodes", graph.nodes.len());
+            self.node_data = self.device.alloc_zeros::<NodeData>(graph.nodes.len())
+                .map_err(|e| Error::new(std::io::ErrorKind::Other, e.to_string()))?;
+            self.num_nodes = graph.nodes.len() as u32;
+        }
+
+        debug!("Copying {} nodes to GPU", graph.nodes.len());
         // Get node data directly
         let node_data: Vec<NodeData> = graph.nodes.iter()
             .map(|node| node.data.clone())
@@ -99,7 +108,6 @@ impl GPUCompute {
         self.device.htod_sync_copy_into(&node_data, &mut self.node_data)
             .map_err(|e| Error::new(std::io::ErrorKind::Other, e.to_string()))?;
 
-        self.num_nodes = graph.nodes.len() as u32;
         Ok(())
     }
 

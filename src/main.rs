@@ -7,7 +7,6 @@ use webxr::{
         socket_flow_handler::socket_flow_handler,
         nostr_handler,
     },
-    GPUCompute, GraphData,
     services::{
         file_service::FileService,
         graph_service::GraphService,
@@ -21,7 +20,7 @@ use actix_files::Files;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use dotenvy::dotenv;
-use log::{error, warn, info, debug};
+use log::{error, info, debug};
 use webxr::utils::logging::{init_logging_with_config, LogConfig};
 
 #[actix_web::main]
@@ -60,25 +59,6 @@ async fn main() -> std::io::Result<()> {
 
     info!("Starting WebXR application...");
     
-    info!("Initializing GPU compute...");
-    
-    let gpu_compute = if cfg!(feature = "gpu") {
-        match GPUCompute::new(&GraphData::default()).await {
-            Ok(gpu) => {
-                info!("GPU initialization successful");
-                Some(gpu)
-            }
-            Err(e) => {
-                warn!("Failed to initialize GPU: {}. Falling back to CPU computations.", e);
-                debug!("GPU initialization error details: {:?}", e);
-                None
-            }
-        }
-    } else {
-        info!("GPU feature disabled, using CPU computations");
-        None
-    };
-
     // Create web::Data instances first
     let settings_data = web::Data::new(settings.clone());
 
@@ -95,21 +75,22 @@ async fn main() -> std::io::Result<()> {
 
     let content_api = Arc::new(ContentAPI::new(github_client.clone()));
 
-    // Initialize app state
-    let mut app_state = AppState::new(
-        settings.clone(),
-        github_client.clone(),
-        content_api.clone(),
-        None,
-        None,
-        gpu_compute,
-        "default_conversation".to_string(),
-    );
+    // Initialize app state asynchronously
+    let mut app_state = match AppState::new(
+            settings.clone(),
+            github_client.clone(),
+            content_api.clone(),
+            None,
+            None,
+            None,
+            "default_conversation".to_string(),
+        ).await {
+            Ok(state) => state,
+            Err(e) => return Err(std::io::Error::new(std::io::ErrorKind::Other, format!("Failed to initialize app state: {}", e)))
+        };
 
     // Initialize Nostr service
     nostr_handler::init_nostr_service(&mut app_state);
-
-    let app_state = web::Data::new(app_state);
 
     // Initialize local storage and fetch initial data
     info!("Initializing local storage and fetching initial data");
@@ -137,16 +118,26 @@ async fn main() -> std::io::Result<()> {
 
     // Build initial graph from metadata
     match GraphService::build_graph_from_metadata(&metadata_store).await {
-        Ok(graph_data) => {
+        Ok(graph_data) => {            
+            // Update graph data
             let mut graph = app_state.graph_service.graph_data.write().await;
             *graph = graph_data;
+            drop(graph);
+
+            // Initialize GPU compute with actual graph data
+            app_state.graph_service.initialize_gpu(&graph_data).await?;
+
             info!("Built initial graph from metadata");
+            
         },
         Err(e) => {
             error!("Failed to build initial graph: {}", e);
             return Err(std::io::Error::new(std::io::ErrorKind::Other, format!("Failed to build initial graph: {}", e)));
         }
     }
+
+    // Create web::Data after all initialization is complete
+    let app_state_data = web::Data::new(app_state);
 
     // Start the server
     let bind_address = {
@@ -170,11 +161,10 @@ async fn main() -> std::io::Result<()> {
             .wrap(cors)
             .wrap(middleware::Compress::default())
             .app_data(settings_data.clone())
-            .app_data(app_state.clone())
             .app_data(web::Data::new(github_client.clone()))
             .app_data(web::Data::new(content_api.clone()))
-            .app_data(app_state.nostr_service.clone().unwrap())
-            .app_data(app_state.feature_access.clone())
+            .app_data(app_state_data.nostr_service.clone().unwrap())
+            .app_data(app_state_data.feature_access.clone())
             .route("/wss", web::get().to(socket_flow_handler))
             .service(
                 web::scope("")
