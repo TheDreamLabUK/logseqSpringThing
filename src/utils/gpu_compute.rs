@@ -110,11 +110,26 @@ impl GPUCompute {
     }
 
     pub fn step(&mut self) -> Result<(), Error> {
-        // Debug initial node data
+        // Debug: log simulation parameters and initial state
+        debug!("GPU Step - Parameters: spring_strength={}, repulsion={}, damping={}, max_repulsion_distance={}, bounds={}",
+            self.simulation_params.spring_strength,
+            self.simulation_params.repulsion,
+            self.simulation_params.damping,
+            self.simulation_params.max_repulsion_distance,
+            if self.simulation_params.enable_bounds {
+                self.simulation_params.viewport_bounds
+            } else {
+                0.0
+            }
+        );
+
         let initial_nodes = self.get_node_data()?;
-        debug!("Initial node data before GPU step:");
-        for (i, node) in initial_nodes.iter().take(5).enumerate() {
-            debug!("Node {}: pos={:?}, vel={:?}", i, node.position, node.velocity);
+        if log::log_enabled!(log::Level::Debug) {
+            debug!("Initial state of first 3 nodes:");
+            for (i, node) in initial_nodes.iter().take(3).enumerate() {
+                debug!("Node {}: pos={:?}, vel={:?}, mass={}, flags=0x{:x}",
+                    i, node.position, node.velocity, node.mass, node.flags);
+            }
         }
 
         let blocks = (self.num_nodes + BLOCK_SIZE - 1) / BLOCK_SIZE;
@@ -161,16 +176,24 @@ impl GPUCompute {
             }
         }
         if needs_fix {
-            // Log the correction
-            warn!("GPUCompute: Detected NaN in node data. Correcting values to 0.");
+            warn!("GPUCompute: Detected NaN values in node data after force calculation. Resetting to 0.");
+            debug!("Nodes with NaN values:");
+            for (i, node) in updated_nodes.iter().enumerate() {
+                if node.position.iter().any(|v| v.is_nan()) || node.velocity.iter().any(|v| v.is_nan()) {
+                    debug!("Node {}: pos={:?}, vel={:?}, mass={}, flags=0x{:x}",
+                        i, node.position, node.velocity, node.mass, node.flags);
+                }
+            }
             self.device.htod_sync_copy_into(&updated_nodes, &mut self.node_data)
                 .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
         }
         
-        // Debug: log a sample of node positions after update
-        debug!("Sample node positions after update:");
-        for (i, node) in updated_nodes.iter().take(5).enumerate() {
-            debug!("Node {}: pos={:?}, vel={:?}", i, node.position, node.velocity);
+        if log::log_enabled!(log::Level::Debug) {
+            debug!("Final state of first 3 nodes:");
+            for (i, node) in updated_nodes.iter().take(3).enumerate() {
+                debug!("Node {}: pos={:?}, vel={:?}, mass={}, flags=0x{:x}",
+                    i, node.position, node.velocity, node.mass, node.flags);
+            }
         }
         
         Ok(())

@@ -92,42 +92,61 @@ extern "C" __global__ void compute_forces(
             // Calculate force magnitude with minimum distance clamp
             float dist = fmaxf(diff.length(), 0.0001f);
             
-            // Debug print for first node's forces (limit to avoid spam)
-            if (idx == 0 && j == 0) {
-                printf("Node 0: dist=%f, mass_i=%f, mass_j=%f\n", dist, mass_i, mass_j);
-            }
-            
             // Calculate bounded repulsion force
             float force_mag = 0.0f;
             if (dist < max_repulsion_distance) {
-                // Direct mass product for repulsion
-                force_mag = -repulsion * mass_i * mass_j / (dist * dist);
+                // Use square root of mass product to prevent excessive forces
+                float mass_factor = sqrtf(mass_i * mass_j);
+                force_mag = -repulsion * mass_factor / (dist * dist);
+                
+                // Clamp maximum repulsion force
+                force_mag = fmaxf(force_mag, -10.0f);
+                
+                if (idx == 0 && j == 0) {
+                    printf("Node 0: dist=%f, mass_i=%f, mass_j=%f, repulsion_force=%f\n",
+                           dist, mass_i, mass_j, force_mag);
+                }
             }
 
             // Add spring force if nodes are connected (check flags)
             if ((node_i.flags & 0x2) && (nodes[tile * blockDim.x + j].flags & 0x2)) {
                 // Simple spring force with fixed rest length
                 float rest_length = 1.0f; // Fixed rest length for all edges
-                float spring_force = spring_strength * (dist - rest_length);
+                // Add non-linear spring force with clamping
+                float displacement = dist - rest_length;
+                float spring_force = spring_strength * displacement * (1.0f + 0.5f * tanhf(fabsf(displacement)));
+                // Clamp maximum spring force
+                spring_force = fmaxf(fminf(spring_force, 10.0f), -10.0f);
                 force_mag += spring_force;
                 
                 if (idx == 0 && j == 0) {
                     printf("Node 0: spring_force=%f\n", spring_force);
                 }
             }
+            
+            // Clamp total force magnitude
+            force_mag = fmaxf(fminf(force_mag, 15.0f), -15.0f);
 
             // Accumulate force using normalized direction
             Vec3 force_dir = diff.normalized();
             force = force + force_dir * force_mag;
             
-            // Add mass-dependent momentum damping (file size affects movement)
+            // Improved momentum damping
             float velocity_alignment = node_i.velocity.dot(force_dir);
             if (velocity_alignment > 0) {
-                float momentum_damping = -velocity_alignment * mass_i * 0.1f;
+                // Scale damping with mass and clamp it
+                float momentum_damping = -velocity_alignment * sqrtf(mass_i) * 0.1f;
+                momentum_damping = fmaxf(momentum_damping, -5.0f);
                 force = force + force_dir * momentum_damping;
             }
         }
         __syncthreads();
+    }
+
+    // Clamp total force magnitude before velocity update
+    float force_mag = force.length();
+    if (force_mag > 20.0f) {
+        force = force * (20.0f / force_mag);
     }
 
     // Update velocity with damping
@@ -135,7 +154,8 @@ extern "C" __global__ void compute_forces(
 
     // Debug print velocity for first node
     if (idx == 0) {
-        printf("Node 0: force=(%f, %f, %f), new_vel=(%f, %f, %f)\n", 
+        printf("Node 0: force_mag=%f, force=(%f, %f, %f), new_vel=(%f, %f, %f)\n",
+               force_mag,
                force.x, force.y, force.z,
                new_velocity.x, new_velocity.y, new_velocity.z);
     }

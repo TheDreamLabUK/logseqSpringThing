@@ -1,5 +1,5 @@
 use config::{ConfigBuilder, ConfigError, Environment};
-use log::{debug, info};
+use log::debug;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use serde_yaml;

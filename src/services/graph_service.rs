@@ -2,7 +2,7 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use std::collections::{HashMap, HashSet};
 use actix_web::web;
-use log::{info, warn};
+use log::{info, warn, debug};
 use rand::Rng;
 use serde_json;
 
@@ -253,13 +253,15 @@ impl GraphService {
                 gpu_compute.update_graph_data(graph)?;
                 gpu_compute.update_simulation_params(params)?;
                 
-                // Run iterations with more frequent updates
-                for _ in 0..params.iterations {
+                // Run iterations with debug logging
+                for iter in 0..params.iterations {
                     gpu_compute.step()?;
-                    
-                    // Update positions every iteration for smoother motion
-                    // gpu_compute.get_node_data() now returns socket_flow_messages::NodeData directly
                     let updated_nodes = gpu_compute.get_node_data()?;
+                    if log::log_enabled!(log::Level::Debug) {
+                        if let Some(first) = updated_nodes.get(0) {
+                            debug!("GPU layout iteration {}: updated node[0]: {:?}", iter, first);
+                        }
+                    }
                     for (i, node) in graph.nodes.iter_mut().enumerate() {
                         node.data = updated_nodes[i].clone();
                     }
@@ -280,7 +282,13 @@ impl GraphService {
         let bounds = 1.0; // Match viewport_bounds
         let min_distance = 0.1; // Minimum distance to prevent division by zero
         
-        for _ in 0..iterations {
+        for iter in 0..iterations {
+            if log::log_enabled!(log::Level::Debug) {
+                if let Some(first) = graph.nodes.get(0) {
+                    debug!("CPU Iteration {}: initial node[0] position: x={}, y={}, z={}", 
+                           iter, first.x(), first.y(), first.z());
+                }
+            }
             // Calculate forces between nodes
             let mut forces = vec![(0.0, 0.0, 0.0); graph.nodes.len()];
             
@@ -362,6 +370,13 @@ impl GraphService {
             // Apply forces and update positions with stability constraints
             let dt = 0.1; // Time step for integration
             
+            // Store first node's position for logging after updates
+            let first_node_initial = if log::log_enabled!(log::Level::Debug) {
+                graph.nodes.get(0).map(|n| (n.x(), n.y(), n.z()))
+            } else {
+                None
+            };
+            
             for (i, node) in graph.nodes.iter_mut().enumerate() {
                 // Update velocity with damping and clamping
                 let mut vx = node.vx() + forces[i].0 * dt;
@@ -412,6 +427,15 @@ impl GraphService {
                 node.set_x(x);
                 node.set_y(y);
                 node.set_z(z);
+            }
+            
+            // Log position update after the loop
+            if log::log_enabled!(log::Level::Debug) {
+                if let Some((old_x, old_y, old_z)) = first_node_initial {
+                    debug!("CPU Iteration {}: Node[0] positions - Initial: ({}, {}, {}), Final: ({}, {}, {})",
+                        iter, old_x, old_y, old_z,
+                        graph.nodes[0].x(), graph.nodes[0].y(), graph.nodes[0].z());
+                }
             }
         }
         Ok(())

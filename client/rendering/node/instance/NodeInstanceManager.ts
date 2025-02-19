@@ -60,6 +60,20 @@ export class NodeInstanceManager {
     private lastUpdateTime: number = performance.now();
     private settingsStore: SettingsStore;
     private nodeSettings: NodeSettings;
+    private readonly MAX_POSITION = 1000.0; // Maximum allowed position value
+    private readonly MAX_VELOCITY = 10.0;   // Maximum allowed velocity value
+
+    private validateVector3(vec: Vector3, max: number): boolean {
+        return !isNaN(vec.x) && !isNaN(vec.y) && !isNaN(vec.z) &&
+               isFinite(vec.x) && isFinite(vec.y) && isFinite(vec.z) &&
+               Math.abs(vec.x) <= max && Math.abs(vec.y) <= max && Math.abs(vec.z) <= max;
+    }
+
+    private clampVector3(vec: Vector3, max: number): void {
+        vec.x = Math.max(Math.min(vec.x, max), -max);
+        vec.y = Math.max(Math.min(vec.y, max), -max);
+        vec.z = Math.max(Math.min(vec.z, max), -max);
+    }
 
     private constructor(scene: Scene, material: Material) {
         this.scene = scene;
@@ -147,16 +161,30 @@ export class NodeInstanceManager {
     public updateNodePositions(updates: NodeUpdate[]): void {
         updates.forEach(update => {
             const index = this.nodeIndices.get(update.id);
+            
+            // Validate and clamp position
+            position.set(update.position[0], update.position[1], update.position[2]);
+            if (!this.validateVector3(position, this.MAX_POSITION)) {
+                logger.warn(`Invalid position for node ${update.id}:`, position);
+                this.clampVector3(position, this.MAX_POSITION);
+            }
+
+            // Validate and clamp velocity if present
+            if (update.velocity) {
+                velocity.set(update.velocity[0], update.velocity[1], update.velocity[2]);
+                if (!this.validateVector3(velocity, this.MAX_VELOCITY)) {
+                    logger.warn(`Invalid velocity for node ${update.id}:`, velocity);
+                    this.clampVector3(velocity, this.MAX_VELOCITY);
+                }
+            }
+
             if (index === undefined) {
                 // New node
                 const newIndex = this.nodeInstances.count;
                 if (newIndex < MAX_INSTANCES) {
                     this.nodeIndices.set(update.id, newIndex);
                     this.nodeInstances.count++;
-                    
-                    // Set initial position
-                    position.set(update.position[0], update.position[1], update.position[2]);
-                    
+
                     // Calculate scale based on node properties
                     const scaleValue = this.getNodeScale({
                         id: update.id,
@@ -186,10 +214,8 @@ export class NodeInstanceManager {
             }
 
             // Update existing node
-            position.set(update.position[0], update.position[1], update.position[2]);
             if (update.velocity) {
-                const vel = new Vector3(update.velocity[0], update.velocity[1], update.velocity[2]);
-                this.velocities.set(index, vel);
+                this.velocities.set(index, velocity.clone());
             }
             
             // Calculate scale based on node properties
