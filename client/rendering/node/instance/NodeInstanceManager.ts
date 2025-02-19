@@ -14,6 +14,7 @@ import { SettingsStore } from '../../../state/SettingsStore';
 import { NodeSettings } from '../../../types/settings/base';
 import { scaleOps } from '../../../core/utils';
 import { Node } from '../../../core/types';
+import { debugState } from '../../../core/debugState';
 
 const logger = createLogger('NodeInstanceManager');
 
@@ -62,6 +63,7 @@ export class NodeInstanceManager {
     private nodeSettings: NodeSettings;
     private readonly MAX_POSITION = 1000.0; // Maximum allowed position value
     private readonly MAX_VELOCITY = 10.0;   // Maximum allowed velocity value
+    private isReady: boolean = false;
 
     private validateVector3(vec: Vector3, max: number): boolean {
         return !isNaN(vec.x) && !isNaN(vec.y) && !isNaN(vec.z) &&
@@ -79,7 +81,16 @@ export class NodeInstanceManager {
         this.scene = scene;
         this.geometryManager = NodeGeometryManager.getInstance();
         this.settingsStore = SettingsStore.getInstance();
-        this.nodeSettings = this.settingsStore.get('visualization.nodes') as NodeSettings;
+        
+        // Wait for settings to be fully initialized
+        if (!this.settingsStore.isInitialized()) {
+            if (debugState.isEnabled()) {
+                logger.warn('SettingsStore not initialized, using defaults');
+            }
+            this.nodeSettings = this.settingsStore.get('visualization.nodes') as NodeSettings;
+        } else {
+            this.nodeSettings = this.settingsStore.get('visualization.nodes') as NodeSettings;
+        }
 
         // Initialize InstancedMesh with high-detail geometry
         const initialGeometry = this.geometryManager.getGeometryForDistance(0);
@@ -90,7 +101,9 @@ export class NodeInstanceManager {
 
         // Add to scene
         this.scene.add(this.nodeInstances);
-        logger.info('Initialized NodeInstanceManager');
+        if (debugState.isEnabled()) {
+            logger.info('Initialized NodeInstanceManager');
+        }
 
         // Subscribe to settings changes
         this.settingsStore.subscribe('visualization.nodes', (_: string, settings: any) => {
@@ -99,6 +112,9 @@ export class NodeInstanceManager {
                 this.updateAllNodeScales();
             }
         });
+
+        // Mark as ready after initialization
+        this.isReady = true;
     }
 
     public static getInstance(scene: Scene, material: Material): NodeInstanceManager {
@@ -108,7 +124,18 @@ export class NodeInstanceManager {
         return NodeInstanceManager.instance;
     }
 
+    public isInitialized(): boolean {
+        return this.isReady;
+    }
+
     private getNodeScale(node: Node): number {
+        if (!this.nodeSettings) {
+            if (debugState.isEnabled()) {
+                logger.warn('Node settings not available, using defaults');
+            }
+            return 1.0;
+        }
+
         const [minSize, maxSize] = this.nodeSettings.sizeRange;
         
         // Get file size from metadata, use default if not available
@@ -123,6 +150,13 @@ export class NodeInstanceManager {
     }
 
     private updateAllNodeScales(): void {
+        if (!this.isReady) {
+            if (debugState.isEnabled()) {
+                logger.warn('Attempted to update scales before initialization');
+            }
+            return;
+        }
+
         // Update all existing nodes with new scale based on current settings
         for (let i = 0; i < this.nodeInstances.count; i++) {
             this.nodeInstances.getMatrixAt(i, matrix);
@@ -159,13 +193,23 @@ export class NodeInstanceManager {
     }
 
     public updateNodePositions(updates: NodeUpdate[]): void {
+        if (!this.isReady) {
+            if (debugState.isEnabled()) {
+                logger.warn('Attempted to update positions before initialization');
+            }
+            return;
+        }
+
+        let updatedCount = 0;
         updates.forEach(update => {
             const index = this.nodeIndices.get(update.id);
             
             // Validate and clamp position
             position.set(update.position[0], update.position[1], update.position[2]);
             if (!this.validateVector3(position, this.MAX_POSITION)) {
-                logger.warn(`Invalid position for node ${update.id}:`, position);
+                if (debugState.isEnabled()) {
+                    logger.warn(`Invalid position for node ${update.id}:`, position);
+                }
                 this.clampVector3(position, this.MAX_POSITION);
             }
 
@@ -173,7 +217,9 @@ export class NodeInstanceManager {
             if (update.velocity) {
                 velocity.set(update.velocity[0], update.velocity[1], update.velocity[2]);
                 if (!this.validateVector3(velocity, this.MAX_VELOCITY)) {
-                    logger.warn(`Invalid velocity for node ${update.id}:`, velocity);
+                    if (debugState.isEnabled()) {
+                        logger.warn(`Invalid velocity for node ${update.id}:`, velocity);
+                    }
                     this.clampVector3(velocity, this.MAX_VELOCITY);
                 }
             }
@@ -206,9 +252,11 @@ export class NodeInstanceManager {
                     this.nodeInstances.setColorAt(newIndex, VISIBLE);
                     
                     this.pendingUpdates.add(newIndex);
-                    logger.debug(`Added new node at index ${newIndex}`);
+                    updatedCount++;
                 } else {
-                    logger.warn('Maximum instance count reached, cannot add more nodes');
+                    if (debugState.isEnabled()) {
+                        logger.warn('Maximum instance count reached, cannot add more nodes');
+                    }
                 }
                 return;
             }
@@ -232,15 +280,21 @@ export class NodeInstanceManager {
             matrix.compose(position, quaternion, scale);
             this.nodeInstances.setMatrixAt(index, matrix);
             this.pendingUpdates.add(index);
+            updatedCount++;
         });
 
         if (this.pendingUpdates.size > 0) {
             this.nodeInstances.instanceMatrix.needsUpdate = true;
+            if (debugState.isDataDebugEnabled()) {
+                logger.debug(`Updated ${updatedCount} nodes`);
+            }
             this.pendingUpdates.clear();
         }
     }
 
     public update(camera: Camera, passedDeltaTime?: number): void {
+        if (!this.isReady) return;
+
         this.frameCount++;
         
         // Update positions based on velocity
@@ -279,6 +333,8 @@ export class NodeInstanceManager {
     }
 
     private updateVisibilityAndLOD(camera: Camera): void {
+        if (!this.isReady) return;
+
         const cameraPosition = camera.position;
         
         // Check each instance
@@ -310,8 +366,11 @@ export class NodeInstanceManager {
         this.nodeIndices.clear();
         this.pendingUpdates.clear();
         this.velocities.clear();
+        this.isReady = false;
         NodeInstanceManager.instance = null!;
-        logger.info('Disposed NodeInstanceManager');
+        if (debugState.isEnabled()) {
+            logger.info('Disposed NodeInstanceManager');
+        }
     }
 
     public getInstanceMesh(): InstancedMesh {
