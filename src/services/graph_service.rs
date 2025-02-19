@@ -2,7 +2,7 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use std::collections::{HashMap, HashSet};
 use actix_web::web;
-use log::{info, warn, debug};
+use log::{info, warn, debug, error};
 use rand::Rng;
 use serde_json;
 
@@ -12,6 +12,8 @@ use crate::models::edge::Edge;
 use crate::models::metadata::MetadataStore;
 use crate::app_state::AppState;
 use crate::utils::gpu_compute::GPUCompute;
+use crate::utils::gpu_initializer::initialize_gpu;
+use crate::Settings;
 use crate::models::simulation_params::{SimulationParams, SimulationPhase, SimulationMode};
 use crate::models::pagination::PaginatedGraphData;
 
@@ -24,7 +26,7 @@ pub struct GraphService {
 impl GraphService {
     pub async fn new() -> Self {
         let graph_data = Arc::new(RwLock::new(GraphData::default()));
-        let mut graph_service = Self {
+        let graph_service = Self {
             graph_data: graph_data.clone(),
             gpu_compute: None,
         };
@@ -64,19 +66,27 @@ impl GraphService {
         graph_service
     }
 
-    pub async fn initialize_gpu(&mut self, graph: &GraphData) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        // Initialize GPU compute with actual graph data
-        self.gpu_compute = match GPUCompute::new(graph).await {
-            Ok(gpu) => {
-                info!("GPU compute initialized successfully");
-                Some(gpu)
-            }
+    pub async fn initialize_gpu(
+        &mut self,
+        settings: Arc<RwLock<Settings>>,
+        graph: &GraphData
+    ) -> std::io::Result<()> {
+        debug!("Initializing GPU compute for graph with {} nodes", graph.nodes.len());
+        
+        match initialize_gpu(settings, graph).await {
+            Ok(Some(gpu)) => {
+                self.gpu_compute = Some(gpu);
+                info!("GPU compute initialized and ready for graph computations");
+                Ok(())
+            },
+            Ok(None) => {
+                warn!("GPU initialization skipped - using CPU fallback");
+                Ok(())
+            },
             Err(e) => {
-                warn!("Failed to initialize GPU compute: {}", e);
-                None
-            }
-        };
-        Ok(())
+                Err(e)
+            },
+        }
     }
 
     pub async fn build_graph_from_metadata(metadata: &MetadataStore) -> Result<GraphData, Box<dyn std::error::Error + Send + Sync>> {
@@ -253,7 +263,7 @@ impl GraphService {
         gpu_compute: &Option<Arc<RwLock<GPUCompute>>>,
         graph: &mut GraphData,
         params: &SimulationParams,
-    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    ) -> std::io::Result<()> {
         match gpu_compute {
             Some(gpu) => {
                 info!("Using GPU for layout calculation");
@@ -262,6 +272,7 @@ impl GraphService {
                 // Only initialize positions for new graphs
                 if graph.nodes.iter().all(|n| n.x() == 0.0 && n.y() == 0.0 && n.z() == 0.0) {
                     Self::initialize_random_positions(graph);
+                    debug!("Initialized random positions for new graph");
                 }
                 
                 gpu_compute.update_graph_data(graph)?;
@@ -270,6 +281,7 @@ impl GraphService {
                 // Run iterations with debug logging
                 for iter in 0..params.iterations {
                     gpu_compute.step()?;
+                    debug!("Completed GPU iteration {}/{}", iter + 1, params.iterations);
                     let updated_nodes = gpu_compute.get_node_data()?;
                     if log::log_enabled!(log::Level::Debug) {
                         if let Some(first) = updated_nodes.get(0) {
@@ -280,15 +292,17 @@ impl GraphService {
                         node.data = updated_nodes[i].clone();
                     }
                 }
+                debug!("GPU layout calculation completed successfully");
                 Ok(())
             },
             None => {
-                warn!("GPU not available. Falling back to CPU-based layout calculation.");
-                Err(Box::new(std::io::Error::new(std::io::ErrorKind::Unsupported, 
-                    "GPU computation is required. CPU fallback is disabled.")))
+                let err = "GPU computation is required. CPU fallback is disabled.";
+                error!("{}", err);
+                Err(std::io::Error::new(std::io::ErrorKind::Unsupported, err))
             }
         }
     }
+
 
     fn calculate_layout_cpu(graph: &mut GraphData, iterations: u32, spring_strength: f32, damping: f32) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let repulsion_strength = 0.05; // Match CUDA implementation

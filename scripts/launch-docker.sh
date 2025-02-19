@@ -484,6 +484,10 @@ if ! nvcc \
     exit 1
 fi
 
+# Set proper permissions on PTX file
+log "${YELLOW}Setting PTX file permissions...${NC}"
+chmod 644 src/utils/compute_forces.ptx
+
 # Build client code before building container
 log "${YELLOW}Building client code...${NC}"
 pnpm build || { log "${RED}Client build failed${NC}"; exit 1; }

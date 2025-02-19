@@ -3,7 +3,7 @@ use cudarc::driver::{CudaDevice, CudaFunction, CudaSlice, LaunchConfig, LaunchAs
 #[cfg(feature = "gpu")]
 use cudarc::nvrtc::Ptx;
 
-use std::io::Error;
+use std::io::{Error, ErrorKind};
 use std::sync::Arc;
 use log::{debug, warn};
 use crate::models::graph::GraphData;
@@ -60,9 +60,19 @@ impl GPUCompute {
             .map_err(|e| Error::new(std::io::ErrorKind::Other, e.to_string()))?);
 
         debug!("Loading force computation kernel");
-        let ptx = Ptx::from_file("/app/compute_forces/compute_forces.ptx");
+        let ptx_path = "/app/src/utils/compute_forces.ptx";
+
+        if !std::path::Path::new(ptx_path).exists() {
+            warn!("PTX file does not exist at {}", ptx_path);
+            return Err(Error::new(ErrorKind::NotFound, 
+                format!("PTX file not found at {}", ptx_path)));
+        }
+
+        let ptx = Ptx::from_file(ptx_path);
+
+        debug!("Successfully loaded PTX file");
             
-        device.load_ptx(ptx, "compute_forces", &["compute_forces"])
+        device.load_ptx(ptx.clone(), "compute_forces", &["compute_forces"])
             .map_err(|e| Error::new(std::io::ErrorKind::Other, e.to_string()))?;
             
         let force_kernel = device.get_func("compute_forces", "compute_forces")

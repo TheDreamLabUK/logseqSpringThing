@@ -119,13 +119,17 @@ async fn main() -> std::io::Result<()> {
     // Build initial graph from metadata
     match GraphService::build_graph_from_metadata(&metadata_store).await {
         Ok(graph_data) => {            
-            // Update graph data
+            // Initialize GPU compute with actual graph data
+            if let Err(e) = app_state.graph_service.initialize_gpu(settings.clone(), &graph_data).await {
+                error!("Failed to initialize GPU compute: {}", e);
+                return Err(std::io::Error::new(std::io::ErrorKind::Other, 
+                    format!("GPU initialization failed: {}", e)));
+            }
+
+            // Update graph data after GPU is initialized
             let mut graph = app_state.graph_service.graph_data.write().await;
             *graph = graph_data;
             drop(graph);
-
-            // Initialize GPU compute with actual graph data
-            app_state.graph_service.initialize_gpu(&graph_data).await?;
 
             info!("Built initial graph from metadata");
             
