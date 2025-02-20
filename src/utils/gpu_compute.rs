@@ -2,10 +2,11 @@
 use cudarc::driver::{CudaDevice, CudaFunction, CudaSlice, LaunchConfig, LaunchAsync};
 #[cfg(feature = "gpu")]
 use cudarc::nvrtc::Ptx;
+use cudarc::driver::sys::CUdevice_attribute;
 
 use std::io::{Error, ErrorKind};
 use std::sync::Arc;
-use log::{debug, warn};
+use log::{debug, error, warn};
 use crate::models::graph::GraphData;
 use crate::models::simulation_params::SimulationParams;
 use crate::utils::socket_flow_messages::NodeData;
@@ -48,6 +49,8 @@ pub struct GPUCompute {
 impl GPUCompute {
     pub async fn new(graph: &GraphData) -> Result<Arc<RwLock<Self>>, Error> {
         let num_nodes = graph.nodes.len() as u32;
+        debug!("Initializing GPU compute with {} nodes", num_nodes);
+        
         if num_nodes > MAX_NODES {
             return Err(Error::new(
                 std::io::ErrorKind::Other,
@@ -55,9 +58,34 @@ impl GPUCompute {
             ));
         }
 
-        debug!("Initializing CUDA device");
-        let device = Arc::new(CudaDevice::new(0)
-            .map_err(|e| Error::new(std::io::ErrorKind::Other, e.to_string()))?);
+        debug!("Attempting to create CUDA device");
+        let device = match CudaDevice::new(0) {
+            Ok(dev) => {
+                debug!("CUDA device created successfully");
+                let max_threads = dev.as_ref().attribute(CUdevice_attribute::MaxThreadsPerMultiprocessor)
+                    .map_err(|e| Error::new(ErrorKind::Other, e.to_string()))?;
+                let compute_mode = dev.as_ref().attribute(CUdevice_attribute::ComputeMode)
+                    .map_err(|e| Error::new(ErrorKind::Other, e.to_string()))?;
+                let multiprocessor_count = dev.as_ref().attribute(CUdevice_attribute::MultiprocessorCount)
+                    .map_err(|e| Error::new(ErrorKind::Other, e.to_string()))?;
+                debug!("GPU Device detected:");
+                debug!("  Max threads per MP: {}", max_threads);
+                debug!("  Multiprocessor count: {}", multiprocessor_count);
+                debug!("  Compute mode: {}", compute_mode);
+                
+                // Verify the device is suitable for our compute needs
+                if max_threads < 256 {
+                    return Err(Error::new(ErrorKind::Other, 
+                        format!("GPU capability too low. Device supports only {} threads per multiprocessor, minimum required is 256", 
+                            max_threads)));
+                }
+                Arc::new(dev)
+            },
+            Err(e) => {
+                error!("Failed to create CUDA device: {}", e);
+                return Err(Error::new(ErrorKind::Other, e.to_string()));
+            }
+        };
 
         debug!("Loading force computation kernel");
         let ptx_path = "/app/src/utils/compute_forces.ptx";

@@ -479,7 +479,10 @@ if ! nvcc \
     -O3 \
     --use_fast_math \
     -ptx src/utils/compute_forces.cu \
-    -o src/utils/compute_forces.ptx; then
+    -o src/utils/compute_forces.ptx \
+    --gpu-architecture=compute_86 \
+    --gpu-code=sm_86,compute_86 \
+    --compiler-bindir=/usr/bin/gcc-11; then
     log "${RED}Failed to compile CUDA to PTX${NC}"
     exit 1
 fi

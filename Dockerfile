@@ -28,10 +28,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libssl-dev \
     pkg-config \
     libegl1-mesa-dev \
-    libasound2-dev \
-    ca-certificates \
-    jq \
+    gcc-11 \
+    g++-11 \
     && rm -rf /var/lib/apt/lists/*
+
+# Set gcc-11 as the default compiler
+RUN update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-11 110 \
+    --slave /usr/bin/g++ g++ /usr/bin/g++-11 \
+    --slave /usr/bin/gcov gcov /usr/bin/gcov-11
 
 # Install Rust with better error handling
 RUN curl --retry 5 --retry-delay 2 --retry-connrefused https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain 1.82.0

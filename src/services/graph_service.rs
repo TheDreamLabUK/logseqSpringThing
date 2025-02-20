@@ -2,7 +2,7 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use std::collections::{HashMap, HashSet};
 use actix_web::web;
-use log::{info, warn, debug, error};
+use log::{info, warn, debug};
 use rand::Rng;
 use serde_json;
 
@@ -266,39 +266,38 @@ impl GraphService {
     ) -> std::io::Result<()> {
         match gpu_compute {
             Some(gpu) => {
-                info!("Using GPU for layout calculation");
                 let mut gpu_compute = gpu.write().await;
                 
-                // Only initialize positions for new graphs
-                if graph.nodes.iter().all(|n| n.x() == 0.0 && n.y() == 0.0 && n.z() == 0.0) {
-                    Self::initialize_random_positions(graph);
-                    debug!("Initialized random positions for new graph");
-                }
-                
+                // Update data and parameters
                 gpu_compute.update_graph_data(graph)?;
                 gpu_compute.update_simulation_params(params)?;
                 
-                // Run iterations with debug logging
-                for iter in 0..params.iterations {
-                    gpu_compute.step()?;
-                    debug!("Completed GPU iteration {}/{}", iter + 1, params.iterations);
-                    let updated_nodes = gpu_compute.get_node_data()?;
-                    if log::log_enabled!(log::Level::Debug) {
-                        if let Some(first) = updated_nodes.get(0) {
-                            debug!("GPU layout iteration {}: updated node[0]: {:?}", iter, first);
-                        }
-                    }
-                    for (i, node) in graph.nodes.iter_mut().enumerate() {
-                        node.data = updated_nodes[i].clone();
-                    }
+                // Perform computation step
+                gpu_compute.step()?;
+                
+                // Get updated positions
+                let updated_nodes = gpu_compute.get_node_data()?;
+                
+                // Update graph with new positions
+                for (node, data) in graph.nodes.iter_mut().zip(updated_nodes.iter()) {
+                    // Update position
+                    node.set_x(data.position[0]);
+                    node.set_y(data.position[1]);
+                    node.set_z(data.position[2]);
+                    
+                    // Update velocity
+                    node.set_vx(data.velocity[0]);
+                    node.set_vy(data.velocity[1]);
+                    node.set_vz(data.velocity[2]);
                 }
-                debug!("GPU layout calculation completed successfully");
+                
                 Ok(())
             },
             None => {
-                let err = "GPU computation is required. CPU fallback is disabled.";
-                error!("{}", err);
-                Err(std::io::Error::new(std::io::ErrorKind::Unsupported, err))
+                Err(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    "GPU computation is required. CPU fallback is disabled."
+                ))
             }
         }
     }

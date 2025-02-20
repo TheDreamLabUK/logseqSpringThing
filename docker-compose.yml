@@ -19,8 +19,8 @@ services:
         reservations:
           devices:
             - driver: nvidia
-              device_ids: ['0']  # Explicitly use GPU 0
-              capabilities: [gpu]
+              count: 1
+              capabilities: [gpu, compute, utility]
     expose:
       - "4000"
     ports:
@@ -31,8 +31,9 @@ services:
       - BIND_ADDRESS=0.0.0.0
       - PORT=3001  # Explicitly set Rust backend to use port 3001
       - NGINX_PORT=4000  # Set nginx to use port 4000
-      - NVIDIA_VISIBLE_DEVICES=${NVIDIA_GPU_UUID:-0}  # Use GPU UUID from launch script
-      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility,graphics
+      - CUDA_VISIBLE_DEVICES=0
       - NODE_ENV=production
       - GIT_HASH=${GIT_HASH:-development}  # Pass GIT_HASH from build environment
     env_file:
@@ -48,6 +49,7 @@ services:
         target: /tmp
         tmpfs:
           size: 4G
+      - ./src/utils:/app/src/utils:ro  # Add this line
     user: "${UID:-1000}:${GID:-1000}"  # Use host user's UID/GID or default to 1000
     restart: unless-stopped
     stop_grace_period: 30s
