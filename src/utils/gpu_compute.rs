@@ -2,7 +2,7 @@
 use cudarc::driver::{CudaDevice, CudaFunction, CudaSlice, LaunchConfig, LaunchAsync};
 #[cfg(feature = "gpu")]
 use cudarc::nvrtc::Ptx;
-use cudarc::driver::sys::CUdevice_attribute;
+use cudarc::driver::sys::CUdevice_attribute_enum;
 
 use std::io::{Error, ErrorKind};
 use std::sync::Arc;
@@ -62,11 +62,11 @@ impl GPUCompute {
         let device = match CudaDevice::new(0) {
             Ok(dev) => {
                 debug!("CUDA device created successfully");
-                let max_threads = dev.as_ref().attribute(CUdevice_attribute::MaxThreadsPerMultiprocessor)
+                let max_threads = dev.as_ref().attribute(CUdevice_attribute_enum::CU_DEVICE_ATTRIBUTE_MAX_THREADS_PER_BLOCK as _)
                     .map_err(|e| Error::new(ErrorKind::Other, e.to_string()))?;
-                let compute_mode = dev.as_ref().attribute(CUdevice_attribute::ComputeMode)
+                let compute_mode = dev.as_ref().attribute(CUdevice_attribute_enum::CU_DEVICE_ATTRIBUTE_COMPUTE_MODE as _)
                     .map_err(|e| Error::new(ErrorKind::Other, e.to_string()))?;
-                let multiprocessor_count = dev.as_ref().attribute(CUdevice_attribute::MultiprocessorCount)
+                let multiprocessor_count = dev.as_ref().attribute(CUdevice_attribute_enum::CU_DEVICE_ATTRIBUTE_MULTIPROCESSOR_COUNT as _)
                     .map_err(|e| Error::new(ErrorKind::Other, e.to_string()))?;
                 debug!("GPU Device detected:");
                 debug!("  Max threads per MP: {}", max_threads);

@@ -2,7 +2,7 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use std::collections::{HashMap, HashSet};
 use actix_web::web;
-use log::{info, warn, debug};
+use log::{info, warn};
 use rand::Rng;
 use serde_json;
 
@@ -12,40 +12,44 @@ use crate::models::edge::Edge;
 use crate::models::metadata::MetadataStore;
 use crate::app_state::AppState;
 use crate::utils::gpu_compute::GPUCompute;
-use crate::utils::gpu_initializer::initialize_gpu;
-use crate::Settings;
 use crate::models::simulation_params::{SimulationParams, SimulationPhase, SimulationMode};
 use crate::models::pagination::PaginatedGraphData;
 
 #[derive(Clone)]
 pub struct GraphService {
     pub graph_data: Arc<RwLock<GraphData>>,
-    gpu_compute: Option<Arc<RwLock<GPUCompute>>>,
 }
 
 impl GraphService {
-    pub async fn new() -> Self {
-        let graph_data = Arc::new(RwLock::new(GraphData::default()));
+    pub fn new() -> Self {
         let graph_service = Self {
-            graph_data: graph_data.clone(),
-            gpu_compute: None,
+            graph_data: Arc::new(RwLock::new(GraphData::default())),
         };
 
         // Start simulation loop
         let graph_data = graph_service.graph_data.clone();
-        let gpu_compute = graph_service.gpu_compute.clone();
         tokio::spawn(async move {
             let params = SimulationParams {
                 iterations: 1,  // One iteration per frame
-                spring_strength: 5.0,            // Strong spring force for tight clustering
-                repulsion: 0.05,                 // Minimal repulsion
-                damping: 0.98,                   // Very high damping for stability
-                max_repulsion_distance: 0.1,     // Small repulsion range
-                viewport_bounds: 1.0,            // Small bounds for tight clustering
+                spring_strength: 0.5,            // Moderate spring force
+                repulsion: 700.0,                // Strong repulsion for good spacing
+                damping: 0.95,                   // High damping for stability
+                max_repulsion_distance: 1000.0,  // Large repulsion range
+                viewport_bounds: 1000.0,         // Reasonable bounds size
                 mass_scale: 1.0,                 // Default mass scaling
-                boundary_damping: 0.95,          // Strong boundary damping
+                boundary_damping: 0.9,           // Strong boundary damping
                 enable_bounds: true,             // Enable bounds by default
-                time_step: 0.01,                 // Smaller timestep for stability
+                time_step: 0.1,                  // Match dt in CPU layout
+                phase: SimulationPhase::Dynamic,
+                mode: SimulationMode::Remote,    // Force GPU-accelerated computation
+                repulsion: 700.0,                // Strong repulsion for good spacing
+                damping: 0.95,                   // High damping for stability
+                max_repulsion_distance: 1000.0,  // Large repulsion range
+                viewport_bounds: 1000.0,         // Reasonable bounds size
+                mass_scale: 1.0,                 // Default mass scaling
+                boundary_damping: 0.9,           // Strong boundary damping
+                enable_bounds: true,             // Enable bounds by default
+                time_step: 0.1,                  // Match dt in CPU layout
                 phase: SimulationPhase::Dynamic,
                 mode: SimulationMode::Remote,    // Force GPU-accelerated computation
             };
@@ -53,7 +57,12 @@ impl GraphService {
             loop {
                 // Update positions
                 let mut graph = graph_data.write().await;
-                if let Err(e) = Self::calculate_layout(&gpu_compute, &mut graph, &params).await {
+                if let Err(e) = Self::calculate_layout_cpu(
+                    &mut graph,
+                    params.iterations,
+                    params.spring_strength,
+                    params.damping
+                ) {
                     warn!("[Graph] Error updating positions: {}", e);
                 }
                 drop(graph); // Release lock
@@ -64,29 +73,6 @@ impl GraphService {
         });
 
         graph_service
-    }
-
-    pub async fn initialize_gpu(
-        &mut self,
-        settings: Arc<RwLock<Settings>>,
-        graph: &GraphData
-    ) -> std::io::Result<()> {
-        debug!("Initializing GPU compute for graph with {} nodes", graph.nodes.len());
-        
-        match initialize_gpu(settings, graph).await {
-            Ok(Some(gpu)) => {
-                self.gpu_compute = Some(gpu);
-                info!("GPU compute initialized and ready for graph computations");
-                Ok(())
-            },
-            Ok(None) => {
-                warn!("GPU initialization skipped - using CPU fallback");
-                Ok(())
-            },
-            Err(e) => {
-                Err(e)
-            },
-        }
     }
 
     pub async fn build_graph_from_metadata(metadata: &MetadataStore) -> Result<GraphData, Box<dyn std::error::Error + Send + Sync>> {
@@ -234,7 +220,7 @@ impl GraphService {
     fn initialize_random_positions(graph: &mut GraphData) {
         let mut rng = rand::thread_rng();
         let node_count = graph.nodes.len() as f32;
-        let initial_radius = 0.5; // Half of viewport bounds
+        let initial_radius = 100.0; // Larger initial radius
         let golden_ratio = (1.0 + 5.0_f32.sqrt()) / 2.0;
         
         // Use Fibonacci sphere distribution for more uniform initial positions
@@ -263,59 +249,47 @@ impl GraphService {
         gpu_compute: &Option<Arc<RwLock<GPUCompute>>>,
         graph: &mut GraphData,
         params: &SimulationParams,
-    ) -> std::io::Result<()> {
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         match gpu_compute {
             Some(gpu) => {
+                info!("Using GPU for layout calculation");
                 let mut gpu_compute = gpu.write().await;
                 
-                // Update data and parameters
+                // Only initialize positions for new graphs
+                if graph.nodes.iter().all(|n| n.x() == 0.0 && n.y() == 0.0 && n.z() == 0.0) {
+                    Self::initialize_random_positions(graph);
+                }
+                
                 gpu_compute.update_graph_data(graph)?;
                 gpu_compute.update_simulation_params(params)?;
                 
-                // Perform computation step
-                gpu_compute.step()?;
-                
-                // Get updated positions
-                let updated_nodes = gpu_compute.get_node_data()?;
-                
-                // Update graph with new positions
-                for (node, data) in graph.nodes.iter_mut().zip(updated_nodes.iter()) {
-                    // Update position
-                    node.set_x(data.position[0]);
-                    node.set_y(data.position[1]);
-                    node.set_z(data.position[2]);
+                // Run iterations with more frequent updates
+                for _ in 0..params.iterations {
+                    gpu_compute.step()?;
                     
-                    // Update velocity
-                    node.set_vx(data.velocity[0]);
-                    node.set_vy(data.velocity[1]);
-                    node.set_vz(data.velocity[2]);
+                    // Update positions every iteration for smoother motion
+                    let updated_nodes = gpu_compute.get_node_data()?;
+                    for (i, node) in graph.nodes.iter_mut().enumerate() {
+                        node.data = updated_nodes[i].clone();
+                    }
                 }
-                
                 Ok(())
             },
             None => {
-                Err(std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    "GPU computation is required. CPU fallback is disabled."
-                ))
+                warn!("GPU not available. Falling back to CPU-based layout calculation.");
+                Err(Box::new(std::io::Error::new(std::io::ErrorKind::Unsupported, 
+                    "GPU computation is required. CPU fallback is disabled.")))
             }
         }
     }
 
-
     fn calculate_layout_cpu(graph: &mut GraphData, iterations: u32, spring_strength: f32, damping: f32) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        let repulsion_strength = 0.05; // Match CUDA implementation
-        let max_repulsion_distance = 0.1; // Match CUDA implementation
-        let bounds = 1.0; // Match viewport_bounds
+        let repulsion_strength = 700.0; // Match CUDA implementation
+        let max_repulsion_distance = 1000.0; // Match CUDA implementation
+        let bounds = 1000.0; // Match viewport_bounds
         let min_distance = 0.1; // Minimum distance to prevent division by zero
         
-        for iter in 0..iterations {
-            if log::log_enabled!(log::Level::Debug) {
-                if let Some(first) = graph.nodes.get(0) {
-                    debug!("CPU Iteration {}: initial node[0] position: x={}, y={}, z={}", 
-                           iter, first.x(), first.y(), first.z());
-                }
-            }
+        for _ in 0..iterations {
             // Calculate forces between nodes
             let mut forces = vec![(0.0, 0.0, 0.0); graph.nodes.len()];
             
@@ -336,20 +310,19 @@ impl GraphService {
                         
                         // Mass-weighted repulsion
                         let force = repulsion_strength * falloff / distance_squared;
-
-                    
-                    // Normalize direction vector
-                    let fx = (dx / distance) * force;
-                    let fy = (dy / distance) * force;
-                    let fz = (dz / distance) * force;
-                    
-                    forces[i].0 -= fx;
-                    forces[i].1 -= fy;
-                    forces[i].2 -= fz;
-                    
-                    forces[j].0 += fx;
-                    forces[j].1 += fy;
-                    forces[j].2 += fz;
+                        
+                        // Normalize direction vector
+                        let fx = (dx / distance) * force;
+                        let fy = (dy / distance) * force;
+                        let fz = (dz / distance) * force;
+                        
+                        forces[i].0 -= fx;
+                        forces[i].1 -= fy;
+                        forces[i].2 -= fz;
+                        
+                        forces[j].0 += fx;
+                        forces[j].1 += fy;
+                        forces[j].2 += fz;
                     }
                 }
             }
@@ -397,13 +370,6 @@ impl GraphService {
             // Apply forces and update positions with stability constraints
             let dt = 0.1; // Time step for integration
             
-            // Store first node's position for logging after updates
-            let first_node_initial = if log::log_enabled!(log::Level::Debug) {
-                graph.nodes.get(0).map(|n| (n.x(), n.y(), n.z()))
-            } else {
-                None
-            };
-            
             for (i, node) in graph.nodes.iter_mut().enumerate() {
                 // Update velocity with damping and clamping
                 let mut vx = node.vx() + forces[i].0 * dt;
@@ -418,6 +384,7 @@ impl GraphService {
                 // Mass-aware velocity limiting
                 let mass = node.size.unwrap_or(1.0);
                 let max_velocity = 2.0 / (0.5 + mass);
+                
                 // Clamp velocity magnitude
                 let v_mag = (vx * vx + vy * vy + vz * vz).sqrt();
                 if v_mag > max_velocity {
@@ -454,15 +421,6 @@ impl GraphService {
                 node.set_x(x);
                 node.set_y(y);
                 node.set_z(z);
-            }
-            
-            // Log position update after the loop
-            if log::log_enabled!(log::Level::Debug) {
-                if let Some((old_x, old_y, old_z)) = first_node_initial {
-                    debug!("CPU Iteration {}: Node[0] positions - Initial: ({}, {}, {}), Final: ({}, {}, {})",
-                        iter, old_x, old_y, old_z,
-                        graph.nodes[0].x(), graph.nodes[0].y(), graph.nodes[0].z());
-                }
             }
         }
         Ok(())
@@ -503,7 +461,7 @@ impl GraphService {
 
         Ok(PaginatedGraphData {
             nodes: page_nodes,
-            edges: edges.clone(),
+            edges,
             metadata: serde_json::to_value(graph.metadata.clone()).unwrap_or_default(),
             total_nodes,
             total_edges: graph.edges.len(),

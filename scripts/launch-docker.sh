@@ -496,9 +496,14 @@ log "${YELLOW}Building client code...${NC}"
 pnpm build || { log "${RED}Client build failed${NC}"; exit 1; }
 log "${GREEN}Client build successful${NC}"
 
-# Build with GIT_HASH environment variable
-GIT_HASH=$GIT_HASH $DOCKER_COMPOSE build --pull --no-cache
-$DOCKER_COMPOSE up -d
+# Build with GIT_HASH environment variable and ensure GPU feature is enabled
+GIT_HASH=$GIT_HASH CARGO_BUILD_FLAGS="--features gpu" $DOCKER_COMPOSE build --pull --no-cache
+
+# Alternatively, you could modify the command to be more explicit:
+GIT_HASH=$GIT_HASH DOCKER_BUILDKIT=1 $DOCKER_COMPOSE build \
+    --build-arg CARGO_BUILD_FLAGS="--features gpu" \
+    --build-arg RUSTFLAGS="-C target-feature=+crt-static" \
+    --pull --no-cache
 
 # 11. Check readiness (fatal if fails)
 if ! check_application_readiness; then
