@@ -1,36 +1,26 @@
 #!/bin/bash
+set -euo pipefail
 
-# Enhanced debug information
-echo "=== CUDA Environment ==="
-echo "CUDA Version: $(nvcc --version | grep release)"
-echo "CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES"
-echo "NVIDIA_VISIBLE_DEVICES=$NVIDIA_VISIBLE_DEVICES"
+# Function to log messages with timestamps
+log() {
+    echo "[$(date "+%Y-%m-%d %H:%M:%S")] $1"
+}
 
-echo "=== GPU Information ==="
-nvidia-smi --query-gpu=gpu_name,memory.total,memory.free,memory.used --format=csv,noheader
-echo "=== GPU Processes ==="
-nvidia-smi pmon -c 1
-
-echo "=== PTX File ==="
-echo "PTX File Info:"
-ls -la /app/src/utils/compute_forces.ptx
-file /app/src/utils/compute_forces.ptx
-echo "PTX File Contents (first few lines):"
-head -n 5 /app/src/utils/compute_forces.ptx
-
-# Verify GPU access with more details
-if ! nvidia-smi; then
-    echo "Error: Cannot access NVIDIA GPU"
-    echo "Container GPU capabilities:"
-    echo "$(cat /proc/driver/nvidia/capabilities 2>/dev/null || echo 'No capabilities file found')"
+# Verify settings file permissions
+log "Verifying settings.yaml permissions..."
+if [ ! -f "/app/settings.yaml" ]; then
+    log "Error: settings.yaml not found"
     exit 1
 fi
+chmod 666 /app/settings.yaml
+log "settings.yaml permissions verified"
 
-# Set additional CUDA environment variables
-export CUDA_CACHE_DISABLE=0
-export CUDA_CACHE_PATH=/tmp/.cuda_cache
-export CUDA_VISIBLE_DEVICES=${NVIDIA_VISIBLE_DEVICES:-0}
-mkdir -p $CUDA_CACHE_PATH
+# Set up runtime environment
+# Start nginx
+log "Starting nginx..."
+nginx -t && nginx
+log "nginx started successfully"
 
-# Start the application with enhanced GPU debugging
-RUST_LOG=debug,cuda=trace,gpu=trace exec /app/webxr
+# Execute the webxr binary
+log "Executing webxr..."
+exec /app/webxr

@@ -470,9 +470,9 @@ log "${YELLOW}Compiling CUDA to PTX...${NC}"
 if ! command -v nvcc &>/dev/null; then
     log "${RED}Error: NVIDIA CUDA Compiler (nvcc) not found${NC}"
     log "${YELLOW}Please install CUDA toolkit to compile PTX files${NC}"
-    log "${YELLOW}Continuing without PTX compilation for debugging${NC}"
-else
-
+    exit 1
+fi
+  
 # Compile CUDA to PTX with optimizations
 if ! nvcc \
     -arch=sm_86 \
@@ -483,41 +483,30 @@ if ! nvcc \
     --gpu-architecture=compute_86 \
     --gpu-code=sm_86,compute_86 \
     --compiler-bindir=/usr/bin/gcc-11; then
-    log "${RED}Failed to compile CUDA to PTX. Error details:${NC}"
-    log "${YELLOW}$(nvcc --version)${NC}"
-    log "${YELLOW}Continuing without PTX for debugging${NC}"
-else
+    log "${RED}Failed to compile CUDA to PTX${NC}"
+    true
+  else
     # Set proper permissions on PTX file only if compilation succeeded
     log "${YELLOW}Setting PTX file permissions...${NC}"
     chmod 644 src/utils/compute_forces.ptx
-    log "${GREEN}PTX compilation successful${NC}"
-fi
-fi
-
-
-# Build client code before building container
+  fi
 log "${YELLOW}Building client code...${NC}"
 pnpm build || { log "${RED}Client build failed${NC}"; exit 1; }
 log "${GREEN}Client build successful${NC}"
 
-# Build with GIT_HASH environment variable and ensure GPU feature is enabled
-GIT_HASH=$GIT_HASH CARGO_BUILD_FLAGS="--features gpu" $DOCKER_COMPOSE build --pull --no-cache
-
-# Alternatively, you could modify the command to be more explicit:
-GIT_HASH=$GIT_HASH DOCKER_BUILDKIT=1 $DOCKER_COMPOSE build \
-    --build-arg CARGO_BUILD_FLAGS="--features gpu" \
-    --build-arg RUSTFLAGS="-C target-feature=+crt-static" \
-    --pull --no-cache
+# Build with GIT_HASH environment variable
+GIT_HASH=$GIT_HASH $DOCKER_COMPOSE build --pull --no-cache
+$DOCKER_COMPOSE up -d
 
 # 11. Check readiness (fatal if fails)
-check_application_readiness || {
+if ! check_application_readiness; then
     log "${RED}Application failed to start properly${NC}"
     log "${YELLOW}Containers left running for debugging. Use these commands:${NC}"
     log "  $DOCKER_COMPOSE logs -f"
     log "  docker logs logseq-xr-webxr"
     log "  docker logs cloudflared-tunnel"
-    log "${YELLOW}Continuing to show logs for debugging...${NC}"
-}
+    exit 1
+fi
 
 # 12. Final status
 log "\n${GREEN}🚀 Services are running!${NC}"
