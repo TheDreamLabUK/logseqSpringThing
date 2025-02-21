@@ -11,7 +11,7 @@ use webxr::{
         file_service::FileService,
         graph_service::GraphService,
         github::{GitHubClient, ContentAPI, GitHubConfig},
-    },
+    }
 };
 
 use actix_web::{web, App, HttpServer, middleware};
