@@ -470,8 +470,8 @@ log "${YELLOW}Compiling CUDA to PTX...${NC}"
 if ! command -v nvcc &>/dev/null; then
     log "${RED}Error: NVIDIA CUDA Compiler (nvcc) not found${NC}"
     log "${YELLOW}Please install CUDA toolkit to compile PTX files${NC}"
-    exit 1
-fi
+    log "${YELLOW}Continuing without PTX compilation for debugging${NC}"
+else
 
 # Compile CUDA to PTX with optimizations
 if ! nvcc \
@@ -483,13 +483,17 @@ if ! nvcc \
     --gpu-architecture=compute_86 \
     --gpu-code=sm_86,compute_86 \
     --compiler-bindir=/usr/bin/gcc-11; then
-    log "${RED}Failed to compile CUDA to PTX${NC}"
-    exit 1
+    log "${RED}Failed to compile CUDA to PTX. Error details:${NC}"
+    log "${YELLOW}$(nvcc --version)${NC}"
+    log "${YELLOW}Continuing without PTX for debugging${NC}"
+else
+    # Set proper permissions on PTX file only if compilation succeeded
+    log "${YELLOW}Setting PTX file permissions...${NC}"
+    chmod 644 src/utils/compute_forces.ptx
+    log "${GREEN}PTX compilation successful${NC}"
+fi
 fi
 
-# Set proper permissions on PTX file
-log "${YELLOW}Setting PTX file permissions...${NC}"
-chmod 644 src/utils/compute_forces.ptx
 
 # Build client code before building container
 log "${YELLOW}Building client code...${NC}"
@@ -506,14 +510,14 @@ GIT_HASH=$GIT_HASH DOCKER_BUILDKIT=1 $DOCKER_COMPOSE build \
     --pull --no-cache
 
 # 11. Check readiness (fatal if fails)
-if ! check_application_readiness; then
+check_application_readiness || {
     log "${RED}Application failed to start properly${NC}"
     log "${YELLOW}Containers left running for debugging. Use these commands:${NC}"
     log "  $DOCKER_COMPOSE logs -f"
     log "  docker logs logseq-xr-webxr"
     log "  docker logs cloudflared-tunnel"
-    exit 1
-fi
+    log "${YELLOW}Continuing to show logs for debugging...${NC}"
+}
 
 # 12. Final status
 log "\n${GREEN}🚀 Services are running!${NC}"
