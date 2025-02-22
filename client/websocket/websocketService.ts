@@ -62,6 +62,23 @@ export class WebSocketService {
     private readonly maxReconnectDelay: number = 60000; // 60 seconds
     private url: string = '';
     private connectionStatusHandler: ((status: boolean) => void) | null = null;
+    private readonly MAX_POSITION = 1000.0;
+    private readonly MAX_VELOCITY = 10.0;
+
+    private validateAndClampValue(value: number, max: number): number {
+        if (isNaN(value) || !isFinite(value)) {
+            return 0;
+        }
+        return Math.max(Math.min(value, max), -max);
+    }
+
+    private validateAndClampVector3(vec: [number, number, number], max: number): [number, number, number] {
+        return [
+            this.validateAndClampValue(vec[0], max),
+            this.validateAndClampValue(vec[1], max),
+            this.validateAndClampValue(vec[2], max)
+        ];
+    }
 
     private constructor() {
         // Don't automatically connect - wait for explicit connect() call
@@ -222,6 +239,8 @@ export class WebSocketService {
     private handleBinaryMessage(buffer: ArrayBuffer): void {
         try {
             debugLog('Processing binary message:', { size: buffer.byteLength });
+            let invalidValuesFound = false;
+
             const decompressedBuffer = this.tryDecompress(buffer);
             debugLog('After decompression:', { size: decompressedBuffer.byteLength });
             
@@ -269,11 +288,29 @@ export class WebSocketService {
                     dataView.getFloat32(offset + 8, true)
                 ];
                 offset += 12;
-
-                const sanitizedPosition = position.map(v => isNaN(v) ? 0 : v) as [number, number, number];
-                const sanitizedVelocity = velocity.map(v => isNaN(v) ? 0 : v) as [number, number, number];
+                
+                // Validate and clamp position and velocity
+                const sanitizedPosition = this.validateAndClampVector3(position, this.MAX_POSITION);
+                const sanitizedVelocity = this.validateAndClampVector3(velocity, this.MAX_VELOCITY);
+                
+                // Check if values were invalid
+                if (sanitizedPosition.some((v, i) => v !== position[i]) ||
+                    sanitizedVelocity.some((v, i) => v !== velocity[i])) {
+                    invalidValuesFound = true;
+                    logger.warn('Invalid values detected in binary message:', {
+                        nodeId: id,
+                        originalPosition: position,
+                        sanitizedPosition,
+                        originalVelocity: velocity,
+                        sanitizedVelocity
+                    });
+                }
 
                 nodes.push({ id, position: sanitizedPosition, velocity: sanitizedVelocity });
+            }
+
+            if (invalidValuesFound) {
+                logger.warn('Some nodes had invalid position/velocity values that were clamped');
             }
 
             if (nodes.length > 0 && this.binaryMessageCallback) {

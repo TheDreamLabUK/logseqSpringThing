@@ -19,13 +19,6 @@ import './ui'; // Import UI initialization
 
 const logger = createLogger('GraphVisualization');
 
-// Helper for conditional debug logging
-function debugLog(message: string, ...args: any[]) {
-    if (debugState.isDataDebugEnabled()) {
-        logger.debug(message, ...args);
-    }
-}
-
 export class GraphVisualization {
     private sceneManager: SceneManager;
     private nodeManager: NodeManagerFacade;
@@ -34,17 +27,29 @@ export class GraphVisualization {
     private textRenderer: TextRenderer;
     private websocketService!: WebSocketService;
     private initialized: boolean = false;
+    private componentsReady: boolean = false;
 
     public async initializeWebSocket(): Promise<void> {
-        debugLog('Initializing WebSocket connection');
+        if (!this.componentsReady) {
+            if (debugState.isEnabled()) {
+                logger.warn('Attempting to initialize WebSocket before components are ready');
+            }
+            return;
+        }
+
+        if (debugState.isDataDebugEnabled()) {
+            logger.debug('Initializing WebSocket connection');
+        }
         
         // Initialize WebSocket but don't connect yet
         this.websocketService = WebSocketService.getInstance();
         
         // Set up binary message handler before connecting
         this.websocketService.onBinaryMessage((nodes) => {
-            if (this.initialized) {
-                debugLog('Received binary node update', { nodeCount: nodes.length });
+            if (this.initialized && this.componentsReady) {
+                if (debugState.isDataDebugEnabled()) {
+                    logger.debug('Received binary node update', { nodeCount: nodes.length });
+                }
                 this.nodeManager.updateNodePositions(nodes.map(node => ({
                     id: node.id.toString(),
                     data: {
@@ -57,15 +62,21 @@ export class GraphVisualization {
         
         // Set up connection status handler
         this.websocketService.onConnectionStatusChange((connected) => {
-            logger.info(`WebSocket connection status changed: ${connected}`);
-            if (connected) {
-                debugLog('Requesting position updates');
+            if (debugState.isEnabled()) {
+                logger.info(`WebSocket connection status changed: ${connected}`);
+            }
+            if (connected && this.componentsReady) {
+                if (debugState.isDataDebugEnabled()) {
+                    logger.debug('Requesting position updates');
+                }
                 this.websocketService.sendMessage({ type: 'requestInitialData' });
             }
         });
         
         // Load initial graph data before connecting
-        debugLog('Loading initial graph data');
+        if (debugState.isDataDebugEnabled()) {
+            logger.debug('Loading initial graph data');
+        }
         try {
             await graphDataManager.fetchInitialData();
             const graphData = graphDataManager.getGraphData();
@@ -75,14 +86,18 @@ export class GraphVisualization {
             // Mark as initialized and connect websocket only after initial data is loaded
             this.initialized = true;
             await this.websocketService.connect();
-            debugLog('Initial graph data loaded and WebSocket connected');
+            if (debugState.isDataDebugEnabled()) {
+                logger.debug('Initial graph data loaded and WebSocket connected');
+            }
         } catch (error) {
             logger.error('Failed to load initial graph data:', error);
         }
     }
 
     constructor(settings: Settings) {
-        debugLog('Initializing GraphVisualization');
+        if (debugState.isDataDebugEnabled()) {
+            logger.debug('Initializing GraphVisualization');
+        }
         
         // Get existing canvas element
         const canvas = document.getElementById('main-canvas') as HTMLCanvasElement;
@@ -113,11 +128,23 @@ export class GraphVisualization {
         
         // Start rendering
         this.sceneManager.start();
-        debugLog('GraphVisualization initialization complete');
+        this.componentsReady = true;
+        if (debugState.isDataDebugEnabled()) {
+            logger.debug('GraphVisualization initialization complete');
+        }
     }
 
     public handleSettingsUpdate(settings: Settings) {
-        debugLog('Handling settings update');
+        if (!this.componentsReady) {
+            if (debugState.isEnabled()) {
+                logger.warn('Attempting to update settings before components are ready');
+            }
+            return;
+        }
+
+        if (debugState.isDataDebugEnabled()) {
+            logger.debug('Handling settings update');
+        }
         this.nodeManager.handleSettingsUpdate(settings);
         this.edgeManager.handleSettingsUpdate(settings);
         this.hologramManager.updateSettings(settings);
@@ -126,12 +153,16 @@ export class GraphVisualization {
     }
 
     public dispose() {
-        debugLog('Disposing GraphVisualization');
+        if (debugState.isDataDebugEnabled()) {
+            logger.debug('Disposing GraphVisualization');
+        }
         this.nodeManager.dispose();
         this.edgeManager.dispose();
         this.hologramManager.dispose();
         this.textRenderer.dispose();
-        this.websocketService.close();
+        if (this.websocketService) {
+            this.websocketService.close();
+        }
         
         // Clean up XR components
         if ((window as any).xrInitializer) {
@@ -140,13 +171,19 @@ export class GraphVisualization {
         }
         
         SceneManager.cleanup();
-        debugLog('GraphVisualization disposed');
+        this.initialized = false;
+        this.componentsReady = false;
+        if (debugState.isDataDebugEnabled()) {
+            logger.debug('GraphVisualization disposed');
+        }
     }
 }
 
 // Initialize settings and logging
 async function init() {
-    logger.info('Starting application initialization...');
+    if (debugState.isEnabled()) {
+        logger.info('Starting application initialization...');
+    }
     
     try {
         // Initialize platform detection first
@@ -154,16 +191,21 @@ async function init() {
         
         // Initialize ModularControlPanel first and wait for settings to be ready
         const controlPanel = ModularControlPanel.getInstance();
-        
-        // Wait for settings to be ready
-        if (!controlPanel.isReady()) {
-            await new Promise<void>((resolve) => {
-                controlPanel.on('settings:ready', () => resolve());
-            });
-        }
-        
-        // Get settings store after it's been initialized by ModularControlPanel
         const settingsStore = SettingsStore.getInstance();
+        
+        // Wait for both control panel and settings store to be ready
+        await Promise.all([
+            new Promise<void>((resolve) => {
+                if (controlPanel.isReady()) {
+                    resolve();
+                } else {
+                    controlPanel.on('settings:ready', () => resolve());
+                }
+            }),
+            settingsStore.initialize()
+        ]);
+        
+        // Get settings after everything is initialized
         const settings = settingsStore.get('') as Settings || defaultSettings;
 
         // Configure logging based on settings
@@ -203,7 +245,7 @@ async function init() {
         const viz = new GraphVisualization(settings);
         (window as any).visualization = viz;
         
-        // Initialize WebSocket after visualization is created
+        // Initialize WebSocket after visualization is created and ready
         await viz.initializeWebSocket();
 
         // Subscribe to all relevant visualization paths
@@ -262,13 +304,15 @@ async function init() {
         });
 
         // Log successful initialization
-        logger.info('Application components initialized successfully', {
-            platformType: platformManager.getPlatform(),
-            xrSupported: platformManager.isXRSupported(),
-            isQuest: platformManager.isQuest()
-        });
-        
-        logger.info('Application initialized successfully');
+        if (debugState.isEnabled()) {
+            logger.info('Application components initialized successfully', {
+                platformType: platformManager.getPlatform(),
+                xrSupported: platformManager.isXRSupported(),
+                isQuest: platformManager.isQuest()
+            });
+            
+            logger.info('Application initialized successfully');
+        }
     } catch (error) {
         logger.error('Failed to initialize application components:', error);
         throw error;

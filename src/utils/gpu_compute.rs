@@ -2,11 +2,13 @@
 use cudarc::driver::{CudaDevice, CudaFunction, CudaSlice, LaunchConfig, LaunchAsync};
 #[cfg(feature = "gpu")]
 use cudarc::nvrtc::Ptx;
+use cudarc::driver::sys::CUdevice_attribute_enum;
 
-use std::io::Error;
+use std::io::{Error, ErrorKind};
 use std::sync::Arc;
-use log::{debug, warn};
+use log::{debug, error, warn};
 use crate::models::graph::GraphData;
+use std::collections::HashMap;
 use crate::models::simulation_params::SimulationParams;
 use crate::utils::socket_flow_messages::NodeData;
 use tokio::sync::RwLock;
@@ -19,7 +21,7 @@ const MAX_NODES: u32 = 1_000_000;
 #[cfg(feature = "gpu")]
 const NODE_SIZE: u32 = std::mem::size_of::<NodeData>() as u32;
 #[cfg(feature = "gpu")]
-const SHARED_MEM_SIZE: u32 = BLOCK_SIZE * NODE_SIZE;
+const SHARED_MEM_SIZE: u32 = BLOCK_SIZE * (12 + 4); // Vec3 (12 bytes) + float (4 bytes) per thread
 
 // CPU-only version
 #[cfg(not(feature = "gpu"))]
@@ -41,6 +43,7 @@ pub struct GPUCompute {
     pub force_kernel: CudaFunction,
     pub node_data: CudaSlice<NodeData>,
     pub num_nodes: u32,
+    pub node_indices: HashMap<String, usize>,
     pub simulation_params: SimulationParams,
 }
 
@@ -48,6 +51,8 @@ pub struct GPUCompute {
 impl GPUCompute {
     pub async fn new(graph: &GraphData) -> Result<Arc<RwLock<Self>>, Error> {
         let num_nodes = graph.nodes.len() as u32;
+        debug!("Initializing GPU compute with {} nodes", num_nodes);
+        
         if num_nodes > MAX_NODES {
             return Err(Error::new(
                 std::io::ErrorKind::Other,
@@ -55,29 +60,71 @@ impl GPUCompute {
             ));
         }
 
-        debug!("Initializing CUDA device");
-        let device = Arc::new(CudaDevice::new(0)
-            .map_err(|e| Error::new(std::io::ErrorKind::Other, e.to_string()))?);
+        debug!("Attempting to create CUDA device");
+        let device = match CudaDevice::new(0) {
+            Ok(dev) => {
+                debug!("CUDA device created successfully");
+                let max_threads = dev.as_ref().attribute(CUdevice_attribute_enum::CU_DEVICE_ATTRIBUTE_MAX_THREADS_PER_BLOCK as _)
+                    .map_err(|e| Error::new(ErrorKind::Other, e.to_string()))?;
+                let compute_mode = dev.as_ref().attribute(CUdevice_attribute_enum::CU_DEVICE_ATTRIBUTE_COMPUTE_MODE as _)
+                    .map_err(|e| Error::new(ErrorKind::Other, e.to_string()))?;
+                let multiprocessor_count = dev.as_ref().attribute(CUdevice_attribute_enum::CU_DEVICE_ATTRIBUTE_MULTIPROCESSOR_COUNT as _)
+                    .map_err(|e| Error::new(ErrorKind::Other, e.to_string()))?;
+                debug!("GPU Device detected:");
+                debug!("  Max threads per MP: {}", max_threads);
+                debug!("  Multiprocessor count: {}", multiprocessor_count);
+                debug!("  Compute mode: {}", compute_mode);
+                
+                // Verify the device is suitable for our compute needs
+                if max_threads < 256 {
+                    return Err(Error::new(ErrorKind::Other, 
+                        format!("GPU capability too low. Device supports only {} threads per multiprocessor, minimum required is 256", 
+                            max_threads)));
+                }
+                Arc::new(dev)
+            },
+            Err(e) => {
+                error!("Failed to create CUDA device: {}", e);
+                return Err(Error::new(ErrorKind::Other, e.to_string()));
+            }
+        };
 
         debug!("Loading force computation kernel");
-        let ptx = Ptx::from_file("/app/compute_forces/compute_forces.ptx");
+        let ptx_path = "/app/src/utils/compute_forces.ptx";
+
+        if !std::path::Path::new(ptx_path).exists() {
+            warn!("PTX file does not exist at {}", ptx_path);
+            return Err(Error::new(ErrorKind::NotFound, 
+                format!("PTX file not found at {}", ptx_path)));
+        }
+
+        let ptx = Ptx::from_file(ptx_path);
+
+        debug!("Successfully loaded PTX file");
             
-        device.load_ptx(ptx, "compute_forces", &["compute_forces"])
+        device.load_ptx(ptx.clone(), "compute_forces_kernel", &["compute_forces_kernel"])
             .map_err(|e| Error::new(std::io::ErrorKind::Other, e.to_string()))?;
             
-        let force_kernel = device.get_func("compute_forces", "compute_forces")
-            .ok_or_else(|| Error::new(std::io::ErrorKind::Other, "Function compute_forces not found"))?;
+        let force_kernel = device.get_func("compute_forces_kernel", "compute_forces_kernel")
+            .ok_or_else(|| Error::new(std::io::ErrorKind::Other, "Function compute_forces_kernel not found"))?;
 
         debug!("Allocating device memory for {} nodes", num_nodes);
         let node_data = device.alloc_zeros::<NodeData>(num_nodes as usize)
             .map_err(|e| Error::new(std::io::ErrorKind::Other, e.to_string()))?;
 
         debug!("Creating GPU compute instance");
+        // Create node ID to index mapping
+        let mut node_indices = HashMap::new();
+        for (idx, node) in graph.nodes.iter().enumerate() {
+            node_indices.insert(node.id.clone(), idx);
+        }
+
         let mut instance = Self {
             device: Arc::clone(&device),
             force_kernel,
             node_data,
             num_nodes,
+            node_indices,
             simulation_params: SimulationParams::default(),
         };
 
@@ -90,16 +137,46 @@ impl GPUCompute {
     pub fn update_graph_data(&mut self, graph: &GraphData) -> Result<(), Error> {
         debug!("Updating graph data for {} nodes", graph.nodes.len());
 
-        // Get node data directly
+        // Update node index mapping
+        self.node_indices.clear();
+        for (idx, node) in graph.nodes.iter().enumerate() {
+            self.node_indices.insert(node.id.clone(), idx);
+        }
+
+        // Reallocate buffer if node count changed
+        if graph.nodes.len() as u32 != self.num_nodes {
+            debug!("Reallocating GPU buffer for {} nodes", graph.nodes.len());
+            self.node_data = self.device.alloc_zeros::<NodeData>(graph.nodes.len())
+                .map_err(|e| Error::new(std::io::ErrorKind::Other, e.to_string()))?;
+            self.num_nodes = graph.nodes.len() as u32;
+        }
+
+        // Prepare node data with connection flags
         let node_data: Vec<NodeData> = graph.nodes.iter()
-            .map(|node| node.data.clone())
+            .map(|node| {
+                let mut data = node.data.clone();
+                
+                // Clear connection flag
+                data.flags &= !0x2;
+                
+                // Set connection flag if node has any edges
+                for edge in &graph.edges {
+                    if edge.source == node.id || edge.target == node.id {
+                        data.flags |= 0x2; // Set connected flag
+                        break;
+                    }
+                }
+                
+                data
+            })
             .collect();
+
+        debug!("Copying {} nodes to GPU", graph.nodes.len());
 
         // Copy data to GPU
         self.device.htod_sync_copy_into(&node_data, &mut self.node_data)
             .map_err(|e| Error::new(std::io::ErrorKind::Other, e.to_string()))?;
 
-        self.num_nodes = graph.nodes.len() as u32;
         Ok(())
     }
 
@@ -109,70 +186,40 @@ impl GPUCompute {
         Ok(())
     }
 
-    pub fn step(&mut self) -> Result<(), Error> {
-        // Debug initial node data
-        let initial_nodes = self.get_node_data()?;
-        debug!("Initial node data before GPU step:");
-        for (i, node) in initial_nodes.iter().take(5).enumerate() {
-            debug!("Node {}: pos={:?}, vel={:?}", i, node.position, node.velocity);
-        }
-
-        let blocks = (self.num_nodes + BLOCK_SIZE - 1) / BLOCK_SIZE;
+    pub fn compute_forces(&mut self) -> Result<(), Error> {
+        debug!("Starting force computation on GPU");
+        
+        let blocks = ((self.num_nodes + BLOCK_SIZE - 1) / BLOCK_SIZE).max(1);
         let cfg = LaunchConfig {
             grid_dim: (blocks, 1, 1),
             block_dim: (BLOCK_SIZE, 1, 1),
             shared_mem_bytes: SHARED_MEM_SIZE,
         };
 
-        // Use parameters directly without scaling
-        let params = &self.simulation_params;
+        debug!("Launch config: blocks={}, threads={}, shared_mem={}",
+            blocks, BLOCK_SIZE, SHARED_MEM_SIZE);
 
         unsafe {
             self.force_kernel.clone().launch(cfg, (
-                &mut self.node_data,
+                &self.node_data,
                 self.num_nodes as i32,
-                params.spring_strength,        // Spring force strength
-                params.repulsion,             // Repulsion force strength
-                params.damping,               // Velocity damping
-                params.max_repulsion_distance, // Maximum distance for repulsion
-                if params.enable_bounds {      // Viewport bounds (0 if disabled)
-                    params.viewport_bounds
+                self.simulation_params.spring_strength,
+                self.simulation_params.damping,
+                self.simulation_params.repulsion,
+                self.simulation_params.time_step,
+                self.simulation_params.max_repulsion_distance,
+                if self.simulation_params.enable_bounds {
+                    self.simulation_params.viewport_bounds
                 } else {
-                    0.0
+                    f32::MAX // Effectively disable bounds
                 }
-            )).map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
+            )).map_err(|e| {
+                error!("Kernel launch failed: {}", e);
+                Error::new(ErrorKind::Other, e.to_string())
+            })?;
         }
-        
-        // Sanity-check: retrieve updated node data and correct any NaN values
-        let mut updated_nodes = self.get_node_data()?;
-        let mut needs_fix = false;
-        for node in &mut updated_nodes {
-            for v in &mut node.position {
-                if v.is_nan() {
-                    *v = 0.0;
-                    needs_fix = true;
-                }
-            }
-            for v in &mut node.velocity {
-                if v.is_nan() {
-                    *v = 0.0;
-                    needs_fix = true;
-                }
-            }
-        }
-        if needs_fix {
-            // Log the correction
-            warn!("GPUCompute: Detected NaN in node data. Correcting values to 0.");
-            self.device.htod_sync_copy_into(&updated_nodes, &mut self.node_data)
-                .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
-        }
-        
-        // Debug: log a sample of node positions after update
-        debug!("Sample node positions after update:");
-        for (i, node) in updated_nodes.iter().take(5).enumerate() {
-            debug!("Node {}: pos={:?}, vel={:?}", i, node.position, node.velocity);
-        }
-        
+
+        debug!("Force computation completed");
         Ok(())
     }
 
@@ -190,6 +237,54 @@ impl GPUCompute {
 
         Ok(gpu_nodes)
     }
+
+    pub fn test_gpu() -> Result<(), Error> {
+        debug!("Running GPU test");
+        
+        let device = match CudaDevice::new(0) {
+            Ok(dev) => dev,
+            Err(e) => return Err(Error::new(ErrorKind::Other, format!("Failed to create CUDA device: {}", e)))
+        };
+        
+        // Try to allocate and manipulate some memory
+        let test_data: Vec<f32> = vec![1.0, 2.0, 3.0, 4.0, 5.0];
+        let gpu_data = match device.alloc_zeros::<f32>(5) {
+            Ok(data) => data,
+            Err(e) => return Err(Error::new(ErrorKind::Other, format!("Failed to allocate GPU memory: {}", e)))
+        };
+        
+        if let Err(e) = device.dtoh_sync_copy_into(&gpu_data, &mut test_data.clone()) {
+            return Err(Error::new(ErrorKind::Other, format!("Failed to copy data from GPU: {}", e)));
+        }
+        
+        debug!("GPU test successful");
+        Ok(())
+    }
+
+    pub fn step(&mut self) -> Result<(), Error> {
+        self.compute_forces()?;
+        Ok(())
+    }
+}
+
+#[cfg(feature = "gpu")]
+pub fn test_gpu() -> Result<(), Error> {
+    debug!("Running GPU test");
+    
+    // Create a simple test device
+    let device = CudaDevice::new(0)
+        .map_err(|e| Error::new(ErrorKind::Other, e.to_string()))?;
+    
+    // Try to allocate and manipulate some memory
+    let test_data: Vec<f32> = vec![1.0, 2.0, 3.0, 4.0, 5.0];
+    let gpu_data = device.alloc_zeros::<f32>(5)
+        .map_err(|e| Error::new(ErrorKind::Other, e.to_string()))?;
+    
+    device.dtoh_sync_copy_into(&gpu_data, &mut test_data.clone())
+        .map_err(|e| Error::new(ErrorKind::Other, e.to_string()))?;
+    
+    debug!("GPU test successful");
+    Ok(())
 }
 
 #[cfg(test)]

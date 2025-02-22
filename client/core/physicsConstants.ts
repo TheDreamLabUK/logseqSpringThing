@@ -1,89 +1,90 @@
-// Physics parameter ranges and defaults based on GPU-accelerated implementations
+// Physics parameter ranges and defaults in base units (meters, m/s)
 export const PHYSICS_CONSTANTS = {
-    // Attraction force (cohesion between nodes)
+    // Attraction force (supplementary cohesion)
     ATTRACTION: {
         MIN: 0.001,
-        MAX: 1.0,
-        DEFAULT: 0.015,  // Proven stable in Rust backend
+        MAX: 0.05,
+        DEFAULT: 0.01,  // 1cm/s² base attraction
         RECOMMENDED_RANGE: {
-            MIN: 0.01,
+            MIN: 0.005,
             MAX: 0.05
         }
     },
 
     // Repulsion force (separation between nodes)
     REPULSION: {
-        MIN: 1.0,
-        MAX: 10000.0,
-        DEFAULT: 1500.0,  // Proven stable in Rust backend
+        MIN: 0.1,
+        MAX: 0.2,
+        DEFAULT: 0.1,  // Base repulsion (with 1/d² falloff)
         RECOMMENDED_RANGE: {
-            MIN: 1000.0,
-            MAX: 2000.0
+            MIN: 0.05,
+            MAX: 0.15
         }
     },
 
-    // Spring force (edge elasticity)
+    // Spring force (linear with distance)
     SPRING: {
         MIN: 0.001,
-        MAX: 1.0,
-        DEFAULT: 0.018,  // Proven stable in Rust backend
+        MAX: 0.1,
+        DEFAULT: 0.05,  // 5cm/s² per meter of stretch
         RECOMMENDED_RANGE: {
-            MIN: 0.01,
-            MAX: 0.05
+            MIN: 0.02,
+            MAX: 0.08
         }
     },
 
-    // Damping (velocity decay)
+    // Damping (unitless, fraction of velocity retained)
     DAMPING: {
         MIN: 0.5,
         MAX: 0.95,
-        DEFAULT: 0.88,  // Proven stable in Rust backend
+        DEFAULT: 0.95,  // 95% velocity retention
         RECOMMENDED_RANGE: {
-            MIN: 0.85,
-            MAX: 0.92
+            MIN: 0.9,
+            MAX: 0.98
         }
     },
 
-    // Simulation iterations
+    // Simulation iterations per frame
     ITERATIONS: {
         MIN: 1,
-        MAX: 1000,
-        DEFAULT: 500,  // Proven stable in Rust backend
+        MAX: 200,
+        DEFAULT: 100,  // Balance of stability and performance
         RECOMMENDED_RANGE: {
-            MIN: 200,
-            MAX: 600
+            MIN: 50,
+            MAX: 150
         }
     },
 
-    // Maximum velocity
+    // Maximum velocity (meters per second)
     MAX_VELOCITY: {
-        MIN: 0.1,
+        MIN: 0.01,
+        MAX: 0.5,
+        DEFAULT: 0.1,  // 10cm/s maximum
+        RECOMMENDED_RANGE: {
+            MIN: 0.05,
+            MAX: 0.2
+        }
+    },
+
+    // Collision radius (meters)
+    COLLISION_RADIUS: {
+        MIN: 0.01,
+        MAX: 0.2,
+        DEFAULT: 0.05,  // 5cm radius
+        RECOMMENDED_RANGE: {
+            MIN: 0.03,
+            MAX: 0.1
+        }
+    },
+
+    // Bounds size (meters, half-width of cubic bounds)
+    BOUNDS_SIZE: {
+        MIN: 0.5,
         MAX: 5.0,
-        DEFAULT: 2.5,  // Proven stable in Rust backend
+        DEFAULT: 2.0,  // 2m bounds (4m cube)
         RECOMMENDED_RANGE: {
             MIN: 1.0,
             MAX: 3.0
-        }
-    },
-
-    // Additional physics parameters
-    COLLISION_RADIUS: {
-        MIN: 0.1,
-        MAX: 1.0,
-        DEFAULT: 0.25,
-        RECOMMENDED_RANGE: {
-            MIN: 0.2,
-            MAX: 0.4
-        }
-    },
-
-    BOUNDS_SIZE: {
-        MIN: 5.0,
-        MAX: 50.0,
-        DEFAULT: 12.0,
-        RECOMMENDED_RANGE: {
-            MIN: 10.0,
-            MAX: 15.0
         }
     }
 };

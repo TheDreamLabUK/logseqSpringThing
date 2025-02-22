@@ -7,7 +7,7 @@ export const defaultSettings: Settings = {
             metalness: 0.8,
             opacity: 1.0,
             roughness: 0.2,
-            sizeRange: [200, 700],
+            sizeRange: [0.05, 0.2],  // 5cm to 20cm
             quality: 'medium',
             enableInstancing: true,
             enableHologram: true,
@@ -17,12 +17,12 @@ export const defaultSettings: Settings = {
             colorRangeLinks: ['#0000ff', '#ff00ff']
         },
         edges: {
-            arrowSize: 5.0,
-            baseWidth: 3.0,
+            arrowSize: 0.02,         // 2cm
+            baseWidth: 0.005,        // 5mm
             color: '#888888',
             enableArrows: false,
             opacity: 0.8,
-            widthRange: [1.5, 4.0],
+            widthRange: [0.005, 0.01],  // 5mm to 10mm
             quality: 'medium',
             enableFlowEffect: true,
             flowSpeed: 1.0,
@@ -34,18 +34,18 @@ export const defaultSettings: Settings = {
         },
         physics: {
             enabled: true,
-            iterations: 100,                // Balanced for performance and stability
-            attractionStrength: 0.015,        // Moderate attraction for connected nodes
-            repulsionStrength: 1500.0,       // Strong repulsion for good spacing
-            repulsionDistance: 50.0,      // Large enough for initial layout
-            springStrength: 0.018,            // Moderate spring force for stability
-            damping: 0.88,                   // Higher damping for stability
-            maxVelocity: 2.5,               // Moderate velocity limit
-            collisionRadius: 0.25,           // Default collision detection radius
-            massScale: 1.0,                 // Default mass scaling
-            boundaryDamping: 0.5,           // Strong boundary damping to prevent oscillation
-            enableBounds: true,             // Enable bounds by default
-            boundsSize: 1000.0              // Large enough for typical graphs
+            iterations: 100,              // Balanced for performance and stability
+            attractionStrength: 0.01,     // 1cm/s² base attraction
+            repulsionStrength: 0.1,       // Base repulsion (with 1/d² falloff)
+            repulsionDistance: 0.5,       // 50cm repulsion range
+            springStrength: 0.05,         // 5cm/s² per meter of stretch
+            damping: 0.95,                // 95% velocity retention
+            maxVelocity: 0.1,             // 10cm/s maximum
+            collisionRadius: 0.05,        // 5cm collision radius
+            massScale: 1.0,               // Default mass scaling
+            boundaryDamping: 0.9,         // 90% velocity retention at bounds
+            enableBounds: true,           // Enable bounds by default
+            boundsSize: 2.0               // 2m bounds (4m cube)
         },
         rendering: {
             ambientLightIntensity: 0.2,
@@ -90,18 +90,18 @@ export const defaultSettings: Settings = {
         },
         hologram: {
             ringCount: 2,
-            sphereSizes: [40, 80],
+            sphereSizes: [0.08, 0.16],    // 8cm and 16cm
             ringRotationSpeed: 1.0,
             ringColor: '#00ffff',
             ringOpacity: 0.6,
             enableBuckminster: false,
             enableGeodesic: false,
-            buckminsterSize: 0,
+            buckminsterSize: 0.0,         // Disabled by default
             buckminsterOpacity: 0,
-            geodesicSize: 0,
+            geodesicSize: 0.0,            // Disabled by default
             geodesicOpacity: 0,
             enableTriangleSphere: true,
-            triangleSphereSize: 80,
+            triangleSphereSize: 0.16,     // 16cm
             triangleSphereOpacity: 0.15,
             globalRotationSpeed: 0.03
         }
@@ -127,7 +127,7 @@ export const defaultSettings: Settings = {
     },
     xr: {
         mode: 'immersive-vr',
-        roomScale: 0.01,
+        roomScale: 1.0,                   // Real-world 1:1 scale
         spaceType: 'local-floor',
         quality: 'high',
         autoEnterAR: false,
@@ -137,22 +137,22 @@ export const defaultSettings: Settings = {
         handMeshEnabled: true,
         handMeshColor: '#4287f5',
         handMeshOpacity: 0.3,
-        handPointSize: 3.0,
+        handPointSize: 0.006,             // 6mm
         handRayEnabled: true,
         handRayColor: '#4287f5',
-        handRayWidth: 1.5,
+        handRayWidth: 0.003,              // 3mm
         gestureSmoothing: 0.5,
         enableHaptics: true,
         hapticIntensity: 0.5,
-        dragThreshold: 0.02,
-        pinchThreshold: 0.5,
-        rotationThreshold: 0.1,
-        interactionRadius: 0.5,
-        movementSpeed: 0.05,
-        deadZone: 0.1,
+        dragThreshold: 0.02,              // 2cm movement required to start drag
+        pinchThreshold: 0.3,              // 30% pinch required for activation
+        rotationThreshold: 0.08,          // 8% rotation required for activation
+        interactionRadius: 0.15,          // 15cm interaction sphere
+        movementSpeed: 0.08,              // 8cm per frame at full stick deflection
+        deadZone: 0.12,                   // 12% stick movement required
         movementAxes: {
-            horizontal: 2,
-            vertical: 3
+            horizontal: 2,                 // Right joystick X
+            vertical: 3                    // Right joystick Y
         },
         enableLightEstimation: false,
         enablePlaneDetection: true,
@@ -161,13 +161,13 @@ export const defaultSettings: Settings = {
         planeOpacity: 0.5,
         showPlaneOverlay: false,
         snapToFloor: false,
-        planeDetectionDistance: 3.0,
+        planeDetectionDistance: 3.0,      // 3m maximum plane detection distance
         enablePassthroughPortal: false,
         passthroughOpacity: 0.8,
         passthroughBrightness: 1.1,
         passthroughContrast: 1.0,
-        portalSize: 2.0,
+        portalSize: 2.5,                  // 2.5m portal size
         portalEdgeColor: '#ffffff',
-        portalEdgeWidth: 2.0
+        portalEdgeWidth: 0.02             // 2cm edge width
     }
 };

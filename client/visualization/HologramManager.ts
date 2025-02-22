@@ -11,6 +11,7 @@ import { Settings } from '../types/settings';
 import { GeometryFactory } from '../rendering/factories/GeometryFactory';
 import { MaterialFactory } from '../rendering/factories/MaterialFactory';
 import { HologramShaderMaterial } from '../rendering/materials/HologramShaderMaterial';
+import { SettingsStore } from '../state/SettingsStore';
 
 export class HologramManager {
     private readonly group = new Group();
@@ -21,6 +22,7 @@ export class HologramManager {
     private readonly tempMatrix = new Matrix4();
     private readonly instanceCount = 3;
     private readonly materialFactory: MaterialFactory;
+    private readonly settingsStore: SettingsStore;
 
     constructor(
         private readonly scene: Scene,
@@ -29,11 +31,26 @@ export class HologramManager {
     ) {
         this.geometryFactory = GeometryFactory.getInstance();
         this.materialFactory = MaterialFactory.getInstance();
+        this.settingsStore = SettingsStore.getInstance();
         
         // Enable bloom layer
         this.group.layers.enable(1);
         this.createHolograms();
         this.scene.add(this.group);
+
+        // Subscribe to settings changes
+        this.settingsStore.subscribe('visualization.hologram', (_path: string, settings: any) => {
+            if (settings && typeof settings === 'object') {
+                this.settings = {
+                    ...this.settings,
+                    visualization: {
+                        ...this.settings.visualization,
+                        hologram: settings
+                    }
+                };
+                this.updateSettings(this.settings);
+            }
+        });
     }
 
     private createHolograms() {
@@ -54,16 +71,19 @@ export class HologramManager {
         
         // Create one ring instance for each size
         sphereSizes.forEach(size => {
+            // Get unit-sized geometry and scale it
             const ring = new InstancedMesh(
-                this.geometryFactory.getHologramGeometry('ring', quality, size),
+                this.geometryFactory.getHologramGeometry('ring', quality),
                 baseMaterial.clone(),
                 this.instanceCount
             );
             
-            // Set up ring instances with different rotations
+            // Set up ring instances with different rotations and scales
             for (let j = 0; j < this.instanceCount; j++) {
                 this.tempMatrix.makeRotationX(Math.PI / 3 * j);
                 this.tempMatrix.multiply(new Matrix4().makeRotationY(Math.PI / 6 * j));
+                // Apply size in meters from settings
+                this.tempMatrix.multiply(new Matrix4().makeScale(size, size, size));
                 ring.setMatrixAt(j, this.tempMatrix);
             }
             
@@ -74,16 +94,18 @@ export class HologramManager {
         });
 
         if (this.settings.visualization.hologram.enableTriangleSphere) {
-            const size = this.settings.visualization.hologram.triangleSphereSize;
+            const baseSize = this.settings.visualization.hologram.triangleSphereSize;
             const sphereMesh = new InstancedMesh(
-                this.geometryFactory.getHologramGeometry('triangleSphere', quality, size),
+                this.geometryFactory.getHologramGeometry('triangleSphere', quality),
                 baseMaterial.clone(),
                 this.instanceCount
             );
             
             // Set up sphere instances with different scales and rotations
             for (let i = 0; i < this.instanceCount; i++) {
-                this.tempMatrix.makeScale(0.8 + (i * 0.2), 0.8 + (i * 0.2), 0.8 + (i * 0.2));
+                // Scale each instance relative to the base size (80%, 100%, 120%)
+                const scale = baseSize * (0.8 + (i * 0.2));
+                this.tempMatrix.makeScale(scale, scale, scale);
                 this.tempMatrix.multiply(new Matrix4().makeRotationX(Math.PI / 4 * i));
                 this.tempMatrix.multiply(new Matrix4().makeRotationY(Math.PI / 3 * i));
                 sphereMesh.setMatrixAt(i, this.tempMatrix);
@@ -114,10 +136,11 @@ export class HologramManager {
     }
 
     handleInteraction(position: Vector3) {
+        const interactionRadius = this.settings.xr.interactionRadius;
         this.group.traverse(child => {
             if (child instanceof Mesh && child.material instanceof HologramShaderMaterial) {
                 const distance = position.distanceTo(child.position);
-                if (distance < 0.5 && child.material.uniforms) {
+                if (distance < interactionRadius && child.material.uniforms) {
                     child.material.uniforms.pulseIntensity.value = 0.4;
                     setTimeout(() => {
                         if (child.material instanceof HologramShaderMaterial && child.material.uniforms) {

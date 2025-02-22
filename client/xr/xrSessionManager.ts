@@ -353,8 +353,8 @@ export class XRSessionManager {
             // Apply AR scale if in AR mode
             if (platformManager.isQuest()) {
                 // Use direct room scale for better AR sizing
-                // Apply a base scale of 0.001 for AR to make objects more manageable
-                const arScale = this.currentSettings.roomScale * 0.001;
+                // Use roomScale directly for consistent AR sizing
+                const arScale = this.currentSettings.roomScale;
                 if (debugState.isEnabled()) {
                     logger.info('Setting initial AR scale:', { 
                         arScale, 
@@ -532,8 +532,8 @@ export class XRSessionManager {
         // Update room scale if changed
         if (this.currentSettings.roomScale !== undefined) {
             if (platformManager.isQuest()) {
-                // Apply a base scale of 0.001 for AR to make objects more manageable
-                const arScale = Number(this.currentSettings.roomScale) * 0.001;
+                // Use roomScale directly for consistent AR sizing
+                const arScale = Number(this.currentSettings.roomScale);
                 if (debugState.isEnabled()) {
                     logger.info('Updating AR scale:', { 
                         arScale, 

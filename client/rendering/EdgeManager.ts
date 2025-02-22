@@ -12,6 +12,7 @@ import { Edge } from '../core/types';
 import { Settings } from '../types/settings';
 import { EdgeShaderMaterial } from './materials/EdgeShaderMaterial';
 import { NodeInstanceManager } from './node/instance/NodeInstanceManager';
+import { SettingsStore } from '../state/SettingsStore';
 
 export class EdgeManager {
     private scene: Scene;
@@ -20,6 +21,7 @@ export class EdgeManager {
     private nodeManager: NodeInstanceManager;
     private edgeData: Map<string, Edge> = new Map();
     private settings: Settings;
+    private settingsStore: SettingsStore;
     private updateFrameCount = 0;
     private readonly UPDATE_FREQUENCY = 2; // Update every other frame
 
@@ -27,6 +29,7 @@ export class EdgeManager {
         this.scene = scene;
         this.nodeManager = nodeManager;
         this.settings = settings;
+        this.settingsStore = SettingsStore.getInstance();
         this.edgeGroup = new Group();
         
         // Enable both layers by default for desktop mode
@@ -34,19 +37,36 @@ export class EdgeManager {
         this.edgeGroup.layers.enable(1);
         
         scene.add(this.edgeGroup);
+
+        // Subscribe to settings changes
+        this.settingsStore.subscribe('visualization.edges', (_: string, settings: any) => {
+            if (settings && typeof settings === 'object') {
+                this.settings = {
+                    ...this.settings,
+                    visualization: {
+                        ...this.settings.visualization,
+                        edges: settings
+                    }
+                };
+                this.handleSettingsUpdate(this.settings);
+                this.updateAllEdgeGeometries();
+            }
+        });
+    }
+
+    private getEdgeWidth(): number {
+        return this.settings.visualization.edges.baseWidth || 0.005; // Default width in meters (5mm)
     }
 
     private createEdgeGeometry(source: Vector3, target: Vector3): BufferGeometry {
         const geometry = new BufferGeometry();
-        
-        // Calculate direction and create vertices directly in world space
-        const direction = new Vector3().subVectors(target, source);
-        const width = this.settings.visualization.edges.baseWidth * 0.1;
-        
+        const direction = new Vector3().subVectors(target, source).normalize();
+        const width = this.getEdgeWidth();
+
         // Calculate perpendicular vector for width
         const up = new Vector3(0, 1, 0);
-        const right = new Vector3().crossVectors(direction, up).normalize().multiplyScalar(width);
-        
+        const right = new Vector3().crossVectors(direction, up).normalize().multiplyScalar(width / 2);
+
         // Create vertices for a thin rectangular prism along the edge
         const vertices = new Float32Array([
             // Front face
@@ -56,12 +76,12 @@ export class EdgeManager {
             target.x - right.x, target.y - right.y, target.z - right.z,
             
             // Back face (slightly offset)
-            source.x - right.x, source.y - right.y, source.z - right.z + 0.001,
-            source.x + right.x, source.y + right.y, source.z + right.z + 0.001,
-            target.x + right.x, target.y + right.y, target.z + right.z + 0.001,
-            target.x - right.x, target.y - right.y, target.z - right.z + 0.001
+            source.x - right.x, source.y - right.y, source.z - right.z + width,
+            source.x + right.x, source.y + right.y, source.z + right.z + width,
+            target.x + right.x, target.y + right.y, target.z + right.z + width,
+            target.x - right.x, target.y - right.y, target.z - right.z + width
         ]);
-        
+
         // Create indices for both faces
         const indices = new Uint16Array([
             // Front face
@@ -80,10 +100,10 @@ export class EdgeManager {
             3, 7, 0,
             0, 7, 4
         ]);
-        
+
         geometry.setAttribute('position', new BufferAttribute(vertices, 3));
         geometry.setIndex(new BufferAttribute(indices, 1));
-        
+
         // Calculate normals for proper lighting
         const normals = new Float32Array(vertices.length);
         for (let i = 0; i < vertices.length; i += 3) {
@@ -93,7 +113,7 @@ export class EdgeManager {
             normals[i + 2] = right.z;
         }
         geometry.setAttribute('normal', new BufferAttribute(normals, 3));
-        
+
         return geometry;
     }
 
@@ -101,6 +121,28 @@ export class EdgeManager {
         return new EdgeShaderMaterial(this.settings, 
             this.settings.visualization.rendering.context || 'desktop'
         );
+    }
+
+    private updateAllEdgeGeometries(): void {
+        this.edgeData.forEach((edgeData, edgeId) => {
+            const mesh = this.edges.get(edgeId);
+            if (!mesh) return;
+
+            const sourcePos = this.nodeManager.getNodePosition(edgeData.source);
+            const targetPos = this.nodeManager.getNodePosition(edgeData.target);
+
+            if (sourcePos && targetPos) {
+                // Update edge geometry
+                const oldGeometry = mesh.geometry;
+                mesh.geometry = this.createEdgeGeometry(sourcePos, targetPos);
+                oldGeometry.dispose();
+
+                // Update shader material source/target
+                if (mesh.material instanceof EdgeShaderMaterial) {
+                    mesh.material.setSourceTarget(sourcePos, targetPos);
+                }
+            }
+        });
     }
 
     public updateEdges(edges: Edge[]): void {

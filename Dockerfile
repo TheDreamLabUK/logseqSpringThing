@@ -64,7 +64,7 @@ RUN mkdir src && \
     CARGO_NET_GIT_FETCH_WITH_CLI=true \
     CARGO_HTTP_TIMEOUT=120 \
     CARGO_HTTP_CHECK_REVOKE=false \
-    cargo build --release --jobs $(nproc) || \
+    cargo build --release --features gpu --jobs $(nproc) || \
     (sleep 2 && GIT_HASH=$(git rev-parse HEAD || echo "development") CARGO_HTTP_MULTIPLEXING=false cargo build --release --jobs $(nproc)) || \
     (sleep 5 && GIT_HASH=$(git rev-parse HEAD || echo "development") CARGO_HTTP_MULTIPLEXING=false cargo build --release --jobs 1)
 
@@ -72,7 +72,7 @@ RUN mkdir src && \
 COPY src ./src
 
 RUN GIT_HASH=$(git rev-parse HEAD || echo "development") \
-    cargo build --release --jobs $(nproc) || \
+    cargo build --release --features gpu --jobs $(nproc) || \
     (sleep 2 && GIT_HASH=$(git rev-parse HEAD || echo "development") cargo build --release --jobs $(nproc)) || \
     (sleep 5 && GIT_HASH=$(git rev-parse HEAD || echo "development") cargo build --release --jobs 1)
 
@@ -175,7 +175,8 @@ RUN mkdir -p /app/data/markdown /app/data/metadata /app/user_settings && \
 
 # Copy built artifacts
 COPY --from=rust-deps-builder /usr/src/app/target/release/webxr /app/
-COPY src/utils/compute_forces.ptx /app/compute_forces/compute_forces.ptx
+COPY src/utils/compute_forces.ptx /app/src/utils/compute_forces.ptx
+RUN chmod 644 /app/src/utils/compute_forces.ptx
 COPY --from=frontend-builder /app/data/public/dist /app/data/public/dist
 
 # Copy start script

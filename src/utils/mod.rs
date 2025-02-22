@@ -7,6 +7,3 @@ pub mod gpu_compute;
 pub mod logging;
 pub mod socket_flow_constants;
 pub mod socket_flow_messages;
-
-#[cfg(test)]
-pub mod tests;

@@ -10,9 +10,9 @@ const logger = createLogger('NodeGeometryManager');
 
 // LOD level definitions
 export enum LODLevel {
-    HIGH = 0,    // < 10 units: Full detail
-    MEDIUM = 1,  // 10-30 units: Medium detail
-    LOW = 2      // > 30 units: Low detail
+    HIGH = 0,    // < 1 meter: Full detail
+    MEDIUM = 1,  // 1-3 meters: Medium detail
+    LOW = 2      // > 3 meters: Low detail
 }
 
 interface LODThresholds {
@@ -32,14 +32,14 @@ export class NodeGeometryManager {
     private currentLOD: LODLevel = LODLevel.HIGH;
     
     private readonly lodThresholds: LODThresholds = {
-        [LODLevel.HIGH]: 10,
-        [LODLevel.MEDIUM]: 30,
-        [LODLevel.LOW]: 50
+        [LODLevel.HIGH]: 1.0,    // 1 meter
+        [LODLevel.MEDIUM]: 3.0,  // 3 meters
+        [LODLevel.LOW]: 5.0      // 5 meters
     };
 
     private readonly qualitySettings: Record<LODLevel, GeometryQuality> = {
-        [LODLevel.HIGH]: { segments: 1, radius: 1 },     // 1 subdivision for icosahedron
-        [LODLevel.MEDIUM]: { segments: 0, radius: 1 },   // Basic octahedron
+        [LODLevel.HIGH]: { segments: 1, radius: 0.1 },   // 10cm radius with 1 subdivision
+        [LODLevel.MEDIUM]: { segments: 0, radius: 0.1 }, // 10cm radius basic octahedron
         [LODLevel.LOW]: { segments: 0, radius: 0.8 }     // Smaller octahedron for distance
     };
 

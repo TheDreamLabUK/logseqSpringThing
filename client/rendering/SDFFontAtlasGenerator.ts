@@ -50,6 +50,15 @@ export class SDFFontAtlasGenerator {
         fontSize: number,
         chars: string = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.,!?-+/():;%&`\'*#=[]" '
     ): Promise<{ texture: Texture; glyphInfoMap: Map<string, GlyphInfo> }> {
+        logger.info('Generating font atlas:', {
+            fontFamily,
+            fontSize,
+            atlasSize: this.atlasSize,
+            padding: this.padding,
+            spread: this.spread,
+            chars: chars.length
+        });
+
         this.ctx.font = `${fontSize}px ${fontFamily}`;
         this.ctx.textBaseline = 'alphabetic';
         this.ctx.fillStyle = 'white';
@@ -112,6 +121,19 @@ export class SDFFontAtlasGenerator {
         }
         this.ctx.putImageData(sdfImageData, 0, 0);
         
+        logger.info('Font atlas generated:', {
+            glyphCount: this.glyphInfoMap.size,
+            sampleGlyphs: Array.from(this.glyphInfoMap.entries())
+                .slice(0, 3)
+                .map(([char, info]) => ({
+                    char,
+                    textureX: info.textureX,
+                    textureY: info.textureY,
+                    width: info.textureWidth,
+                    height: info.textureHeight
+                }))
+        });
+
         // Create texture
         const texture = new Texture(this.canvas);
         texture.needsUpdate = true;

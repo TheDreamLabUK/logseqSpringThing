@@ -2,7 +2,7 @@ use crate::models::protected_settings::{NostrUser, ApiKeys};
 use crate::config::feature_access::FeatureAccess;
 use nostr_sdk::{
     prelude::*,
-    event::Error as EventError,
+    event::Error as EventError
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;

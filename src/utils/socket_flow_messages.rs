@@ -159,7 +159,7 @@ impl Node {
                 position: [0.0; 3],
                 velocity: [0.0; 3],
                 mass: 127, // Default mass
-                flags: 0,
+                flags: 0x3, // Set both active (0x1) and connected (0x2) flags
                 padding: [0; 2],
             },
             metadata: HashMap::new(),
