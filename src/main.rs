@@ -167,6 +167,7 @@ async fn main() -> std::io::Result<()> {
             .app_data(settings_data.clone())
             .app_data(web::Data::new(github_client.clone()))
             .app_data(web::Data::new(content_api.clone()))
+            .app_data(app_state_data.clone())  // Add the complete AppState
             .app_data(app_state_data.nostr_service.clone().unwrap())
             .app_data(app_state_data.feature_access.clone())
             .route("/wss", web::get().to(socket_flow_handler))
