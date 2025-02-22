@@ -32,12 +32,13 @@ impl GraphService {
         
         let graph_service = Self {
             graph_data: Arc::new(RwLock::new(GraphData::default())),
-            // Use provided GPU compute instance
             gpu_compute,
         };
+        
         // Start simulation loop
         let graph_data = Arc::clone(&graph_service.graph_data);
         let gpu_compute = graph_service.gpu_compute.clone();
+        
         tokio::spawn(async move {
             let params = SimulationParams {
                 iterations: physics_settings.iterations,
@@ -60,10 +61,11 @@ impl GraphService {
                 if physics_settings.enabled {
                     if let Some(gpu) = &gpu_compute {
                         if let Err(e) = Self::calculate_layout(gpu, &mut graph, &params).await {
-                        warn!("[Graph] Error updating positions: {}", e);
+                            warn!("[Graph] Error updating positions: {}", e);
+                        }
                     }
                 }
-                drop(graph); // Release lock
+                drop(graph);
 
                 // Sleep for ~16ms (60fps)
                 tokio::time::sleep(tokio::time::Duration::from_millis(16)).await;
@@ -249,7 +251,7 @@ impl GraphService {
         params: &SimulationParams,
     ) -> std::io::Result<()> {
         {
-            let mut gpu_compute = gpu.write().await;
+            let mut gpu_compute = gpu_compute.write().await;
 
             // Update data and parameters
             gpu_compute.update_graph_data(graph)?;
