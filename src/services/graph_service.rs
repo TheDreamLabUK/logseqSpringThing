@@ -319,23 +319,10 @@ impl GraphService {
     /// Initialize GPU compute with optimized settings for NVIDIA GPUs
     pub async fn initialize_gpu(
         &mut self,
-        settings: Arc<RwLock<Settings>>,
+        _settings: Arc<RwLock<Settings>>,
         graph_data: &GraphData,
     ) -> Result<(), Error> {
         info!("Initializing GPU compute system...");
-
-        if !cfg!(feature = "gpu") {
-            info!("GPU feature disabled, using CPU computations");
-            return Ok(());
-        }
-
-        // Read GPU settings from settings
-        let settings = settings.read().await;
-        let gpu_enabled = settings.system.debug.enabled;
-        if !gpu_enabled {
-            info!("GPU disabled in settings, using CPU computations");
-            return Ok(());
-        }
 
         // Initialize with optimal parameters for NVIDIA GPUs
         let params = SimulationParams {

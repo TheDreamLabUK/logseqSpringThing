@@ -20,7 +20,7 @@ const MAX_NODES: u32 = 1_000_000;
 #[cfg(feature = "gpu")]
 const NODE_SIZE: u32 = std::mem::size_of::<NodeData>() as u32;
 #[cfg(feature = "gpu")]
-const SHARED_MEM_SIZE: u32 = BLOCK_SIZE * NODE_SIZE;
+const SHARED_MEM_SIZE: u32 = BLOCK_SIZE * (12 + 4); // Vec3 (12 bytes) + float (4 bytes) per thread
 
 // CPU-only version
 #[cfg(not(feature = "gpu"))]
@@ -178,6 +178,16 @@ impl GPUCompute {
             }
         }
 
+        debug!("Launching kernel with {} nodes, {} blocks, {} threads per block", 
+            self.num_nodes, (self.num_nodes + BLOCK_SIZE - 1) / BLOCK_SIZE, BLOCK_SIZE);
+
+        // Log node flags before kernel launch
+        if log::log_enabled!(log::Level::Debug) {
+            for (i, node) in initial_nodes.iter().take(3).enumerate() {
+                debug!("Node {} flags before kernel: 0x{:x}", i, node.flags);
+            }
+        }
+
         let blocks = (self.num_nodes + BLOCK_SIZE - 1) / BLOCK_SIZE;
         let cfg = LaunchConfig {
             grid_dim: (blocks, 1, 1),
@@ -188,8 +198,17 @@ impl GPUCompute {
         // Use parameters directly without scaling
         let params = &self.simulation_params;
 
+        debug!("Kernel parameters:");
+        debug!("  Spring strength: {}", params.spring_strength);
+        debug!("  Repulsion: {}", params.repulsion);
+        debug!("  Damping: {}", params.damping);
+        debug!("  Max repulsion distance: {}", params.max_repulsion_distance);
+        debug!("  Viewport bounds: {}", if params.enable_bounds { params.viewport_bounds } else { 0.0 });
+        debug!("  Shared memory size: {} bytes", SHARED_MEM_SIZE);
+
         unsafe {
             self.force_kernel.clone().launch(cfg, (
+                // Pass parameters in the same order as the CUDA kernel expects them
                 &mut self.node_data,
                 self.num_nodes as i32,
                 params.spring_strength,        // Spring force strength
@@ -201,7 +220,13 @@ impl GPUCompute {
                 } else {
                     0.0
                 }
-            )).map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
+            )).map_err(|e| {
+                error!("CUDA kernel launch failed: {}", e);
+                std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    format!("CUDA kernel launch failed: {}", e)
+                )
+            })?;
         }
         
         // Sanity-check: retrieve updated node data and correct any NaN values
@@ -236,9 +261,9 @@ impl GPUCompute {
         
         if log::log_enabled!(log::Level::Debug) {
             debug!("Final state of first 3 nodes:");
-            for (i, node) in updated_nodes.iter().take(3).enumerate() {
-                debug!("Node {}: pos={:?}, vel={:?}, mass={}, flags=0x{:x}",
-                    i, node.position, node.velocity, node.mass, node.flags);
+            for (i, (old, new)) in initial_nodes.iter().zip(updated_nodes.iter()).take(3).enumerate() {
+                debug!("Node {} delta: pos={:?}->{:?}, vel={:?}->{:?}, mass={}, flags=0x{:x}",
+                    i, old.position, new.position, old.velocity, new.velocity, old.mass, old.flags);
             }
         }
         

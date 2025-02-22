@@ -35,6 +35,7 @@ services:
       - NVIDIA_DRIVER_CAPABILITIES=compute,utility
       - NODE_ENV=production
       - GIT_HASH=${GIT_HASH:-development}  # Pass GIT_HASH from build environment
+      - DEBUG_MODE=${DEBUG_MODE:-false}  # Control whether to start webxr or not
     env_file:
       - .env
     volumes:
@@ -51,6 +52,7 @@ services:
     user: "${UID:-1000}:${GID:-1000}"  # Use host user's UID/GID or default to 1000
     restart: unless-stopped
     stop_grace_period: 30s
+    command: ${DEBUG_MODE:+--no-webxr}  # Pass --no-webxr if DEBUG_MODE is set
     init: true
     logging:
       driver: "json-file"

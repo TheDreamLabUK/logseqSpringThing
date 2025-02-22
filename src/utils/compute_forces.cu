@@ -69,8 +69,13 @@ extern "C" __global__ void compute_forces(
         
         // Load tile into shared memory
         if (shared_idx < num_nodes) {
-            NodeData shared_node = nodes[shared_idx];
-            shared_positions[threadIdx.x] = shared_node.position;
+            // Load directly from global memory using Vec3 members
+            shared_positions[threadIdx.x].x = nodes[shared_idx].position.x;
+            shared_positions[threadIdx.x].y = nodes[shared_idx].position.y;
+            shared_positions[threadIdx.x].z = nodes[shared_idx].position.z;
+            
+            // Load mass and normalize
+            NodeData shared_node = nodes[shared_idx];  // Only load once
             shared_masses[threadIdx.x] = static_cast<float>(shared_node.mass) / 255.0f;
         }
         __syncthreads();
@@ -83,7 +88,7 @@ extern "C" __global__ void compute_forces(
             // Skip nodes with inactive flag
             if ((nodes[tile * blockDim.x + j].flags & 0x1) == 0) continue;
 
-            Vec3 pos_j = shared_positions[j];
+            const Vec3& pos_j = shared_positions[j];  // Use const reference
             float mass_j = shared_masses[j];
             
             // Calculate displacement vector
@@ -128,7 +133,7 @@ extern "C" __global__ void compute_forces(
             force_mag = fmaxf(fminf(force_mag, 15.0f), -15.0f);
 
             // Accumulate force using normalized direction
-            Vec3 force_dir = diff.normalized();
+            const Vec3 force_dir = diff.normalized();  // Use const
             force = force + force_dir * force_mag;
             
             // Improved momentum damping

@@ -368,12 +368,17 @@ check_application_readiness() {
 # COMMAND LINE ARGUMENTS
 ###############################################################################
 REBUILD_TEST=false
+DEBUG_MODE=false
 
 # Parse command line arguments
 for arg in "$@"; do
     case $arg in
         rebuild-test)
             REBUILD_TEST=true
+            shift # Remove from processing
+            ;;
+        --debug)
+            DEBUG_MODE=true
             shift # Remove from processing
             ;;
     esac
@@ -472,30 +477,31 @@ if ! command -v nvcc &>/dev/null; then
     log "${YELLOW}Please install CUDA toolkit to compile PTX files${NC}"
     exit 1
 fi
-  
-# Compile CUDA to PTX with optimizations
+
+# Use CUDA_ARCH from .env or default to 89 (Ada)
+CUDA_ARCH=${CUDA_ARCH:-89}
+log "${YELLOW}Compiling CUDA to PTX for sm_${CUDA_ARCH}...${NC}"
+
 if ! nvcc \
-    -arch=sm_86 \
+    -arch=sm_${CUDA_ARCH} \
     -O3 \
     --use_fast_math \
-    -ptx src/utils/compute_forces.cu \
+    -ptx \
+    src/utils/compute_forces.cu \
     -o src/utils/compute_forces.ptx \
-    --gpu-architecture=compute_86 \
-    --gpu-code=sm_86,compute_86 \
     --compiler-bindir=/usr/bin/gcc-11; then
     log "${RED}Failed to compile CUDA to PTX${NC}"
     true
-  else
-    # Set proper permissions on PTX file only if compilation succeeded
+else
     log "${YELLOW}Setting PTX file permissions...${NC}"
     chmod 644 src/utils/compute_forces.ptx
-  fi
+fi
 log "${YELLOW}Building client code...${NC}"
 pnpm build || { log "${RED}Client build failed${NC}"; exit 1; }
 log "${GREEN}Client build successful${NC}"
 
 # Build with GIT_HASH environment variable
-GIT_HASH=$GIT_HASH $DOCKER_COMPOSE build --pull --no-cache
+DEBUG_MODE=$DEBUG_MODE GIT_HASH=$GIT_HASH $DOCKER_COMPOSE build --pull --no-cache
 $DOCKER_COMPOSE up -d
 
 # 11. Check readiness (fatal if fails)
