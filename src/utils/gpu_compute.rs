@@ -8,6 +8,7 @@ use std::io::{Error, ErrorKind};
 use std::sync::Arc;
 use log::{debug, error, warn};
 use crate::models::graph::GraphData;
+use std::collections::HashMap;
 use crate::models::simulation_params::SimulationParams;
 use crate::utils::socket_flow_messages::NodeData;
 use tokio::sync::RwLock;
@@ -42,6 +43,7 @@ pub struct GPUCompute {
     pub force_kernel: CudaFunction,
     pub node_data: CudaSlice<NodeData>,
     pub num_nodes: u32,
+    pub node_indices: HashMap<String, usize>,
     pub simulation_params: SimulationParams,
 }
 
@@ -111,11 +113,18 @@ impl GPUCompute {
             .map_err(|e| Error::new(std::io::ErrorKind::Other, e.to_string()))?;
 
         debug!("Creating GPU compute instance");
+        // Create node ID to index mapping
+        let mut node_indices = HashMap::new();
+        for (idx, node) in graph.nodes.iter().enumerate() {
+            node_indices.insert(node.id.clone(), idx);
+        }
+
         let mut instance = Self {
             device: Arc::clone(&device),
             force_kernel,
             node_data,
             num_nodes,
+            node_indices,
             simulation_params: SimulationParams::default(),
         };
 
@@ -128,6 +137,12 @@ impl GPUCompute {
     pub fn update_graph_data(&mut self, graph: &GraphData) -> Result<(), Error> {
         debug!("Updating graph data for {} nodes", graph.nodes.len());
 
+        // Update node index mapping
+        self.node_indices.clear();
+        for (idx, node) in graph.nodes.iter().enumerate() {
+            self.node_indices.insert(node.id.clone(), idx);
+        }
+
         // Reallocate buffer if node count changed
         if graph.nodes.len() as u32 != self.num_nodes {
             debug!("Reallocating GPU buffer for {} nodes", graph.nodes.len());
@@ -136,11 +151,27 @@ impl GPUCompute {
             self.num_nodes = graph.nodes.len() as u32;
         }
 
-        debug!("Copying {} nodes to GPU", graph.nodes.len());
-        // Get node data directly
+        // Prepare node data with connection flags
         let node_data: Vec<NodeData> = graph.nodes.iter()
-            .map(|node| node.data.clone())
+            .map(|node| {
+                let mut data = node.data.clone();
+                
+                // Clear connection flag
+                data.flags &= !0x2;
+                
+                // Set connection flag if node has any edges
+                for edge in &graph.edges {
+                    if edge.source == node.id || edge.target == node.id {
+                        data.flags |= 0x2; // Set connected flag
+                        break;
+                    }
+                }
+                
+                data
+            })
             .collect();
+
+        debug!("Copying {} nodes to GPU", graph.nodes.len());
 
         // Copy data to GPU
         self.device.htod_sync_copy_into(&node_data, &mut self.node_data)
@@ -158,7 +189,7 @@ impl GPUCompute {
     pub fn compute_forces(&mut self) -> Result<(), Error> {
         debug!("Starting force computation on GPU");
         
-        let blocks = ((self.num_nodes as u32 + BLOCK_SIZE - 1) / BLOCK_SIZE).max(1);
+        let blocks = ((self.num_nodes + BLOCK_SIZE - 1) / BLOCK_SIZE).max(1);
         let cfg = LaunchConfig {
             grid_dim: (blocks, 1, 1),
             block_dim: (BLOCK_SIZE, 1, 1),
@@ -173,10 +204,15 @@ impl GPUCompute {
                 &self.node_data,
                 self.num_nodes as i32,
                 self.simulation_params.spring_strength,
-                self.simulation_params.repulsion,
                 self.simulation_params.damping,
+                self.simulation_params.repulsion,
+                self.simulation_params.time_step,
                 self.simulation_params.max_repulsion_distance,
-                self.simulation_params.viewport_bounds,
+                if self.simulation_params.enable_bounds {
+                    self.simulation_params.viewport_bounds
+                } else {
+                    f32::MAX // Effectively disable bounds
+                }
             )).map_err(|e| {
                 error!("Kernel launch failed: {}", e);
                 Error::new(ErrorKind::Other, e.to_string())

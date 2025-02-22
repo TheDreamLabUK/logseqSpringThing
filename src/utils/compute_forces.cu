@@ -1,99 +1,121 @@
 #include <cuda_runtime.h>
 
-// Constants
-#define MAX_CONNECTIONS 32
-#define MAX_REPULSION_DISTANCE 5.0f
-#define VIEWPORT_BOUNDS 100.0f
-#define SPRING_STRENGTH 0.5f
-#define REPULSION 1.0f
-
 extern "C" {
-    struct Node {
-        float x, y, z;           // Position
-        float vel_x, vel_y, vel_z; // Velocity
-        float mass;              // Node mass
-        unsigned int connected[(MAX_CONNECTIONS + 31) / 32]; // Bitfield for connections
-        int connections[MAX_CONNECTIONS];
-        int num_connections;
+    struct NodeData {
+        float position[3];    // 12 bytes - matches Rust [f32; 3]
+        float velocity[3];    // 12 bytes - matches Rust [f32; 3]
+        unsigned char mass;   // 1 byte - matches Rust u8
+        unsigned char flags;  // 1 byte - matches Rust u8
+        unsigned char padding[2]; // 2 bytes - matches Rust padding
     };
 
     __global__ void compute_forces_kernel(
-        Node* nodes,
+        NodeData* nodes,
         int num_nodes,
         float spring_k,
         float damping,
         float repel_k,
-        float dt
+        float dt,
+        float max_repulsion_dist,
+        float viewport_bounds
     ) {
         int idx = blockIdx.x * blockDim.x + threadIdx.x;
-        if (idx < num_nodes) {
-            float3 total_force = make_float3(0.0f, 0.0f, 0.0f);
+        if (idx >= num_nodes) return;
+
+        float3 total_force = make_float3(0.0f, 0.0f, 0.0f);
+        float3 pos = make_float3(nodes[idx].position[0], nodes[idx].position[1], nodes[idx].position[2]);
+        float3 vel = make_float3(nodes[idx].velocity[0], nodes[idx].velocity[1], nodes[idx].velocity[2]);
+        
+        // Convert mass from u8 to float (0-1 range)
+        float mass = (nodes[idx].mass + 1.0f) / 256.0f; // Add 1 to avoid zero mass
+        bool is_active = (nodes[idx].flags & 0x1) != 0;
+        
+        if (!is_active) return; // Skip inactive nodes
+        
+        // Process all node interactions
+        for (int j = 0; j < num_nodes; j++) {
+            if (j == idx) continue;
             
-            float mass = nodes[idx].mass / 255.0f;
-            float3 pos = make_float3(nodes[idx].x, nodes[idx].y, nodes[idx].z);
-            float3 vel = make_float3(nodes[idx].vel_x, nodes[idx].vel_y, nodes[idx].vel_z);
+            if (!(nodes[j].flags & 0x1)) continue; // Skip inactive nodes
             
-            for (int j = 0; j < num_nodes; j++) {
-                if (j != idx) {
-                    float other_mass = nodes[j].mass / 255.0f;
-                    float3 other_pos = make_float3(nodes[j].x, nodes[j].y, nodes[j].z);
-                    
-                    float3 diff = make_float3(
-                        other_pos.x - pos.x,
-                        other_pos.y - pos.y,
-                        other_pos.z - pos.z
-                    );
-                    
-                    float dist = sqrtf(
-                        diff.x * diff.x +
-                        diff.y * diff.y +
-                        diff.z * diff.z
-                    );
-                    
-                    if (dist > 0.0001f) {
-                        // Spring forces for connected nodes
-                        if (nodes[idx].connected[j / 32] & (1u << (j % 32))) {
-                            float spring_scale = SPRING_STRENGTH * mass * other_mass;
-                            float3 spring = make_float3(
-                                diff.x * spring_k * spring_scale,
-                                diff.y * spring_k * spring_scale,
-                                diff.z * spring_k * spring_scale
-                            );
-                            total_force.x += spring.x;
-                            total_force.y += spring.y;
-                            total_force.z += spring.z;
-                        }
-                        
-                        // Repulsion forces
-                        if (dist < MAX_REPULSION_DISTANCE) {
-                            float repel_strength = REPULSION * mass * other_mass / (dist * dist);
-                            float3 repel = make_float3(
-                                -diff.x * repel_k * repel_strength / dist,
-                                -diff.y * repel_k * repel_strength / dist,
-                                -diff.z * repel_k * repel_strength / dist
-                            );
-                            total_force.x += repel.x;
-                            total_force.y += repel.y;
-                            total_force.z += repel.z;
-                        }
-                    }
+            float other_mass = (nodes[j].mass + 1.0f) / 256.0f;
+            float3 other_pos = make_float3(
+                nodes[j].position[0],
+                nodes[j].position[1],
+                nodes[j].position[2]
+            );
+            
+            float3 diff = make_float3(
+                other_pos.x - pos.x,
+                other_pos.y - pos.y,
+                other_pos.z - pos.z
+            );
+            
+            float dist = sqrtf(diff.x * diff.x + diff.y * diff.y + diff.z * diff.z);
+            if (dist > 0.0001f) {
+                float3 dir = make_float3(
+                    diff.x / dist,
+                    diff.y / dist,
+                    diff.z / dist
+                );
+                
+                // Spring forces - apply only if both nodes have the connected flag
+                if ((nodes[idx].flags & 0x2) && (nodes[j].flags & 0x2)) {
+                    // Use natural length of 1.0 to match world units
+                    float spring_force = spring_k * (dist - 1.0f);
+                    float spring_scale = mass * other_mass;
+                    total_force.x += dir.x * spring_force * spring_scale;
+                    total_force.y += dir.y * spring_force * spring_scale;
+                    total_force.z += dir.z * spring_force * spring_scale;
+                }
+                
+                // Repulsion forces
+                if (dist < max_repulsion_dist) {
+                    float repel_scale = repel_k * mass * other_mass;
+                    float repel_force = repel_scale / (dist * dist);
+                    total_force.x -= dir.x * repel_force;
+                    total_force.y -= dir.y * repel_force;
+                    total_force.z -= dir.z * repel_force;
                 }
             }
-            
-            // Update velocity with damping
-            nodes[idx].vel_x = vel.x * (1.0f - damping) + total_force.x * dt;
-            nodes[idx].vel_y = vel.y * (1.0f - damping) + total_force.y * dt;
-            nodes[idx].vel_z = vel.z * (1.0f - damping) + total_force.z * dt;
-            
-            // Update position
-            nodes[idx].x += nodes[idx].vel_x * dt;
-            nodes[idx].y += nodes[idx].vel_y * dt;
-            nodes[idx].z += nodes[idx].vel_z * dt;
-            
-            // Constrain to viewport bounds
-            nodes[idx].x = fmaxf(-VIEWPORT_BOUNDS, fminf(VIEWPORT_BOUNDS, nodes[idx].x));
-            nodes[idx].y = fmaxf(-VIEWPORT_BOUNDS, fminf(VIEWPORT_BOUNDS, nodes[idx].y));
-            nodes[idx].z = fmaxf(-VIEWPORT_BOUNDS, fminf(VIEWPORT_BOUNDS, nodes[idx].z));
+        }
+
+        // Apply damping to velocity
+        vel.x = vel.x * (1.0f - damping) + total_force.x * dt;
+        vel.y = vel.y * (1.0f - damping) + total_force.y * dt;
+        vel.z = vel.z * (1.0f - damping) + total_force.z * dt;
+
+        // Update position
+        pos.x += vel.x * dt;
+        pos.y += vel.y * dt;
+        pos.z += vel.z * dt;
+
+        // Constrain to viewport bounds if enabled (bounds > 0)
+        if (viewport_bounds > 0.0f) {
+            pos.x = fmaxf(-viewport_bounds, fminf(viewport_bounds, pos.x));
+            pos.y = fmaxf(-viewport_bounds, fminf(viewport_bounds, pos.y));
+            pos.z = fmaxf(-viewport_bounds, fminf(viewport_bounds, pos.z));
+        }
+
+        // Store results back
+        nodes[idx].position[0] = pos.x;
+        nodes[idx].position[1] = pos.y;
+        nodes[idx].position[2] = pos.z;
+        nodes[idx].velocity[0] = vel.x;
+        nodes[idx].velocity[1] = vel.y;
+        nodes[idx].velocity[2] = vel.z;
+
+        // Debug output for first node
+        if (idx == 0) {
+            float force_mag = sqrtf(
+                total_force.x * total_force.x +
+                total_force.y * total_force.y +
+                total_force.z * total_force.z
+            );
+            printf("Node %d: force_mag=%f, pos=(%f,%f,%f), vel=(%f,%f,%f)\n",
+                idx, force_mag,
+                pos.x, pos.y, pos.z,
+                vel.x, vel.y, vel.z);
         }
     }
 }

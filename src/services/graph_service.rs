@@ -26,36 +26,42 @@ pub struct GraphService {
 }
 
 impl GraphService {
-    pub fn new() -> Self {
+    pub async fn new(settings: Arc<RwLock<Settings>>, gpu_compute: Option<Arc<RwLock<GPUCompute>>>) -> Self {
+        // Get physics settings
+        let physics_settings = settings.read().await.visualization.physics.clone();
+        
         let graph_service = Self {
             graph_data: Arc::new(RwLock::new(GraphData::default())),
-            gpu_compute: None,
+            // Use provided GPU compute instance
+            gpu_compute,
         };
-
         // Start simulation loop
-        let graph_data = graph_service.graph_data.clone();
+        let graph_data = Arc::clone(&graph_service.graph_data);
         let gpu_compute = graph_service.gpu_compute.clone();
         tokio::spawn(async move {
             let params = SimulationParams {
-                iterations: 1,  // One iteration per frame
-                spring_strength: 5.0,           // Strong spring force for tight clustering
-                repulsion: 0.05,               // Minimal repulsion
-                damping: 0.98,                 // Very high damping for stability
-                max_repulsion_distance: 0.1,   // Small repulsion range
-                viewport_bounds: 1.0,          // Small bounds for tight clustering
-                mass_scale: 1.0,              // Default mass scaling
-                boundary_damping: 0.95,        // Strong boundary damping
-                enable_bounds: true,           // Enable bounds by default
-                time_step: 0.01,              // Smaller timestep for stability
+                iterations: physics_settings.iterations,
+                spring_strength: physics_settings.spring_strength,
+                repulsion: physics_settings.repulsion_strength,
+                damping: physics_settings.damping,
+                max_repulsion_distance: physics_settings.repulsion_distance,
+                viewport_bounds: physics_settings.bounds_size,
+                mass_scale: physics_settings.mass_scale,
+                boundary_damping: physics_settings.boundary_damping,
+                enable_bounds: physics_settings.enable_bounds,
+                time_step: 0.016,  // ~60fps
                 phase: SimulationPhase::Dynamic,
-                mode: SimulationMode::Remote,    // Force GPU-accelerated computation
+                mode: SimulationMode::Remote,
             };
 
             loop {
                 // Update positions
                 let mut graph = graph_data.write().await;
-                if let Err(e) = Self::calculate_layout(&gpu_compute, &mut graph, &params).await {
-                    warn!("[Graph] Error updating positions: {}", e);
+                if physics_settings.enabled {
+                    if let Some(gpu) = &gpu_compute {
+                        if let Err(e) = Self::calculate_layout(gpu, &mut graph, &params).await {
+                        warn!("[Graph] Error updating positions: {}", e);
+                    }
                 }
                 drop(graph); // Release lock
 
@@ -238,11 +244,11 @@ impl GraphService {
     }
 
     pub async fn calculate_layout(
-        gpu_compute: &Option<Arc<RwLock<GPUCompute>>>,
+        gpu_compute: &Arc<RwLock<GPUCompute>>,
         graph: &mut GraphData,
         params: &SimulationParams,
     ) -> std::io::Result<()> {
-        if let Some(gpu) = gpu_compute {
+        {
             let mut gpu_compute = gpu.write().await;
 
             // Update data and parameters
@@ -261,11 +267,6 @@ impl GraphService {
                 node.data = data.clone();
             }
             Ok(())
-        } else {
-            Err(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                "GPU computation is required. CPU fallback is disabled."
-            ))
         }
     }
 

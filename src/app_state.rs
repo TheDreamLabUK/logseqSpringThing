@@ -40,8 +40,8 @@ impl AppState {
         gpu_compute: Option<Arc<RwLock<GPUCompute>>>,
         ragflow_conversation_id: String,
     ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
-        // Initialize GraphService (which internally spawns an async simulation loop)
-        let graph_service = GraphService::new();
+        // Initialize GraphService with settings
+        let graph_service = GraphService::new(settings.clone(), gpu_compute.clone()).await;
         
         Ok(Self {
             graph_service,
