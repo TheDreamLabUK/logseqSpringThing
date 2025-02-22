@@ -22,8 +22,8 @@ interface MetadataLabel {
 export class NodeMetadataManager {
     private static instance: NodeMetadataManager;
     private labels: Map<string, MetadataLabel> = new Map();
-    private VISIBILITY_THRESHOLD = 50;  // Maximum distance for label visibility
-    private readonly UPDATE_INTERVAL = 5;        // Frames between visibility updates
+    private VISIBILITY_THRESHOLD = 100;  // Increased maximum distance for label visibility
+    private readonly UPDATE_INTERVAL = 2;        // More frequent updates
     private readonly LABEL_SCALE = 0.5;         // Base scale for labels
     private frameCount = 0;
 
@@ -91,8 +91,8 @@ export class NodeMetadataManager {
         });
 
         const sprite = new Sprite(material);
-        sprite.scale.set(this.LABEL_SCALE, this.LABEL_SCALE * 0.5, 1);
-        sprite.position.y = 1.5; // Position above node
+        sprite.scale.set(this.LABEL_SCALE * 2, this.LABEL_SCALE, 1);
+        sprite.renderOrder = 1; // Ensure labels render on top
 
         // Enable both layers for desktop mode
         sprite.layers.enable(0);
@@ -119,7 +119,6 @@ export class NodeMetadataManager {
 
         this.labels.forEach((label) => {
             const { sprite, metadata } = label;
-            console.log('Updating label for:', metadata.name);
             
             // Get actual world position from metadata
             this.worldPosition.set(
@@ -130,7 +129,6 @@ export class NodeMetadataManager {
             
             // Update sprite position
             sprite.position.copy(this.worldPosition);
-            sprite.position.y += 1.5; // Offset above node
             
             const distance = this.worldPosition.distanceTo(cameraPosition);
 
@@ -139,16 +137,15 @@ export class NodeMetadataManager {
             sprite.visible = visible;
 
             if (label.lastVisible !== visible) {
-                console.log('Label visibility changed:', metadata.name, visible);
                 label.lastVisible = visible;
             }
 
             if (visible) {
                 // Scale based on distance
-                const scale = Math.max(0.3, 1 - (distance / this.VISIBILITY_THRESHOLD));
+                const scale = Math.max(0.5, 1 - (distance / this.VISIBILITY_THRESHOLD));
                 sprite.scale.set(
+                    this.LABEL_SCALE * scale * 2,
                     this.LABEL_SCALE * scale,
-                    this.LABEL_SCALE * scale * 0.5,
                     1
                 );
 
@@ -163,7 +160,6 @@ export class NodeMetadataManager {
 
     public updateMetadata(id: string, metadata: NodeMetadata): void {
         const label = this.labels.get(id);
-        console.log('Updating metadata for node:', id, metadata);
         if (!label) {
             this.createMetadataLabel(metadata);
             return;
@@ -199,7 +195,6 @@ export class NodeMetadataManager {
     }
 
     public setXRMode(enabled: boolean): void {
-        console.log('Setting XR mode for metadata labels:', enabled);
         this.labels.forEach((label) => {
             const sprite = label.sprite;
             if (enabled) {

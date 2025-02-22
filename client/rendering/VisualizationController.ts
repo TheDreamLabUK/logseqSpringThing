@@ -1,4 +1,4 @@
-import { Scene, Camera } from 'three';
+import { Scene, PerspectiveCamera } from 'three';
 import { createLogger } from '../core/logger';
 import { Settings } from '../types/settings/base';
 import { defaultSettings } from '../state/defaultSettings';
@@ -6,9 +6,10 @@ import { XRHandWithHaptics } from '../types/xr';
 import { EdgeManager } from './EdgeManager';
 import { NodeManagerFacade } from './node/NodeManagerFacade';
 import { graphDataManager } from '../state/graphData';
-import { TextRenderer } from './textRenderer';
+import { MetadataVisualizer } from './MetadataVisualizer';
 import { GraphData } from '../core/types';
 import { WebSocketService } from '../websocket/websocketService';
+import { NodeMetadata } from '../types/metadata';
 import { MaterialFactory } from './factories/MaterialFactory';
 
 const logger = createLogger('VisualizationController');
@@ -21,7 +22,7 @@ export class VisualizationController {
     private currentSettings: Settings;
     private edgeManager: EdgeManager | null = null;
     private nodeManager: NodeManagerFacade | null = null;
-    private textRenderer: TextRenderer | null = null;
+    private metadataVisualizer: MetadataVisualizer | null = null;
     private isInitialized: boolean = false;
     private pendingUpdates: Map<string, PendingUpdate> = new Map();
     private lastUpdateTime: number = performance.now();
@@ -63,7 +64,7 @@ export class VisualizationController {
         });
     }
 
-    public initializeScene(scene: Scene, camera: Camera): void {
+    public initializeScene(scene: Scene, camera: PerspectiveCamera): void {
         logger.info('Initializing visualization scene');
         
         // Ensure camera can see nodes
@@ -95,7 +96,7 @@ export class VisualizationController {
             materialFactory.getNodeMaterial(this.currentSettings)
         );
         this.edgeManager = new EdgeManager(scene, this.currentSettings, this.nodeManager.getNodeInstanceManager());
-        this.textRenderer = new TextRenderer(camera, scene);
+        this.metadataVisualizer = new MetadataVisualizer(camera, scene, this.currentSettings);
         this.isInitialized = true;
         
         if (import.meta.env.DEV) logger.debug('Scene managers initialized');
@@ -266,9 +267,9 @@ export class VisualizationController {
         if (!this.isInitialized) return;
         this.updateNodeAppearance();
         this.updateEdgeAppearance();
-        // Update text labels
-        if (this.textRenderer) {
-            this.textRenderer.update();
+        // Update metadata visualization
+        if (this.metadataVisualizer) {
+            this.updateMetadataVisualization();
         }
     }
 
@@ -335,23 +336,52 @@ export class VisualizationController {
                 this.edgeManager.update(deltaTime);
             }
             
-            // Update text labels
-            if (this.textRenderer) {
-                this.textRenderer.update();
+            // Update metadata visualization
+            if (this.metadataVisualizer) {
+                this.updateMetadataVisualization();
             }
         }
     }
 
     public dispose(): void {
         // Dispose of managers and cleanup websocket
-        if (this.textRenderer) {
-            this.textRenderer.dispose();
-            this.textRenderer = null;
+        if (this.metadataVisualizer) {
+            this.metadataVisualizer?.dispose();
+            this.metadataVisualizer = null;
         }
         this.nodeManager?.dispose();
         this.edgeManager?.dispose();
         this.websocketService.dispose();
         this.isInitialized = false;
         VisualizationController.instance = null;
+    }
+
+    private updateMetadataVisualization(): void {
+        if (!this.isInitialized || !this.metadataVisualizer || !this.nodeManager) return;
+        
+        const currentData = graphDataManager.getGraphData();
+        currentData.nodes.forEach(node => {
+            if (node.data?.metadata) {
+                const metadata: NodeMetadata = {
+                    id: node.id,
+                    name: node.data.metadata.name || 'Unnamed',
+                    commitAge: Math.floor((Date.now() - (node.data.metadata.lastModified || Date.now())) / (1000 * 60 * 60 * 24)),
+                    hyperlinkCount: node.data.metadata.hyperlinkCount || 0,
+                    fileSize: node.data.metadata.fileSize || 0,
+                    nodeSize: Math.min(50, Math.max(1, Math.log10((node.data.metadata.fileSize || 1024) / 1024) * 10)), // Scale based on file size (1-50)
+                    importance: 1.0, // Default importance
+                    position: {
+                        x: node.data.position.x || 0,
+                        y: node.data.position.y || 0,
+                        z: node.data.position.z || 0
+                    }
+                };
+                this.metadataVisualizer?.createMetadataLabel(metadata, node.id);
+                const position = this.nodeManager?.getNodeInstanceManager().getNodePosition(node.id);
+                if (position) {
+                    this.metadataVisualizer?.updateMetadataPosition(node.id, position);
+                }
+            }
+        });
     }
 }

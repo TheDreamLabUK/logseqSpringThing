@@ -70,7 +70,7 @@ export class SceneManager {
       60, // Reduced FOV for less distortion
       window.innerWidth / window.innerHeight,
       0.1,
-      2000
+      5000  // Increased far plane for larger visualization space
     );
     this.camera.position.set(0, 10, 50); // Position for better overview
     this.camera.lookAt(0, 0, 0);
@@ -102,7 +102,7 @@ export class SceneManager {
     this.controls.dampingFactor = 0.1;
     this.controls.screenSpacePanning = true;
     this.controls.minDistance = 1;
-    this.controls.maxDistance = 1000;
+    this.controls.maxDistance = 2000;  // Increased max distance for larger visualization
     this.controls.enableRotate = true;
     this.controls.enableZoom = true;
     this.controls.enablePan = true;
@@ -168,7 +168,7 @@ export class SceneManager {
     this.scene.add(directionalLight);
 
     // Add smaller grid helper
-    const gridHelper = new GridHelper(50, 50); // Reduced grid size
+    const gridHelper = new GridHelper(100, 100); // Increased grid size to match visualization space
     if (gridHelper.material instanceof Material) {
       gridHelper.material.transparent = true;
       gridHelper.material.opacity = 0.1;

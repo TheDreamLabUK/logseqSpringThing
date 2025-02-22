@@ -61,8 +61,8 @@ export class NodeInstanceManager {
     private lastUpdateTime: number = performance.now();
     private settingsStore: SettingsStore;
     private nodeSettings: NodeSettings;
-    private readonly MAX_POSITION = 1000.0; // Maximum allowed position value
-    private readonly MAX_VELOCITY = 10.0;   // Maximum allowed velocity value
+    private readonly MAX_POSITION = 1000.0; // Reasonable limit for graph visualization
+    private readonly MAX_VELOCITY = 100.0;   // Increased maximum allowed velocity value
     private isReady: boolean = false;
 
     private validateVector3(vec: Vector3, max: number): boolean {
@@ -71,11 +71,6 @@ export class NodeInstanceManager {
                Math.abs(vec.x) <= max && Math.abs(vec.y) <= max && Math.abs(vec.z) <= max;
     }
 
-    private clampVector3(vec: Vector3, max: number): void {
-        vec.x = Math.max(Math.min(vec.x, max), -max);
-        vec.y = Math.max(Math.min(vec.y, max), -max);
-        vec.z = Math.max(Math.min(vec.z, max), -max);
-    }
 
     private constructor(scene: Scene, material: Material) {
         this.scene = scene;
@@ -208,9 +203,11 @@ export class NodeInstanceManager {
             position.set(update.position[0], update.position[1], update.position[2]);
             if (!this.validateVector3(position, this.MAX_POSITION)) {
                 if (debugState.isEnabled()) {
-                    logger.warn(`Invalid position for node ${update.id}:`, position);
+                    logger.warn(`Invalid position for node ${update.id}, clamping to valid range`);
                 }
-                this.clampVector3(position, this.MAX_POSITION);
+                position.x = Math.max(-this.MAX_POSITION, Math.min(this.MAX_POSITION, position.x));
+                position.y = Math.max(-this.MAX_POSITION, Math.min(this.MAX_POSITION, position.y));
+                position.z = Math.max(-this.MAX_POSITION, Math.min(this.MAX_POSITION, position.z));
             }
 
             // Validate and clamp velocity if present
@@ -218,9 +215,11 @@ export class NodeInstanceManager {
                 velocity.set(update.velocity[0], update.velocity[1], update.velocity[2]);
                 if (!this.validateVector3(velocity, this.MAX_VELOCITY)) {
                     if (debugState.isEnabled()) {
-                        logger.warn(`Invalid velocity for node ${update.id}:`, velocity);
+                        logger.warn(`Invalid velocity for node ${update.id}, clamping to valid range`);
                     }
-                    this.clampVector3(velocity, this.MAX_VELOCITY);
+                    velocity.x = Math.max(-this.MAX_VELOCITY, Math.min(this.MAX_VELOCITY, velocity.x));
+                    velocity.y = Math.max(-this.MAX_VELOCITY, Math.min(this.MAX_VELOCITY, velocity.y));
+                    velocity.z = Math.max(-this.MAX_VELOCITY, Math.min(this.MAX_VELOCITY, velocity.z));
                 }
             }
 
@@ -347,8 +346,8 @@ export class NodeInstanceManager {
             // Update geometry based on distance
             void this.geometryManager.getGeometryForDistance(distance);
 
-            // Update visibility
-            const visible = distance < this.geometryManager.getThresholdForLOD(LODLevel.LOW);
+            // Show nodes within the maximum LOD distance
+            const visible = distance <= this.geometryManager.getThresholdForLOD(LODLevel.LOW);
             this.nodeInstances.setColorAt(i, visible ? VISIBLE : INVISIBLE);
         }
 

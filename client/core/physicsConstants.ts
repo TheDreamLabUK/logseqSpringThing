@@ -80,11 +80,11 @@ export const PHYSICS_CONSTANTS = {
     // Bounds size (meters, half-width of cubic bounds)
     BOUNDS_SIZE: {
         MIN: 0.5,
-        MAX: 5.0,
-        DEFAULT: 2.0,  // 2m bounds (4m cube)
+        MAX: 100.0,
+        DEFAULT: 50.0,  // 50m bounds (100m cube)
         RECOMMENDED_RANGE: {
-            MIN: 1.0,
-            MAX: 3.0
+            MIN: 10.0,
+            MAX: 75.0
         }
     }
 };

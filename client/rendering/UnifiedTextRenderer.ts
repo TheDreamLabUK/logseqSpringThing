@@ -18,7 +18,7 @@ import { createLogger } from '../core/logger';
 import { LabelSettings } from '../types/settings';
 import { platformManager } from '../platform/platformManager';
 import { SDFFontAtlasGenerator } from './SDFFontAtlasGenerator';
-import '../types/three-ext';
+import '../types/three-ext.d';
 
 const logger = createLogger('UnifiedTextRenderer');
 

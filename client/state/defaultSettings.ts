@@ -7,12 +7,12 @@ export const defaultSettings: Settings = {
             metalness: 0.8,
             opacity: 1.0,
             roughness: 0.2,
-            sizeRange: [0.05, 0.2],  // 5cm to 20cm
+            sizeRange: [0.3, 1.2],  // 30cm to 1.2m for better balance
             quality: 'medium',
             enableInstancing: true,
             enableHologram: true,
             enableMetadataShape: false,
-            enableMetadataVisualization: false,
+            enableMetadataVisualization: true,  // Enable metadata visualization
             colorRangeAge: ['#ff0000', '#00ff00'],
             colorRangeLinks: ['#0000ff', '#ff00ff']
         },
@@ -36,16 +36,16 @@ export const defaultSettings: Settings = {
             enabled: true,
             iterations: 100,              // Balanced for performance and stability
             attractionStrength: 0.01,     // 1cm/s² base attraction
-            repulsionStrength: 0.1,       // Base repulsion (with 1/d² falloff)
+            repulsionStrength: 0.08,      // Reduced repulsion for better balance
             repulsionDistance: 0.5,       // 50cm repulsion range
-            springStrength: 0.05,         // 5cm/s² per meter of stretch
+            springStrength: 0.03,         // Reduced spring strength for better balance
             damping: 0.95,                // 95% velocity retention
             maxVelocity: 0.1,             // 10cm/s maximum
             collisionRadius: 0.05,        // 5cm collision radius
             massScale: 1.0,               // Default mass scaling
             boundaryDamping: 0.9,         // 90% velocity retention at bounds
             enableBounds: true,           // Enable bounds by default
-            boundsSize: 2.0               // 2m bounds (4m cube)
+            boundsSize: 30.0              // Reduced bounds for better node distribution
         },
         rendering: {
             ambientLightIntensity: 0.2,

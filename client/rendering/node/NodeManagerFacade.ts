@@ -208,7 +208,12 @@ export class NodeManagerFacade implements NodeManagerInterface {
                     const position = this.instanceManager.getNodePosition(id);
                     if (position) {
                         this.tempVector.copy(position);
-                        this.tempVector.y += 1.5; // Offset above node
+                        
+                        // Calculate dynamic offset based on node size
+                        // Use the node's calculated size for offset
+                        const nodeSize = this.calculateNodeSize();
+                        
+                        this.tempVector.y += nodeSize * 2; // Dynamic offset based on node size
                         // Update individual label position
                         this.metadataManager.updatePosition(id, this.tempVector);
                     }

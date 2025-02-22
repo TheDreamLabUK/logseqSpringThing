@@ -5,8 +5,8 @@ visualization:
     opacity: 1.0
     roughness: 0.7
     size_range:
-    - 0.05
-    - 0.2
+    - 0.5
+    - 2.0
     quality: medium
     enable_instancing: true
     enable_hologram: true
@@ -24,7 +24,7 @@ visualization:
     quality: high
   physics:
     attraction_strength: 0.05
-    bounds_size: 1.0
+    bounds_size: 50.0
     collision_radius: 0.05
     damping: 0.95
     enable_bounds: true
@@ -32,8 +32,8 @@ visualization:
     iterations: 100
     max_velocity: 0.5
     repulsion_strength: 0.1
-    spring_strength: 10.0
-    repulsion_distance: 1.0
+    spring_strength: 1.0
+    repulsion_distance: 5.0
     mass_scale: 1.0
     boundary_damping: 0.95
   rendering:
@@ -54,8 +54,8 @@ visualization:
     pulse_strength: 0.6
     wave_speed: 0.5
   labels:
-    desktop_font_size: 10
-    enable_labels: true
+    desktop_font_size: 14
+    enable_labels: true 
     text_color: '#000000'
     text_outline_color: '#ffffff'
     text_outline_width: 0.1
@@ -74,8 +74,8 @@ visualization:
     ring_color: '#c2a200'
     ring_opacity: 0.001
     sphere_sizes:
-    - 0.08
-    - 0.16
+    - 0.8
+    - 1.6
     ring_rotation_speed: 10.0
     enable_buckminster: false
     buckminster_size: 0.0
@@ -84,7 +84,7 @@ visualization:
     geodesic_size: 0.0
     geodesic_opacity: 0.0
     enable_triangle_sphere: true
-    triangle_sphere_size: 0.16
+    triangle_sphere_size: 1.6
     triangle_sphere_opacity: 0.15
     global_rotation_speed: 0.03
 system:

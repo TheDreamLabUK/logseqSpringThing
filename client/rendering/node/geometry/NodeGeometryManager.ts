@@ -10,9 +10,9 @@ const logger = createLogger('NodeGeometryManager');
 
 // LOD level definitions
 export enum LODLevel {
-    HIGH = 0,    // < 1 meter: Full detail
-    MEDIUM = 1,  // 1-3 meters: Medium detail
-    LOW = 2      // > 3 meters: Low detail
+    HIGH = 0,    // < 10 meters: Full detail
+    MEDIUM = 1,  // 10-30 meters: Medium detail
+    LOW = 2      // > 30 meters: Low detail
 }
 
 interface LODThresholds {
@@ -32,9 +32,9 @@ export class NodeGeometryManager {
     private currentLOD: LODLevel = LODLevel.HIGH;
     
     private readonly lodThresholds: LODThresholds = {
-        [LODLevel.HIGH]: 1.0,    // 1 meter
-        [LODLevel.MEDIUM]: 3.0,  // 3 meters
-        [LODLevel.LOW]: 5.0      // 5 meters
+        [LODLevel.HIGH]: 10.0,    // Show full detail when closer than 10 meters
+        [LODLevel.MEDIUM]: 30.0,  // Medium detail between 10-30 meters
+        [LODLevel.LOW]: 100.0     // Low detail between 30-100 meters
     };
 
     private readonly qualitySettings: Record<LODLevel, GeometryQuality> = {
@@ -106,7 +106,7 @@ export class NodeGeometryManager {
         // Determine appropriate LOD level based on distance
         let targetLOD = LODLevel.HIGH;
 
-        if (distance > this.lodThresholds[LODLevel.LOW]) {
+        if (distance >= this.lodThresholds[LODLevel.LOW]) {
             targetLOD = LODLevel.LOW;
         } else if (distance > this.lodThresholds[LODLevel.MEDIUM]) {
             targetLOD = LODLevel.MEDIUM;
