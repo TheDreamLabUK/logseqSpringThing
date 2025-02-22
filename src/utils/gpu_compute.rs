@@ -100,11 +100,11 @@ impl GPUCompute {
 
         debug!("Successfully loaded PTX file");
             
-        device.load_ptx(ptx.clone(), "compute_forces", &["compute_forces"])
+        device.load_ptx(ptx.clone(), "compute_forces_kernel", &["compute_forces_kernel"])
             .map_err(|e| Error::new(std::io::ErrorKind::Other, e.to_string()))?;
             
-        let force_kernel = device.get_func("compute_forces", "compute_forces")
-            .ok_or_else(|| Error::new(std::io::ErrorKind::Other, "Function compute_forces not found"))?;
+        let force_kernel = device.get_func("compute_forces_kernel", "compute_forces_kernel")
+            .ok_or_else(|| Error::new(std::io::ErrorKind::Other, "Function compute_forces_kernel not found"))?;
 
         debug!("Allocating device memory for {} nodes", num_nodes);
         let node_data = device.alloc_zeros::<NodeData>(num_nodes as usize)
@@ -155,118 +155,35 @@ impl GPUCompute {
         Ok(())
     }
 
-    pub fn step(&mut self) -> Result<(), Error> {
-        // Debug: log simulation parameters and initial state
-        debug!("GPU Step - Parameters: spring_strength={}, repulsion={}, damping={}, max_repulsion_distance={}, bounds={}",
-            self.simulation_params.spring_strength,
-            self.simulation_params.repulsion,
-            self.simulation_params.damping,
-            self.simulation_params.max_repulsion_distance,
-            if self.simulation_params.enable_bounds {
-                self.simulation_params.viewport_bounds
-            } else {
-                0.0
-            }
-        );
-
-        let initial_nodes = self.get_node_data()?;
-        if log::log_enabled!(log::Level::Debug) {
-            debug!("Initial state of first 3 nodes:");
-            for (i, node) in initial_nodes.iter().take(3).enumerate() {
-                debug!("Node {}: pos={:?}, vel={:?}, mass={}, flags=0x{:x}",
-                    i, node.position, node.velocity, node.mass, node.flags);
-            }
-        }
-
-        debug!("Launching kernel with {} nodes, {} blocks, {} threads per block", 
-            self.num_nodes, (self.num_nodes + BLOCK_SIZE - 1) / BLOCK_SIZE, BLOCK_SIZE);
-
-        // Log node flags before kernel launch
-        if log::log_enabled!(log::Level::Debug) {
-            for (i, node) in initial_nodes.iter().take(3).enumerate() {
-                debug!("Node {} flags before kernel: 0x{:x}", i, node.flags);
-            }
-        }
-
-        let blocks = (self.num_nodes + BLOCK_SIZE - 1) / BLOCK_SIZE;
+    pub fn compute_forces(&mut self) -> Result<(), Error> {
+        debug!("Starting force computation on GPU");
+        
+        let blocks = ((self.num_nodes as u32 + BLOCK_SIZE - 1) / BLOCK_SIZE).max(1);
         let cfg = LaunchConfig {
             grid_dim: (blocks, 1, 1),
             block_dim: (BLOCK_SIZE, 1, 1),
             shared_mem_bytes: SHARED_MEM_SIZE,
         };
 
-        // Use parameters directly without scaling
-        let params = &self.simulation_params;
-
-        debug!("Kernel parameters:");
-        debug!("  Spring strength: {}", params.spring_strength);
-        debug!("  Repulsion: {}", params.repulsion);
-        debug!("  Damping: {}", params.damping);
-        debug!("  Max repulsion distance: {}", params.max_repulsion_distance);
-        debug!("  Viewport bounds: {}", if params.enable_bounds { params.viewport_bounds } else { 0.0 });
-        debug!("  Shared memory size: {} bytes", SHARED_MEM_SIZE);
+        debug!("Launch config: blocks={}, threads={}, shared_mem={}",
+            blocks, BLOCK_SIZE, SHARED_MEM_SIZE);
 
         unsafe {
             self.force_kernel.clone().launch(cfg, (
-                // Pass parameters in the same order as the CUDA kernel expects them
-                &mut self.node_data,
+                &self.node_data,
                 self.num_nodes as i32,
-                params.spring_strength,        // Spring force strength
-                params.repulsion,             // Repulsion force strength
-                params.damping,               // Velocity damping
-                params.max_repulsion_distance, // Maximum distance for repulsion
-                if params.enable_bounds {      // Viewport bounds (0 if disabled)
-                    params.viewport_bounds
-                } else {
-                    0.0
-                }
+                self.simulation_params.spring_strength,
+                self.simulation_params.repulsion,
+                self.simulation_params.damping,
+                self.simulation_params.max_repulsion_distance,
+                self.simulation_params.viewport_bounds,
             )).map_err(|e| {
-                error!("CUDA kernel launch failed: {}", e);
-                std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    format!("CUDA kernel launch failed: {}", e)
-                )
+                error!("Kernel launch failed: {}", e);
+                Error::new(ErrorKind::Other, e.to_string())
             })?;
         }
-        
-        // Sanity-check: retrieve updated node data and correct any NaN values
-        let mut updated_nodes = self.get_node_data()?;
-        let mut needs_fix = false;
-        for node in &mut updated_nodes {
-            for v in &mut node.position {
-                if v.is_nan() {
-                    *v = 0.0;
-                    needs_fix = true;
-                }
-            }
-            for v in &mut node.velocity {
-                if v.is_nan() {
-                    *v = 0.0;
-                    needs_fix = true;
-                }
-            }
-        }
-        if needs_fix {
-            warn!("GPUCompute: Detected NaN values in node data after force calculation. Resetting to 0.");
-            debug!("Nodes with NaN values:");
-            for (i, node) in updated_nodes.iter().enumerate() {
-                if node.position.iter().any(|v| v.is_nan()) || node.velocity.iter().any(|v| v.is_nan()) {
-                    debug!("Node {}: pos={:?}, vel={:?}, mass={}, flags=0x{:x}",
-                        i, node.position, node.velocity, node.mass, node.flags);
-                }
-            }
-            self.device.htod_sync_copy_into(&updated_nodes, &mut self.node_data)
-                .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
-        }
-        
-        if log::log_enabled!(log::Level::Debug) {
-            debug!("Final state of first 3 nodes:");
-            for (i, (old, new)) in initial_nodes.iter().zip(updated_nodes.iter()).take(3).enumerate() {
-                debug!("Node {} delta: pos={:?}->{:?}, vel={:?}->{:?}, mass={}, flags=0x{:x}",
-                    i, old.position, new.position, old.velocity, new.velocity, old.mass, old.flags);
-            }
-        }
-        
+
+        debug!("Force computation completed");
         Ok(())
     }
 
@@ -284,6 +201,54 @@ impl GPUCompute {
 
         Ok(gpu_nodes)
     }
+
+    pub fn test_gpu() -> Result<(), Error> {
+        debug!("Running GPU test");
+        
+        let device = match CudaDevice::new(0) {
+            Ok(dev) => dev,
+            Err(e) => return Err(Error::new(ErrorKind::Other, format!("Failed to create CUDA device: {}", e)))
+        };
+        
+        // Try to allocate and manipulate some memory
+        let test_data: Vec<f32> = vec![1.0, 2.0, 3.0, 4.0, 5.0];
+        let gpu_data = match device.alloc_zeros::<f32>(5) {
+            Ok(data) => data,
+            Err(e) => return Err(Error::new(ErrorKind::Other, format!("Failed to allocate GPU memory: {}", e)))
+        };
+        
+        if let Err(e) = device.dtoh_sync_copy_into(&gpu_data, &mut test_data.clone()) {
+            return Err(Error::new(ErrorKind::Other, format!("Failed to copy data from GPU: {}", e)));
+        }
+        
+        debug!("GPU test successful");
+        Ok(())
+    }
+
+    pub fn step(&mut self) -> Result<(), Error> {
+        self.compute_forces()?;
+        Ok(())
+    }
+}
+
+#[cfg(feature = "gpu")]
+pub fn test_gpu() -> Result<(), Error> {
+    debug!("Running GPU test");
+    
+    // Create a simple test device
+    let device = CudaDevice::new(0)
+        .map_err(|e| Error::new(ErrorKind::Other, e.to_string()))?;
+    
+    // Try to allocate and manipulate some memory
+    let test_data: Vec<f32> = vec![1.0, 2.0, 3.0, 4.0, 5.0];
+    let gpu_data = device.alloc_zeros::<f32>(5)
+        .map_err(|e| Error::new(ErrorKind::Other, e.to_string()))?;
+    
+    device.dtoh_sync_copy_into(&gpu_data, &mut test_data.clone())
+        .map_err(|e| Error::new(ErrorKind::Other, e.to_string()))?;
+    
+    debug!("GPU test successful");
+    Ok(())
 }
 
 #[cfg(test)]

@@ -5,6 +5,8 @@ use actix_web::web;
 use rand::Rng;
 use std::io::{Error, ErrorKind};
 use serde_json;
+use std::pin::Pin;
+use futures::Future;
 
 use crate::models::graph::GraphData;
 use crate::utils::socket_flow_messages::Node;
@@ -14,7 +16,7 @@ use crate::app_state::AppState;
 use crate::config::Settings;
 use crate::utils::gpu_compute::GPUCompute;
 use crate::models::simulation_params::{SimulationParams, SimulationPhase, SimulationMode};
-use crate::{info, warn, error, debug};
+use crate::{info, warn, error};  // Removed debug from the import
 use crate::models::pagination::PaginatedGraphData;
 
 #[derive(Clone)]
@@ -316,58 +318,50 @@ impl GraphService {
         graph.nodes.clone()
     }
 
-    /// Initialize GPU compute with optimized settings for NVIDIA GPUs
-    pub async fn initialize_gpu(
-        &mut self,
-        _settings: Arc<RwLock<Settings>>,
-        graph_data: &GraphData,
-    ) -> Result<(), Error> {
+    pub fn update_positions(&mut self) -> Pin<Box<dyn Future<Output = Result<(), Error>> + '_>> {
+        Box::pin(async move {
+            if let Some(gpu) = &self.gpu_compute {
+                let mut gpu = gpu.write().await;
+                gpu.compute_forces()?;
+                Ok(())
+            } else {
+                // Initialize GPU if not already done
+                if self.gpu_compute.is_none() {
+                    let settings = Arc::new(RwLock::new(Settings::default()));
+                    let graph_data = GraphData::default(); // Or get your actual graph data
+                    self.initialize_gpu(settings, &graph_data).await?;
+                    return self.update_positions().await;
+                }
+                Err(Error::new(ErrorKind::Other, "GPU compute not initialized"))
+            }
+        })
+    }
+
+    pub async fn initialize_gpu(&mut self, _settings: Arc<RwLock<Settings>>, graph_data: &GraphData) -> Result<(), Error> {
         info!("Initializing GPU compute system...");
 
-        // Initialize with optimal parameters for NVIDIA GPUs
-        let params = SimulationParams {
-            iterations: 1,               // One iteration per frame for real-time updates
-            spring_strength: 5.0,        // Strong spring force for tight clustering
-            repulsion: 0.05,            // Minimal repulsion to prevent node overlap
-            damping: 0.98,              // High damping for stability
-            max_repulsion_distance: 0.1, // Small repulsion range for local interactions
-            viewport_bounds: 1.0,        // Normalized bounds
-            mass_scale: 1.0,            // Default mass scaling
-            boundary_damping: 0.95,      // Strong boundary damping
-            enable_bounds: true,         // Enable bounds for contained layout
-            time_step: 0.01,            // Small timestep for numerical stability
-            phase: SimulationPhase::Dynamic,
-            mode: SimulationMode::Remote,
-        };
+        // First run a basic GPU test
+        if let Err(e) = GPUCompute::test_gpu() {
+            error!("Basic GPU test failed: {}", e);
+            return Err(Error::new(ErrorKind::Other, format!("GPU test failed: {}", e)));
+        }
 
         match GPUCompute::new(graph_data).await {
-            Ok(gpu) => {
-                // Unwrap the GPU compute instance from the Arc<RwLock<>>
-                let mut gpu_instance = match Arc::try_unwrap(gpu) {
-                    Ok(lock) => lock.into_inner(),
-                    Err(_) => return Err(Error::new(ErrorKind::Other, "Failed to get exclusive access to GPU compute")),
-                };
-                
-                // Update simulation parameters
-                if let Err(e) = gpu_instance.update_simulation_params(&params) {
-                    error!("Failed to set simulation parameters: {}", e);
-                    return Err(Error::new(ErrorKind::Other, e.to_string()));
+            Ok(gpu_instance) => {
+                // Try a test computation before accepting the GPU
+                let mut gpu = gpu_instance.write().await;  // Changed from read() to write()
+                if let Err(e) = gpu.compute_forces() {
+                    error!("GPU test computation failed: {}", e);
+                    return Err(Error::new(ErrorKind::Other, format!("GPU test computation failed: {}", e)));
                 }
+                drop(gpu);
 
-                // Verify GPU memory allocation
-                if let Err(e) = gpu_instance.update_graph_data(graph_data) {
-                    error!("Failed to update graph data: {}", e);
-                    return Err(Error::new(ErrorKind::Other, e.to_string()));
-                }
-
-                info!("GPU initialization successful - Ready for computation");
-                self.gpu_compute = Some(Arc::new(RwLock::new(gpu_instance)));
+                self.gpu_compute = Some(gpu_instance);
                 Ok(())
             }
             Err(e) => {
-                error!("Failed to initialize GPU: {}. Falling back to CPU computations.", e);
-                debug!("GPU initialization error details: {:?}", e);
-                Ok(())
+                error!("Failed to initialize GPU compute: {}", e);
+                Err(Error::new(ErrorKind::Other, format!("GPU initialization failed: {}", e)))
             }
         }
     }

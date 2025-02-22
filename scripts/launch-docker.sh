@@ -487,6 +487,8 @@ if ! nvcc \
     -O3 \
     --use_fast_math \
     -ptx \
+    -rdc=true \
+    --compiler-options -fPIC \
     src/utils/compute_forces.cu \
     -o src/utils/compute_forces.ptx \
     --compiler-bindir=/usr/bin/gcc-11; then
