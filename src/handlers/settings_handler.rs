@@ -5,7 +5,6 @@ use chrono::Utc;
 use serde_json::Value;
 use crate::config::feature_access::FeatureAccess;
 use log::{info, error, warn, debug};
-use std::env;
 
 pub fn config(cfg: &mut web::ServiceConfig) {
     cfg.service(
@@ -18,8 +17,6 @@ pub fn config(cfg: &mut web::ServiceConfig) {
             .route(web::post().to(update_user_settings))
     );
 }
-
-
 
 pub async fn get_public_settings(state: web::Data<AppState>) -> Result<HttpResponse, Error> {
     let settings_guard = state.settings.read().await;

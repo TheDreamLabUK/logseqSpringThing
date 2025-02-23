@@ -1,9 +1,9 @@
 use actix::prelude::*;
 use actix_web::{web, Error, HttpRequest, HttpResponse};
 use actix_web_actors::ws;
-use flate2::{read::ZlibDecoder, write::ZlibEncoder, Compression};
+use flate2::{write::ZlibEncoder, Compression};
 use log::{debug, error, info, warn};
-use std::io::{Read, Write};
+use std::io::Write;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
@@ -62,27 +62,6 @@ impl SocketFlowServer {
             }
         }
         data
-    }
-
-    fn maybe_decompress(&self, data: Vec<u8>) -> Result<Vec<u8>, String> {
-        if let Ok(settings) = self.settings.try_read() {
-            if settings.system.websocket.compression_enabled {
-                let mut decoder = ZlibDecoder::new(data.as_slice());
-                let mut decompressed = Vec::new();
-                match decoder.read_to_end(&mut decompressed) {
-                    Ok(_) => {
-                        if decompressed.len() > data.len() {
-                            debug!("Decompressed binary message: {} -> {} bytes", data.len(), decompressed.len());
-                            return Ok(decompressed);
-                        }
-                    }
-                    Err(e) => {
-                        debug!("Decompression failed (data likely uncompressed): {}", e);
-                    }
-                }
-            }
-        }
-        Ok(data)
     }
 }
 

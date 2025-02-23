@@ -1,12 +1,12 @@
 use webxr::{
-    AppState, Settings,
+    AppState,
+    config::Settings,
     handlers::{
         api_handler,
         health_handler,
         pages_handler,
         socket_flow_handler::socket_flow_handler,
         nostr_handler,
-        settings_handler,
     },
     services::{
         file_service::FileService,
@@ -147,7 +147,7 @@ async fn main() -> std::io::Result<()> {
     // Start the server
     let bind_address = {
         let settings_read = settings.read().await;
-        format!("{}:{}", (*settings_read).system.network.bind_address, (*settings_read).system.network.port)
+        format!("{}:{}", settings_read.system.network.bind_address, settings_read.system.network.port)
     };
 
     info!("Starting HTTP server on {}", bind_address);

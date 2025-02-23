@@ -7,6 +7,7 @@ use std::io::{Error, ErrorKind};
 use serde_json;
 use std::pin::Pin;
 use futures::Future;
+use log::{info, warn, error};
 
 use crate::models::graph::GraphData;
 use crate::utils::socket_flow_messages::Node;
@@ -16,7 +17,6 @@ use crate::app_state::AppState;
 use crate::config::Settings;
 use crate::utils::gpu_compute::GPUCompute;
 use crate::models::simulation_params::{SimulationParams, SimulationPhase, SimulationMode};
-use crate::{info, warn, error};  // Removed debug from the import
 use crate::models::pagination::PaginatedGraphData;
 
 #[derive(Clone)]
@@ -343,16 +343,10 @@ impl GraphService {
     pub async fn initialize_gpu(&mut self, _settings: Arc<RwLock<Settings>>, graph_data: &GraphData) -> Result<(), Error> {
         info!("Initializing GPU compute system...");
 
-        // First run a basic GPU test
-        if let Err(e) = GPUCompute::test_gpu() {
-            error!("Basic GPU test failed: {}", e);
-            return Err(Error::new(ErrorKind::Other, format!("GPU test failed: {}", e)));
-        }
-
         match GPUCompute::new(graph_data).await {
             Ok(gpu_instance) => {
                 // Try a test computation before accepting the GPU
-                let mut gpu = gpu_instance.write().await;  // Changed from read() to write()
+                let mut gpu = gpu_instance.write().await;
                 if let Err(e) = gpu.compute_forces() {
                     error!("GPU test computation failed: {}", e);
                     return Err(Error::new(ErrorKind::Other, format!("GPU test computation failed: {}", e)));

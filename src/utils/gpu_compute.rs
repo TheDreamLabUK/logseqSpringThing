@@ -19,8 +19,6 @@ const BLOCK_SIZE: u32 = 256;
 #[cfg(feature = "gpu")]
 const MAX_NODES: u32 = 1_000_000;
 #[cfg(feature = "gpu")]
-const NODE_SIZE: u32 = std::mem::size_of::<BinaryNodeData>() as u32;
-#[cfg(feature = "gpu")]
 const SHARED_MEM_SIZE: u32 = BLOCK_SIZE * (12 + 4); // Vec3 (12 bytes) + float (4 bytes) per thread
 
 // CPU-only version
@@ -49,6 +47,25 @@ pub struct GPUCompute {
 
 #[cfg(feature = "gpu")]
 impl GPUCompute {
+    pub fn test_gpu() -> Result<(), Error> {
+        debug!("Running GPU test");
+        
+        // Create a simple test device
+        let device = CudaDevice::new(0)
+            .map_err(|e| Error::new(ErrorKind::Other, e.to_string()))?;
+        
+        // Try to allocate and manipulate some memory
+        let test_data: Vec<f32> = vec![1.0, 2.0, 3.0, 4.0, 5.0];
+        let gpu_data = device.alloc_zeros::<f32>(5)
+            .map_err(|e| Error::new(ErrorKind::Other, e.to_string()))?;
+        
+        device.dtoh_sync_copy_into(&gpu_data, &mut test_data.clone())
+            .map_err(|e| Error::new(ErrorKind::Other, e.to_string()))?;
+        
+        debug!("GPU test successful");
+        Ok(())
+    }
+
     pub async fn new(graph: &GraphData) -> Result<Arc<RwLock<Self>>, Error> {
         let num_nodes = graph.nodes.len() as u32;
         debug!("Initializing GPU compute with {} nodes", num_nodes);
@@ -223,26 +240,6 @@ impl GPUCompute {
         self.compute_forces()?;
         Ok(())
     }
-}
-
-#[cfg(feature = "gpu")]
-pub fn test_gpu() -> Result<(), Error> {
-    debug!("Running GPU test");
-    
-    // Create a simple test device
-    let device = CudaDevice::new(0)
-        .map_err(|e| Error::new(ErrorKind::Other, e.to_string()))?;
-    
-    // Try to allocate and manipulate some memory
-    let test_data: Vec<f32> = vec![1.0, 2.0, 3.0, 4.0, 5.0];
-    let gpu_data = device.alloc_zeros::<f32>(5)
-        .map_err(|e| Error::new(ErrorKind::Other, e.to_string()))?;
-    
-    device.dtoh_sync_copy_into(&gpu_data, &mut test_data.clone())
-        .map_err(|e| Error::new(ErrorKind::Other, e.to_string()))?;
-    
-    debug!("GPU test successful");
-    Ok(())
 }
 
 #[cfg(test)]

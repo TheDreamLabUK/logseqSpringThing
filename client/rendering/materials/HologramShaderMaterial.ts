@@ -17,7 +17,6 @@ const logger = createLogger('HologramShaderMaterial');
 
 // Three.js side constants
 const FRONT_SIDE = 0;  // THREE.FrontSide
-const BACK_SIDE = 1;   // THREE.BackSide
 const DOUBLE_SIDE = 2; // THREE.DoubleSide
 
 export class HologramShaderMaterial extends ShaderMaterial {

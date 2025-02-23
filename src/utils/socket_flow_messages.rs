@@ -16,34 +16,6 @@ unsafe impl DeviceRepr for BinaryNodeData {}
 // Implement ValidAsZeroBits for BinaryNodeData
 unsafe impl ValidAsZeroBits for BinaryNodeData {}
 
-// Helper functions for Vector3 serialization
-fn serialize_position<S>(position: &[f32; 3], serializer: S) -> Result<S::Ok, S::Error>
-where
-    S: serde::Serializer,
-{
-    use serde::ser::SerializeStruct;
-    let mut state = serializer.serialize_struct("Vector3", 3)?;
-    state.serialize_field("x", &position[0])?;
-    state.serialize_field("y", &position[1])?;
-    state.serialize_field("z", &position[2])?;
-    state.end()
-}
-
-fn deserialize_position<'de, D>(deserializer: D) -> Result<[f32; 3], D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    #[derive(Deserialize)]
-    struct Vector3 {
-        x: f32,
-        y: f32,
-        z: f32,
-    }
-
-    let vec = Vector3::deserialize(deserializer)?;
-    Ok([vec.x, vec.y, vec.z])
-}
-
 #[derive(Debug, Serialize, Deserialize)]
 pub struct PingMessage {
     #[serde(rename = "type")]
