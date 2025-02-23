@@ -23,6 +23,7 @@ import { VisualizationController } from './VisualizationController';
 import { HologramShaderMaterial } from './materials/HologramShaderMaterial';
 import { Settings } from '../types/settings/base';
 import { defaultSettings } from '../state/defaultSettings';
+import { debugState } from '../core/debugState';
 import { logger } from '../core/logger';
 
 const BACKGROUND_COLOR = 0x000000;  // Material Design Grey 900
@@ -103,9 +104,6 @@ export class SceneManager {
         }
       });
       this.renderer.setSize(window.innerWidth, window.innerHeight);
-      this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-      
-      // Set renderer for shader validation
       HologramShaderMaterial.setRenderer(this.renderer);
       
       // Remove unsupported properties
@@ -113,6 +111,11 @@ export class SceneManager {
       // this.renderer.physicallyCorrectLights = false;
 
       // Setup post-processing
+      this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      if (debugState.isDataDebugEnabled()) {
+        logger.debug('Renderer initialized and set for shader validation');
+      }
+      
       this.composer = new EffectComposerModule.EffectComposer(this.renderer);
       const renderPass = new RenderPassModule.RenderPass(this.scene, this.camera);
       this.composer.addPass(renderPass);

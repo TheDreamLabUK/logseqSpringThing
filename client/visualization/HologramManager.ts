@@ -128,8 +128,7 @@ export class HologramManager {
         this.isXRMode = enabled;
         this.group.traverse(child => {
             if (child instanceof Mesh && child.material instanceof HologramShaderMaterial) {
-                child.material.defines = { USE_AR: '' };
-                child.material.needsUpdate = true;
+                child.material = new HologramShaderMaterial(this.settings, enabled ? 'ar' : 'desktop');
             }
         });
         this.createHolograms();
@@ -141,12 +140,7 @@ export class HologramManager {
             if (child instanceof Mesh && child.material instanceof HologramShaderMaterial) {
                 const distance = position.distanceTo(child.position);
                 if (distance < interactionRadius && child.material.uniforms) {
-                    child.material.uniforms.pulseIntensity.value = 0.4;
-                    setTimeout(() => {
-                        if (child.material instanceof HologramShaderMaterial && child.material.uniforms) {
-                            child.material.uniforms.pulseIntensity.value = 0.2;
-                        }
-                    }, 500);
+                    child.material.handleInteraction(position);
                 }
             }
         });
@@ -172,7 +166,7 @@ export class HologramManager {
                 
                 // Update shader time
                 const material = child.material as HologramShaderMaterial;
-                material.uniforms.time.value += deltaTime;
+                material.update(deltaTime);
             }
         });
     }

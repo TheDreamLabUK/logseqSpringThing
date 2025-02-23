@@ -1,5 +1,6 @@
 import { ShaderMaterial, Color, Vector3, AdditiveBlending, WebGLRenderer } from 'three';
 import { createLogger } from '../../core/logger';
+import { debugState } from '../../core/debugState';
 
 export interface HologramUniforms {
     [key: string]: { value: any };
@@ -17,11 +18,14 @@ const logger = createLogger('HologramShaderMaterial');
 export class HologramShaderMaterial extends ShaderMaterial {
     declare uniforms: HologramUniforms;
     private static renderer: WebGLRenderer | null = null;
+    private static instances: Set<HologramShaderMaterial> = new Set();
     private updateFrequency: number;
     private frameCount: number;
 
     constructor(settings?: any, context: 'ar' | 'desktop' = 'desktop') {
-        logger.debug('Creating HologramShaderMaterial', { context, settings });
+        if (debugState.isDataDebugEnabled()) {
+            logger.debug('Creating HologramShaderMaterial', { context, settings });
+        }
         const isAR = context === 'ar';
         super({
             uniforms: {
@@ -33,16 +37,20 @@ export class HologramShaderMaterial extends ShaderMaterial {
                 interactionStrength: { value: 0.0 },
                 isEdgeOnly: { value: false }
             },
-            vertexShader: `
+            vertexShader: /* glsl */`
                 varying vec2 vUv;
+                varying vec3 vNormal;
                 varying vec3 vPosition;
+                varying vec3 vWorldPosition;
                 void main() {
                     vUv = uv;
+                    vNormal = normalize(normalMatrix * normal);
                     vPosition = position;
+                    vWorldPosition = (modelMatrix * vec4(position, 1.0)).xyz;
                     gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
                 }
             `,
-            fragmentShader: `
+            fragmentShader: /* glsl */`
                 uniform float time;
                 uniform float opacity;
                 uniform vec3 color;
@@ -51,7 +59,9 @@ export class HologramShaderMaterial extends ShaderMaterial {
                 uniform float interactionStrength;
                 uniform bool isEdgeOnly;
                 varying vec2 vUv;
+                varying vec3 vNormal;
                 varying vec3 vPosition;
+                varying vec3 vWorldPosition;
 
                 void main() {
                     // Simplified pulse calculation
@@ -64,14 +74,19 @@ export class HologramShaderMaterial extends ShaderMaterial {
                         interaction = interactionStrength * (1.0 - smoothstep(0.0, 2.0, dist));
                     }
                     
+                    // Calculate fresnel effect for edge glow
+                    vec3 viewDirection = normalize(cameraPosition - vWorldPosition);
+                    float fresnel = pow(1.0 - max(0.0, dot(viewDirection, vNormal)), 2.0);
+                    
                     float alpha;
                     if (isEdgeOnly) {
-                        alpha = opacity * (0.8 + pulse * pulseIntensity + interaction);
+                        alpha = opacity * (0.8 + pulse * pulseIntensity + interaction + fresnel * 0.5);
                         vec3 edgeColor = color + vec3(0.1) * pulse; // Reduced edge brightness
                         gl_FragColor = vec4(edgeColor, clamp(alpha, 0.0, 1.0));
                     } else {
-                        alpha = opacity * (0.5 + pulse * pulseIntensity + interaction);
-                        gl_FragColor = vec4(color, clamp(alpha, 0.0, 1.0));
+                        alpha = opacity * (0.5 + pulse * pulseIntensity + interaction + fresnel * 0.3);
+                        vec3 finalColor = color + vec3(0.05) * fresnel; // Slight color variation on edges
+                        gl_FragColor = vec4(finalColor, clamp(alpha, 0.0, 1.0));
                     }
                 }
             `,
@@ -82,48 +97,31 @@ export class HologramShaderMaterial extends ShaderMaterial {
             wireframeLinewidth: 1
         });
 
-        // Set update frequency based on context
         this.updateFrequency = isAR ? 2 : 1; // Update every frame in desktop, every other frame in AR
         this.frameCount = 0;
-
-        // Validate shader compilation if we have a renderer
-        if (HologramShaderMaterial.renderer) {
-            this.validateShader();
+        
+        // Add this instance to the set of instances
+        HologramShaderMaterial.instances.add(this);
+        
+        if (debugState.isDataDebugEnabled()) {
+            logger.debug('HologramShaderMaterial initialized', { updateFrequency: this.updateFrequency });
         }
 
-        logger.debug('HologramShaderMaterial initialized', { updateFrequency: this.updateFrequency });
+        // If renderer is already set, compile shader
+        if (HologramShaderMaterial.renderer) {
+            this.needsUpdate = true;
+        }
     }
 
     public static setRenderer(renderer: WebGLRenderer): void {
         HologramShaderMaterial.renderer = renderer;
-        logger.debug('Renderer set for shader validation');
-    }
-
-    private validateShader(): void {
-        if (!HologramShaderMaterial.renderer) {
-            logger.debug('No renderer available for shader validation');
-            return;
+        if (debugState.isDataDebugEnabled()) {
+            logger.debug('Renderer set for shader validation');
         }
-
-        const gl = HologramShaderMaterial.renderer.domElement.getContext('webgl2') || HologramShaderMaterial.renderer.domElement.getContext('webgl');
-        if (!gl) {
-            logger.error('Could not get WebGL context');
-            return;
-        }
-
-        const program = (this as any).program;
-        if (!program) {
-            logger.error('No shader program available');
-            return;
-        }
-
-        const isValid = gl.getProgramParameter(program, gl.LINK_STATUS);
-        if (!isValid) {
-            const info = gl.getProgramInfoLog(program);
-            logger.error('Shader program validation failed:', info);
-        } else {
-            logger.debug('Shader program validated successfully');
-        }
+        // Force shader compilation for all instances
+        HologramShaderMaterial.instances.forEach(instance => {
+            instance.needsUpdate = true;
+        });
     }
 
     update(deltaTime: number): void {
@@ -150,7 +148,9 @@ export class HologramShaderMaterial extends ShaderMaterial {
     }
 
     clone(): this {
-        logger.debug('Cloning HologramShaderMaterial');
+        if (debugState.isDataDebugEnabled()) {
+            logger.debug('Cloning HologramShaderMaterial');
+        }
         // Create settings object from current uniforms
         const settings = {
             visualization: {
@@ -162,7 +162,9 @@ export class HologramShaderMaterial extends ShaderMaterial {
                 }
             }
         };
-        logger.debug('Clone settings', settings);
+        if (debugState.isDataDebugEnabled()) {
+            logger.debug('Clone settings', settings);
+        }
         const material = new HologramShaderMaterial(settings, this.side === 0 ? 'ar' : 'desktop');
         material.uniforms = {
             time: { value: this.uniforms.time.value },
@@ -173,8 +175,17 @@ export class HologramShaderMaterial extends ShaderMaterial {
             interactionStrength: { value: this.uniforms.interactionStrength.value },
             isEdgeOnly: { value: this.uniforms.isEdgeOnly.value }
         };
-        material.validateShader();
-        logger.debug('Material cloned successfully');
+
+        if (debugState.isDataDebugEnabled()) {
+            logger.debug('Material cloned successfully');
+        }
         return material as this;
+    }
+
+    dispose(): void {
+        // Remove this instance from the set when disposed
+        HologramShaderMaterial.instances.delete(this);
+        // Call parent dispose
+        super.dispose();
     }
 }
