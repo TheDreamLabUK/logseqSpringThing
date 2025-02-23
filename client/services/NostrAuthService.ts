@@ -35,6 +35,21 @@ export interface AuthResult {
 }
 
 /**
+ * Server authentication response type
+ */
+interface AuthResponse {
+    user: {
+        pubkey: string;
+        is_power_user: boolean;
+        npub?: string;
+    };
+    token: string;
+    features: string[];
+    valid?: boolean;
+    error?: string;
+}
+
+/**
  * Service for handling Nostr authentication and feature access
  */
 export class NostrAuthService {
@@ -160,11 +175,24 @@ export class NostrAuthService {
                 throw new Error(`Authentication failed (${response.status}): ${errorText}`);
             }
 
-            const authData = await response.json();
-            this.currentUser = {
+            const authData = await response.json() as AuthResponse;
+            
+            // Validate response data
+            if (!authData || !authData.user || typeof authData.user.is_power_user !== 'boolean' || !authData.token) {
+                throw new Error('Invalid authentication response from server');
+            }
+
+            // Log successful auth data for debugging
+            logger.debug('Auth successful:', {
                 pubkey: authData.user.pubkey,
                 isPowerUser: authData.user.is_power_user,
                 features: authData.features
+            });
+
+            this.currentUser = {
+                pubkey: authData.user.pubkey,
+                isPowerUser: authData.user.is_power_user,
+                features: authData.features || []
             };
 
             localStorage.setItem('nostr_pubkey', pubkey);
@@ -188,7 +216,7 @@ export class NostrAuthService {
             return {
                 authenticated: false,
                 error: error instanceof Error ? error.message : 'Unknown error occurred'
-            };
+            } as AuthResult;
         }
     }
 
@@ -288,16 +316,24 @@ export class NostrAuthService {
                 throw new Error('Authentication check failed');
             }
 
-            const verifyData = await response.json();
+            const verifyData = await response.json() as Partial<AuthResponse>;
+            
+            // Validate verify response data
+            if (!verifyData || !verifyData.user || typeof verifyData.user.is_power_user !== 'boolean') {
+                throw new Error('Invalid verification response from server');
+            }
+
             if (!verifyData.valid) {
                 throw new Error('Invalid session');
             }
+
+            logger.debug('Auth check successful:', { pubkey, isPowerUser: verifyData.user?.is_power_user });
 
             // Set currentUser before emitting event
             this.currentUser = {
                 pubkey,
                 isPowerUser: verifyData.user.is_power_user,
-                features: verifyData.features
+                features: verifyData.features || []
             };
             
             // Update persistence service with verified user

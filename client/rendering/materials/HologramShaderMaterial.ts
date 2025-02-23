@@ -1,4 +1,4 @@
-import { ShaderMaterial, Color, Vector3, AdditiveBlending, WebGLRenderer } from 'three';
+import { ShaderMaterial, Color, Vector3, AdditiveBlending, WebGLRenderer, MeshBasicMaterial } from 'three';
 import { createLogger } from '../../core/logger';
 import { debugState } from '../../core/debugState';
 
@@ -15,12 +15,19 @@ export interface HologramUniforms {
 
 const logger = createLogger('HologramShaderMaterial');
 
+// Three.js side constants
+const FRONT_SIDE = 0;  // THREE.FrontSide
+const BACK_SIDE = 1;   // THREE.BackSide
+const DOUBLE_SIDE = 2; // THREE.DoubleSide
+
 export class HologramShaderMaterial extends ShaderMaterial {
     declare uniforms: HologramUniforms;
     private static renderer: WebGLRenderer | null = null;
     private static instances: Set<HologramShaderMaterial> = new Set();
     private updateFrequency: number;
     private frameCount: number;
+    private fallbackMaterial: MeshBasicMaterial | null = null;
+    public wireframe = false;
 
     constructor(settings?: any, context: 'ar' | 'desktop' = 'desktop') {
         if (debugState.isDataDebugEnabled()) {
@@ -38,12 +45,13 @@ export class HologramShaderMaterial extends ShaderMaterial {
                 isEdgeOnly: { value: false }
             },
             vertexShader: /* glsl */`
+                
                 varying vec2 vUv;
                 varying vec3 vNormal;
                 varying vec3 vPosition;
                 varying vec3 vWorldPosition;
                 void main() {
-                    vUv = uv;
+                    vUv = uv;  // Pass UV coordinates to fragment shader
                     vNormal = normalize(normalMatrix * normal);
                     vPosition = position;
                     vWorldPosition = (modelMatrix * vec4(position, 1.0)).xyz;
@@ -65,7 +73,7 @@ export class HologramShaderMaterial extends ShaderMaterial {
 
                 void main() {
                     // Simplified pulse calculation
-                    float pulse = sin(time) * 0.5 + 0.5;
+                    float pulse = sin(time * 5.0) * 0.5 + 0.5;  // Increased frequency for better visual effect
                     
                     // Only calculate interaction if strength is significant
                     float interaction = 0.0;
@@ -91,10 +99,12 @@ export class HologramShaderMaterial extends ShaderMaterial {
                 }
             `,
             transparent: true,
-            side: isAR ? 0 : 2, // THREE.FrontSide = 0, THREE.DoubleSide = 2
+            side: isAR ? FRONT_SIDE : DOUBLE_SIDE,
             blending: AdditiveBlending,
-            wireframe: true,
-            wireframeLinewidth: 1
+            wireframe: isAR ? false : true,  // Disable wireframe in AR for better performance
+            wireframeLinewidth: 1,
+            defines: { USE_UV: '', USE_NORMAL: '' },  // Ensure UV coordinates and normals are available
+            glslVersion: '300 es'  // Use modern GLSL version
         });
 
         this.updateFrequency = isAR ? 2 : 1; // Update every frame in desktop, every other frame in AR
@@ -109,7 +119,24 @@ export class HologramShaderMaterial extends ShaderMaterial {
 
         // If renderer is already set, compile shader
         if (HologramShaderMaterial.renderer) {
-            this.needsUpdate = true;
+            try {
+                this.needsUpdate = true;
+                // Force immediate compilation
+                this.needsUpdate = true;
+            } catch (error) {
+                logger.error('Shader compilation failed:', error);
+                // Create fallback material
+                this.fallbackMaterial = new MeshBasicMaterial({
+                    color: settings?.visualization?.hologram?.color ?? 0x00ff00,
+                    wireframe: true,
+                    transparent: this.transparent,
+                    opacity: settings?.visualization?.hologram?.opacity ?? 0.5
+                });
+                // Copy necessary properties
+                this.needsUpdate = true;
+                this.side = isAR ? FRONT_SIDE : DOUBLE_SIDE;
+                this.transparent = true;
+            }
         }
     }
 
@@ -119,8 +146,29 @@ export class HologramShaderMaterial extends ShaderMaterial {
             logger.debug('Renderer set for shader validation');
         }
         // Force shader compilation for all instances
-        HologramShaderMaterial.instances.forEach(instance => {
-            instance.needsUpdate = true;
+        HologramShaderMaterial.instances.forEach(async instance => {
+            try {
+                instance.needsUpdate = true;
+                instance.needsUpdate = true;
+                
+                // If we had a fallback material and compilation succeeded, remove it
+                if (instance.fallbackMaterial) {
+                    instance.fallbackMaterial.dispose();
+                    instance.fallbackMaterial = null;
+                }
+            } catch (error) {
+                logger.error('Shader compilation failed:', error);
+                // Create fallback material if we don't have one
+                if (!instance.fallbackMaterial) {
+                    instance.fallbackMaterial = new MeshBasicMaterial({
+                        color: instance.uniforms.color.value,
+                        wireframe: instance.wireframe,
+                        transparent: true,
+                        opacity: instance.uniforms.opacity.value,
+                        side: instance.side
+                    });
+                }
+            }
         });
     }
 
@@ -185,6 +233,10 @@ export class HologramShaderMaterial extends ShaderMaterial {
     dispose(): void {
         // Remove this instance from the set when disposed
         HologramShaderMaterial.instances.delete(this);
+        // Dispose of fallback material if it exists
+        if (this.fallbackMaterial) {
+            this.fallbackMaterial.dispose();
+        }
         // Call parent dispose
         super.dispose();
     }

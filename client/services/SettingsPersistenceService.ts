@@ -33,6 +33,7 @@ export class SettingsPersistenceService {
     public setCurrentUser(pubkey: string | null, isPowerUser: boolean = false): void {
         this.currentPubkey = pubkey;
         this.isPowerUser = isPowerUser;
+        logger.debug('User state updated:', { pubkey, isPowerUser });
     }
 
     public async saveSettings(settings: Settings): Promise<void> {
@@ -73,7 +74,7 @@ export class SettingsPersistenceService {
             // Use public settings endpoint if not authenticated
             if (!this.currentPubkey) {
                 logger.debug('No pubkey available, loading public settings');
-                return await this.loadPublicSettings();
+                return this.loadPublicSettings();
             } try {
                 const serverSettings = await this.loadFromServer();
                 if (serverSettings) {                        
@@ -96,7 +97,7 @@ export class SettingsPersistenceService {
 
                 // Pubkey check
                 if (stored.pubkey && stored.pubkey !== this.currentPubkey) {
-                    logger.warn('Settings pubkey mismatch, using defaults');
+                    logger.warn('Settings pubkey mismatch:', { stored: stored.pubkey, current: this.currentPubkey });
                     return { ...defaultSettings };
                 }
 
@@ -160,7 +161,14 @@ export class SettingsPersistenceService {
                 throw new Error(`Server returned ${response.status}: ${await response.text()}`);
             }
 
-            const settings = await response.json();
+            const settings = await response.json() as Settings;
+            
+            // Additional validation for required sections
+            if (!settings || !settings.system || !settings.xr) {
+                logger.error('Invalid server settings: Missing required sections');
+                return { ...defaultSettings };
+            }
+
             const validation = validateSettings(settings);
             if (!validation.isValid) {
                 throw new Error(`Invalid server settings: ${JSON.stringify(validation.errors)}`);
@@ -198,7 +206,14 @@ export class SettingsPersistenceService {
                 }
             }
 
-            const serverSettings = await response.json();
+            const serverSettings = await response.json() as Settings;
+            
+            // Additional validation for required sections
+            if (!serverSettings || !serverSettings.system || !serverSettings.xr) {
+                logger.error('Invalid server settings: Missing required sections');
+                throw new Error('Server returned invalid settings structure');
+            }
+
 
             // Validate server settings
             const validation = validateSettings(serverSettings);
@@ -239,6 +254,7 @@ export class SettingsPersistenceService {
 
     public clearSettings(): void {
         localStorage.removeItem(this.LOCAL_STORAGE_KEY);
+        this.isPowerUser = false;  // Reset power user status on clear
         logger.info('Settings cleared');
     }
 
