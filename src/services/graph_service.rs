@@ -21,7 +21,8 @@ use crate::models::pagination::PaginatedGraphData;
 
 #[derive(Clone)]
 pub struct GraphService {
-    pub graph_data: Arc<RwLock<GraphData>>,
+    graph_data: Arc<RwLock<GraphData>>,
+    node_map: Arc<RwLock<HashMap<String, Node>>>,
     gpu_compute: Option<Arc<RwLock<GPUCompute>>>,
 }
 
@@ -29,9 +30,11 @@ impl GraphService {
     pub async fn new(settings: Arc<RwLock<Settings>>, gpu_compute: Option<Arc<RwLock<GPUCompute>>>) -> Self {
         // Get physics settings
         let physics_settings = settings.read().await.visualization.physics.clone();
+        let node_map = Arc::new(RwLock::new(HashMap::new()));
         
         let graph_service = Self {
             graph_data: Arc::new(RwLock::new(GraphData::default())),
+            node_map: node_map.clone(),
             gpu_compute,
         };
         
@@ -58,14 +61,16 @@ impl GraphService {
             loop {
                 // Update positions
                 let mut graph = graph_data.write().await;
+                let mut node_map = node_map.write().await;
                 if physics_settings.enabled {
                     if let Some(gpu) = &gpu_compute {
-                        if let Err(e) = Self::calculate_layout(gpu, &mut graph, &params).await {
+                        if let Err(e) = Self::calculate_layout(gpu, &mut graph, &mut node_map, &params).await {
                             warn!("[Graph] Error updating positions: {}", e);
                         }
                     }
                 }
-                drop(graph);
+                drop(graph); // Release locks
+                drop(node_map);
 
                 // Sleep for ~16ms (60fps)
                 tokio::time::sleep(tokio::time::Duration::from_millis(16)).await;
@@ -78,6 +83,7 @@ impl GraphService {
     pub async fn build_graph_from_metadata(metadata: &MetadataStore) -> Result<GraphData, Box<dyn std::error::Error + Send + Sync>> {
         let mut graph = GraphData::new();
         let mut edge_map = HashMap::new();
+        let mut node_map = HashMap::new();
 
         // First pass: Create nodes from files in metadata
         let mut valid_nodes = HashSet::new();
@@ -102,7 +108,9 @@ impl GraphService {
                 node.metadata.insert("lastModified".to_string(), metadata.last_modified.to_string());
             }
             
-            graph.nodes.push(node);
+            let node_clone = node.clone();
+            graph.nodes.push(node_clone);
+            node_map.insert(node_id.clone(), node);
         }
 
         // Store metadata in graph
@@ -145,8 +153,9 @@ impl GraphService {
     }
 
     pub async fn build_graph(state: &web::Data<AppState>) -> Result<GraphData, Box<dyn std::error::Error + Send + Sync>> {
-        let current_graph = state.graph_service.graph_data.read().await;
+        let current_graph = state.graph_service.get_graph_data_mut().await;
         let mut graph = GraphData::new();
+        let mut node_map = HashMap::new();
 
         // Copy metadata from current graph
         graph.metadata = current_graph.metadata.clone();
@@ -176,7 +185,9 @@ impl GraphService {
                 node.metadata.insert("lastModified".to_string(), metadata.last_modified.to_string());
             }
             
-            graph.nodes.push(node);
+            let node_clone = node.clone();
+            graph.nodes.push(node_clone);
+            node_map.insert(node_id.clone(), node);
         }
 
         // Create edges from metadata topic counts
@@ -248,6 +259,7 @@ impl GraphService {
     pub async fn calculate_layout(
         gpu_compute: &Arc<RwLock<GPUCompute>>,
         graph: &mut GraphData,
+        node_map: &mut HashMap<String, Node>,
         params: &SimulationParams,
     ) -> std::io::Result<()> {
         {
@@ -267,6 +279,10 @@ impl GraphService {
             for (node, data) in graph.nodes.iter_mut().zip(updated_nodes.iter()) {
                 // Update position and velocity from GPU data
                 node.data = data.clone();
+                // Update node_map as well
+                if let Some(map_node) = node_map.get_mut(&node.id) {
+                    map_node.data = data.clone();
+                }
             }
             Ok(())
         }
@@ -319,6 +335,35 @@ impl GraphService {
     pub async fn get_node_positions(&self) -> Vec<Node> {
         let graph = self.graph_data.read().await;
         graph.nodes.clone()
+    }
+
+    pub async fn get_graph_data_mut(&self) -> tokio::sync::RwLockWriteGuard<'_, GraphData> {
+        self.graph_data.write().await
+    }
+
+    pub async fn get_node_map_mut(&self) -> tokio::sync::RwLockWriteGuard<'_, HashMap<String, Node>> {
+        self.node_map.write().await
+    }
+
+    pub async fn update_node_positions(&self, updates: Vec<(u32, Node)>) -> Result<(), Error> {
+        let mut graph = self.graph_data.write().await;
+        let mut node_map = self.node_map.write().await;
+
+        for (node_id_u32, node_data) in updates {
+            let node_id = node_id_u32.to_string();
+            if let Some(node) = node_map.get_mut(&node_id) {
+                node.data = node_data.data.clone();
+            }
+        }
+
+        // Update graph nodes with new positions from the map
+        for node in &mut graph.nodes {
+            if let Some(updated_node) = node_map.get(&node.id) {
+                node.data = updated_node.data.clone();
+            }
+        }
+
+        Ok(())
     }
 
     pub fn update_positions(&mut self) -> Pin<Box<dyn Future<Output = Result<(), Error>> + '_>> {

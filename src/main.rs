@@ -128,9 +128,18 @@ async fn main() -> std::io::Result<()> {
             }
 
             // Update graph data after GPU is initialized
-            let mut graph = app_state.graph_service.graph_data.write().await;
+            let mut graph = app_state.graph_service.get_graph_data_mut().await;
+            let mut node_map = app_state.graph_service.get_node_map_mut().await;
             *graph = graph_data;
+            
+            // Update node_map with new graph nodes
+            node_map.clear();
+            for node in &graph.nodes {
+                node_map.insert(node.id.clone(), node.clone());
+            }
+            
             drop(graph);
+            drop(node_map);
 
             info!("Built initial graph from metadata");
             

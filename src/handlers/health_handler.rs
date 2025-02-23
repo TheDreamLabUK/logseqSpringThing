@@ -3,7 +3,7 @@ use crate::AppState;
 
 pub async fn health_check(app_state: web::Data<AppState>) -> Result<HttpResponse> {
     let metadata = app_state.metadata.read().await;
-    let graph = app_state.graph_service.graph_data.read().await;
+    let graph = app_state.graph_service.get_graph_data_mut().await;
     
     Ok(HttpResponse::Ok().json(serde_json::json!({
         "status": "healthy",

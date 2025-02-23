@@ -41,7 +41,7 @@ pub struct GraphQuery {
 
 pub async fn get_graph_data(state: web::Data<AppState>) -> impl Responder {
     info!("Received request for graph data");
-    let graph = state.graph_service.graph_data.read().await;
+    let graph = state.graph_service.get_graph_data_mut().await;
     
     debug!("Preparing graph response with {} nodes and {} edges",
         graph.nodes.len(),
@@ -74,7 +74,7 @@ pub async fn get_paginated_graph_data(
         }));
     }
 
-    let graph = state.graph_service.graph_data.read().await;
+    let graph = state.graph_service.get_graph_data_mut().await;
     let total_items = graph.nodes.len();
     
     if total_items == 0 {
@@ -143,7 +143,8 @@ pub async fn refresh_graph(state: web::Data<AppState>) -> impl Responder {
     
     match GraphService::build_graph_from_metadata(&metadata).await {
         Ok(mut new_graph) => {
-            let mut graph = state.graph_service.graph_data.write().await;
+            let mut graph = state.graph_service.get_graph_data_mut().await;
+            let mut node_map = state.graph_service.get_node_map_mut().await;
             
             // Preserve existing node positions
             let old_positions: HashMap<String, (f32, f32, f32)> = graph.nodes.iter()
@@ -221,7 +222,8 @@ pub async fn update_graph(state: web::Data<AppState>) -> impl Responder {
             // Build new graph
             match GraphService::build_graph_from_metadata(&metadata).await {
                 Ok(mut new_graph) => {
-                    let mut graph = state.graph_service.graph_data.write().await;
+                    let mut graph = state.graph_service.get_graph_data_mut().await;
+                    let mut node_map = state.graph_service.get_node_map_mut().await;
                     
                     // Preserve existing node positions
                     let old_positions: HashMap<String, (f32, f32, f32)> = graph.nodes.iter()
@@ -238,6 +240,13 @@ pub async fn update_graph(state: web::Data<AppState>) -> impl Responder {
                     }
                     
                     *graph = new_graph;
+                    
+                    // Update node_map with new graph nodes
+                    node_map.clear();
+                    for node in &graph.nodes {
+                        node_map.insert(node.id.clone(), node.clone());
+                    }
+                    
                     debug!("Graph updated successfully");
                     
                     HttpResponse::Ok().json(serde_json::json!({

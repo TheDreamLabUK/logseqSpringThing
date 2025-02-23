@@ -49,8 +49,16 @@ pub async fn fetch_and_process_files(state: web::Data<AppState>) -> HttpResponse
 
             match GraphService::build_graph(&state).await {
                 Ok(graph_data) => {
-                    let mut graph = state.graph_service.graph_data.write().await;
+                    let mut graph = state.graph_service.get_graph_data_mut().await;
+                    let mut node_map = state.graph_service.get_node_map_mut().await;
                     *graph = graph_data.clone();
+                    
+                    // Update node_map with new graph nodes
+                    node_map.clear();
+                    for node in &graph.nodes {
+                        node_map.insert(node.id.clone(), node.clone());
+                    }
+                    
                     info!("Graph data structure updated successfully");
 
                     if let Some(gpu) = &state.gpu_compute {
@@ -115,8 +123,16 @@ pub async fn refresh_graph(state: web::Data<AppState>) -> HttpResponse {
 
     match GraphService::build_graph_from_metadata(&metadata_store).await {
         Ok(graph_data) => {
-            let mut graph = state.graph_service.graph_data.write().await;
+            let mut graph = state.graph_service.get_graph_data_mut().await;
+            let mut node_map = state.graph_service.get_node_map_mut().await;
             *graph = graph_data.clone();
+            
+            // Update node_map with new graph nodes
+            node_map.clear();
+            for node in &graph.nodes {
+                node_map.insert(node.id.clone(), node.clone());
+            }
+            
             info!("Graph data structure refreshed successfully");
 
             if let Some(gpu) = &state.gpu_compute {
@@ -156,7 +172,15 @@ pub async fn update_graph(state: web::Data<AppState>) -> Result<HttpResponse, Ac
 
     match GraphService::build_graph_from_metadata(&metadata_store).await {
         Ok(graph) => {
-            *state.graph_service.graph_data.write().await = graph.clone();
+            let mut graph_data = state.graph_service.get_graph_data_mut().await;
+            let mut node_map = state.graph_service.get_node_map_mut().await;
+            *graph_data = graph.clone();
+            
+            // Update node_map with new graph nodes
+            node_map.clear();
+            for node in &graph_data.nodes {
+                node_map.insert(node.id.clone(), node.clone());
+            }
             
             if let Some(gpu) = &state.gpu_compute {
                 if let Ok(_nodes) = gpu.read().await.get_node_data() {

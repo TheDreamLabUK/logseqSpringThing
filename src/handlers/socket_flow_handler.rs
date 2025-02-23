@@ -188,6 +188,13 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
                     }
                     Err(e) => {
                         warn!("[WebSocket] Failed to parse text message: {}", e);
+                        let error_msg = serde_json::json!({
+                            "type": "error",
+                            "message": format!("Failed to parse text message: {}", e)
+                        });
+                        if let Ok(msg_str) = serde_json::to_string(&error_msg) {
+                            ctx.text(msg_str);
+                        }
                     }
                 }
             }
@@ -200,13 +207,22 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
                             let nodes_clone = nodes.clone();
 
                             let fut = async move {
-                                let mut graph = app_state.graph_service.graph_data.write().await;
+                                let mut graph = app_state.graph_service.get_graph_data_mut().await;
+                                let mut node_map = app_state.graph_service.get_node_map_mut().await;
+
                                 for (node_id, node_data) in nodes_clone {
-                                    if let Some(node) = graph.nodes.iter_mut().find(|n| {
-                                        n.id.parse::<u32>().unwrap_or(0) == node_id
-                                    }) {
+                                    let node_id_str = node_id.to_string();
+                                    if let Some(node) = node_map.get_mut(&node_id_str) {
                                         node.data.position = node_data.position;
                                         node.data.velocity = node_data.velocity;
+                                    }
+                                }
+
+                                // Update graph nodes with new positions from the map
+                                for node in &mut graph.nodes {
+                                    if let Some(updated_node) = node_map.get(&node.id) {
+                                        node.data.position = updated_node.data.position;
+                                        node.data.velocity = updated_node.data.velocity;
                                     }
                                 }
                             };
@@ -215,9 +231,25 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
                             ctx.spawn(fut.map(|_, _, _| ()));
                         } else {
                             warn!("Received update for too many nodes: {}", nodes.len());
+                            let error_msg = serde_json::json!({
+                                "type": "error",
+                                "message": format!("Too many nodes in update: {}", nodes.len())
+                            });
+                            if let Ok(msg_str) = serde_json::to_string(&error_msg) {
+                                ctx.text(msg_str);
+                            }
                         }
                     }
-                    Err(e) => error!("Failed to decode binary message: {}", e),
+                    Err(e) => {
+                        error!("Failed to decode binary message: {}", e);
+                        let error_msg = serde_json::json!({
+                            "type": "error",
+                            "message": format!("Failed to decode binary message: {}", e)
+                        });
+                        if let Ok(msg_str) = serde_json::to_string(&error_msg) {
+                            ctx.text(msg_str);
+                        }
+                    }
                 }
             }
             Ok(ws::Message::Close(reason)) => {
