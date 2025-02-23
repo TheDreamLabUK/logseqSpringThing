@@ -27,7 +27,7 @@ mkdir -p "$LOG_DIR"
 while [[ "$#" -gt 0 ]]; do
     case $1 in
         -v|--verbose) VERBOSE=true ;;
-        *) echo "Unknown parameter: $1"; exit 1 ;;
+        *) echo "Usage: $0 [-v|--verbose]"; exit 1 ;;
     esac
     shift
 done
@@ -190,6 +190,127 @@ check_xr_settings() {
     return 1
 }
 
+# Add new test cases
+check_settings_consistency() {
+    local settings=$1
+    local failed=0
+    
+    log_section "Checking Settings Consistency"
+    
+    # Check case consistency
+    local visualization=$(echo "$settings" | jq -r '.visualization')
+    check_case_consistency "$visualization" "visualization" || failed=1
+    
+    # Check key presence across all layers
+    check_key_hierarchy "$settings" || failed=1
+    
+    # Verify power user settings access
+    check_power_user_access || failed=1
+    
+    return $failed
+}
+
+check_case_consistency() {
+    local obj=$1
+    local prefix=$2
+    local failed=0
+    
+    # Check for case mismatches in keys
+    for key in $(echo "$obj" | jq -r 'keys[]'); do
+        if [[ "$key" =~ [A-Z] ]]; then
+            log_error "Upper case found in key: $prefix.$key"
+            failed=1
+        fi
+    done
+    
+    return $failed
+}
+
+check_key_hierarchy() {
+    local settings=$1
+    local failed=0
+    
+    # Define expected key hierarchies
+    local expected_paths=(
+        ".visualization.nodes.base_color"
+        ".visualization.edges.color"
+        ".system.debug.enabled"
+        ".xr.mode"
+    )
+    
+    for path in "${expected_paths[@]}"; do
+        if ! echo "$settings" | jq -e "$path" >/dev/null 2>&1; then
+            log_error "Missing required setting: $path"
+            failed=1
+        fi
+    done
+    
+    return $failed
+}
+
+check_power_user_access() {
+    local failed=0
+    
+    # Test with power user credentials
+    log "Testing power user access..."
+    local response=$(curl -s -X POST \
+        -H "Content-Type: application/json" \
+        -H "X-Power-User: true" \
+        -d '{"visualization":{"nodes":{"base_color":"#FF0000"}}}' \
+        "http://localhost:4000/api/user-settings")
+    
+    if [ $? -ne 0 ] || [ -z "$response" ]; then
+        log_error "Power user access test failed"
+        failed=1
+    fi
+    
+    return $failed
+}
+
+# Add this function to verify settings persistence
+verify_settings_persistence() {
+    local settings=$1
+    local failed=0
+    
+    log_section "Verifying Settings Persistence"
+    
+    # Test setting update
+    local test_value="#FF0000"
+    local test_path=".visualization.nodes.base_color"
+    
+    # Save original value
+    local original_value=$(echo "$settings" | jq -r "$test_path")
+    
+    # Update setting
+    local update_response=$(curl -s -X POST \
+        -H "Content-Type: application/json" \
+        -d "{\"visualization\":{\"nodes\":{\"base_color\":\"$test_value\"}}}" \
+        "http://localhost:4000/api/user-settings")
+    
+    if [ $? -ne 0 ]; then
+        log_error "Failed to update test setting"
+        return 1
+    fi
+    
+    # Verify update
+    sleep 1
+    local verify_response=$(curl -s "http://localhost:4000/api/user-settings")
+    local updated_value=$(echo "$verify_response" | jq -r "$test_path")
+    
+    if [ "$updated_value" != "$test_value" ]; then
+        log_error "Setting update verification failed"
+        failed=1
+    fi
+    
+    # Restore original value
+    curl -s -X POST \
+        -H "Content-Type: application/json" \
+        -d "{\"visualization\":{\"nodes\":{\"base_color\":\"$original_value\"}}}" \
+        "http://localhost:4000/api/user-settings" > /dev/null
+    
+    return $failed
+}
+
 # Main function to test settings
 main() {
     log "${YELLOW}Starting settings validation...${NC}"
@@ -215,6 +336,8 @@ main() {
     check_visualization_settings "$response" || failed=1
     check_system_settings "$response" || failed=1
     check_xr_settings "$response" || failed=1
+    check_settings_consistency "$response" || failed=1
+    verify_settings_persistence "$response" || failed=1
     
     # Final status
     log_section "Settings Validation Summary"

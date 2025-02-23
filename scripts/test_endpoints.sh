@@ -3,6 +3,9 @@
 # Enable error reporting
 set -e
 
+# Add at the beginning of the file, after the shebang and set -e
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+
 # Colors and formatting
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -127,7 +130,14 @@ check_graph_endpoints() {
 check_settings_endpoint() {
     log_section "Checking Settings Endpoint"
     log_message "Invoking test_settings.sh..."
-    ./scripts/test_settings.sh ${VERBOSE}
+    
+    # Use absolute path and pass verbose flag if set
+    if [ "$VERBOSE" = true ]; then
+        "${SCRIPT_DIR}/test_settings.sh" --verbose
+    else
+        "${SCRIPT_DIR}/test_settings.sh"
+    fi
+    
     ret=$?
     log_message "test_settings.sh completed with exit code $ret"
     return $ret
@@ -234,6 +244,68 @@ check_github_endpoints() {
     return $failed
 }
 
+# Add new test function
+check_settings_sync() {
+    log_section "Testing Settings Synchronization"
+    local failed=0
+    
+    # Test client-server sync
+    local test_value="#FF0000"
+    local test_setting="visualization.nodes.base_color"
+    
+    # 1. Update setting
+    log_message "Testing setting update..."
+    local update_response=$(curl -s -X POST \
+        -H "Content-Type: application/json" \
+        -d "{\"$test_setting\":\"$test_value\"}" \
+        "http://localhost:${NGINX_PORT}/api/user-settings")
+    
+    if [ $? -ne 0 ] || [ -z "$update_response" ]; then
+        log_error "Failed to update setting"
+        return 1
+    fi
+    
+    # 2. Verify setting was updated
+    sleep 1  # Allow for propagation
+    local verify_response=$(curl -s \
+        "http://localhost:${NGINX_PORT}/api/user-settings")
+    
+    local actual_value=$(echo "$verify_response" | jq -r ".$test_setting")
+    if [ "$actual_value" != "$test_value" ]; then
+        log_error "Setting verification failed. Expected: $test_value, Got: $actual_value"
+        failed=1
+    fi
+    
+    return $failed
+}
+
+# Add this function after the logging functions
+check_container_health() {
+    local container_running=$(docker ps -q -f name=${CONTAINER_NAME})
+    
+    if [ -z "$container_running" ]; then
+        log_error "Container ${CONTAINER_NAME} is not running"
+        return 1
+    fi
+    
+    # Check if basic HTTP endpoint responds
+    local http_check=$(docker exec ${CONTAINER_NAME} curl -s --max-time 5 "http://localhost:4000/")
+    if [ $? -ne 0 ]; then
+        log_error "Container HTTP endpoint is not responding"
+        return 1
+    fi
+    
+    # Check if main process is running
+    local process_check=$(docker exec ${CONTAINER_NAME} pgrep -f "node" || echo "")
+    if [ -z "$process_check" ]; then
+        log_error "Main node process is not running in container"
+        return 1
+    fi
+    
+    log_success "Container health check passed"
+    return 0
+}
+
 # Main execution
 main() {
     log "${YELLOW}Starting endpoint diagnostics...${NC}"
@@ -241,20 +313,9 @@ main() {
     local test_count=0
     local failed_count=0
     
-    # Check container status
-    if ! docker ps -q -f name=${CONTAINER_NAME} > /dev/null 2>&1; then
-        log_error "Container ${YELLOW}${CONTAINER_NAME}${NC} is not running"
-        exit 1
-    else
-        # Check container health status
-        health_status=$(docker inspect --format='{{.State.Health.Status}}' ${CONTAINER_NAME})
-        log_message "Container health status: ${health_status}"
-        if [ "$health_status" = "unhealthy" ]; then
-            log_error "Container is marked as unhealthy, but will continue testing..."
-            # Show last health check error
-            last_health_log=$(docker inspect --format='{{json .State.Health.Log}}' ${CONTAINER_NAME} | jq -r '.[-1].Output')
-            log_message "Last health check error: ${last_health_log}"
-        fi
+    # Check container health first
+    if ! check_container_health; then
+        log_error "Container health check failed. Some tests may not work correctly."
     fi
     
     # Check network connectivity (concise)

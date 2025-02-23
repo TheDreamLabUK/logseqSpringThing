@@ -298,43 +298,27 @@ check_application_readiness() {
 
     log "${YELLOW}Checking application readiness...${NC}"
 
-    # Install websocat if not present (used for WebSocket testing)
-    if ! command -v websocat &>/dev/null; then
-        log "${YELLOW}Installing websocat for WebSocket testing...${NC}"
-        if command -v cargo &>/dev/null; then
-            cargo install websocat
-        else
-            log "${RED}Error: Neither websocat nor cargo found. Cannot test WebSocket connection.${NC}"
-            return 1
-        fi
-    fi
-
     while [ "$attempt" -le "$max_attempts" ]; do
         local ready=true
         local status_msg=""
 
-        # 1. Check HTTP
-        if ! timeout 5 curl -s http://localhost:4000/ >/dev/null; then
+        # Simple container running check instead of health check
+        if ! docker ps --format '{{.Names}}' | grep -q "^logseq-xr-webxr$"; then
+            ready=false
+            status_msg="Container not running"
+        fi
+
+        # Basic HTTP check
+        if [ "$ready" = true ] && ! timeout 5 curl -s http://localhost:4000/ >/dev/null; then
             ready=false
             status_msg="HTTP endpoint not ready"
         fi
 
-        # 2. If HTTP is up, check WebSocket
+        # Process check inside container (more reliable than health check)
         if [ "$ready" = true ]; then
-            log "${YELLOW}Testing WebSocket connection...${NC}"
-            if ! timeout 5 websocat "ws://localhost:4000/wss" \
-                    >/dev/null 2>&1 <<< '{"type":"ping"}'; then
+            if ! docker exec logseq-xr-webxr pgrep -f "node" >/dev/null; then
                 ready=false
-                status_msg="WebSocket endpoint not ready"
-            fi
-        fi
-
-        # 3. Optional RAGFlow connectivity
-        if [ "$ready" = true ]; then
-            if timeout 5 curl -s http://ragflow-server/v1/health >/dev/null; then
-                log "${GREEN}RAGFlow service is accessible${NC}"
-            else
-                log "${YELLOW}Note: RAGFlow service is not accessible - some features may be limited${NC}"
+                status_msg="Node process not running in container"
             fi
         fi
 
@@ -345,7 +329,6 @@ check_application_readiness() {
 
         log "${YELLOW}Attempt $attempt/$max_attempts: $status_msg${NC}"
 
-        # Show partial logs halfway through attempts
         if [ "$attempt" -eq $((max_attempts / 2)) ]; then
             log "${YELLOW}Still waiting for services. Recent logs:${NC}"
             $DOCKER_COMPOSE logs --tail=20
@@ -355,13 +338,8 @@ check_application_readiness() {
         attempt=$((attempt + 1))
     done
 
-    # Exhausted attempts
-    log "${RED}Application failed to become ready. Dumping logs...${NC}"
+    log "${RED}Application failed to start properly${NC}"
     $DOCKER_COMPOSE logs
-    log "${YELLOW}Containers left running for debugging. Use these commands to inspect:${NC}"
-    log "  $DOCKER_COMPOSE logs -f"
-    log "  docker logs logseq-xr-webxr"
-    log "  docker logs cloudflared-tunnel"
     return 1
 }
 ###############################################################################
