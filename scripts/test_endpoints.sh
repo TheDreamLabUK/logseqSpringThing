@@ -14,12 +14,6 @@ GRAY='\033[0;90m'
 BOLD='\033[1m'
 NC='\033[0m' # No Color
 
-# Symbols
-CHECK_MARK="✓"
-CROSS_MARK="✗"
-ARROW="→"
-BULLET="•"
-
 # Configuration
 BACKEND_PORT=3001
 NGINX_PORT=4000
@@ -38,7 +32,10 @@ mkdir -p "$LOG_DIR"
 while [[ "$#" -gt 0 ]]; do
     case $1 in
         -v|--verbose) VERBOSE=true ;;
+        --skip-github) SKIP_GITHUB=true ;;
+        --skip-websocket) SKIP_WEBSOCKET=true ;;
         --settings-only) TEST_SETTINGS_ONLY=true ;;
+        --help) echo "Usage: $0 [-v|--verbose] [--skip-github] [--skip-websocket] [--settings-only] [--help]"; exit 0 ;;
         *) echo "Unknown parameter: $1"; exit 1 ;;
     esac
     shift
@@ -56,11 +53,11 @@ log_verbose() {
 }
 
 log_error() {
-    echo -e "${GRAY}[$(date '+%Y-%m-%d %H:%M:%S')]${NC} ${RED}${CROSS_MARK} ERROR:${NC} $1" | tee -a "$LOG_FILE"
+    echo -e "${GRAY}[$(date '+%Y-%m-%d %H:%M:%S')]${NC} ${RED}✗ ERROR:${NC} $1" | tee -a "$LOG_FILE"
 }
 
 log_success() {
-    echo -e "${GRAY}[$(date '+%Y-%m-%d %H:%M:%S')]${NC} ${GREEN}${CHECK_MARK}${NC} $1" | tee -a "$LOG_FILE"
+    echo -e "${GRAY}[$(date '+%Y-%m-%d %H:%M:%S')]${NC} ${GREEN}✓${NC} $1" | tee -a "$LOG_FILE"
 }
 
 log_message() {
@@ -74,84 +71,72 @@ log_section() {
 # Function to check graph endpoints
 check_graph_endpoints() {
     log_section "Checking Graph Endpoints"
+    local failed=0
     
-    # Test graph endpoints with minimal output
     log_message "Testing graph endpoints..."
+    
     # Test basic graph data
-    response=$(docker exec ${CONTAINER_NAME} curl -s \
+    log_message "Testing full graph data endpoint..."
+    response=$(docker exec ${CONTAINER_NAME} curl -s --max-time ${TIMEOUT} \
         -H "Content-Type: application/json" \
         -H "Accept: application/json" \
         "http://localhost:4000/api/graph/data")
-    nodes_count=$(echo "$response" | jq -r '.nodes | length')
-    edges_count=$(echo "$response" | jq -r '.edges | length')
-    log_message "Graph data: ${nodes_count} nodes, ${edges_count} edges"
+    status=$?
+    
+    if [ $status -eq 0 ] && [ ! -z "$response" ]; then
+        nodes_count=$(echo "$response" | jq -r '.nodes | length')
+        edges_count=$(echo "$response" | jq -r '.edges | length')
+        if [ ! -z "$nodes_count" ] && [ ! -z "$edges_count" ]; then
+            log_success "Full graph data endpoint responded"
+            log_message "Graph data: ${nodes_count} nodes, ${edges_count} edges"
+        else
+            log_error "Invalid graph data response"
+            failed=1
+        fi
+    else
+        log_error "Failed to fetch full graph data (status: ${status})"
+        failed=1
+    fi
 
     # Test pagination
-    response=$(docker exec ${CONTAINER_NAME} curl -s \
+    log_message "Testing paginated graph data endpoint..."
+    response=$(docker exec ${CONTAINER_NAME} curl -s --max-time ${TIMEOUT} \
         -H "Content-Type: application/json" \
         -H "Accept: application/json" \
         "http://localhost:4000/api/graph/data/paginated?page=1&pageSize=100")
-    page_count=$(echo "$response" | jq -r '.nodes | length')
-    log_message "Paginated data: ${page_count} nodes in first page"
+    status=$?
+    
+    if [ $status -eq 0 ] && [ ! -z "$response" ]; then
+        page_count=$(echo "$response" | jq -r '.nodes | length')
+        if [ ! -z "$page_count" ]; then
+            log_success "Paginated graph data endpoint responded"
+            log_message "Paginated data: ${page_count} nodes in first page"
+        else
+            log_error "Invalid paginated data response"
+            failed=1
+        fi
+    else
+        log_error "Failed to fetch paginated graph data (status: ${status})"
+        failed=1
+    fi
+    
+    return $failed
 }
 
-# Function to check settings endpoint
+# Function to check settings endpoint using dedicated script
 check_settings_endpoint() {
     log_section "Checking Settings Endpoint"
-    
-    # Check critical service status
-    log_message "Checking service status..."
-    docker exec ${CONTAINER_NAME} bash -c '
-        echo -e "=== Service Status ==="
-        # Show only running processes and ports
-        ps aux | grep "[w]ebxr" | head -n 2
-        netstat -tulpn | grep -E ":(3001|4000)" | head -n 2
-        
-        # Show only recent errors if any
-        echo -e "\n=== Recent Errors ==="
-        grep "error" /var/log/nginx/error.log 2>/dev/null | tail -n 2 || echo "No recent errors"
-        
-        # Show settings file status
-        echo -e "\n=== Settings ==="
-        ls -l /app/settings.yaml
-    ' | tee -a "$LOG_FILE"
-    
-    # Test settings endpoint through nginx (concise)
-    log_message "Testing settings endpoint through nginx..."
-    response=$(docker exec ${CONTAINER_NAME} curl -s \
-        -H "Content-Type: application/json" \
-        -H "Accept: application/json" \
-        "http://localhost:4000/api/settings")
-    
-    # Extract and show key settings
-    tunnel_id=$(echo "$response" | jq -r '.system.network.tunnelId')
-    domain=$(echo "$response" | jq -r '.system.network.domain')
-    port=$(echo "$response" | jq -r '.system.network.port')
-    log_message "Settings: domain=${domain}, port=${port}, tunnel_id=${tunnel_id}"
-}
-
-# Function to check WebSocket Endpoint with verbose output for detailed diagnostics
-check_websocket_endpoint() {
-    log_section "Checking WebSocket Endpoint"
-    log_message "Attempting WebSocket upgrade test with verbose output..."
-    ws_response=$(docker exec ${CONTAINER_NAME} curl -v -i -N -s \
-        -H "Connection: Upgrade" \
-        -H "Upgrade: websocket" \
-        -H "Sec-WebSocket-Version: 13" \
-        -H "Sec-WebSocket-Key: testkey" \
-        "http://localhost:${NGINX_PORT}/wss" || true)
-    log_message "WebSocket test response (verbose):"
-    if [ -z "$ws_response" ]; then
-        log_error "No response received from WebSocket upgrade test."
-    else
-        echo "$ws_response" | tee -a "$LOG_FILE"
-        log_message "WebSocket response length: $(echo "$ws_response" | wc -c) characters"
-    fi
+    log_message "Invoking test_settings.sh..."
+    ./scripts/test_settings.sh ${VERBOSE}
+    ret=$?
+    log_message "test_settings.sh completed with exit code $ret"
+    return $ret
 }
 
 # Function to test GitHub API endpoints
 check_github_endpoints() {
     log_section "Testing GitHub API Endpoints"
+    local failed=0
     
     # Load GitHub credentials from .env
     if [ -f ../.env ]; then
@@ -161,46 +146,115 @@ check_github_endpoints() {
         return 1
     fi
     
-    # Test a single representative file
+    # Test multiple representative files
     local test_files=(
-        "p(doom).md"  # Representative markdown file
+        "p(doom).md"      # Representative markdown file
+        "README.md"       # Common documentation file
+        "settings.yaml"   # Configuration file
+        "package.json"    # Project metadata
     )
     
     log_message "Testing GitHub API access..."
     
     for file in "${test_files[@]}"; do
-        
-        # Test with base path only (skip raw path test)
+        # Test with base path only
         path="${GITHUB_BASE_PATH}/${file}"
         encoded_path=$(echo -n "${path}" | jq -sRr @uri)
         
-        # Check commits and contents in one request
-        response=$(curl -s -H "Authorization: Bearer ${GITHUB_TOKEN}" \
-                       -H "Accept: application/vnd.github+json" \
-                       "https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/commits?path=${encoded_path}")
-        count=$(echo "$response" | jq -r '. | length')
+        # Check rate limit before making requests
+        rate_limit=$(curl -s -I --max-time ${TIMEOUT} \
+            -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/rate_limit")
+        status=$?
         
-        content_response=$(curl -s -H "Authorization: Bearer ${GITHUB_TOKEN}" \
-                               -H "Accept: application/vnd.github+json" \
-                               "https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${encoded_path}")
-        exists=$(echo "$content_response" | jq -e 'has("message")' > /dev/null && echo "no" || echo "yes")
+        if [ $status -ne 0 ]; then
+            log_error "Failed to check rate limit (status: ${status})"
+            failed=1
+            break
+        fi
         
-        # Single line status for file
-        log_message "File: ${file} (${count} commits, exists: ${exists})"
+        remaining=$(echo "$rate_limit" | grep "x-ratelimit-remaining" | cut -d: -f2 | tr -d ' \r')
+        
+        if [ -z "$remaining" ] || [ "$remaining" -lt 2 ]; then
+            log_error "GitHub API rate limit exceeded. Remaining: ${remaining}"
+            failed=1
+            break
+        fi
+        
+        # Check commits
+        commit_response=$(curl -s --max-time ${TIMEOUT} \
+            -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/commits?path=${encoded_path}")
+        status=$?
+        
+        if [ $status -ne 0 ]; then
+            log_error "Failed to fetch commits for ${file} (status: ${status})"
+            failed=1
+            continue
+        fi
+        
+        if echo "$commit_response" | jq -e 'has("message")' > /dev/null; then
+            error_msg=$(echo "$commit_response" | jq -r '.message')
+            log_error "Failed to fetch commits for ${file}: ${error_msg}"
+            failed=1
+        else
+            count=$(echo "$commit_response" | jq -r '. | length')
+            
+            # Check contents
+            content_response=$(curl -s --max-time ${TIMEOUT} \
+                -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+                -H "Accept: application/vnd.github+json" \
+                "https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${encoded_path}")
+            status=$?
+            
+            if [ $status -ne 0 ]; then
+                log_error "Failed to fetch content for ${file} (status: ${status})"
+                failed=1
+                continue
+            fi
+            
+            if echo "$content_response" | jq -e 'has("message")' > /dev/null; then
+                error_msg=$(echo "$content_response" | jq -r '.message')
+                log_error "Failed to fetch content for ${file}: ${error_msg}"
+                failed=1
+            else
+                log_success "File: ${file}"
+                log_message "  - Commits: ${count}"
+                log_message "  - Size: $(echo "$content_response" | jq -r '.size') bytes"
+                log_message "  - SHA: $(echo "$content_response" | jq -r '.sha')"
+            fi
+        fi
         
         # Rate limit delay
         sleep 1
     done
+    
+    return $failed
 }
 
 # Main execution
 main() {
     log "${YELLOW}Starting endpoint diagnostics...${NC}"
+    local failed=0
+    local test_count=0
+    local failed_count=0
     
     # Check container status
     if ! docker ps -q -f name=${CONTAINER_NAME} > /dev/null 2>&1; then
         log_error "Container ${YELLOW}${CONTAINER_NAME}${NC} is not running"
         exit 1
+    else
+        # Check container health status
+        health_status=$(docker inspect --format='{{.State.Health.Status}}' ${CONTAINER_NAME})
+        log_message "Container health status: ${health_status}"
+        if [ "$health_status" = "unhealthy" ]; then
+            log_error "Container is marked as unhealthy, but will continue testing..."
+            # Show last health check error
+            last_health_log=$(docker inspect --format='{{json .State.Health.Log}}' ${CONTAINER_NAME} | jq -r '.[-1].Output')
+            log_message "Last health check error: ${last_health_log}"
+        fi
     fi
     
     # Check network connectivity (concise)
@@ -215,16 +269,58 @@ main() {
         grep "nameserver" /etc/resolv.conf | head -n2
     ' | tee -a "$LOG_FILE"
     
-    # Check settings endpoint
-    check_settings_endpoint
+    # Check basic HTTP endpoint
+    log_message "Testing basic HTTP endpoint..."
+    response=$(docker exec ${CONTAINER_NAME} curl -s --max-time ${TIMEOUT} "http://localhost:4000/")
+    status=$?
     
-    # Check graph endpoints
-    check_graph_endpoints
+    if [ $status -eq 0 ]; then
+        log_success "Basic HTTP endpoint is responding"
+    elif [ $status -eq 28 ]; then
+        log_error "Basic HTTP endpoint test timed out"
+        failed=1
+    else
+        log_error "Basic HTTP endpoint test failed with status ${status}"
+        failed=1
+    fi
     
-    # Check GitHub API endpoints
-    check_github_endpoints
+    if [ "$TEST_SETTINGS_ONLY" = true ]; then
+        log_message "Running settings tests only..."
+        check_settings_endpoint
+    else
+        # Check settings endpoint
+        ((test_count++))
+        if ! check_settings_endpoint; then
+            failed=1
+            ((failed_count++))
+        fi
+        
+        # Check graph endpoints
+        ((test_count++))
+        if ! check_graph_endpoints; then
+            failed=1
+            ((failed_count++))
+        fi
+        
+        # Check GitHub API endpoints if not skipped
+        if [ "$SKIP_GITHUB" != true ]; then
+            ((test_count++))
+            if ! check_github_endpoints; then
+                failed=1
+                ((failed_count++))
+            fi
+        fi
+    fi
+    
+    # Print summary
+    log_section "Test Summary"
+    log_message "Total tests: ${test_count}"
+    log_message "Failed tests: ${failed_count}"
+    [ $failed -eq 0 ] && \
+        log_success "All tests passed successfully" || log_error "Some tests failed"
     
     log "${YELLOW}Diagnostics completed${NC}"
+    exit $failed
 }
 
 # Run main function
