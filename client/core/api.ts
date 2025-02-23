@@ -1,5 +1,20 @@
 import { API_ENDPOINTS } from './constants';
 
+// Helper function to get auth headers
+export function getAuthHeaders(): HeadersInit {
+    const headers: HeadersInit = {
+        'Content-Type': 'application/json'
+    };
+    
+    const pubkey = localStorage.getItem('nostr_pubkey');
+    const token = localStorage.getItem('nostr_token');
+    if (pubkey && token) {
+        headers['X-Nostr-Pubkey'] = pubkey;
+        headers['Authorization'] = `Bearer ${token}`;
+    }
+    return headers;
+}
+
 // Helper function to build API URLs
 export function buildApiUrl(path: string): string {
     const protocol = window.location.protocol;

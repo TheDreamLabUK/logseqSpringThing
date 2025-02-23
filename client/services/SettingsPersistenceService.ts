@@ -2,7 +2,7 @@ import { Settings } from '../types/settings/base';
 import { defaultSettings } from '../state/defaultSettings';
 import { createLogger } from '../core/logger';
 import { validateSettings } from '../types/settings/validation';
-import { buildApiUrl } from '../core/api';
+import { buildApiUrl, getAuthHeaders } from '../core/api';
 import { API_ENDPOINTS } from '../core/constants';
 
 const logger = createLogger('SettingsPersistenceService');
@@ -129,10 +129,7 @@ export class SettingsPersistenceService {
 
             const response = await fetch(buildApiUrl(endpoint), {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    ...(this.currentPubkey && { 'X-Nostr-Pubkey': this.currentPubkey })
-                },
+                headers: getAuthHeaders(),
                 body: JSON.stringify(storedSettings.settings)
             });
 
@@ -156,9 +153,7 @@ export class SettingsPersistenceService {
         try {
             const response = await fetch(buildApiUrl(API_ENDPOINTS.SETTINGS_ROOT), {
                 method: 'GET',
-                headers: {
-                    'Content-Type': 'application/json'
-                }
+                headers: getAuthHeaders()
             });
 
             if (!response.ok) {
@@ -188,8 +183,7 @@ export class SettingsPersistenceService {
                 `${API_ENDPOINTS.SETTINGS_ROOT}/sync`;
 
             const response = await fetch(buildApiUrl(endpoint), {
-                headers: this.currentPubkey ? 
-                    { 'X-Nostr-Pubkey': this.currentPubkey } : {}
+                headers: getAuthHeaders()
             });
 
             if (!response.ok) {
