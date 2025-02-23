@@ -184,7 +184,9 @@ export class WebSocketService {
         this.ws.onmessage = (event: MessageEvent) => {
             try {
                 if (event.data instanceof ArrayBuffer) {
-                    debugLog('Received binary position update');
+                    if (debugState.isWebsocketDebugEnabled()) {
+                        debugLog('Received binary position update');
+                    }
                     this.handleBinaryMessage(event.data);
                 } else if (typeof event.data === 'string') {
                     try {
@@ -206,10 +208,6 @@ export class WebSocketService {
             }
         };
     }
-
-    private readonly MessageType = {
-        PositionVelocityUpdate: 0x01
-    } as const;
 
     private tryDecompress(buffer: ArrayBuffer): ArrayBuffer {
         try {
@@ -238,37 +236,27 @@ export class WebSocketService {
 
     private handleBinaryMessage(buffer: ArrayBuffer): void {
         try {
-            debugLog('Processing binary message:', { size: buffer.byteLength });
-            let invalidValuesFound = false;
+            if (debugState.isWebsocketDebugEnabled()) {
+                debugLog('Processing binary message:', { size: buffer.byteLength });
+            }
 
             const decompressedBuffer = this.tryDecompress(buffer);
-            debugLog('After decompression:', { size: decompressedBuffer.byteLength });
+            if (debugState.isWebsocketDebugEnabled()) {
+                debugLog('After decompression:', { size: decompressedBuffer.byteLength });
+            }
             
-            if (!decompressedBuffer || decompressedBuffer.byteLength < 8) {
-                throw new Error(`Invalid buffer size: ${decompressedBuffer?.byteLength ?? 0} bytes`);
+            // Each node update is 28 bytes (4 for id, 12 for position, 12 for velocity)
+            if (!decompressedBuffer || decompressedBuffer.byteLength % 28 !== 0) {
+                throw new Error(`Invalid buffer size: ${decompressedBuffer?.byteLength ?? 0} bytes (not a multiple of 28)`);
             }
 
             const dataView = new DataView(decompressedBuffer);
+            const nodeCount = decompressedBuffer.byteLength / 28;
+            if (debugState.isWebsocketDebugEnabled()) {
+                debugLog('Node count:', { count: nodeCount });
+            }
             let offset = 0;
-
-            const messageType = dataView.getUint32(offset, true);
-            debugLog('Binary message type:', { type: messageType });
-            offset += 4;
-
-            if (messageType !== this.MessageType.PositionVelocityUpdate) {
-                logger.warn('Unexpected binary message type:', messageType);
-                return;
-            }
-
-            const nodeCount = dataView.getUint32(offset, true);
-            debugLog('Node count:', { count: nodeCount });
-            offset += 4;
-
-            const expectedSize = 8 + (nodeCount * 28);
-            if (decompressedBuffer.byteLength !== expectedSize) {
-                throw new Error(`Invalid buffer size: ${decompressedBuffer.byteLength} bytes (expected ${expectedSize})`);
-            }
-
+            let invalidValuesFound = false;
             const nodes: BinaryNodeData[] = [];
             
             for (let i = 0; i < nodeCount; i++) {
@@ -314,13 +302,17 @@ export class WebSocketService {
             }
 
             if (nodes.length > 0 && this.binaryMessageCallback) {
-                debugLog('Calling binary message callback with nodes:', { count: nodes.length });
+                if (debugState.isWebsocketDebugEnabled()) {
+                    debugLog('Calling binary message callback with nodes:', { count: nodes.length });
+                }
                 this.binaryMessageCallback(nodes);
             } else {
-                debugLog('No nodes to process or no callback registered', {
-                    nodesLength: nodes.length,
-                    hasCallback: !!this.binaryMessageCallback
-                });
+                if (debugState.isWebsocketDebugEnabled()) {
+                    debugLog('No nodes to process or no callback registered', {
+                        nodesLength: nodes.length,
+                        hasCallback: !!this.binaryMessageCallback
+                    });
+                }
             }
         } catch (error) {
             logger.error('Failed to process binary message:', error);
@@ -403,15 +395,9 @@ export class WebSocketService {
             updates = updates.slice(0, 2);
         }
 
-        const buffer = new ArrayBuffer(8 + updates.length * 28);
+        const buffer = new ArrayBuffer(updates.length * 28);
         const dataView = new DataView(buffer);
         let offset = 0;
-
-        dataView.setUint32(offset, this.MessageType.PositionVelocityUpdate, true);
-        offset += 4;
-
-        dataView.setUint32(offset, updates.length, true);
-        offset += 4;
 
         updates.forEach(update => {
             const id = parseInt(update.id, 10);

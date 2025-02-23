@@ -3,9 +3,15 @@ use std::io::Cursor;
 use crate::utils::socket_flow_messages::BinaryNodeData;
 
 pub fn encode_node_data(nodes: &[(u32, BinaryNodeData)]) -> Vec<u8> {
+    if log::log_enabled!(log::Level::Debug) {
+        log::debug!("Encoding {} nodes", nodes.len());
+    }
     let mut buffer = Vec::new();
     
     for (node_id, node) in nodes {
+        if log::log_enabled!(log::Level::Debug) {
+            log::debug!("Encoding node {}: pos={:?}, vel={:?}", node_id, node.position, node.velocity);
+        }
         // Write node ID (u32)
         buffer.write_u32::<LittleEndian>(*node_id).unwrap();
         
@@ -20,11 +26,18 @@ pub fn encode_node_data(nodes: &[(u32, BinaryNodeData)]) -> Vec<u8> {
         }
     }
     
+    if log::log_enabled!(log::Level::Debug) {
+        log::debug!("Encoded data size: {} bytes", buffer.len());
+    }
     buffer
 }
 
 pub fn decode_node_data(data: &[u8]) -> Result<Vec<(u32, BinaryNodeData)>, String> {
     let mut cursor = Cursor::new(data);
+    if log::log_enabled!(log::Level::Debug) {
+        log::debug!("Decoding binary data of size: {} bytes", data.len());
+    }
+
     let mut updates = Vec::new();
     
     while cursor.position() < data.len() as u64 {
@@ -51,12 +64,19 @@ pub fn decode_node_data(data: &[u8]) -> Result<Vec<(u32, BinaryNodeData)>, Strin
                 .map_err(|e| format!("Failed to read velocity component: {}", e))?;
         }
         
+        if log::log_enabled!(log::Level::Debug) {
+            log::debug!("Decoded node {}: pos={:?}, vel={:?}", node_id, position, velocity);
+        }
+        
         updates.push((node_id, BinaryNodeData {
             position,
             velocity,
         }));
     }
     
+    if log::log_enabled!(log::Level::Debug) {
+        log::debug!("Successfully decoded {} nodes", updates.len());
+    }
     Ok(updates)
 }
 

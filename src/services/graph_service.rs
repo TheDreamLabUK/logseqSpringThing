@@ -334,6 +334,16 @@ impl GraphService {
 
     pub async fn get_node_positions(&self) -> Vec<Node> {
         let graph = self.graph_data.read().await;
+        if log::log_enabled!(log::Level::Debug) {
+            log::debug!("get_node_positions: returning {} nodes", graph.nodes.len());
+            for node in &graph.nodes {
+                log::debug!("Node {}: pos=[{},{},{}], vel=[{},{},{}]",
+                    node.id,
+                    node.data.position[0], node.data.position[1], node.data.position[2],
+                    node.data.velocity[0], node.data.velocity[1], node.data.velocity[2]
+                );
+            }
+        }
         graph.nodes.clone()
     }
 
