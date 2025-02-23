@@ -24,9 +24,8 @@ Triggers fetching and processing of Markdown files from GitHub.
 **Response**
 ```json
 {
-  "success": true,
-  "processed_files": 42,
-  "metadata_updated": true
+  "status": "success",
+  "processed_files": ["file1.md", "file2.md"]
 }
 ```
 
@@ -42,12 +41,8 @@ Retrieves the raw content of a specified Markdown file.
 **Response**
 ```json
 {
-  "content": "# File Content\n...",
-  "metadata": {
-    "last_modified": "2024-02-02T10:00:00Z",
-    "size": 1024,
-    "sha": "abc123..."
-  }
+  "status": "error",
+  "message": "File not found or unreadable: filename.md"
 }
 ```
 
@@ -60,9 +55,8 @@ Rebuilds the graph data structure from current metadata.
 **Response**
 ```json
 {
-  "success": true,
-  "nodes": 100,
-  "edges": 250
+  "status": "success",
+  "message": "Graph refreshed successfully"
 }
 ```
 
@@ -75,9 +69,8 @@ Forces an update of graph nodes and edges based on newly processed files.
 **Response**
 ```json
 {
-  "success": true,
-  "updated_nodes": 5,
-  "updated_edges": 12
+  "status": "success",
+  "message": "Graph updated successfully"
 }
 ```
 
@@ -92,200 +85,164 @@ Returns the complete graph structure.
 **Response**
 ```json
 {
-  "nodes": [
-    {
-      "id": "file1.md",
-      "size": 1.5,
-      "position": {"x": 0, "y": 0, "z": 0},
-      "metadata": {
-        "title": "File 1",
-        "topics": ["topic1", "topic2"]
-      }
+  "nodes": [...],
+  "edges": [...],
+  "metadata": {
+    "file1.md": {
+      // Metadata properties
     }
-  ],
-  "edges": [
-    {
-      "source": "file1.md",
-      "target": "file2.md",
-      "weight": 1.0
-    }
-  ]
+  }
 }
 ```
 
 #### Get Paginated Graph Data
 ```http
-GET /graph/data/paginated?page=1&limit=50
+GET /graph/data/paginated
 ```
 Returns paginated graph data for large datasets.
 
-**Parameters**
+**Query Parameters**
 - `page`: Page number (default: 1)
-- `limit`: Items per page (default: 50)
+- `pageSize`: Items per page (default: 100)
+- `query`: Optional search query
+- `sort`: Optional sort field
+- `filter`: Optional filter criteria
 
 **Response**
 ```json
 {
-  "data": {
-    "nodes": [...],
-    "edges": [...]
-  },
-  "pagination": {
-    "current_page": 1,
-    "total_pages": 10,
-    "total_items": 500
-  }
+  "nodes": [...],
+  "edges": [...],
+  "metadata": {},
+  "totalPages": 10,
+  "currentPage": 1,
+  "totalItems": 1000,
+  "pageSize": 100
 }
 ```
 
-#### Update Graph Layout
-```http
-POST /graph/update
-```
-Updates graph data using either GPU-accelerated or CPU-based computations.
+### Settings API
 
-**Request Body**
-```json
-{
-  "use_gpu": true,
-  "physics_params": {
-    "spring_strength": 0.1,
-    "repulsion": 1.0,
-    "damping": 0.8
-  }
-}
-```
+The settings API provides access to all system configuration options through a hierarchical structure of categories and settings.
 
-### Visualization API
+#### Available Categories
+- visualization.nodes
+- visualization.edges
+- visualization.rendering
+- visualization.labels
+- visualization.bloom
+- visualization.animations
+- visualization.physics
+- visualization.hologram
+- system.network
+- system.websocket
+- system.security
+- system.debug
+- xr
+- github
+- ragflow
+- perplexity
+- openai
 
 #### Get Setting Value
 ```http
-GET /visualization/settings/{category}/{setting}
+GET /settings/{category}/{setting}
 ```
 Retrieves the current value of a particular setting.
 
 **Parameters**
-- `category`: Setting category (e.g., "visualization", "system")
+- `category`: Setting category (e.g., "visualization.nodes", "system.network")
 - `setting`: Specific setting name
 
 **Response**
 ```json
 {
+  "category": "visualization.nodes",
+  "setting": "size",
   "value": 1.5,
-  "default": 1.0,
-  "type": "number",
-  "description": "Node size multiplier"
+  "success": true,
+  "error": null
 }
 ```
 
 #### Update Setting
 ```http
-PUT /visualization/settings/{category}/{setting}
+PUT /settings/{category}/{setting}
 ```
 Updates a setting value.
 
 **Request Body**
 ```json
 {
-  "value": 2.0
+  "value": 1.5
+}
+```
+
+**Response**
+```json
+{
+  "category": "visualization.nodes",
+  "setting": "size",
+  "value": 1.5,
+  "success": true,
+  "error": null
 }
 ```
 
 #### Get Category Settings
 ```http
-GET /visualization/settings/{category}
+GET /settings/{category}
 ```
 Returns all settings within a given category.
 
 **Parameters**
-- `category`: Category name (e.g., "nodes", "edges", "physics")
+- `category`: Category name (e.g., "visualization.nodes", "system.network")
 
 **Response**
 ```json
 {
-  "nodes": {
+  "category": "visualization.nodes",
+  "settings": {
     "size": 1.0,
     "color": "#007bff",
-    "opacity": 0.8
-  }
-}
-```
-
-### Perplexity AI API (In Development)
-
-> **Note:** The following endpoints are currently under development and will be available in upcoming releases.
-
-#### Analyze Content
-```http
-POST /perplexity/analyze
-```
-Analyzes Markdown files for potential updates and improvements.
-
-**Request Body**
-```json
-{
-  "files": ["file1.md", "file2.md"],
-  "analysis_type": "content_update"
-}
-```
-
-**Response**
-```json
-{
-  "analysis_results": [
-    {
-      "file": "file1.md",
-      "suggestions": [
-        {
-          "type": "content_update",
-          "section": "Technical Overview",
-          "current_content": "...",
-          "suggested_content": "...",
-          "reason": "Information is outdated",
-          "confidence": 0.85
-        }
-      ]
-    }
-  ]
-}
-```
-
-#### Create Pull Request
-```http
-POST /perplexity/create-pr
-```
-Creates a GitHub pull request with suggested updates.
-
-**Request Body**
-```json
-{
-  "analysis_id": "abc123",
-  "approved_suggestions": ["suggestion1", "suggestion2"]
-}
-```
-
-**Response**
-```json
-{
+    "opacity": 0.8,
+    "visible": true
+  },
   "success": true,
-  "pull_request_url": "https://github.com/user/repo/pull/123",
-  "updated_files": ["file1.md", "file2.md"]
+  "error": null
 }
 ```
 
-#### Get Analysis Status
+### Perplexity AI API
+
+The Perplexity AI API provides natural language query capabilities with conversation support.
+
+#### Query Perplexity
 ```http
-GET /perplexity/analysis/{analysis_id}
+POST /perplexity
 ```
-Retrieves the status of a content analysis request.
+Send queries to Perplexity AI and maintain conversation context.
+
+**Request Body**
+```json
+{
+  "query": "Your question here",
+  "conversation_id": "optional-previous-conversation-id"
+}
+```
 
 **Response**
 ```json
 {
-  "status": "completed",
-  "progress": 100,
-  "suggestions_count": 5,
-  "completion_time": "2024-02-02T10:00:00Z"
+  "answer": "The response from Perplexity AI",
+  "conversation_id": "conversation-id-for-follow-up-queries"
+}
+```
+
+**Error Response**
+```json
+{
+  "error": "Perplexity service is not available"
 }
 ```
 

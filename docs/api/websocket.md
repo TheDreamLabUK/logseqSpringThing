@@ -1,193 +1,169 @@
 # WebSocket API Documentation
 
-[Previous content up to the Binary Messages section remains the same...]
+## Connection
 
-## Voice Interaction Protocol
+Connect to the WebSocket endpoint at: `ws://localhost:4000/ws` (or your configured domain)
 
-### Voice System Configuration
+### Connection Flow
+
+1. Client initiates WebSocket connection
+2. Server sends connection confirmation:
 ```json
 {
-  "type": "voice_config",
-  "data": {
-    "provider": "openai | local",
-    "language": "en-US",
-    "voice_id": "voice_identifier",
-    "streaming": true
+  "type": "connection_established",
+  "timestamp": 1708598400000
+}
+```
+
+## Message Types
+
+### Text Messages
+
+#### 1. Ping/Pong
+Used for connection health monitoring.
+
+**Ping Request:**
+```json
+{
+  "type": "ping",
+  "timestamp": 1708598400000
+}
+```
+
+**Pong Response:**
+```json
+{
+  "type": "pong",
+  "timestamp": 1708598400000
+}
+```
+
+#### 2. Initial Data Request
+Request to start receiving node position updates.
+
+**Request:**
+```json
+{
+  "type": "requestInitialData"
+}
+```
+
+**Response:**
+```json
+{
+  "type": "updatesStarted",
+  "timestamp": 1708598400000
+}
+```
+
+### Binary Messages
+
+Binary messages use an optimized protocol for efficient transmission of node position and velocity updates.
+
+#### Message Format
+
+```
+[4 bytes] message_type (u32)
+[4 bytes] node_count (u32)
+For each node:
+  [4 bytes] node_id (u32)
+  [12 bytes] Position (3 × f32)
+  [12 bytes] Velocity (3 × f32)
+```
+
+#### Message Types
+- 0x01: PositionVelocityUpdate - Real-time updates of node positions and velocities
+
+#### Size Calculations
+- Header: 8 bytes
+- Per node: 28 bytes (4 + 12 + 12)
+- Total message size: 8 + (28 × number_of_nodes) bytes
+
+### Compression
+
+Binary messages may be compressed using zlib compression when:
+1. Compression is enabled in settings
+2. Message size exceeds the compression threshold
+3. Compressed size is smaller than uncompressed size
+
+## Update Flow
+
+1. Client connects and sends `requestInitialData`
+2. Server begins sending binary position updates at configured rate (default: 30 Hz)
+3. Client can send position updates for up to 2 nodes during interaction
+4. Server broadcasts updated positions to all connected clients
+
+## Error Handling
+
+### Connection Errors
+
+```json
+{
+  "error": "WebSocket upgrade required",
+  "message": "This endpoint requires a WebSocket connection"
+}
+```
+
+### Message Parse Errors
+
+```json
+{
+  "type": "error",
+  "error": "parse_error",
+  "message": "Failed to parse message"
+}
+```
+
+### Protocol Errors
+
+```json
+{
+  "type": "error",
+  "error": "protocol_error",
+  "message": "Invalid message format"
+}
+```
+
+## Performance Considerations
+
+### Network Optimization
+- Fixed-size binary format reduces overhead
+- Optional compression for large messages
+- Efficient buffer allocation
+- Direct floating-point value transmission
+
+### Client Processing
+- Fixed message format enables efficient parsing
+- Direct TypedArray access for binary data
+- No JSON parsing overhead for position updates
+
+### Server Processing
+- Optimized for high-frequency updates
+- Efficient binary message generation
+- Configurable update rate
+- Debug mode for detailed logging
+
+## Configuration Options
+
+The following settings can be configured:
+
+```json
+{
+  "system": {
+    "websocket": {
+      "binary_update_rate": 30,
+      "compression_enabled": true,
+      "compression_threshold": 1024
+    },
+    "debug": {
+      "enabled": false,
+      "enable_websocket_debug": false
+    }
   }
 }
 ```
 
-### Speech-to-Text Messages
-
-#### Start Speech Recognition
-```json
-{
-  "type": "start_recognition",
-  "data": {
-    "session_id": "abc123",
-    "language": "en-US",
-    "provider": "openai | local"
-  }
-}
-```
-
-#### Speech Data (Binary)
-Speech audio data is sent as binary WebSocket messages with the following format:
-```
-[2 bytes] message_type (0x02 for speech data)
-[4 bytes] session_id
-[N bytes] audio_data (16-bit PCM, 16kHz sample rate)
-```
-
-#### Recognition Result
-```json
-{
-  "type": "recognition_result",
-  "data": {
-    "session_id": "abc123",
-    "text": "recognized text",
-    "confidence": 0.95,
-    "is_final": true
-  }
-}
-```
-
-### Text-to-Speech Messages
-
-#### Start Speech Synthesis
-```json
-{
-  "type": "start_synthesis",
-  "data": {
-    "session_id": "abc123",
-    "text": "Text to synthesize",
-    "provider": "openai | local",
-    "voice_id": "voice_identifier",
-    "language": "en-US"
-  }
-}
-```
-
-#### Speech Audio (Binary)
-Synthesized speech is streamed as binary WebSocket messages:
-```
-[2 bytes] message_type (0x03 for synthesized speech)
-[4 bytes] session_id
-[4 bytes] chunk_index
-[4 bytes] total_chunks
-[N bytes] audio_data (16-bit PCM, 24kHz sample rate)
-```
-
-#### Synthesis Status
-```json
-{
-  "type": "synthesis_status",
-  "data": {
-    "session_id": "abc123",
-    "status": "completed | error",
-    "progress": 0.75,
-    "error_message": "error details if status is error"
-  }
-}
-```
-
-### Provider-Specific Features
-
-#### OpenAI Voice (Current Implementation)
-- Real-time streaming synthesis
-- High-quality voice models
-- Natural prosody and intonation
-- Cloud-based processing
-
-Example configuration:
-```json
-{
-  "type": "voice_config",
-  "data": {
-    "provider": "openai",
-    "model": "tts-1",
-    "voice_id": "alloy",
-    "streaming": true,
-    "api_version": "2024-02"
-  }
-}
-```
-
-#### Local GPU-Accelerated System (Planned)
-- Kororo for text-to-speech
-- Whisper for speech-to-text
-- Full GPU acceleration
-- Offline operation
-
-Example configuration:
-```json
-{
-  "type": "voice_config",
-  "data": {
-    "provider": "local",
-    "tts_engine": "kororo",
-    "stt_engine": "whisper",
-    "model_size": "medium",
-    "gpu_device": 0,
-    "streaming": true
-  }
-}
-```
-
-### Error Handling
-
-#### Recognition Error
-```json
-{
-  "type": "recognition_error",
-  "data": {
-    "session_id": "abc123",
-    "error_code": "audio_decode_failed",
-    "message": "Failed to decode audio stream",
-    "recoverable": true
-  }
-}
-```
-
-#### Synthesis Error
-```json
-{
-  "type": "synthesis_error",
-  "data": {
-    "session_id": "abc123",
-    "error_code": "synthesis_failed",
-    "message": "Failed to synthesize speech",
-    "recoverable": false
-  }
-}
-```
-
-### Performance Considerations
-
-#### OpenAI Provider
-- Requires stable internet connection
-- Streaming reduces latency
-- Higher quality at the cost of network dependency
-- API rate limits apply
-
-#### Local Provider
-- GPU acceleration for real-time processing
-- No network latency
-- Consistent performance
-- Resource usage scales with model size
-
-Example resource configuration:
-```json
-{
-  "type": "voice_resource_config",
-  "data": {
-    "provider": "local",
-    "gpu_memory_limit": "2GB",
-    "batch_size": 16,
-    "stream_buffer_size": 4096,
-    "max_concurrent_sessions": 4
-  }
-}
-```
-
-[Rest of the WebSocket documentation remains the same...]
+## Related Documentation
+- [Binary Protocol Details](../technical/binary-protocol.md)
+- [Performance Optimizations](../technical/performance.md)
+- [REST API](./rest.md)

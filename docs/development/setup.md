@@ -5,12 +5,12 @@ This guide will help you set up your development environment for LogseqXR.
 ## Prerequisites
 
 ### Required Software
-- Node.js v16+ (recommended: v20)
-- Rust (version 1.82.0+)
+- Node.js >=18.0.0
+- Rust (version 1.70.0+)
 - Docker & Docker Compose
 - Git
 - pnpm (recommended) or npm
-- CUDA Toolkit 12.2+ (for GPU acceleration)
+- CUDA Toolkit 12.2+ (optional, for GPU acceleration)
 
 ### Hardware Requirements
 - Modern GPU with WebGPU support (recommended)
@@ -31,14 +31,69 @@ Copy the environment template and configure your settings:
 cp .env_template .env
 ```
 
-Edit `.env` with your configuration:
+Required environment variables:
+
+#### Server Configuration
+```env
+RUST_LOG=info
+BIND_ADDRESS=0.0.0.0
+DEBUG_MODE=true
+```
+
+#### CUDA Configuration (Optional)
+```env
+CUDA_ARCH=86  # 89 for Ada/A6000
+```
+
+#### Network Configuration
+```env
+DOMAIN=your.domain.com
+TUNNEL_TOKEN=your_cloudflare_tunnel_token
+TUNNEL_ID=your_tunnel_id
+```
+
+#### GitHub Configuration
 ```env
 GITHUB_TOKEN=your_github_token
 GITHUB_OWNER=your_github_username
 GITHUB_REPO=your_repo_name
-GITHUB_BASE_PATH=path/to/markdown/files
-TUNNEL_TOKEN=your_cloudflare_tunnel_token
-OPENWEATHER_API_KEY=your_api_key
+GITHUB_PATH=/pages
+GITHUB_VERSION=
+GITHUB_RATE_LIMIT=
+```
+
+#### AI Integration Configuration
+```env
+# RAGFlow
+RAGFLOW_API_KEY=your_api_key
+RAGFLOW_API_BASE_URL=http://ragflow-server/v1/
+RAGFLOW_TIMEOUT=30
+RAGFLOW_MAX_RETRIES=3
+
+# Perplexity
+PERPLEXITY_API_KEY=your_api_key
+PERPLEXITY_MODEL=llama-3.1-sonar-small-128k-online
+PERPLEXITY_API_URL=https://api.perplexity.ai/chat/completions
+PERPLEXITY_MAX_TOKENS=4096
+
+# OpenAI
+OPENAI_API_KEY=your_api_key
+OPENAI_BASE_URL=wss://api.openai.com/v1/realtime
+```
+
+#### Authentication Configuration
+```env
+# Base access control
+APPROVED_PUBKEYS=pubkey1,pubkey2
+
+# Role-based access
+POWER_USER_PUBKEYS=pubkey1
+SETTINGS_SYNC_ENABLED_PUBKEYS=pubkey1,pubkey2
+
+# Feature-specific access
+PERPLEXITY_ENABLED_PUBKEYS=pubkey1
+OPENAI_ENABLED_PUBKEYS=pubkey1
+RAGFLOW_ENABLED_PUBKEYS=pubkey1
 ```
 
 ### 3. Install Dependencies
@@ -46,7 +101,7 @@ OPENWEATHER_API_KEY=your_api_key
 #### Frontend Dependencies
 ```bash
 # Install pnpm if not already installed
-npm install -g pnpm@9.14.2
+npm install -g pnpm
 
 # Install frontend dependencies
 pnpm install
@@ -56,6 +111,9 @@ pnpm install
 ```bash
 # Install Rust dependencies
 cargo build
+
+# For GPU support
+cargo build --features gpu
 ```
 
 ## Configuration Files
@@ -71,10 +129,15 @@ system:
   websocket:
     heartbeat_interval: 30
     reconnect_attempts: 5
+    compression_enabled: true
+    compression_threshold: 1024
   gpu:
     enable: true
     compute_shader: auto
     workgroup_size: 256
+  debug:
+    enabled: false
+    enable_websocket_debug: false
 
 visualization:
   nodes:
@@ -128,14 +191,14 @@ docker-compose down
 
 #### Frontend Tests
 ```bash
-# Run all frontend tests
-pnpm test
+# Run type checking
+pnpm type-check
 
-# Run with coverage
-pnpm test:coverage
+# Run linting
+pnpm lint
 
-# Run end-to-end tests
-pnpm test:e2e
+# Format code
+pnpm format
 ```
 
 #### Backend Tests
@@ -207,8 +270,9 @@ Use the browser's Network tab to inspect WebSocket messages:
 ### GPU Initialization Failed
 If GPU initialization fails, the system will fall back to CPU computation. Check:
 1. GPU drivers are up to date
-2. CUDA is properly installed
+2. CUDA is properly installed (if using GPU features)
 3. GPU has sufficient memory
+4. Correct CUDA_ARCH is set in .env
 
 ### WebSocket Connection Issues
 If WebSocket connection fails:
@@ -216,6 +280,14 @@ If WebSocket connection fails:
 2. Verify nginx configuration
 3. Check browser console for errors
 4. Ensure ports are not blocked by firewall
+5. Verify WebSocket compression settings
+
+### Authentication Issues
+If authentication fails:
+1. Verify Nostr public keys are correctly configured
+2. Check role-based access settings
+3. Verify feature-specific access permissions
+4. Check WebSocket connection for authentication messages
 
 ### GitHub API Rate Limiting
 If you encounter GitHub API rate limiting:
