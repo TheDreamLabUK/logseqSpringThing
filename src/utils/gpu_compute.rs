@@ -10,7 +10,7 @@ use log::{debug, error, warn};
 use crate::models::graph::GraphData;
 use std::collections::HashMap;
 use crate::models::simulation_params::SimulationParams;
-use crate::utils::socket_flow_messages::NodeData;
+use crate::utils::socket_flow_messages::BinaryNodeData;
 use tokio::sync::RwLock;
 
 // Constants for GPU computation
@@ -19,7 +19,7 @@ const BLOCK_SIZE: u32 = 256;
 #[cfg(feature = "gpu")]
 const MAX_NODES: u32 = 1_000_000;
 #[cfg(feature = "gpu")]
-const NODE_SIZE: u32 = std::mem::size_of::<NodeData>() as u32;
+const NODE_SIZE: u32 = std::mem::size_of::<BinaryNodeData>() as u32;
 #[cfg(feature = "gpu")]
 const SHARED_MEM_SIZE: u32 = BLOCK_SIZE * (12 + 4); // Vec3 (12 bytes) + float (4 bytes) per thread
 
@@ -41,7 +41,7 @@ impl GPUCompute {
 pub struct GPUCompute {
     pub device: Arc<CudaDevice>,
     pub force_kernel: CudaFunction,
-    pub node_data: CudaSlice<NodeData>,
+    pub node_data: CudaSlice<BinaryNodeData>,
     pub num_nodes: u32,
     pub node_indices: HashMap<String, usize>,
     pub simulation_params: SimulationParams,
@@ -75,7 +75,6 @@ impl GPUCompute {
                 debug!("  Multiprocessor count: {}", multiprocessor_count);
                 debug!("  Compute mode: {}", compute_mode);
                 
-                // Verify the device is suitable for our compute needs
                 if max_threads < 256 {
                     return Err(Error::new(ErrorKind::Other, 
                         format!("GPU capability too low. Device supports only {} threads per multiprocessor, minimum required is 256", 
@@ -109,7 +108,7 @@ impl GPUCompute {
             .ok_or_else(|| Error::new(std::io::ErrorKind::Other, "Function compute_forces_kernel not found"))?;
 
         debug!("Allocating device memory for {} nodes", num_nodes);
-        let node_data = device.alloc_zeros::<NodeData>(num_nodes as usize)
+        let node_data = device.alloc_zeros::<BinaryNodeData>(num_nodes as usize)
             .map_err(|e| Error::new(std::io::ErrorKind::Other, e.to_string()))?;
 
         debug!("Creating GPU compute instance");
@@ -146,29 +145,14 @@ impl GPUCompute {
         // Reallocate buffer if node count changed
         if graph.nodes.len() as u32 != self.num_nodes {
             debug!("Reallocating GPU buffer for {} nodes", graph.nodes.len());
-            self.node_data = self.device.alloc_zeros::<NodeData>(graph.nodes.len())
+            self.node_data = self.device.alloc_zeros::<BinaryNodeData>(graph.nodes.len())
                 .map_err(|e| Error::new(std::io::ErrorKind::Other, e.to_string()))?;
             self.num_nodes = graph.nodes.len() as u32;
         }
 
-        // Prepare node data with connection flags
-        let node_data: Vec<NodeData> = graph.nodes.iter()
-            .map(|node| {
-                let mut data = node.data.clone();
-                
-                // Clear connection flag
-                data.flags &= !0x2;
-                
-                // Set connection flag if node has any edges
-                for edge in &graph.edges {
-                    if edge.source == node.id || edge.target == node.id {
-                        data.flags |= 0x2; // Set connected flag
-                        break;
-                    }
-                }
-                
-                data
-            })
+        // Prepare node data
+        let node_data: Vec<BinaryNodeData> = graph.nodes.iter()
+            .map(|node| node.data)
             .collect();
 
         debug!("Copying {} nodes to GPU", graph.nodes.len());
@@ -223,42 +207,16 @@ impl GPUCompute {
         Ok(())
     }
 
-    pub fn get_node_data(&self) -> Result<Vec<NodeData>, Error> {
-        let mut gpu_nodes = vec![NodeData {
+    pub fn get_node_data(&self) -> Result<Vec<BinaryNodeData>, Error> {
+        let mut gpu_nodes = vec![BinaryNodeData {
             position: [0.0; 3],
             velocity: [0.0; 3],
-            mass: 0,
-            flags: 0,
-            padding: [0; 2],
         }; self.num_nodes as usize];
 
         self.device.dtoh_sync_copy_into(&self.node_data, &mut gpu_nodes)
             .map_err(|e| Error::new(std::io::ErrorKind::Other, e.to_string()))?;
 
         Ok(gpu_nodes)
-    }
-
-    pub fn test_gpu() -> Result<(), Error> {
-        debug!("Running GPU test");
-        
-        let device = match CudaDevice::new(0) {
-            Ok(dev) => dev,
-            Err(e) => return Err(Error::new(ErrorKind::Other, format!("Failed to create CUDA device: {}", e)))
-        };
-        
-        // Try to allocate and manipulate some memory
-        let test_data: Vec<f32> = vec![1.0, 2.0, 3.0, 4.0, 5.0];
-        let gpu_data = match device.alloc_zeros::<f32>(5) {
-            Ok(data) => data,
-            Err(e) => return Err(Error::new(ErrorKind::Other, format!("Failed to allocate GPU memory: {}", e)))
-        };
-        
-        if let Err(e) = device.dtoh_sync_copy_into(&gpu_data, &mut test_data.clone()) {
-            return Err(Error::new(ErrorKind::Other, format!("Failed to copy data from GPU: {}", e)));
-        }
-        
-        debug!("GPU test successful");
-        Ok(())
     }
 
     pub fn step(&mut self) -> Result<(), Error> {
@@ -314,6 +272,6 @@ mod tests {
     #[test]
     fn test_node_data_memory_layout() {
         use std::mem::size_of;
-        assert_eq!(size_of::<NodeData>(), 28); // 24 bytes for position/velocity + 4 bytes for mass/flags/padding
+        assert_eq!(size_of::<BinaryNodeData>(), 24); // 24 bytes for position/velocity (2 * 3 * 4 bytes)
     }
 }

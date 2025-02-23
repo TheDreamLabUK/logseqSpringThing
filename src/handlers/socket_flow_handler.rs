@@ -2,15 +2,14 @@ use actix::prelude::*;
 use actix_web::{web, Error, HttpRequest, HttpResponse};
 use actix_web_actors::ws;
 use flate2::{read::ZlibDecoder, write::ZlibEncoder, Compression};
-use glam::Vec3;
 use log::{debug, error, info, warn};
 use std::io::{Read, Write};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
 use crate::app_state::AppState;
-use crate::utils::binary_protocol::{self, MessageType, NodeData};
-use crate::utils::socket_flow_messages::{PingMessage, PongMessage};
+use crate::utils::binary_protocol;
+use crate::utils::socket_flow_messages::{BinaryNodeData, PingMessage, PongMessage};
 
 pub struct SocketFlowServer {
     app_state: Arc<AppState>,
@@ -106,7 +105,6 @@ impl Actor for SocketFlowServer {
 
     fn stopped(&mut self, _: &mut Self::Context) {
         info!("[WebSocket] Client disconnected");
-        // Cleanup any resources if needed
     }
 }
 
@@ -119,7 +117,6 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
             }
             Ok(ws::Message::Pong(_)) => {
                 debug!("[WebSocket] Received pong");
-                // Update last pong time if needed
             }
             Ok(ws::Message::Text(text)) => {
                 info!("Received text message: {}", text);
@@ -137,7 +134,6 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
                                 }
                             }
                             Some("requestInitialData") => {
-                                // Start sending GPU-computed position updates
                                 let app_state = self.app_state.clone();
                                 
                                 ctx.run_interval(self.update_interval, move |act, ctx| {
@@ -149,48 +145,42 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
                                             .get_node_positions()
                                             .await;
 
-                                        // Only process and send updates if we have nodes
                                         if !raw_nodes.is_empty() {
-                                            // Check debug settings
                                             let should_debug = if let Ok(settings) = app_state_clone.settings.try_read() {
                                                 settings.system.debug.enabled && 
                                                 settings.system.debug.enable_websocket_debug
                                             } else {
-                                                 false
-                                           };
+                                                false
+                                            };
+
                                             if should_debug {
                                                 debug!("Processing binary update for {} nodes", raw_nodes.len());
                                             }
-                                            let nodes: Vec<NodeData> = raw_nodes
+
+                                            let nodes: Vec<(u32, BinaryNodeData)> = raw_nodes
                                                 .into_iter()
-                                                .map(|node| NodeData {
-                                                    id: node.id.parse().unwrap_or(0),
-                                                    position: Vec3::new(
-                                                        node.data.position[0],
-                                                        node.data.position[1],
-                                                        node.data.position[2],
-                                                    ),
-                                                    velocity: Vec3::new(
-                                                        node.data.velocity[0],
-                                                        node.data.velocity[1],
-                                                        node.data.velocity[2],
-                                                    ),
+                                                .map(|node| {
+                                                    (
+                                                        node.id.parse().unwrap_or(0),
+                                                        BinaryNodeData {
+                                                            position: node.data.position,
+                                                            velocity: node.data.velocity,
+                                                        },
+                                                    )
                                                 })
-                                                .collect::<Vec<_>>();
+                                                .collect();
 
                                             if should_debug {
                                                 debug!("Encoding binary update with {} nodes", nodes.len());
                                             }
-                                            let data = binary_protocol::encode_node_data(
-                                                &nodes,
-                                                MessageType::PositionVelocityUpdate,
-                                            );
+
+                                            let data = binary_protocol::encode_node_data(&nodes);
+
                                             if should_debug {
                                                 debug!("Binary message size: {} bytes", data.len());
                                             }
                                             Some(data)
                                         } else {
-                                            // Skip debug log when no nodes to update
                                             None
                                         }
                                     };
@@ -201,11 +191,9 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
                                             let final_data = act.maybe_compress(binary_data);
                                             ctx.binary(final_data);
                                         }
-                                        // Do not send any message if there are no nodes
                                     }));
                                 });
 
-                                // Send confirmation that updates are starting
                                 let response = serde_json::json!({
                                     "type": "updatesStarted",
                                     "timestamp": chrono::Utc::now().timestamp_millis()
@@ -226,44 +214,26 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
             }
             Ok(ws::Message::Binary(data)) => {
                 info!("Received binary message, length: {}", data.len());
-                // Handle user interaction updates
                 match binary_protocol::decode_node_data(&data) {
-                    Ok((msg_type, nodes)) => {
+                    Ok(nodes) => {
                         if nodes.len() <= 2 {
-                            // Only allow updates for up to 2 nodes during interaction
-                            match msg_type {
-                                MessageType::PositionVelocityUpdate => {
-                                    // Update positions in graph service for interacted nodes
-                                    let app_state = self.app_state.clone();
-                                    let nodes_clone = nodes.clone();
+                            let app_state = self.app_state.clone();
+                            let nodes_clone = nodes.clone();
 
-                                    // Spawn a future to update the graph data
-                                    let fut = async move {
-                                        let mut graph =
-                                            app_state.graph_service.graph_data.write().await;
-                                        for node_data in nodes_clone {
-                                            if let Some(node) = graph.nodes.iter_mut().find(|n| {
-                                                n.id.parse::<u32>().unwrap_or(0) == node_data.id
-                                            }) {
-                                                // Update position and velocity from user interaction
-                                                node.data.position = [
-                                                    node_data.position.x,
-                                                    node_data.position.y,
-                                                    node_data.position.z,
-                                                ];
-                                                node.data.velocity = [
-                                                    node_data.velocity.x,
-                                                    node_data.velocity.y,
-                                                    node_data.velocity.z,
-                                                ];
-                                            }
-                                        }
-                                    };
-
-                                    let fut = fut.into_actor(self);
-                                    ctx.spawn(fut.map(|_, _, _| ()));
+                            let fut = async move {
+                                let mut graph = app_state.graph_service.graph_data.write().await;
+                                for (node_id, node_data) in nodes_clone {
+                                    if let Some(node) = graph.nodes.iter_mut().find(|n| {
+                                        n.id.parse::<u32>().unwrap_or(0) == node_id
+                                    }) {
+                                        node.data.position = node_data.position;
+                                        node.data.velocity = node_data.velocity;
+                                    }
                                 }
-                            }
+                            };
+
+                            let fut = fut.into_actor(self);
+                            ctx.spawn(fut.map(|_, _, _| ()));
                         } else {
                             warn!("Received update for too many nodes: {}", nodes.len());
                         }

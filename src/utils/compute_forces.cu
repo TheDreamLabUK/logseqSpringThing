@@ -4,9 +4,6 @@ extern "C" {
     struct NodeData {
         float position[3];    // 12 bytes - matches Rust [f32; 3]
         float velocity[3];    // 12 bytes - matches Rust [f32; 3]
-        unsigned char mass;   // 1 byte - matches Rust u8
-        unsigned char flags;  // 1 byte - matches Rust u8
-        unsigned char padding[2]; // 2 bytes - matches Rust padding
     };
 
     __global__ void compute_forces_kernel(
@@ -26,19 +23,15 @@ extern "C" {
         float3 pos = make_float3(nodes[idx].position[0], nodes[idx].position[1], nodes[idx].position[2]);
         float3 vel = make_float3(nodes[idx].velocity[0], nodes[idx].velocity[1], nodes[idx].velocity[2]);
         
-        // Convert mass from u8 to float (0-1 range)
-        float mass = (nodes[idx].mass + 1.0f) / 256.0f; // Add 1 to avoid zero mass
-        bool is_active = (nodes[idx].flags & 0x1) != 0;
-        
-        if (!is_active) return; // Skip inactive nodes
+        // Default mass and flags since they're no longer in the struct
+        float mass = 1.0f;  // Use uniform mass for all nodes
+        bool is_active = true;  // All nodes are considered active
         
         // Process all node interactions
         for (int j = 0; j < num_nodes; j++) {
             if (j == idx) continue;
             
-            if (!(nodes[j].flags & 0x1)) continue; // Skip inactive nodes
-            
-            float other_mass = (nodes[j].mass + 1.0f) / 256.0f;
+            float other_mass = 1.0f;  // Use uniform mass for all nodes
             float3 other_pos = make_float3(
                 nodes[j].position[0],
                 nodes[j].position[1],
@@ -59,15 +52,12 @@ extern "C" {
                     diff.z / dist
                 );
                 
-                // Spring forces - apply only if both nodes have the connected flag
-                if ((nodes[idx].flags & 0x2) && (nodes[j].flags & 0x2)) {
-                    // Use natural length of 1.0 to match world units
-                    float spring_force = spring_k * (dist - 1.0f);
-                    float spring_scale = mass * other_mass;
-                    total_force.x += dir.x * spring_force * spring_scale;
-                    total_force.y += dir.y * spring_force * spring_scale;
-                    total_force.z += dir.z * spring_force * spring_scale;
-                }
+                // Spring forces - apply to all nodes since we no longer have flags
+                float spring_force = spring_k * (dist - 1.0f);
+                float spring_scale = mass * other_mass;
+                total_force.x += dir.x * spring_force * spring_scale;
+                total_force.y += dir.y * spring_force * spring_scale;
+                total_force.z += dir.z * spring_force * spring_scale;
                 
                 // Repulsion forces
                 if (dist < max_repulsion_dist) {
