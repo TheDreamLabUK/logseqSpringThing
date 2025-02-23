@@ -3,6 +3,7 @@ use crate::models::{UISettings, UserSettings};
 use actix_web::{web, Error, HttpResponse, HttpRequest};
 use chrono::Utc;
 use serde_json::Value;
+use crate::config::feature_access::FeatureAccess;
 use log::{info, error, warn, debug};
 use std::env;
 
@@ -18,25 +19,7 @@ pub fn config(cfg: &mut web::ServiceConfig) {
     );
 }
 
-async fn verify_power_user(pubkey: &str) -> Result<bool, String> {
-    // Get power user pubkeys from environment variable
-    let power_user_pubkeys = match env::var("POWER_USER_PUBKEYS") {
-        Ok(keys) => keys.split(',').map(|s| s.trim().to_string()).collect::<Vec<String>>(),
-        Err(_) => {
-            warn!("POWER_USER_PUBKEYS environment variable not set, defaulting to no power users");
-            Vec::new()
-        }
-    };
 
-    // Check if pubkey is in the list of power users
-    if power_user_pubkeys.contains(&pubkey.to_string()) {
-        debug!("User {} is a power user", pubkey);
-        Ok(true)
-    } else {
-        debug!("User {} is not a power user", pubkey);
-        Ok(false)
-    }
-}
 
 pub async fn get_public_settings(state: web::Data<AppState>) -> Result<HttpResponse, Error> {
     let settings_guard = state.settings.read().await;
@@ -49,7 +32,8 @@ pub async fn get_public_settings(state: web::Data<AppState>) -> Result<HttpRespo
 
 async fn get_user_settings(
     req: HttpRequest,
-    state: web::Data<AppState>
+    state: web::Data<AppState>,
+    feature_access: web::Data<FeatureAccess>
 ) -> Result<HttpResponse, Error> {
     // Get pubkey from header
     let pubkey = match req.headers().get("X-Nostr-Pubkey") {
@@ -59,15 +43,14 @@ async fn get_user_settings(
             return Ok(HttpResponse::BadRequest().body("Missing Nostr pubkey"));
         }
     };
+    
+    // Check if user has permission using FeatureAccess
+    if !feature_access.can_sync_settings(&pubkey) {
+        warn!("User {} attempted to sync settings without permission", pubkey);
+        return Ok(HttpResponse::Forbidden().body("Settings sync not enabled for this user"));
+    }
 
-    // Check if user is a power user
-    let is_power_user = match verify_power_user(&pubkey).await {
-        Ok(is_power) => is_power,
-        Err(e) => {
-            error!("Failed to verify power user status: {}", e);
-            return Ok(HttpResponse::InternalServerError().body("Failed to verify user permissions"));
-        }
-    };
+    let is_power_user = feature_access.is_power_user(&pubkey);
 
     if is_power_user {
         // Power users get settings from the global settings file
@@ -88,6 +71,7 @@ async fn get_user_settings(
 async fn update_user_settings(
     req: HttpRequest,
     state: web::Data<AppState>,
+    feature_access: web::Data<FeatureAccess>,
     payload: web::Json<Value>,
 ) -> Result<HttpResponse, Error> {
     // Get pubkey from header
@@ -101,6 +85,12 @@ async fn update_user_settings(
         }
     };
 
+    // Check if user has permission to sync settings
+    if !feature_access.can_sync_settings(&pubkey) {
+        warn!("User {} attempted to sync settings without permission", pubkey);
+        return Ok(HttpResponse::Forbidden().body("Settings sync not enabled for this user"));
+    }
+
     // Parse and validate settings
     let ui_settings: UISettings = match serde_json::from_value(payload.into_inner()) {
         Ok(settings) => settings,
@@ -108,13 +98,7 @@ async fn update_user_settings(
     };
 
     // Check if user is a power user
-    let is_power_user = match verify_power_user(&pubkey).await {
-        Ok(is_power) => is_power,
-        Err(e) => {
-            error!("Failed to verify power user status: {}", e);
-            return Ok(HttpResponse::InternalServerError().body("Failed to verify user permissions"));
-        }
-    };
+    let is_power_user = feature_access.is_power_user(&pubkey);
 
     if is_power_user {
         // Power users update the global settings file
@@ -151,6 +135,7 @@ async fn update_user_settings(
 async fn update_settings(
     req: HttpRequest,
     state: web::Data<AppState>,
+    feature_access: web::Data<FeatureAccess>,
     payload: web::Json<Value>,
 ) -> Result<HttpResponse, Error> {
     // Get pubkey from header
@@ -166,13 +151,7 @@ async fn update_settings(
     };
 
     // Check if user is a power user
-    let is_power_user = match verify_power_user(&pubkey).await {
-        Ok(is_power) => is_power,
-        Err(e) => {
-            error!("Failed to verify power user status: {}", e);
-            return Ok(HttpResponse::InternalServerError().body("Failed to verify user permissions"));
-        }
-    };
+    let is_power_user = feature_access.is_power_user(&pubkey);
 
     if !is_power_user {
         warn!("Non-power user {} attempted to modify global settings", pubkey);

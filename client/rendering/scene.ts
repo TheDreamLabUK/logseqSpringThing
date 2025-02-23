@@ -7,27 +7,24 @@ import {
   PerspectiveCamera,
   WebGLRenderer,
   Color,
-  AmbientLight,
-  DirectionalLight,
   GridHelper,
   Vector2,
-  Material,
+  Object3D,
   Mesh,
-  Object3D
+  Material,
+  AmbientLight,
+  DirectionalLight
 } from 'three';
-import * as OrbitControlsModule from 'three/examples/jsm/controls/OrbitControls';
 import * as EffectComposerModule from 'three/examples/jsm/postprocessing/EffectComposer';
 import * as RenderPassModule from 'three/examples/jsm/postprocessing/RenderPass';
 import * as UnrealBloomPassModule from 'three/examples/jsm/postprocessing/UnrealBloomPass';
-import { createLogger } from '../core/utils';
-import { Settings } from '../types/settings';
-import { defaultSettings } from '../state/defaultSettings';
+import * as OrbitControlsModule from 'three/examples/jsm/controls/OrbitControls';
 import { VisualizationController } from './VisualizationController';
+import { Settings } from '../types/settings/base';
+import { defaultSettings } from '../state/defaultSettings';
+import { logger } from '../core/logger';
 
-const logger = createLogger('SceneManager');
-
-// Constants
-const BACKGROUND_COLOR = 0x212121;  // Material Design Grey 900
+const BACKGROUND_COLOR = 0x000000;  // Material Design Grey 900
 const LOW_PERF_FPS_THRESHOLD = 30;  // Lower FPS threshold for low performance mode
 
 export class SceneManager {
@@ -36,15 +33,15 @@ export class SceneManager {
   // Three.js core components
   private scene: Scene;
   private camera: PerspectiveCamera;
-  private renderer: WebGLRenderer;
+  private renderer!: WebGLRenderer;
   private readonly canvas: HTMLCanvasElement;
   private currentRenderingSettings: Settings['visualization']['rendering'] | null = null;
   private controls!: OrbitControlsModule.OrbitControls & { dispose: () => void };
   private sceneGrid: GridHelper | null = null;
   
   // Post-processing
-  private composer: EffectComposerModule.EffectComposer;
-  private bloomPass: UnrealBloomPassModule.UnrealBloomPass;
+  private composer!: EffectComposerModule.EffectComposer;
+  private bloomPass!: UnrealBloomPassModule.UnrealBloomPass;
   
   // Animation
   private animationFrameId: number | null = null;
@@ -63,7 +60,6 @@ export class SceneManager {
     // Create scene
     this.scene = new Scene();
     this.scene.background = new Color(BACKGROUND_COLOR);
-    // Removed fog to ensure graph visibility
 
     // Create camera with wider view
     this.camera = new PerspectiveCamera(
@@ -79,60 +75,8 @@ export class SceneManager {
     this.camera.layers.enable(0); // Desktop layer
     this.camera.layers.enable(1); // XR layer
 
-    // Create renderer with WebXR support
-    this.renderer = new WebGLRenderer({
-      canvas: this.canvas,
-      antialias: true,
-      alpha: true,
-      powerPreference: 'high-performance',
-      xr: {
-        enabled: true
-      }
-    });
-    this.renderer.setSize(window.innerWidth, window.innerHeight);
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    
-    // Enable performance optimizations
-    (this.renderer as any).sortObjects = false;  // Disable automatic object sorting
-    (this.renderer as any).physicallyCorrectLights = false;  // Disable physically correct lighting
-
-    // Create controls
-    this.controls = new OrbitControlsModule.OrbitControls(this.camera, canvas);
-    this.controls.enableDamping = true;
-    this.controls.dampingFactor = 0.1;
-    this.controls.screenSpacePanning = true;
-    this.controls.minDistance = 1;
-    this.controls.maxDistance = 2000;  // Increased max distance for larger visualization
-    this.controls.enableRotate = true;
-    this.controls.enableZoom = true;
-    this.controls.enablePan = true;
-    this.controls.rotateSpeed = 1.0;
-    this.controls.zoomSpeed = 1.2;
-    this.controls.panSpeed = 0.8;
-
-    // Setup post-processing
-    this.composer = new EffectComposerModule.EffectComposer(this.renderer);
-    const renderPass = new RenderPassModule.RenderPass(this.scene, this.camera);
-    this.composer.addPass(renderPass);
-
-    const bloomSettings = defaultSettings.visualization.bloom;
-
-    // Initialize bloom with default state
-    this.bloomPass = new UnrealBloomPassModule.UnrealBloomPass(
-      new Vector2(window.innerWidth, window.innerHeight),
-      bloomSettings.strength,
-      bloomSettings.radius,
-      bloomSettings.threshold
-    );
-
-    // Initialize custom bloom properties
-    (this.bloomPass as any).edgeStrength = bloomSettings.edgeBloomStrength;
-    (this.bloomPass as any).nodeStrength = bloomSettings.nodeBloomStrength;
-    (this.bloomPass as any).environmentStrength = bloomSettings.environmentBloomStrength;
-    
-    this.composer.addPass(this.bloomPass);
-
-    // Setup basic lighting
+    this.initializeRenderer();
+    this.setupControls();
     this.setupLighting();
 
     // Setup event listeners
@@ -143,6 +87,68 @@ export class SceneManager {
     this.visualizationController.initializeScene(this.scene, this.camera);
 
     logger.log('SceneManager initialization complete');
+  }
+
+  private initializeRenderer(): void {
+    try {
+      // Create renderer with WebXR support
+      this.renderer = new WebGLRenderer({
+        canvas: this.canvas,
+        antialias: true,
+        alpha: true,
+        powerPreference: 'high-performance',
+        xr: {
+          enabled: true
+        }
+      });
+      this.renderer.setSize(window.innerWidth, window.innerHeight);
+      this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      
+      // Remove unsupported properties
+      // this.renderer.sortObjects = false;
+      // this.renderer.physicallyCorrectLights = false;
+
+      // Setup post-processing
+      this.composer = new EffectComposerModule.EffectComposer(this.renderer);
+      const renderPass = new RenderPassModule.RenderPass(this.scene, this.camera);
+      this.composer.addPass(renderPass);
+
+      const bloomSettings = defaultSettings.visualization.bloom;
+
+      // Initialize bloom
+      this.bloomPass = new UnrealBloomPassModule.UnrealBloomPass(
+        new Vector2(window.innerWidth, window.innerHeight),
+        bloomSettings.strength,
+        bloomSettings.radius,
+        bloomSettings.threshold
+      );
+
+      // Update bloom settings using the standard properties
+      this.bloomPass.strength = bloomSettings.edgeBloomStrength;
+      this.bloomPass.radius = bloomSettings.nodeBloomStrength;
+      this.bloomPass.threshold = bloomSettings.environmentBloomStrength;
+      
+      this.composer.addPass(this.bloomPass);
+      
+    } catch (error) {
+      logger.error('Failed to initialize renderer or post-processing:', error);
+      throw new Error('Failed to initialize rendering system');
+    }
+  }
+
+  private setupControls(): void {
+    this.controls = new OrbitControlsModule.OrbitControls(this.camera, this.canvas);
+    this.controls.enableDamping = true;
+    this.controls.dampingFactor = 0.1;
+    this.controls.screenSpacePanning = true;
+    this.controls.minDistance = 1;
+    this.controls.maxDistance = 2000;
+    this.controls.enableRotate = true;
+    this.controls.enableZoom = true;
+    this.controls.enablePan = true;
+    this.controls.rotateSpeed = 1.0;
+    this.controls.zoomSpeed = 1.2;
+    this.controls.panSpeed = 0.8;
   }
 
   static getInstance(canvas: HTMLCanvasElement): SceneManager {
@@ -255,41 +261,42 @@ export class SceneManager {
   private render = (deltaTime?: number): void => {
     const startTime = performance.now();
 
-    // Update controls only in non-XR mode
-    if (!this.renderer.xr.enabled) {
-      // Only update controls if enough time has passed
-      if (!deltaTime || deltaTime >= this.FRAME_BUDGET) {
-        this.controls.update();
-        // Show scene grid in non-XR mode
-        if (this.sceneGrid) this.sceneGrid.visible = true;
+    try {
+      if (!this.renderer.xr.enabled) {
+        if (!deltaTime || deltaTime >= this.FRAME_BUDGET) {
+          this.controls.update();
+          if (this.sceneGrid) this.sceneGrid.visible = true;
+        }
+      } else {
+        if (this.sceneGrid) this.sceneGrid.visible = false;
       }
-    } else {
-      // Hide scene grid in XR mode
-      if (this.sceneGrid) this.sceneGrid.visible = false;
-    }
 
-    // Check if we have time for visualization update
-    // Always update visualization to maintain smooth movement
-    (this.visualizationController as any)?.update(deltaTime || 0);
+      if (this.visualizationController) {
+        this.visualizationController.update(deltaTime || 0);
+      }
 
-    // Check remaining time for rendering
-    const preRenderTime = performance.now();
-    const remainingTime = this.FRAME_BUDGET - (preRenderTime - startTime);
+      const preRenderTime = performance.now();
+      const remainingTime = this.FRAME_BUDGET - (preRenderTime - startTime);
 
-    if (remainingTime >= 0) {
-      // Use post-processing in non-XR mode when bloom is enabled
-      if (!this.renderer.xr.enabled && this.bloomPass.enabled) {
-        // Skip bloom if we're running low on time
-        if (remainingTime >= 8) { // Give bloom half our frame budget
-          this.composer.render();
+      if (remainingTime >= 0) {
+        if (!this.renderer.xr.enabled && this.bloomPass?.enabled) {
+          if (remainingTime >= 8) {
+            this.composer.render();
+          } else {
+            this.renderer.render(this.scene, this.camera);
+          }
         } else {
           this.renderer.render(this.scene, this.camera);
         }
       } else {
         this.renderer.render(this.scene, this.camera);
       }
-    } else {
-      this.renderer.render(this.scene, this.camera);
+    } catch (error) {
+      logger.error('Render error:', error);
+      if (this.bloomPass?.enabled) {
+        logger.warn('Disabling bloom pass due to render error');
+        this.bloomPass.enabled = false;
+      }
     }
   }
 

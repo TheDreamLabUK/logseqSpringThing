@@ -12,7 +12,8 @@ import {
     Mesh,
     Vector3,
     Color,
-    NormalBlending
+    NormalBlending,
+    MeshBasicMaterial
 } from 'three';
 import { createLogger } from '../core/logger';
 import { LabelSettings } from '../types/settings';
@@ -104,7 +105,7 @@ export class UnifiedTextRenderer {
     private scene: Scene;
     private camera: Camera;
     private group: Group;
-    private material: ShaderMaterial;
+    private material: ShaderMaterial | MeshBasicMaterial;
     private geometry: BufferGeometry;
     private mesh: Mesh;
     private fontAtlas: Texture | null;
@@ -145,27 +146,33 @@ export class UnifiedTextRenderer {
             depthTest: true
         });
         
-        // Initialize the material with a temporary texture
-        this.material = new ShaderMaterial({
-            vertexShader,
-            fragmentShader,
-            uniforms: {
-                fontAtlas: { value: null },
-                sdfThreshold: { value: 0.5 },
-                sdfSpread: { value: 0.1 },
-                cameraPosition: { value: this.camera.position },
-                outlineColor: { value: new Color(settings.textOutlineColor) },
-                outlineWidth: { value: settings.textOutlineWidth }
-            },
-            transparent: true,
-            depthTest: true,
-            depthWrite: false,
-            blending: NormalBlending,
-            isInstancedMesh: true,
-            defines: {
-                BILLBOARD_VERTICAL: settings.billboardMode === 'vertical'
-            }
-        });
+        // Initialize the material with error handling
+        try {
+            this.material = new ShaderMaterial({
+                vertexShader,
+                fragmentShader,
+                uniforms: {
+                    fontAtlas: { value: null },
+                    sdfThreshold: { value: 0.5 },
+                    sdfSpread: { value: 0.1 },
+                    cameraPosition: { value: this.camera.position },
+                    outlineColor: { value: new Color(settings.textOutlineColor) },
+                    outlineWidth: { value: settings.textOutlineWidth }
+                },
+                transparent: true,
+                depthTest: true,
+                depthWrite: false,
+                blending: NormalBlending
+            });
+
+            // Force shader compilation
+            this.material.needsUpdate = true;
+        } catch (error) {
+            logger.error('Failed to initialize text shader:', error);
+            // Fallback to basic material
+            this.material = new MeshBasicMaterial({ 
+                color: new Color(this.settings.textColor) });
+        }
         
         this.geometry = this.createInstancedGeometry();
         
@@ -211,7 +218,9 @@ export class UnifiedTextRenderer {
             texture.wrapT = ClampToEdgeWrapping;
             
             this.fontAtlas = texture;
-            this.material.uniforms.fontAtlas.value = texture;
+            if (this.material instanceof ShaderMaterial && this.material.uniforms) {
+                this.material.uniforms.fontAtlas.value = texture;
+            }
             
             this.logger.info('Font atlas generated successfully:', {
                 textureWidth: (texture as any).image?.width,
@@ -367,31 +376,39 @@ export class UnifiedTextRenderer {
     public update(): void {
         this.camera.updateMatrixWorld();
         
-        // Update camera position uniform
-        this.material.uniforms.cameraPosition.value.copy(this.camera.position);
+        // Update camera position uniform for shader material
+        if (this.material instanceof ShaderMaterial && this.material.uniforms) {
+            this.material.uniforms.cameraPosition.value.copy(this.camera.position);
+        }
         
-        // Log material and mesh state periodically (every ~100 frames)
+        // Log state periodically (every ~100 frames)
         if (Math.random() < 0.01) {
-            this.logger.debug('Renderer state:', {
-                materialUniforms: {
-                    sdfThreshold: this.material.uniforms.sdfThreshold.value,
-                    sdfSpread: this.material.uniforms.sdfSpread.value,
-                    hasTexture: !!this.material.uniforms.fontAtlas.value
-                },
+            const debugInfo: any = {
+                materialType: this.material instanceof ShaderMaterial ? 'ShaderMaterial' : 'MeshBasicMaterial',
                 meshInstanceCount: (this.mesh as any).instanceCount,
                 totalLabels: this.labels.size,
                 visibleLabels: Array.from(this.labels.values()).filter(l => l.visible).length
-            });
+            };
+            
+            // Add shader-specific info if available
+            if (this.material instanceof ShaderMaterial && this.material.uniforms) {
+                debugInfo.materialUniforms = {
+                    hasTexture: !!this.material.uniforms.fontAtlas.value
+                };
+            }
+            this.logger.debug('Renderer state:', debugInfo);
         }
     }
-    
+
     public dispose(): void {
         this.geometry.dispose();
-        this.material.dispose();
+        if (this.material) {
+            this.material.dispose();
+        }
         if (this.fontAtlas) {
             this.fontAtlas.dispose();
         }
-        if (this.group.parent) {
+        if (this.group && this.group.parent) {
             this.group.parent.remove(this.group);
         }
     }

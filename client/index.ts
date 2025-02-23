@@ -19,6 +19,18 @@ import './ui'; // Import UI initialization
 
 const logger = createLogger('GraphVisualization');
 
+export function checkWebGLSupport(): boolean {
+    const canvas = document.createElement('canvas');
+    const gl = canvas.getContext('webgl2') || canvas.getContext('webgl');
+    
+    if (!gl) {
+        logger.error('WebGL not supported');
+        return false;
+    }
+    
+    return true;
+}
+
 export class GraphVisualization {
     private sceneManager: SceneManager;
     private nodeManager: NodeManagerFacade;
