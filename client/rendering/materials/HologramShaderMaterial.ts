@@ -1,28 +1,35 @@
-import * as THREE from 'three';
+import { ShaderMaterial, Color, Vector3, AdditiveBlending, WebGLRenderer } from 'three';
+import { createLogger } from '../../core/logger';
 
 export interface HologramUniforms {
     [key: string]: { value: any };
     time: { value: number };
     opacity: { value: number };
-    color: { value: THREE.Color };
+    color: { value: Color };
     pulseIntensity: { value: number };
-    interactionPoint: { value: THREE.Vector3 };
+    interactionPoint: { value: Vector3 };
     interactionStrength: { value: number };
     isEdgeOnly: { value: boolean };
 }
 
-export class HologramShaderMaterial extends THREE.ShaderMaterial {
+const logger = createLogger('HologramShaderMaterial');
+
+export class HologramShaderMaterial extends ShaderMaterial {
     declare uniforms: HologramUniforms;
+    private static renderer: WebGLRenderer | null = null;
+    private updateFrequency: number;
+    private frameCount: number;
 
     constructor(settings?: any, context: 'ar' | 'desktop' = 'desktop') {
+        logger.debug('Creating HologramShaderMaterial', { context, settings });
         const isAR = context === 'ar';
         super({
             uniforms: {
                 time: { value: 0 },
                 opacity: { value: settings?.visualization?.hologram?.opacity ?? 1.0 },
-                color: { value: new THREE.Color(settings?.visualization?.hologram?.color ?? 0x00ff00) },
-                pulseIntensity: { value: isAR ? 0.1 : 0.2 }, // Reduced pulse intensity for AR
-                interactionPoint: { value: new THREE.Vector3() },
+                color: { value: new Color(settings?.visualization?.hologram?.color ?? 0x00ff00) },
+                pulseIntensity: { value: isAR ? 0.1 : 0.2 },
+                interactionPoint: { value: new Vector3() },
                 interactionStrength: { value: 0.0 },
                 isEdgeOnly: { value: false }
             },
@@ -70,18 +77,54 @@ export class HologramShaderMaterial extends THREE.ShaderMaterial {
             `,
             transparent: true,
             side: isAR ? 0 : 2, // THREE.FrontSide = 0, THREE.DoubleSide = 2
-            blending: THREE.AdditiveBlending,
+            blending: AdditiveBlending,
             wireframe: true,
             wireframeLinewidth: 1
         });
 
         // Set update frequency based on context
-        this.updateFrequency = isAR ? 2 : 1; // Update every other frame in AR
+        this.updateFrequency = isAR ? 2 : 1; // Update every frame in desktop, every other frame in AR
         this.frameCount = 0;
+
+        // Validate shader compilation if we have a renderer
+        if (HologramShaderMaterial.renderer) {
+            this.validateShader();
+        }
+
+        logger.debug('HologramShaderMaterial initialized', { updateFrequency: this.updateFrequency });
     }
 
-    private updateFrequency: number;
-    private frameCount: number;
+    public static setRenderer(renderer: WebGLRenderer): void {
+        HologramShaderMaterial.renderer = renderer;
+        logger.debug('Renderer set for shader validation');
+    }
+
+    private validateShader(): void {
+        if (!HologramShaderMaterial.renderer) {
+            logger.debug('No renderer available for shader validation');
+            return;
+        }
+
+        const gl = HologramShaderMaterial.renderer.domElement.getContext('webgl2') || HologramShaderMaterial.renderer.domElement.getContext('webgl');
+        if (!gl) {
+            logger.error('Could not get WebGL context');
+            return;
+        }
+
+        const program = (this as any).program;
+        if (!program) {
+            logger.error('No shader program available');
+            return;
+        }
+
+        const isValid = gl.getProgramParameter(program, gl.LINK_STATUS);
+        if (!isValid) {
+            const info = gl.getProgramInfoLog(program);
+            logger.error('Shader program validation failed:', info);
+        } else {
+            logger.debug('Shader program validated successfully');
+        }
+    }
 
     update(deltaTime: number): void {
         this.frameCount++;
@@ -93,7 +136,7 @@ export class HologramShaderMaterial extends THREE.ShaderMaterial {
         }
     }
 
-    handleInteraction(position: THREE.Vector3): void {
+    handleInteraction(position: Vector3): void {
         if (this.frameCount % this.updateFrequency === 0) {
             this.uniforms.interactionPoint.value.copy(position);
             this.uniforms.interactionStrength.value = 1.0;
@@ -107,7 +150,20 @@ export class HologramShaderMaterial extends THREE.ShaderMaterial {
     }
 
     clone(): this {
-        const material = new HologramShaderMaterial();
+        logger.debug('Cloning HologramShaderMaterial');
+        // Create settings object from current uniforms
+        const settings = {
+            visualization: {
+                hologram: {
+                    opacity: this.uniforms.opacity.value,
+                    color: '#' + Array.from(this.uniforms.color.value.toArray())
+                        .map(v => Math.round(v * 255).toString(16).padStart(2, '0'))
+                        .join('')
+                }
+            }
+        };
+        logger.debug('Clone settings', settings);
+        const material = new HologramShaderMaterial(settings, this.side === 0 ? 'ar' : 'desktop');
         material.uniforms = {
             time: { value: this.uniforms.time.value },
             opacity: { value: this.uniforms.opacity.value },
@@ -117,6 +173,8 @@ export class HologramShaderMaterial extends THREE.ShaderMaterial {
             interactionStrength: { value: this.uniforms.interactionStrength.value },
             isEdgeOnly: { value: this.uniforms.isEdgeOnly.value }
         };
+        material.validateShader();
+        logger.debug('Material cloned successfully');
         return material as this;
     }
 }

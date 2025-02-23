@@ -20,6 +20,7 @@ import * as RenderPassModule from 'three/examples/jsm/postprocessing/RenderPass'
 import * as UnrealBloomPassModule from 'three/examples/jsm/postprocessing/UnrealBloomPass';
 import * as OrbitControlsModule from 'three/examples/jsm/controls/OrbitControls';
 import { VisualizationController } from './VisualizationController';
+import { HologramShaderMaterial } from './materials/HologramShaderMaterial';
 import { Settings } from '../types/settings/base';
 import { defaultSettings } from '../state/defaultSettings';
 import { logger } from '../core/logger';
@@ -103,6 +104,9 @@ export class SceneManager {
       });
       this.renderer.setSize(window.innerWidth, window.innerHeight);
       this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      
+      // Set renderer for shader validation
+      HologramShaderMaterial.setRenderer(this.renderer);
       
       // Remove unsupported properties
       // this.renderer.sortObjects = false;

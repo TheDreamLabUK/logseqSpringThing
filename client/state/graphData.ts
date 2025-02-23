@@ -1,6 +1,7 @@
 import { transformGraphData, Node, Edge, GraphData } from '../core/types';
 import { createLogger } from '../core/utils';
 import { API_ENDPOINTS } from '../core/constants';
+import { debugState } from '../core/debugState';
 
 const logger = createLogger('GraphDataManager');
 
@@ -61,13 +62,18 @@ export class GraphDataManager {
     try {
       // Start with first page
       await this.fetchPaginatedData(1, 100);
-      logger.info('Initial graph data page loaded');
+      if (debugState.isDataDebugEnabled()) {
+        logger.debug(`Initial graph data page loaded. Current nodes: ${this.nodes.size}, edges: ${this.edges.size}`);
+      }
       
       // Get total pages from metadata
       const totalPages = this.metadata.pagination?.totalPages || 1;
+      const totalItems = this.metadata.pagination?.totalItems || 0;
       
       if (totalPages > 1) {
-        logger.info(`Loading remaining ${totalPages - 1} pages in background`);
+        if (debugState.isDataDebugEnabled()) {
+          logger.debug(`Loading remaining ${totalPages - 1} pages in background. Total items: ${totalItems}, Current items: ${this.nodes.size}`);
+        }
         // Load remaining pages in background
         for (let page = 2; page <= totalPages; page++) {
           try {
@@ -87,6 +93,9 @@ export class GraphDataManager {
 
   public async fetchPaginatedData(page: number = 1, pageSize: number = 100): Promise<void> {
     try {
+      if (debugState.isDataDebugEnabled()) {
+        logger.debug(`Fetching page ${page} with size ${pageSize}. Current nodes: ${this.nodes.size}`);
+      }
       const response = await fetch(
         `${API_ENDPOINTS.GRAPH_PAGINATED}?page=${page}&pageSize=${pageSize}`,
         {
@@ -101,8 +110,13 @@ export class GraphDataManager {
       }
 
       const data = await response.json();
+      if (debugState.isDataDebugEnabled()) {
+        logger.debug(`Received data for page ${page}:`, { nodes: data.nodes?.length, edges: data.edges?.length, totalItems: data.totalItems });
+      }
       this.updateGraphData(data);
-      logger.info(`Paginated data loaded for page ${page}`);
+      if (debugState.isDataDebugEnabled()) {
+        logger.debug(`Paginated data loaded for page ${page}. Total nodes now: ${this.nodes.size}, edges: ${this.edges.size}`);
+      }
     } catch (error) {
       logger.error('Failed to fetch paginated data:', error);
       throw error;
@@ -173,6 +187,9 @@ export class GraphDataManager {
 
   private async loadRemainingPages(totalPages: number, pageSize: number): Promise<void> {
     try {
+      if (debugState.isDataDebugEnabled()) {
+        logger.debug(`Starting to load remaining pages. Total pages: ${totalPages}, Current nodes: ${this.nodes.size}`);
+      }
       // Load remaining pages in parallel with a reasonable chunk size
       const chunkSize = 5;
       for (let i = 2; i <= totalPages; i += chunkSize) {
@@ -182,6 +199,9 @@ export class GraphDataManager {
         }
         await Promise.all(pagePromises);
         // Update listeners after each chunk
+        if (debugState.isDataDebugEnabled()) {
+          logger.debug(`Loaded chunk ${i}-${Math.min(i + chunkSize - 1, totalPages)}. Current nodes: ${this.nodes.size}, edges: ${this.edges.size}`);
+        }
         this.notifyUpdateListeners();
       }
     } catch (error) {
@@ -192,6 +212,9 @@ export class GraphDataManager {
 
   private async loadPage(page: number, pageSize: number): Promise<void> {
     try {
+      if (debugState.isDataDebugEnabled()) {
+        logger.debug(`Loading page ${page}. Current nodes before load: ${this.nodes.size}`);
+      }
       const response = await fetch(
         `${API_ENDPOINTS.GRAPH_PAGINATED}?page=${page}&pageSize=${pageSize}`,
         {
@@ -209,21 +232,27 @@ export class GraphDataManager {
       const transformedData = transformGraphData(data);
       
       // Add new nodes
+      let newNodes = 0;
       transformedData.nodes.forEach((node: Node) => {
         if (!this.nodes.has(node.id)) {
           this.nodes.set(node.id, node);
+          newNodes++;
         }
       });
       
       // Add new edges
+      let newEdges = 0;
       transformedData.edges.forEach((edge: Edge) => {
         const edgeId = this.createEdgeId(edge.source, edge.target);
         if (!this.edges.has(edgeId)) {
           this.edges.set(edgeId, { ...edge, id: edgeId });
+          newEdges++;
         }
       });
 
-      logger.debug(`Loaded page ${page} with ${transformedData.nodes.length} nodes`);
+      if (debugState.isDataDebugEnabled()) {
+        logger.debug(`Loaded page ${page}: ${newNodes} new nodes, ${newEdges} new edges. Total now: ${this.nodes.size} nodes, ${this.edges.size} edges`);
+      }
     } catch (error) {
       logger.error(`Error loading page ${page}:`, error);
       throw error;
@@ -253,6 +282,9 @@ export class GraphDataManager {
   updateGraphData(data: any): void {
     // Transform and validate incoming data
     const transformedData = transformGraphData(data);
+    if (debugState.isDataDebugEnabled()) {
+      logger.debug(`Updating graph data. Incoming: ${transformedData.nodes.length} nodes, ${transformedData.edges?.length || 0} edges`);
+    }
     
     // Update nodes with proper position and velocity
     transformedData.nodes.forEach((node: Node) => {

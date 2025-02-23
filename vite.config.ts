@@ -15,7 +15,7 @@ export default defineConfig(({ mode, command }) => {
       emptyOutDir: true,
       chunkSizeWarningLimit: 600,
       sourcemap: !isProd,
-      minify: isProd ? 'terser' : false,
+      minify: false, // Disable minification to debug shader issues
       target: 'esnext',
       terserOptions: {
         compress: {
