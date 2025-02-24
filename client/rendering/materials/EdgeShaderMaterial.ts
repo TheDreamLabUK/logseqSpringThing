@@ -92,6 +92,144 @@ export class EdgeShaderMaterial extends ShaderMaterial {
             logger.shader('Creating EdgeShaderMaterial', { context, settings });
         }
         
+        // Check WebGL version to determine which shader version to use
+        const canvas = document.createElement('canvas');
+        const gl = canvas.getContext('webgl2');
+        const isWebGL2 = !!gl;
+        
+        // Choose appropriate vertex shader based on WebGL version
+        const vertexShader = isWebGL2 ? 
+            /* WebGL2 vertex shader */
+            `#version 300 es
+            in vec2 uv;
+            in vec3 position;
+            out vec2 vUv;
+            out vec3 vPosition;
+            out float vDistance;
+            const float PI = 3.14159265359;
+            
+            uniform vec3 sourcePosition;
+            uniform vec3 targetPosition;
+            
+            void main() {
+                vUv = uv;
+                vPosition = position;
+                
+                // Optimize distance calculation
+                vec3 edgeDir = normalize(targetPosition - sourcePosition);
+                vec3 posVector = position - sourcePosition;
+                vDistance = dot(edgeDir, normalize(posVector));
+                
+                gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+            }` :
+            /* WebGL1 vertex shader */
+            `attribute vec2 uv;
+            attribute vec3 position;
+            varying vec2 vUv;
+            varying vec3 vPosition;
+            varying float vDistance;
+            const float PI = 3.14159265359;
+            
+            uniform vec3 sourcePosition;
+            uniform vec3 targetPosition;
+            
+            void main() {
+                vUv = uv;
+                vPosition = position;
+                
+                // Optimize distance calculation
+                vec3 edgeDir = normalize(targetPosition - sourcePosition);
+                vec3 posVector = position - sourcePosition;
+                vDistance = dot(edgeDir, normalize(posVector));
+                
+                gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+            }`;
+        
+        // Choose appropriate fragment shader based on WebGL version
+        const fragmentShader = isWebGL2 ?
+            /* WebGL2 fragment shader */
+            `#version 300 es
+            precision highp float;
+            uniform float time;
+            uniform float opacity;
+            uniform vec3 color;
+            uniform float flowSpeed;
+            uniform float flowIntensity;
+            uniform float glowStrength;
+            uniform float distanceIntensity;
+            uniform bool useGradient;
+            uniform vec3 gradientColorA;
+            uniform vec3 gradientColorB;
+            
+            in vec2 vUv;
+            in vec3 vPosition;
+            in float vDistance;
+            out vec4 fragColor;
+            
+            void main() {
+                // Simplified flow calculation
+                float flow = sin(vDistance * 8.0 - time * flowSpeed) * 0.5 + 0.5;
+                flow *= flowIntensity;
+
+                // Optimized distance-based intensity
+                float distanceFactor = 1.0 - abs(vDistance - 0.5) * 2.0;
+                distanceFactor = pow(distanceFactor, distanceIntensity);
+                
+                // Base color with gradient
+                vec3 finalColor = useGradient ? 
+                    mix(gradientColorA, gradientColorB, vDistance) : 
+                    color;
+
+                // Add flow and glow effects
+                finalColor += flow * 0.2;
+                finalColor += (1.0 - vUv.y) * glowStrength * 0.3;
+                
+                // Apply distance factor
+                finalColor *= mix(0.5, 1.0, distanceFactor);
+                
+                fragColor = vec4(finalColor, opacity * (0.7 + flow * 0.3));
+            }` :
+            /* WebGL1 fragment shader */
+            `precision highp float;
+            uniform float time;
+            uniform float opacity;
+            uniform vec3 color;
+            uniform float flowSpeed;
+            uniform float flowIntensity;
+            uniform float glowStrength;
+            uniform float distanceIntensity;
+            uniform bool useGradient;
+            uniform vec3 gradientColorA;
+            uniform vec3 gradientColorB;
+            
+            varying vec2 vUv;
+            varying vec3 vPosition;
+            varying float vDistance;
+            
+            void main() {
+                // Simplified flow calculation
+                float flow = sin(vDistance * 8.0 - time * flowSpeed) * 0.5 + 0.5;
+                flow *= flowIntensity;
+
+                // Optimized distance-based intensity
+                float distanceFactor = 1.0 - abs(vDistance - 0.5) * 2.0;
+                distanceFactor = pow(distanceFactor, distanceIntensity);
+                
+                // Base color with gradient
+                vec3 finalColor = useGradient ? 
+                    mix(gradientColorA, gradientColorB, vDistance) : 
+                    color;
+
+                // Add flow and glow effects
+                finalColor += flow * 0.2;
+                finalColor += (1.0 - vUv.y) * glowStrength * 0.3;
+                
+                // Apply distance factor
+                finalColor *= mix(0.5, 1.0, distanceFactor);
+                
+                gl_FragColor = vec4(finalColor, opacity * (0.7 + flow * 0.3));
+            }`;
+        
         super({
             uniforms: {
                 time: { value: 0 },
@@ -107,67 +245,8 @@ export class EdgeShaderMaterial extends ShaderMaterial {
                 sourcePosition: { value: new Vector3() },
                 targetPosition: { value: new Vector3() }
             },
-            vertexShader: `
-                varying vec2 vUv;
-                varying vec3 vPosition;
-                varying float vDistance;
-                const float PI = 3.14159265359;
-                
-                uniform vec3 sourcePosition;
-                uniform vec3 targetPosition;
-                
-                void main() {
-                    vUv = uv;
-                    vPosition = position;
-                    
-                    // Optimize distance calculation
-                    vec3 edgeDir = normalize(targetPosition - sourcePosition);
-                    vec3 posVector = position - sourcePosition;
-                    vDistance = dot(edgeDir, normalize(posVector));
-                    
-                    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-                }
-            `,
-            fragmentShader: `
-                uniform float time;
-                uniform float opacity;
-                uniform vec3 color;
-                uniform float flowSpeed;
-                uniform float flowIntensity;
-                uniform float glowStrength;
-                uniform float distanceIntensity;
-                uniform bool useGradient;
-                uniform vec3 gradientColorA;
-                uniform vec3 gradientColorB;
-                
-                varying vec2 vUv;
-                varying vec3 vPosition;
-                varying float vDistance;
-                
-                void main() {
-                    // Simplified flow calculation
-                    float flow = sin(vDistance * 8.0 - time * flowSpeed) * 0.5 + 0.5;
-                    flow *= flowIntensity;
-
-                    // Optimized distance-based intensity
-                    float distanceFactor = 1.0 - abs(vDistance - 0.5) * 2.0;
-                    distanceFactor = pow(distanceFactor, distanceIntensity);
-                    
-                    // Base color with gradient
-                    vec3 finalColor = useGradient ? 
-                        mix(gradientColorA, gradientColorB, vDistance) : 
-                        color;
-
-                    // Add flow and glow effects
-                    finalColor += flow * 0.2;
-                    finalColor += (1.0 - vUv.y) * glowStrength * 0.3;
-                    
-                    // Apply distance factor
-                    finalColor *= mix(0.5, 1.0, distanceFactor);
-                    
-                    gl_FragColor = vec4(finalColor, opacity * (0.7 + flow * 0.3));
-                }
-            `,
+            vertexShader,
+            fragmentShader,
             transparent: true,
             side: isAR ? FRONT_SIDE : DOUBLE_SIDE,
             blending: isAR ? NORMAL_BLENDING : ADDITIVE_BLENDING,

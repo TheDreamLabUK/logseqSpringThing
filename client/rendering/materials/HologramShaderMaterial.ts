@@ -84,6 +84,179 @@ export class HologramShaderMaterial extends ShaderMaterial {
             logger.debug('Creating HologramShaderMaterial', { context, settings });
         }
         const isAR = context === 'ar';
+        
+        // Check WebGL version to determine which shader version to use
+        const canvas = document.createElement('canvas');
+        const gl = canvas.getContext('webgl2');
+        const isWebGL2 = !!gl;
+        
+        // Choose appropriate vertex shader based on WebGL version
+        const vertexShader = isWebGL2 ? 
+            /* WebGL2 vertex shader */
+            `#version 300 es
+            in vec2 uv;
+            in vec3 normal;
+            in vec3 position;
+            
+            uniform mat4 modelMatrix;
+            uniform mat4 viewMatrix;
+            uniform mat4 projectionMatrix;
+            uniform float time;
+            uniform vec3 interactionPoint;
+            uniform float interactionStrength;
+            
+            out vec2 vUv;
+            out vec3 vNormal;
+            out vec3 vPosition;
+            
+            void main() {
+                vUv = uv;
+                vNormal = normalize(normalMatrix * normal);
+                
+                // Apply model matrix to get world position
+                vec4 worldPosition = modelMatrix * vec4(position, 1.0);
+                vPosition = worldPosition.xyz;
+                
+                // Calculate distance to interaction point
+                float dist = distance(worldPosition.xyz, interactionPoint);
+                float influence = max(0.0, 1.0 - dist / 2.0) * interactionStrength;
+                
+                // Apply view and projection matrices
+                gl_Position = projectionMatrix * viewMatrix * worldPosition;
+            }` :
+            /* WebGL1 vertex shader */
+            `attribute vec2 uv;
+            attribute vec3 normal;
+            attribute vec3 position;
+            
+            uniform mat4 modelMatrix;
+            uniform mat4 viewMatrix;
+            uniform mat4 projectionMatrix;
+            uniform mat3 normalMatrix;
+            uniform float time;
+            uniform vec3 interactionPoint;
+            uniform float interactionStrength;
+            
+            varying vec2 vUv;
+            varying vec3 vNormal;
+            varying vec3 vPosition;
+            
+            void main() {
+                vUv = uv;
+                vNormal = normalize(normalMatrix * normal);
+                
+                // Apply model matrix to get world position
+                vec4 worldPosition = modelMatrix * vec4(position, 1.0);
+                vPosition = worldPosition.xyz;
+                
+                // Calculate distance to interaction point
+                float dist = distance(worldPosition.xyz, interactionPoint);
+                float influence = max(0.0, 1.0 - dist / 2.0) * interactionStrength;
+                
+                // Apply view and projection matrices
+                gl_Position = projectionMatrix * viewMatrix * worldPosition;
+            }`;
+            
+        // Choose appropriate fragment shader based on WebGL version
+        const fragmentShader = isWebGL2 ?
+            /* WebGL2 fragment shader */
+            `#version 300 es
+            precision highp float;
+            
+            uniform float time;
+            uniform float opacity;
+            uniform vec3 color;
+            uniform float pulseIntensity;
+            uniform bool isEdgeOnly;
+            
+            in vec2 vUv;
+            in vec3 vNormal;
+            in vec3 vPosition;
+            
+            out vec4 fragColor;
+            
+            void main() {
+                // Edge detection based on normal
+                float edgeFactor = abs(dot(normalize(vNormal), normalize(vec3(0.0, 0.0, 1.0))));
+                edgeFactor = 1.0 - pow(edgeFactor, 2.0);
+                
+                // Pulse effect
+                float pulse = sin(time * 2.0) * 0.5 + 0.5;
+                pulse = pulse * pulseIntensity;
+                
+                // Grid pattern
+                float gridSize = 20.0;
+                vec2 grid = fract(vUv * gridSize);
+                float gridLine = step(0.95, grid.x) + step(0.95, grid.y);
+                
+                // Combine effects
+                float finalOpacity = opacity;
+                vec3 finalColor = color;
+                
+                if (isEdgeOnly) {
+                    // Edge-only mode
+                    finalOpacity = edgeFactor * opacity * (1.0 + pulse * 0.3);
+                    finalColor = mix(color, color * 1.5, pulse);
+                } else {
+                    // Full hologram mode
+                    finalOpacity = mix(0.1, opacity, edgeFactor) * (1.0 + pulse * 0.3);
+                    finalColor = mix(color * 0.5, color * 1.2, edgeFactor);
+                    
+                    // Add grid lines
+                    finalOpacity = mix(finalOpacity, opacity, gridLine * 0.7);
+                    finalColor = mix(finalColor, color * 1.5, gridLine * 0.7);
+                }
+                
+                fragColor = vec4(finalColor, finalOpacity);
+            }` :
+            /* WebGL1 fragment shader */
+            `precision highp float;
+            
+            uniform float time;
+            uniform float opacity;
+            uniform vec3 color;
+            uniform float pulseIntensity;
+            uniform bool isEdgeOnly;
+            
+            varying vec2 vUv;
+            varying vec3 vNormal;
+            varying vec3 vPosition;
+            
+            void main() {
+                // Edge detection based on normal
+                float edgeFactor = abs(dot(normalize(vNormal), normalize(vec3(0.0, 0.0, 1.0))));
+                edgeFactor = 1.0 - pow(edgeFactor, 2.0);
+                
+                // Pulse effect
+                float pulse = sin(time * 2.0) * 0.5 + 0.5;
+                pulse = pulse * pulseIntensity;
+                
+                // Grid pattern
+                float gridSize = 20.0;
+                vec2 grid = fract(vUv * gridSize);
+                float gridLine = step(0.95, grid.x) + step(0.95, grid.y);
+                
+                // Combine effects
+                float finalOpacity = opacity;
+                vec3 finalColor = color;
+                
+                if (isEdgeOnly) {
+                    // Edge-only mode
+                    finalOpacity = edgeFactor * opacity * (1.0 + pulse * 0.3);
+                    finalColor = mix(color, color * 1.5, pulse);
+                } else {
+                    // Full hologram mode
+                    finalOpacity = mix(0.1, opacity, edgeFactor) * (1.0 + pulse * 0.3);
+                    finalColor = mix(color * 0.5, color * 1.2, edgeFactor);
+                    
+                    // Add grid lines
+                    finalOpacity = mix(finalOpacity, opacity, gridLine * 0.7);
+                    finalColor = mix(finalColor, color * 1.5, gridLine * 0.7);
+                }
+                
+                gl_FragColor = vec4(finalColor, finalOpacity);
+            }`;
+        
         super({
             uniforms: {
                 time: { value: 0 },
@@ -94,66 +267,12 @@ export class HologramShaderMaterial extends ShaderMaterial {
                 interactionStrength: { value: 0.0 },
                 isEdgeOnly: { value: false }
             },
-            vertexShader: /* glsl */`
-                varying vec2 vUv;
-                varying vec3 vNormal;
-                varying vec3 vPosition;
-                varying vec3 vWorldPosition;
-                void main() {
-                    vUv = uv;  // Pass UV coordinates to fragment shader
-                    vNormal = normalize(normalMatrix * normal);
-                    vPosition = position;
-                    vWorldPosition = (modelMatrix * vec4(position, 1.0)).xyz;
-                    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-                }
-            `,
-            fragmentShader: /* glsl */`
-                uniform float time;
-                uniform float opacity;
-                uniform vec3 color;
-                uniform float pulseIntensity;
-                uniform vec3 interactionPoint;
-                uniform float interactionStrength;
-                uniform bool isEdgeOnly;
-                varying vec2 vUv;
-                varying vec3 vNormal;
-                varying vec3 vPosition;
-                varying vec3 vWorldPosition;
-
-                void main() {
-                    // Simplified pulse calculation
-                    float pulse = sin(time * 5.0) * 0.5 + 0.5;  // Increased frequency for better visual effect
-                    
-                    // Only calculate interaction if strength is significant
-                    float interaction = 0.0;
-                    if (interactionStrength > 0.01) {
-                        float dist = length(vPosition - interactionPoint);
-                        interaction = interactionStrength * (1.0 - smoothstep(0.0, 2.0, dist));
-                    }
-                    
-                    // Calculate fresnel effect for edge glow
-                    vec3 viewDirection = normalize(cameraPosition - vWorldPosition);
-                    float fresnel = pow(1.0 - max(0.0, dot(viewDirection, vNormal)), 2.0);
-                    
-                    float alpha;
-                    if (isEdgeOnly) {
-                        alpha = opacity * (0.8 + pulse * pulseIntensity + interaction + fresnel * 0.5);
-                        vec3 edgeColor = color + vec3(0.1) * pulse; // Reduced edge brightness
-                        gl_FragColor = vec4(edgeColor, clamp(alpha, 0.0, 1.0));
-                    } else {
-                        alpha = opacity * (0.5 + pulse * pulseIntensity + interaction + fresnel * 0.3);
-                        vec3 finalColor = color + vec3(0.05) * fresnel; // Slight color variation on edges
-                        gl_FragColor = vec4(finalColor, clamp(alpha, 0.0, 1.0));
-                    }
-                }
-            `,
+            vertexShader,
+            fragmentShader,
             transparent: true,
-            side: isAR ? FRONT_SIDE : DOUBLE_SIDE,
             blending: AdditiveBlending,
-            wireframe: isAR ? false : true,  // Disable wireframe in AR for better performance
-            wireframeLinewidth: 1,
-            defines: { USE_UV: '', USE_NORMAL: '' },  // Ensure UV coordinates and normals are available
-            glslVersion: '300 es'  // Use modern GLSL version
+            side: DOUBLE_SIDE,
+            depthWrite: false
         });
 
         this.updateFrequency = isAR ? 2 : 1; // Update every frame in desktop, every other frame in AR
@@ -183,8 +302,7 @@ export class HologramShaderMaterial extends ShaderMaterial {
                 }
 
                 this.needsUpdate = true;
-                // Force immediate compilation
-                this.needsUpdate = true;
+
             } catch (error: unknown) {
                 const errorMessage = error instanceof Error ? error : new Error(String(error));
                 const errorStack = error instanceof Error ? error.stack : undefined;
