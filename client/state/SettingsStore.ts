@@ -1,5 +1,5 @@
 import { Settings } from '../types/settings/base';
-import { createLogger } from '../core/logger';
+import { createLogger, createErrorMetadata, createMessageMetadata, createDataMetadata } from '../core/logger';
 import { defaultSettings } from './defaultSettings';
 import { buildApiUrl } from '../core/api';
 import { API_ENDPOINTS } from '../core/constants';
@@ -50,13 +50,14 @@ export class SettingsStore {
             try {
                 // Try to fetch settings from server first
                 try {
-                    logger.info('Fetching settings from:', buildApiUrl(API_ENDPOINTS.SETTINGS_ROOT));
-                    const response = await fetch(buildApiUrl(API_ENDPOINTS.SETTINGS_ROOT));
-                    logger.info('Server response status:', response.status);
+                    const settingsUrl = buildApiUrl(API_ENDPOINTS.SETTINGS_ROOT);
+                    logger.info('Fetching settings from:', createMessageMetadata(settingsUrl));
+                    const response = await fetch(settingsUrl);
+                    logger.info('Server response status:', createMessageMetadata(response.status));
                     
                     if (response.ok) {
                         const serverSettings = await response.json();
-                        logger.info('Received server settings:', serverSettings);
+                        logger.info('Received server settings:', createDataMetadata(serverSettings));
                         
                         // Convert snake_case to camelCase
                         const camelCaseSettings = convertObjectKeysToCamelCase(serverSettings);
@@ -79,15 +80,15 @@ export class SettingsStore {
                         logger.info('Using server settings with defaults as fallback');
                     } else {
                         const errorText = await response.text();
-                        logger.error('Response text:', await response.text());
+                        logger.error('Response text:', createMessageMetadata(errorText));
                         throw new Error(`Failed to fetch server settings: ${response.statusText}. Details: ${errorText}`);
                     }
                 } catch (error) {
                     // If server settings fail, fall back to defaults
                     if (error instanceof Error) {
-                        logger.error('Full error:', error);
+                        logger.error('Full error:', createErrorMetadata(error));
                     }
-                    logger.warn('Error loading server settings, falling back to defaults:', error);
+                    logger.warn('Error loading server settings, falling back to defaults:', createErrorMetadata(error));
                     this.settings = { ...defaultSettings };
                     
                     // Initialize logger with default settings
@@ -100,17 +101,17 @@ export class SettingsStore {
                     // Validate default settings
                     const validationResult = validateSettings(this.settings);
                     if (!validationResult.isValid) {
-                        this.logger.error('Default settings validation failed:', validationResult.errors);
+                        this.logger.error('Default settings validation failed:', createDataMetadata(validationResult.errors));
                         this.notifyValidationErrors(validationResult.errors);
                     }
                     
-                    logger.info('Using default settings:', this.settings);
+                    logger.info('Using default settings:', createDataMetadata(this.settings));
                 }
 
                 this.initialized = true;
-                logger.info('SettingsStore initialized with origin:', this.settingsOrigin);
+                logger.info('SettingsStore initialized with origin:', createMessageMetadata(this.settingsOrigin));
             } catch (error) {
-                logger.error('Critical initialization failure:', error);
+                logger.error('Critical initialization failure:', createErrorMetadata(error));
                 // Last resort: use defaults without validation
                 this.settings = { ...defaultSettings };
                 this.settingsOrigin = 'default';
@@ -143,7 +144,7 @@ export class SettingsStore {
                 return obj[key];
             }, this.settings);
         } catch (error) {
-            logger.error(`Error accessing setting at path ${path}:`, error);
+            logger.error(`Error accessing setting at path ${path}:`, createErrorMetadata(error));
             return undefined;
         }
     }
@@ -244,12 +245,12 @@ export class SettingsStore {
             // Notify subscribers of successful update
             this.notifySubscribers(path, value);
             
-            this.logger.debug(`Setting updated successfully: ${path}`, {
+            this.logger.debug(`Setting updated successfully: ${path}`, createDataMetadata({
                 value,
                 origin: this.settingsOrigin
-            });
+            }));
         } catch (error) {
-            this.logger.error(`Failed to update setting: ${path}`, error);
+            this.logger.error(`Failed to update setting: ${path}`, createErrorMetadata(error));
             throw error;
         }
     }
@@ -313,11 +314,11 @@ export class SettingsStore {
             // Prepare settings for server sync
             const serverSettings = this.prepareSettingsForSync(this.settings);
             
-            this.logger.debug('Sending settings to server:', {
+            this.logger.debug('Sending settings to server:', createDataMetadata({
                 origin: this.settingsOrigin,
                 isInitialSync,
                 debug: serverSettings.system?.debug
-            });
+            }));
             
             const response = await fetch(buildApiUrl(API_ENDPOINTS.SETTINGS_ROOT), {
                 method: 'POST',
@@ -329,11 +330,11 @@ export class SettingsStore {
             
             if (!response.ok) {
                 const errorText = await response.text();
-                this.logger.error('Server sync failed:', {
+                this.logger.error('Server sync failed:', createDataMetadata({
                     status: response.status,
                     error: errorText,
                     sentSettings: serverSettings.system?.debug
-                });
+                }));
                 throw new Error(`Server returned ${response.status}: ${errorText}`);
             }
             
@@ -341,26 +342,26 @@ export class SettingsStore {
             const responseData = await response.json();
             const camelCaseSettings = convertObjectKeysToCamelCase(responseData);
             
-            this.logger.debug('Received settings from server:', {
+            this.logger.debug('Received settings from server:', createDataMetadata({
                 debug: camelCaseSettings.system?.debug
-            });
+            }));
             
             // Validate server response
             const validationResult = validateSettings(camelCaseSettings);
             if (!validationResult.isValid) {
-                this.logger.error('Settings validation failed:', {
+                this.logger.error('Settings validation failed:', createDataMetadata({
                     errors: validationResult.errors,
                     receivedSettings: camelCaseSettings.system?.debug
-                });
+                }));
                 throw new Error(`Invalid server response: ${JSON.stringify(validationResult.errors)}`);
             }
             
             this.settings = this.deepMerge(this.settings, camelCaseSettings);
-            this.logger.debug('Settings synced successfully:', {
+            this.logger.debug('Settings synced successfully:', createDataMetadata({
                 finalDebug: this.settings.system?.debug
-            });
+            }));
         } catch (error) {
-            this.logger.error('Failed to sync settings with server:', error);
+            this.logger.error('Failed to sync settings with server:', createErrorMetadata(error));
             if (this.retryCount < this.MAX_RETRIES) {
                 this.retryCount++;
                 this.logger.info(`Retrying sync (attempt ${this.retryCount}/${this.MAX_RETRIES})...`);
@@ -376,7 +377,7 @@ export class SettingsStore {
             try {
                 callback(errors);
             } catch (error) {
-                this.logger.error('Error in validation subscriber:', error);
+                this.logger.error('Error in validation subscriber:', createErrorMetadata(error));
             }
         });
     }
@@ -397,7 +398,7 @@ export class SettingsStore {
                         });
                     }
                 } catch (error) {
-                    this.logger.error(`Error scheduling settings notification for ${path}:`, error);
+                    this.logger.error(`Error scheduling settings notification for ${path}:`, createErrorMetadata(error));
                 }
             });
         }
@@ -424,7 +425,7 @@ export class SettingsStore {
         return result;
     }
 
-   private updateSettingValue(path: string, value: unknown): void {
+    private updateSettingValue(path: string, value: unknown): void {
         if (!path) {
             throw new Error('Setting path cannot be empty');
         }

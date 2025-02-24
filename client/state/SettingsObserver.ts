@@ -1,6 +1,6 @@
 import { SettingsStore } from './SettingsStore';
 import { VisualizationController } from '../rendering/VisualizationController';
-import { createLogger } from '../core/logger';
+import { createLogger, createErrorMetadata } from '../core/logger';
 
 const logger = createLogger('SettingsObserver');
 
@@ -34,7 +34,7 @@ export class SettingsObserver {
             this.subscribeToSettings();
             logger.info('Settings observer initialized');
         } catch (error) {
-            logger.error('Failed to initialize settings observer:', error);
+            logger.error('Failed to initialize settings observer:', createErrorMetadata(error));
         }
     }
 
@@ -131,7 +131,7 @@ export class SettingsObserver {
                 try {
                     callback(path, value);
                 } catch (error) {
-                    logger.error(`Error in settings callback for ${path}:`, error);
+                    logger.error(`Error in settings callback for ${path}:`, createErrorMetadata(error));
                 }
             });
         }
@@ -147,7 +147,7 @@ export class SettingsObserver {
                     try {
                         callback(path, value);
                     } catch (error) {
-                        logger.error(`Error in settings callback for ${parentPath}:`, error);
+                        logger.error(`Error in settings callback for ${parentPath}:`, createErrorMetadata(error));
                     }
                 });
             }

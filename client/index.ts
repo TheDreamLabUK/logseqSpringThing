@@ -5,8 +5,9 @@ import { HologramManager } from './visualization/HologramManager';
 import { TextRenderer } from './rendering/textRenderer';
 import { WebSocketService } from './websocket/websocketService';
 import { SettingsStore } from './state/SettingsStore';
-import { LoggerConfig, createLogger } from './core/logger';
+import { LoggerConfig, createLogger, createErrorMetadata } from './core/logger';
 import { platformManager } from './platform/platformManager';
+
 import { XRSessionManager } from './xr/xrSessionManager';
 import { XRInitializer } from './xr/xrInitializer';
 import { SceneManager } from './rendering/scene';
@@ -102,7 +103,7 @@ export class GraphVisualization {
                 logger.debug('Initial graph data loaded and WebSocket connected');
             }
         } catch (error) {
-            logger.error('Failed to load initial graph data:', error);
+            logger.error('Failed to load initial graph data:', createErrorMetadata(error));
         }
     }
 
@@ -300,7 +301,7 @@ async function init() {
                     });
                 }
             } catch (error) {
-                logger.error('Error handling settings update:', error);
+                logger.error('Error handling settings update:', createErrorMetadata(error));
             }
         };
 
@@ -326,7 +327,7 @@ async function init() {
             logger.info('Application initialized successfully');
         }
     } catch (error) {
-        logger.error('Failed to initialize application components:', error);
+        logger.error('Failed to initialize application components:', createErrorMetadata(error));
         throw error;
     }
 }

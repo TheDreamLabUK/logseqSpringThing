@@ -1,4 +1,4 @@
-import { createLogger } from '../core/logger';
+import { createLogger, createErrorMetadata, createDataMetadata } from '../core/logger';
 import { Settings } from '../types/settings/base';
 import { ValidationError } from '../types/settings/validation';
 
@@ -75,7 +75,7 @@ export class SettingsEventEmitter {
             try {
                 callback(lastEvent);
             } catch (error) {
-                logger.error(`Error in event listener for ${event}:`, error);
+                logger.error(`Error in event listener for ${event}:`, createErrorMetadata(error));
             }
         }
 
@@ -103,7 +103,7 @@ export class SettingsEventEmitter {
                 try {
                     callback(eventData);
                 } catch (error) {
-                    logger.error(`Error in event listener for ${event}:`, error);
+                    logger.error(`Error in event listener for ${event}:`, createErrorMetadata(error));
                 }
             });
         }
@@ -112,7 +112,10 @@ export class SettingsEventEmitter {
         switch (event) {
             case SettingsEventType.SETTINGS_ERROR:
             case SettingsEventType.SETTINGS_VALIDATION_ERROR:
-                logger.error(`${event}:`, data.error || data.validationErrors);
+                logger.error(`${event}:`, createDataMetadata({
+                    error: data.error,
+                    validationErrors: data.validationErrors
+                }));
                 break;
             case SettingsEventType.SETTINGS_LOADED:
             case SettingsEventType.SETTINGS_SAVED:
@@ -120,7 +123,7 @@ export class SettingsEventEmitter {
                 logger.info(`${event} completed`);
                 break;
             case SettingsEventType.AUTH_STATE_CHANGED:
-                logger.info('Authentication state changed:', data.authState);
+                logger.info('Authentication state changed:', createDataMetadata(data.authState));
                 break;
         }
     }

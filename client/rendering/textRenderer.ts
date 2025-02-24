@@ -1,6 +1,6 @@
 import type { Settings, LabelSettings } from '../types/settings';
 import { settingsManager } from '../state/settings';
-import { createLogger } from '../core/logger';
+import { createLogger, createErrorMetadata } from '../core/logger';
 import {
     Scene,
     Camera,
@@ -70,7 +70,7 @@ export class TextRenderer {
                     break;
             }
         } catch (error) {
-            logger.error(`Error handling setting change for ${setting}:`, error);
+            logger.error(`Error handling setting change for ${setting}:`, createErrorMetadata(error));
         }
     }
 
@@ -194,7 +194,7 @@ export class TextRenderer {
             state.sprite.position.copy(position);
             this.group.add(state.sprite);
         } catch (error) {
-            logger.error('Error updating label:', error);
+            logger.error('Error updating label:', createErrorMetadata(error));
         }
     }
 
@@ -209,7 +209,7 @@ export class TextRenderer {
             }
             this.labelStates.delete(id);
         } catch (error) {
-            logger.error('Error removing label:', error);
+            logger.error('Error removing label:', createErrorMetadata(error));
         }
     }
 
@@ -255,7 +255,7 @@ export class TextRenderer {
                 }
             });
         } catch (error) {
-            logger.error('Error updating labels:', error);
+            logger.error('Error updating labels:', createErrorMetadata(error));
         }
     }
 
@@ -268,7 +268,7 @@ export class TextRenderer {
                 this.group.parent.remove(this.group);
             }
         } catch (error) {
-            logger.error('Error disposing TextRenderer:', error);
+            logger.error('Error disposing TextRenderer:', createErrorMetadata(error));
         }
     }
 

@@ -154,7 +154,7 @@ export class MetadataVisualizer {
                 this.logger.debug('Updating label position:', {
                     nodeId,
                     labelId,
-                    position: [labelPosition.x, labelPosition.y, labelPosition.z],
+                    position: labelPosition,
                     yOffset
                 });
                 

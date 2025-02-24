@@ -9,7 +9,7 @@ import {
     Material
 } from 'three';
 import { NodeGeometryManager, LODLevel } from '../geometry/NodeGeometryManager';
-import { createLogger } from '../../../core/logger';
+import { createLogger, createDataMetadata } from '../../../core/logger';
 import { SettingsStore } from '../../../state/SettingsStore';
 import { NodeSettings } from '../../../types/settings/base';
 import { scaleOps } from '../../../core/utils';
@@ -37,8 +37,8 @@ const INVISIBLE = new Color(0x000000);
 
 interface NodeUpdate {
     id: string;
-    position: [number, number, number];
-    velocity?: [number, number, number];
+    position: Vector3;  // Three.js Vector3
+    velocity?: Vector3; // Three.js Vector3
     metadata?: {
         name?: string;
         lastModified?: number;
@@ -65,12 +65,49 @@ export class NodeInstanceManager {
     private readonly MAX_VELOCITY = 100.0;   // Increased maximum allowed velocity value
     private isReady: boolean = false;
 
+    private validateAndLogVector3(vec: Vector3, max: number, context: string, nodeId?: string): boolean {
+        const isValid = this.validateVector3(vec, max);
+        
+        if (!isValid && debugState.isNodeDebugEnabled()) {
+            logger.node('Vector3 validation failed', createDataMetadata({
+                nodeId,
+                component: context,
+                maxAllowed: max,
+                position: { x: vec.x, y: vec.y, z: vec.z },
+                invalidReason: !isFinite(vec.x) || !isFinite(vec.y) || !isFinite(vec.z) ? 
+                    'Non-finite values detected' : 
+                    isNaN(vec.x) || isNaN(vec.y) || isNaN(vec.z) ?
+                    'NaN values detected' :
+                    'Values exceed maximum bounds'
+            }));
+        }
+        
+        return isValid;
+    }
+
     private validateVector3(vec: Vector3, max: number): boolean {
         return !isNaN(vec.x) && !isNaN(vec.y) && !isNaN(vec.z) &&
                isFinite(vec.x) && isFinite(vec.y) && isFinite(vec.z) &&
                Math.abs(vec.x) <= max && Math.abs(vec.y) <= max && Math.abs(vec.z) <= max;
     }
 
+    private validateMatrix4(mat: Matrix4, nodeId: string): boolean {
+        const elements = mat.elements;
+        for (let i = 0; i < 16; i++) {
+            if (!isFinite(elements[i]) || isNaN(elements[i])) {
+                if (debugState.isMatrixDebugEnabled()) {
+                    logger.matrix('Invalid matrix element detected', createDataMetadata({
+                        nodeId,
+                        elementIndex: i,
+                        value: elements[i],
+                        matrix: elements.join(',')
+                    }));
+                }
+                return false;
+            }
+        }
+        return true;
+    }
 
     private constructor(scene: Scene, material: Material) {
         this.scene = scene;
@@ -89,7 +126,23 @@ export class NodeInstanceManager {
 
         // Initialize InstancedMesh with high-detail geometry
         const initialGeometry = this.geometryManager.getGeometryForDistance(0);
+        
+        // Validate initial geometry
+        if (debugState.isNodeDebugEnabled()) {
+            const posAttr = initialGeometry.getAttribute('position');
+            const normalAttr = initialGeometry.getAttribute('normal');
+            logger.node('Validating initial geometry', createDataMetadata({
+                vertexCount: posAttr?.count ?? 0,
+                attributes: `position:${!!posAttr},normal:${!!normalAttr}`
+            }));
+        }
+
         this.nodeInstances = new InstancedMesh(initialGeometry, material, MAX_INSTANCES);
+        
+        // Validate initial instance matrix
+        const initialMatrix = new Matrix4();
+        this.validateMatrix4(initialMatrix, 'initial');
+        
         this.nodeInstances.count = 0; // Start with 0 visible instances
         this.nodeInstances.frustumCulled = true;
         this.nodeInstances.layers.enable(0); // Enable default layer
@@ -124,24 +177,40 @@ export class NodeInstanceManager {
     }
 
     private getNodeScale(node: Node): number {
-        if (!this.nodeSettings) {
-            if (debugState.isEnabled()) {
-                logger.warn('Node settings not available, using defaults');
-            }
-            return 1.0;
+        if (debugState.isNodeDebugEnabled()) {
+            logger.node('Calculating node scale', createDataMetadata({
+                nodeId: node.id,
+                metadata: node.data.metadata
+            }));
         }
 
-        const [minSize, maxSize] = this.nodeSettings.sizeRange;
-        
-        // Get file size from metadata, use default if not available
-        const fileSize = node.data.metadata?.fileSize || DEFAULT_FILE_SIZE;
-        
-        // Map file size logarithmically to 0-1 range
-        // This gives better visual distribution since file sizes vary greatly
-        const normalizedSize = Math.log(Math.min(fileSize, MAX_FILE_SIZE)) / Math.log(MAX_FILE_SIZE);
+        let normalizedSize = 0;
+        const [minSize = 1, maxSize = 5] = this.nodeSettings?.sizeRange || [1, 5];
+
+        if (!this.nodeSettings) {
+            return 1.0; // Default scale if settings not available
+        }
+
+        try {
+            const fileSize = node.data.metadata?.fileSize ?? DEFAULT_FILE_SIZE;
+            // Clamp file size to reasonable bounds
+            const clampedSize = Math.min(Math.max(fileSize, 0), MAX_FILE_SIZE);
+            // Calculate normalized size (0-1)
+            normalizedSize = clampedSize / MAX_FILE_SIZE;
+        } catch (error) {
+            if (debugState.isNodeDebugEnabled()) {
+                logger.node('Error calculating normalized size', createDataMetadata({
+                    nodeId: node.id,
+                    error: error instanceof Error ? error.message : String(error)
+                }));
+            }
+        }
         
         // Map the normalized size to the configured size range
-        return scaleOps.mapRange(normalizedSize, 0, 1, minSize, maxSize);
+        const scale = scaleOps.mapRange(normalizedSize, 0, 1, minSize, maxSize);
+        
+        // Ensure scale is valid
+        return isFinite(scale) && !isNaN(scale) ? scale : 1.0;
     }
 
     private updateAllNodeScales(): void {
@@ -170,8 +239,8 @@ export class NodeInstanceManager {
             const newScale = this.getNodeScale({ 
                 id: nodeId, 
                 data: { 
-                    position: { x: position.x, y: position.y, z: position.z },
-                    velocity: { x: 0, y: 0, z: 0 }
+                    position: position.clone(),
+                    velocity: new Vector3(0, 0, 0)
                 }
             });
             scale.set(newScale, newScale, newScale);
@@ -195,13 +264,26 @@ export class NodeInstanceManager {
             return;
         }
 
+        if (debugState.isNodeDebugEnabled()) {
+            logger.node('Starting node position updates', createDataMetadata({
+                updateCount: updates.length,
+                nodes: updates.map(u => u.id).join(',')
+            }));
+        }
+
         let updatedCount = 0;
         updates.forEach(update => {
             const index = this.nodeIndices.get(update.id);
             
             // Validate and clamp position
-            position.set(update.position[0], update.position[1], update.position[2]);
-            if (!this.validateVector3(position, this.MAX_POSITION)) {
+            position.copy(update.position); // Using Three.js Vector3 copy
+            if (!this.validateAndLogVector3(position, this.MAX_POSITION, 'position', update.id)) {
+                if (debugState.isNodeDebugEnabled()) {
+                    logger.node('Position validation failed, attempting recovery', createDataMetadata({
+                        nodeId: update.id,
+                        originalPosition: { x: position.x, y: position.y, z: position.z }
+                    }));
+                }
                 if (debugState.isEnabled()) {
                     logger.warn(`Invalid position for node ${update.id}, clamping to valid range`);
                 }
@@ -212,8 +294,14 @@ export class NodeInstanceManager {
 
             // Validate and clamp velocity if present
             if (update.velocity) {
-                velocity.set(update.velocity[0], update.velocity[1], update.velocity[2]);
-                if (!this.validateVector3(velocity, this.MAX_VELOCITY)) {
+                velocity.copy(update.velocity); // Using Three.js Vector3 copy
+                if (!this.validateAndLogVector3(velocity, this.MAX_VELOCITY, 'velocity', update.id)) {
+                    if (debugState.isNodeDebugEnabled()) {
+                        logger.node('Velocity validation failed, attempting recovery', createDataMetadata({
+                            nodeId: update.id,
+                            originalVelocity: { x: velocity.x, y: velocity.y, z: velocity.z }
+                        }));
+                    }
                     if (debugState.isEnabled()) {
                         logger.warn(`Invalid velocity for node ${update.id}, clamping to valid range`);
                     }
@@ -234,19 +322,38 @@ export class NodeInstanceManager {
                     const scaleValue = this.getNodeScale({
                         id: update.id,
                         data: {
-                            position: { x: position.x, y: position.y, z: position.z },
-                            velocity: { x: 0, y: 0, z: 0 },
+                            position: position.clone(),
+                            velocity: new Vector3(0, 0, 0),
                             metadata: update.metadata
                         }
                     });
                     scale.set(scaleValue, scaleValue, scaleValue);
                     
                     if (update.velocity) {
-                        const vel = new Vector3(update.velocity[0], update.velocity[1], update.velocity[2]);
+                        const vel = update.velocity.clone(); // Using Three.js Vector3 clone
                         this.velocities.set(newIndex, vel);
                     }
                     
                     matrix.compose(position, quaternion, scale);
+                    
+                    // Validate matrix before setting
+                    if (!this.validateMatrix4(matrix, update.id)) {
+                        if (debugState.isMatrixDebugEnabled()) {
+                            logger.matrix('Invalid matrix after composition', createDataMetadata({
+                                nodeId: update.id,
+                                position: {
+                                    x: position.x,
+                                    y: position.y,
+                                    z: position.z
+                                },
+                                scale: {
+                                    x: scale.x, y: scale.y, z: scale.z
+                                }
+                            }));
+                        }
+                        return;
+                    }
+                    
                     this.nodeInstances.setMatrixAt(newIndex, matrix);
                     this.nodeInstances.setColorAt(newIndex, VISIBLE);
                     
@@ -269,14 +376,33 @@ export class NodeInstanceManager {
             const scaleValue = this.getNodeScale({
                 id: update.id,
                 data: {
-                    position: { x: position.x, y: position.y, z: position.z },
-                    velocity: { x: 0, y: 0, z: 0 },
+                    position: position.clone(),
+                    velocity: new Vector3(0, 0, 0),
                     metadata: update.metadata
                 }
             });
             scale.set(scaleValue, scaleValue, scaleValue);
             
             matrix.compose(position, quaternion, scale);
+            
+            // Validate matrix before setting
+            if (!this.validateMatrix4(matrix, update.id)) {
+                if (debugState.isMatrixDebugEnabled()) {
+                    logger.matrix('Invalid matrix after composition', createDataMetadata({
+                        nodeId: update.id,
+                        position: {
+                            x: position.x,
+                            y: position.y,
+                            z: position.z
+                        },
+                        scale: {
+                            x: scale.x, y: scale.y, z: scale.z
+                        }
+                    }));
+                }
+                return;
+            }
+            
             this.nodeInstances.setMatrixAt(index, matrix);
             this.pendingUpdates.add(index);
             updatedCount++;
@@ -294,6 +420,15 @@ export class NodeInstanceManager {
     public update(camera: Camera, passedDeltaTime?: number): void {
         if (!this.isReady) return;
 
+        // Validate deltaTime
+        if (passedDeltaTime !== undefined && 
+            (!isFinite(passedDeltaTime) || isNaN(passedDeltaTime) || passedDeltaTime <= 0)) {
+            if (debugState.isPhysicsDebugEnabled()) {
+                logger.physics('Invalid deltaTime provided', createDataMetadata({ deltaTime: passedDeltaTime }));
+            }
+            return;
+        }
+
         this.frameCount++;
         
         // Update positions based on velocity
@@ -302,6 +437,13 @@ export class NodeInstanceManager {
             passedDeltaTime : 
             (currentTime - this.lastUpdateTime) / 1000; // Convert to seconds
         this.lastUpdateTime = currentTime;
+
+        if (debugState.isPhysicsDebugEnabled()) {
+            logger.physics('Starting physics update', createDataMetadata({
+                deltaTime,
+                velocityCount: this.velocities.size
+            }));
+        }
 
         // Update positions based on velocities
         this.velocities.forEach((nodeVelocity, index) => {
@@ -312,9 +454,34 @@ export class NodeInstanceManager {
                 // Apply velocity
                 velocity.copy(nodeVelocity).multiplyScalar(deltaTime);
                 position.add(velocity);
+
+                // Validate position after velocity update
+                if (!this.validateAndLogVector3(position, this.MAX_POSITION, 'physics-update')) {
+                    if (debugState.isPhysicsDebugEnabled()) {
+                        logger.physics('Invalid position after velocity update', createDataMetadata({
+                            nodeId: this.getNodeId(index),
+                            position: {
+                                x: position.x,
+                                y: position.y,
+                                z: position.z
+                            },
+                            velocity: {
+                                x: velocity.x, y: velocity.y, z: velocity.z
+                            }
+                        }));
+                    }
+                    // Extract position from matrix and reset
+                    position.setFromMatrixPosition(matrix);
+                }                
                 
                 // Update matrix
                 matrix.compose(position, quaternion, scale);
+                
+                // Validate matrix before setting
+                if (!this.validateMatrix4(matrix, this.getNodeId(index) || 'unknown')) {
+                    return;
+                }
+                
                 this.nodeInstances.setMatrixAt(index, matrix);
                 this.pendingUpdates.add(index);
             }

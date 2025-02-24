@@ -1,6 +1,6 @@
 import { XRSessionManager } from './xrSessionManager';
 import { SettingsStore } from '../state/SettingsStore';
-import { createLogger } from '../core/logger';
+import { createLogger, createErrorMetadata } from '../core/logger';
 import { WebSocketService } from '../websocket/websocketService';
 import { XRSettings } from '../types/settings/xr';
 import * as THREE from 'three';
@@ -36,7 +36,7 @@ export class XRInteraction {
                 await this.xrManager.initXRSession();
             }
         } catch (error) {
-            logger.error('Failed to initialize XR session:', error);
+            logger.error('Failed to initialize XR session:', createErrorMetadata(error));
         }
     }
 
@@ -44,7 +44,7 @@ export class XRInteraction {
         try {
             this.setupSettingsSubscription();
         } catch (error) {
-            logger.error('Failed to setup settings subscription:', error);
+            logger.error('Failed to setup settings subscription:', createErrorMetadata(error));
         }
     }
 
@@ -97,11 +97,7 @@ export class XRInteraction {
 
         const updates = Array.from(this.updateBatch.entries()).map(([id, position]) => ({
             id,
-            position: {
-                x: position.x,
-                y: position.y,
-                z: position.z
-            }
+            position: position.clone()
         }));
 
         this.websocketService.sendNodeUpdates(updates);

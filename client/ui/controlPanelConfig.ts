@@ -129,8 +129,12 @@ export const settingsMap: Record<string, Record<string, SettingControl | Record<
             enableWebsocketDebug: { label: 'WebSocket Debug', type: 'toggle', tooltip: 'Enable WebSocket debugging.' },
             logBinaryHeaders: { label: 'Log Binary Headers', type: 'toggle', tooltip: 'Log binary message headers.' },
             logFullJson: { label: 'Log Full JSON', type: 'toggle', tooltip: 'Log complete JSON messages.' },
-            logLevel: { label: 'Log Level', type: 'select', options: ['error', 'warn', 'info', 'debug', 'trace'], tooltip: 'Logging level.' },
-            logFormat: { label: 'Log Format', type: 'text', tooltip: 'Format string for log messages.' },
+            // New debug categories
+            enablePhysicsDebug: { label: 'Physics Debug', type: 'toggle', tooltip: 'Enable physics/force calculations debugging.' },
+            enableNodeDebug: { label: 'Node Debug', type: 'toggle', tooltip: 'Enable node position/velocity tracking.' },
+            enableShaderDebug: { label: 'Shader Debug', type: 'toggle', tooltip: 'Enable shader compilation/linking debugging.' },
+            enableMatrixDebug: { label: 'Matrix Debug', type: 'toggle', tooltip: 'Enable matrix transformations debugging.' },
+            enablePerformanceDebug: { label: 'Performance Debug', type: 'toggle', tooltip: 'Enable performance monitoring.' },
         },
     },
 };

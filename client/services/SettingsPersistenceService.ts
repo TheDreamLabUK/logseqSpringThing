@@ -1,6 +1,6 @@
 import { Settings } from '../types/settings/base';
 import { defaultSettings } from '../state/defaultSettings';
-import { createLogger } from '../core/logger';
+import { createLogger, createErrorMetadata, createDataMetadata } from '../core/logger';
 import { validateSettings } from '../types/settings/validation';
 import { buildApiUrl, getAuthHeaders } from '../core/api';
 import { API_ENDPOINTS } from '../core/constants';
@@ -33,7 +33,7 @@ export class SettingsPersistenceService {
     public setCurrentUser(pubkey: string | null, isPowerUser: boolean = false): void {
         this.currentPubkey = pubkey;
         this.isPowerUser = isPowerUser;
-        logger.debug('User state updated:', { pubkey, isPowerUser });
+        logger.debug('User state updated:', createDataMetadata({ pubkey, isPowerUser }));
     }
 
     public async saveSettings(settings: Settings): Promise<void> {
@@ -58,12 +58,12 @@ export class SettingsPersistenceService {
             try {
                 await this.syncToServer(storedSettings);
             } catch (error) {
-                logger.warn('Failed to sync settings to server:', error);
+                logger.warn('Failed to sync settings to server:', createErrorMetadata(error));
             }
 
             logger.info('Settings saved successfully');
         } catch (error) {
-            logger.error('Failed to save settings:', error);
+            logger.error('Failed to save settings:', createErrorMetadata(error));
             throw error;
         }
     }
@@ -81,7 +81,7 @@ export class SettingsPersistenceService {
                     return serverSettings;
                 }
             } catch (error) {
-                logger.warn('Failed to load settings from server:', error);
+                logger.warn('Failed to load settings from server:', createErrorMetadata(error));
             }
 
             // Fall back to local storage
@@ -97,7 +97,10 @@ export class SettingsPersistenceService {
 
                 // Pubkey check
                 if (stored.pubkey && stored.pubkey !== this.currentPubkey) {
-                    logger.warn('Settings pubkey mismatch:', { stored: stored.pubkey, current: this.currentPubkey });
+                    logger.warn('Settings pubkey mismatch:', createDataMetadata({
+                        stored: stored.pubkey,
+                        current: this.currentPubkey
+                    }));
                     return { ...defaultSettings };
                 }
 
@@ -114,7 +117,7 @@ export class SettingsPersistenceService {
             // No stored settings found, use defaults
             return { ...defaultSettings };
         } catch (error) {
-            logger.error('Failed to load settings:', error);
+            logger.error('Failed to load settings:', createErrorMetadata(error));
             return { ...defaultSettings };
         }
     }
@@ -145,7 +148,7 @@ export class SettingsPersistenceService {
 
             logger.info('Settings synced to server');
         } catch (error) {
-            logger.error('Failed to sync settings to server:', error);
+            logger.error('Failed to sync settings to server:', createErrorMetadata(error));
             throw error;
         }
     }
@@ -176,7 +179,7 @@ export class SettingsPersistenceService {
 
             return settings;
         } catch (error) {
-            logger.error('Failed to load public settings:', error);
+            logger.error('Failed to load public settings:', createErrorMetadata(error));
             return { ...defaultSettings };
         }
     }
@@ -227,7 +230,7 @@ export class SettingsPersistenceService {
 
             return serverSettings;
         } catch (error) {
-            logger.error('Failed to load settings from server:', error);
+            logger.error('Failed to load settings from server:', createErrorMetadata(error));
             throw error;
         }
     }

@@ -58,7 +58,7 @@ Request to start receiving node position updates.
 
 ### Binary Messages
 
-Binary messages use an optimized protocol for efficient transmission of node position and velocity updates.
+Binary messages use an optimized protocol for efficient transmission of node position and velocity updates. The protocol uses Vec3Data for consistent vector representation across the stack.
 
 #### Message Format
 
@@ -67,8 +67,14 @@ Binary messages use an optimized protocol for efficient transmission of node pos
 [4 bytes] node_count (u32)
 For each node:
   [4 bytes] node_id (u32)
-  [12 bytes] Position (3 × f32)
-  [12 bytes] Velocity (3 × f32)
+  [12 bytes] Position (Vec3Data)
+    - [4 bytes] x (f32)
+    - [4 bytes] y (f32)
+    - [4 bytes] z (f32)
+  [12 bytes] Velocity (Vec3Data)
+    - [4 bytes] vx (f32)
+    - [4 bytes] vy (f32)
+    - [4 bytes] vz (f32)
 ```
 
 #### Message Types
@@ -130,18 +136,21 @@ Binary messages may be compressed using zlib compression when:
 - Fixed-size binary format reduces overhead
 - Optional compression for large messages
 - Efficient buffer allocation
-- Direct floating-point value transmission
+- Direct Vec3 memory layout
+- Zero-copy potential for Vec3 data
 
-### Client Processing
+### Client-side Processing
 - Fixed message format enables efficient parsing
 - Direct TypedArray access for binary data
 - No JSON parsing overhead for position updates
+- Consistent Vec3 representation with Three.js
 
 ### Server Processing
 - Optimized for high-frequency updates
 - Efficient binary message generation
 - Configurable update rate
 - Debug mode for detailed logging
+- CUDA-compatible Vec3 layout
 
 ## Configuration Options
 
@@ -164,6 +173,7 @@ The following settings can be configured:
 ```
 
 ## Related Documentation
+- [Vec3 Alignment](../technical/vec3-alignment.md)
 - [Binary Protocol Details](../technical/binary-protocol.md)
 - [Performance Optimizations](../technical/performance.md)
 - [REST API](./rest.md)

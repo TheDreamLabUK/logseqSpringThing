@@ -1,7 +1,7 @@
 import { SettingsEventEmitter, SettingsEventType } from './SettingsEventEmitter';
 import { SettingsStore } from '../state/SettingsStore';
 import { SettingsPersistenceService } from './SettingsPersistenceService';
-import { createLogger } from '../core/logger';
+import { createLogger, createErrorMetadata, createDataMetadata } from '../core/logger';
 import { buildApiUrl } from '../core/api';
 import { API_ENDPOINTS } from '../core/constants';
 
@@ -121,22 +121,21 @@ export class NostrAuthService {
         };
 
         // Log the event for debugging
-        logger.debug('Creating auth event:', {
+        logger.debug('Creating auth event:', createDataMetadata({
             kind: event.kind,
             created_at: event.created_at,
             tags: event.tags,
             content: event.content,
             pubkey: event.pubkey
-        });
+        }));
 
         // Sign the event using the Alby extension
         const signedEvent = await window.nostr?.signEvent(event);
         if (!signedEvent) {
             throw new Error('Failed to sign authentication event');
         }
-
-        logger.debug('Signed event:', JSON.stringify(signedEvent, null, 2));
-
+        
+        logger.debug('Signed event:', createDataMetadata(signedEvent));
         return signedEvent;
     }
 
@@ -158,7 +157,7 @@ export class NostrAuthService {
 
             // Create and sign the authentication event
             const signedEvent = await this.createAuthEvent(pubkey);
-            logger.debug('Sending auth request with event:', JSON.stringify(signedEvent, null, 2));
+            logger.debug('Sending auth request with event:', createDataMetadata(signedEvent));
 
             // Send authentication request to server
             const response = await fetch(buildApiUrl(API_ENDPOINTS.AUTH_NOSTR), {
@@ -171,7 +170,10 @@ export class NostrAuthService {
 
             if (!response.ok) {
                 const errorText = await response.text();
-                logger.error('Server response:', { status: response.status, body: errorText });
+                logger.error('Server response:', createDataMetadata({
+                    status: response.status,
+                    body: errorText
+                }));
                 throw new Error(`Authentication failed (${response.status}): ${errorText}`);
             }
 
@@ -183,11 +185,11 @@ export class NostrAuthService {
             }
 
             // Log successful auth data for debugging
-            logger.debug('Auth successful:', {
+            logger.debug('Auth successful:', createDataMetadata({
                 pubkey: authData.user.pubkey,
                 isPowerUser: authData.user.is_power_user,
                 features: authData.features
-            });
+            }));
 
             this.currentUser = {
                 pubkey: authData.user.pubkey,
@@ -212,7 +214,7 @@ export class NostrAuthService {
                 user: this.currentUser
             };
         } catch (error) {
-            logger.error('Login failed:', error);
+            logger.error('Login failed:', createErrorMetadata(error));
             return {
                 authenticated: false,
                 error: error instanceof Error ? error.message : 'Unknown error occurred'
@@ -240,7 +242,7 @@ export class NostrAuthService {
                     })
                 });
             } catch (error) {
-                logger.error('Logout request failed:', error);
+                logger.error('Logout request failed:', createErrorMetadata(error));
             }
         }
 
@@ -327,7 +329,10 @@ export class NostrAuthService {
                 throw new Error('Invalid session');
             }
 
-            logger.debug('Auth check successful:', { pubkey, isPowerUser: verifyData.user?.is_power_user });
+            logger.debug('Auth check successful:', createDataMetadata({
+                pubkey,
+                isPowerUser: verifyData.user?.is_power_user
+            }));
 
             // Set currentUser before emitting event
             this.currentUser = {
@@ -339,7 +344,7 @@ export class NostrAuthService {
             // Update persistence service with verified user
             this.settingsPersistence.setCurrentUser(pubkey, verifyData.user.is_power_user);
         } catch (error) {
-            logger.error('Auth check failed:', error);
+            logger.error('Auth check failed:', createErrorMetadata(error));
             await this.logout();
         }
     }

@@ -1,6 +1,6 @@
 import { XRHandWithHaptics } from '../../types/xr';
 import { NodeData } from '../../core/types';
-import { Camera, Scene } from 'three';
+import { Camera, Scene, Vector3 } from 'three';
 
 /**
  * Common interface for node management implementations.
@@ -21,8 +21,8 @@ export interface NodeManagerInterface {
     updateNodePositions(nodes: { 
         id: string, 
         data: { 
-            position: [number, number, number],
-            velocity?: [number, number, number]
+            position: Vector3,
+            velocity?: Vector3
         } 
     }[]): void;
 

@@ -1,5 +1,5 @@
 import { ModularControlPanel } from './ModularControlPanel';
-import { createLogger } from '../core/logger';
+import { createLogger, createErrorMetadata } from '../core/logger';
 import './ModularControlPanel.css';
 
 const logger = createLogger('UI');
@@ -24,7 +24,7 @@ export async function initializeUI(): Promise<void> {
         
         logger.debug('ModularControlPanel initialized successfully');
     } catch (error) {
-        logger.error('Failed to initialize UI:', error);
+        logger.error('Failed to initialize UI:', createErrorMetadata(error));
         throw error;
     }
 }
@@ -33,12 +33,12 @@ export async function initializeUI(): Promise<void> {
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => {
         initializeUI().catch(error => {
-            logger.error('Failed to initialize UI on DOMContentLoaded:', error);
+            logger.error('Failed to initialize UI on DOMContentLoaded:', createErrorMetadata(error));
         });
     });
 } else {
     initializeUI().catch(error => {
-        logger.error('Failed to initialize UI:', error);
+        logger.error('Failed to initialize UI:', createErrorMetadata(error));
     });
 }
 

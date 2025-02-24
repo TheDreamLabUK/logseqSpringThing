@@ -1,10 +1,42 @@
 #include <cuda_runtime.h>
+#include <math.h>
 
 extern "C" {
+    // Matches Rust Vec3Data memory layout
     struct NodeData {
-        float position[3];    // 12 bytes - matches Rust [f32; 3]
-        float velocity[3];    // 12 bytes - matches Rust [f32; 3]
+        float x, y, z;        // position (12 bytes)
+        float vx, vy, vz;     // velocity (12 bytes)
     };
+
+    // Constants for validation
+    const float MAX_FORCE = 1000.0f;
+    const float MAX_VELOCITY = 100.0f;
+    const float MIN_DIST = 0.0001f;
+
+    __device__ bool is_valid_float3(float3 v) {
+        return !isnan(v.x) && !isnan(v.y) && !isnan(v.z) &&
+               isfinite(v.x) && isfinite(v.y) && isfinite(v.z);
+    }
+
+    __device__ float3 clamp_force(float3 force) {
+        float mag = sqrtf(force.x * force.x + force.y * force.y + force.z * force.z);
+        if (mag > MAX_FORCE) {
+            float scale = MAX_FORCE / mag;
+            force.x *= scale;
+            force.y *= scale;
+            force.z *= scale;
+        }
+        return force;
+    }
+
+    __device__ float3 clamp_velocity(float3 vel) {
+        float mag = sqrtf(vel.x * vel.x + vel.y * vel.y + vel.z * vel.z);
+        if (mag > MAX_VELOCITY) {
+            float scale = MAX_VELOCITY / mag;
+            return make_float3(vel.x * scale, vel.y * scale, vel.z * scale);
+        }
+        return vel;
+    }
 
     __global__ void compute_forces_kernel(
         NodeData* nodes,
@@ -19,9 +51,36 @@ extern "C" {
         int idx = blockIdx.x * blockDim.x + threadIdx.x;
         if (idx >= num_nodes) return;
 
+        // Validate simulation parameters
+        if (spring_k < 0.0f || damping < 0.0f || damping > 1.0f || 
+            repel_k < 0.0f || dt <= 0.0f || max_repulsion_dist <= 0.0f) {
+            if (idx == 0) {
+                printf("Invalid simulation parameters: spring_k=%f, damping=%f, repel_k=%f, dt=%f, max_repulsion_dist=%f\n",
+                    spring_k, damping, repel_k, dt, max_repulsion_dist);
+            }
+            return;
+        }
+
         float3 total_force = make_float3(0.0f, 0.0f, 0.0f);
-        float3 pos = make_float3(nodes[idx].position[0], nodes[idx].position[1], nodes[idx].position[2]);
-        float3 vel = make_float3(nodes[idx].velocity[0], nodes[idx].velocity[1], nodes[idx].velocity[2]);
+        float3 pos = make_float3(nodes[idx].x, nodes[idx].y, nodes[idx].z);
+        float3 vel = make_float3(nodes[idx].vx, nodes[idx].vy, nodes[idx].vz);
+
+        // Validate input position and velocity
+        if (!is_valid_float3(pos) || !is_valid_float3(vel)) {
+            if (idx == 0) {
+                printf("Node %d: Invalid input detected - pos=(%f,%f,%f), vel=(%f,%f,%f)\n",
+                    idx, pos.x, pos.y, pos.z, vel.x, vel.y, vel.z);
+            }
+            // Reset to safe values
+            pos = make_float3(0.0f, 0.0f, 0.0f);
+            vel = make_float3(0.0f, 0.0f, 0.0f);
+            nodes[idx].x = 0.0f;
+            nodes[idx].y = 0.0f;
+            nodes[idx].z = 0.0f;
+            nodes[idx].vx = 0.0f;
+            nodes[idx].vy = 0.0f;
+            nodes[idx].vz = 0.0f;
+        }
         
         // Default mass and flags since they're no longer in the struct
         float mass = 1.0f;  // Use uniform mass for all nodes
@@ -33,9 +92,9 @@ extern "C" {
             
             float other_mass = 1.0f;  // Use uniform mass for all nodes
             float3 other_pos = make_float3(
-                nodes[j].position[0],
-                nodes[j].position[1],
-                nodes[j].position[2]
+                nodes[j].x,
+                nodes[j].y,
+                nodes[j].z
             );
             
             float3 diff = make_float3(
@@ -45,7 +104,7 @@ extern "C" {
             );
             
             float dist = sqrtf(diff.x * diff.x + diff.y * diff.y + diff.z * diff.z);
-            if (dist > 0.0001f) {
+            if (dist > MIN_DIST) {
                 float3 dir = make_float3(
                     diff.x / dist,
                     diff.y / dist,
@@ -70,6 +129,9 @@ extern "C" {
             }
         }
 
+        // Clamp total force to prevent instability
+        total_force = clamp_force(total_force);
+
         // Apply damping to velocity
         vel.x = vel.x * (1.0f - damping) + total_force.x * dt;
         vel.y = vel.y * (1.0f - damping) + total_force.y * dt;
@@ -80,6 +142,9 @@ extern "C" {
         pos.y += vel.y * dt;
         pos.z += vel.z * dt;
 
+        // Clamp velocity to prevent runaway values
+        vel = clamp_velocity(vel);
+
         // Constrain to viewport bounds if enabled (bounds > 0)
         if (viewport_bounds > 0.0f) {
             pos.x = fmaxf(-viewport_bounds, fminf(viewport_bounds, pos.x));
@@ -88,12 +153,12 @@ extern "C" {
         }
 
         // Store results back
-        nodes[idx].position[0] = pos.x;
-        nodes[idx].position[1] = pos.y;
-        nodes[idx].position[2] = pos.z;
-        nodes[idx].velocity[0] = vel.x;
-        nodes[idx].velocity[1] = vel.y;
-        nodes[idx].velocity[2] = vel.z;
+        nodes[idx].x = pos.x;
+        nodes[idx].y = pos.y;
+        nodes[idx].z = pos.z;
+        nodes[idx].vx = vel.x;
+        nodes[idx].vy = vel.y;
+        nodes[idx].vz = vel.z;
 
         // Debug output for first node
         if (idx == 0) {
@@ -102,8 +167,10 @@ extern "C" {
                 total_force.y * total_force.y +
                 total_force.z * total_force.z
             );
-            printf("Node %d: force_mag=%f, pos=(%f,%f,%f), vel=(%f,%f,%f)\n",
+            float vel_mag = sqrtf(vel.x * vel.x + vel.y * vel.y + vel.z * vel.z);
+            printf("Node %d: force_mag=%f (max=%f), vel_mag=%f (max=%f), pos=(%f,%f,%f), vel=(%f,%f,%f)\n",
                 idx, force_mag,
+                MAX_FORCE, vel_mag, MAX_VELOCITY,
                 pos.x, pos.y, pos.z,
                 vel.x, vel.y, vel.z);
         }

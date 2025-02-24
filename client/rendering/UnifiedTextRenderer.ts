@@ -168,7 +168,11 @@ export class UnifiedTextRenderer {
             // Force shader compilation
             this.material.needsUpdate = true;
         } catch (error) {
-            logger.error('Failed to initialize text shader:', error);
+            logger.error('Failed to initialize text shader:', {
+                error,
+                message: error instanceof Error ? error.message : String(error),
+                stack: error instanceof Error ? error.stack : undefined
+            });
             // Fallback to basic material
             this.material = new MeshBasicMaterial({ 
                 color: new Color(this.settings.textColor) });
@@ -234,7 +238,11 @@ export class UnifiedTextRenderer {
                 this.updateLabel(id, label.text, label.position, label.color);
             });
         } catch (error) {
-            logger.error('Failed to initialize font atlas:', error);
+            logger.error('Failed to initialize font atlas:', {
+                error,
+                message: error instanceof Error ? error.message : String(error),
+                stack: error instanceof Error ? error.stack : undefined
+            });
         }
     }
     
@@ -273,7 +281,7 @@ export class UnifiedTextRenderer {
         this.logger.debug('Updating label:', {
             id,
             text,
-            position: [position.x, position.y, position.z],
+            position,
             color: color ? [(color as any).r, (color as any).g, (color as any).b] : undefined,
             hasAtlas: !!this.fontAtlas
         });
@@ -298,7 +306,7 @@ export class UnifiedTextRenderer {
             this.logger.debug('Created new label instance:', {
                 id,
                 instanceIndex: this.currentInstanceCount,
-                position: [position.x, position.y, position.z],
+                position,
                 color: color ? [(color as any).r, (color as any).g, (color as any).b] : undefined
             });
             

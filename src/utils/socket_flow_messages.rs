@@ -2,12 +2,13 @@ use serde::{Deserialize, Serialize};
 use bytemuck::{Pod, Zeroable};
 use std::collections::HashMap;
 use cudarc::driver::{DeviceRepr, ValidAsZeroBits};
+use crate::types::vec3::Vec3Data;
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Pod, Zeroable, Serialize, Deserialize)]
 pub struct BinaryNodeData {
-    pub position: [f32; 3],  // x, y, z
-    pub velocity: [f32; 3],  // vx, vy, vz
+    pub position: Vec3Data,  // x, y, z
+    pub velocity: Vec3Data,  // vx, vy, vz
 }
 
 // Implement DeviceRepr for BinaryNodeData
@@ -71,8 +72,8 @@ impl Node {
             id: id.clone(),
             label: id,
             data: BinaryNodeData {
-                position: [0.0; 3],
-                velocity: [0.0; 3],
+                position: Vec3Data::zero(),
+                velocity: Vec3Data::zero(),
             },
             metadata: HashMap::new(),
             file_size: 0,
@@ -90,19 +91,19 @@ impl Node {
     }
 
     // Convenience getters/setters for x, y, z coordinates
-    pub fn x(&self) -> f32 { self.data.position[0] }
-    pub fn y(&self) -> f32 { self.data.position[1] }
-    pub fn z(&self) -> f32 { self.data.position[2] }
-    pub fn vx(&self) -> f32 { self.data.velocity[0] }
-    pub fn vy(&self) -> f32 { self.data.velocity[1] }
-    pub fn vz(&self) -> f32 { self.data.velocity[2] }
+    pub fn x(&self) -> f32 { self.data.position.x }
+    pub fn y(&self) -> f32 { self.data.position.y }
+    pub fn z(&self) -> f32 { self.data.position.z }
+    pub fn vx(&self) -> f32 { self.data.velocity.x }
+    pub fn vy(&self) -> f32 { self.data.velocity.y }
+    pub fn vz(&self) -> f32 { self.data.velocity.z }
     
-    pub fn set_x(&mut self, val: f32) { self.data.position[0] = val; }
-    pub fn set_y(&mut self, val: f32) { self.data.position[1] = val; }
-    pub fn set_z(&mut self, val: f32) { self.data.position[2] = val; }
-    pub fn set_vx(&mut self, val: f32) { self.data.velocity[0] = val; }
-    pub fn set_vy(&mut self, val: f32) { self.data.velocity[1] = val; }
-    pub fn set_vz(&mut self, val: f32) { self.data.velocity[2] = val; }
+    pub fn set_x(&mut self, val: f32) { self.data.position.x = val; }
+    pub fn set_y(&mut self, val: f32) { self.data.position.y = val; }
+    pub fn set_z(&mut self, val: f32) { self.data.position.z = val; }
+    pub fn set_vx(&mut self, val: f32) { self.data.velocity.x = val; }
+    pub fn set_vy(&mut self, val: f32) { self.data.velocity.y = val; }
+    pub fn set_vz(&mut self, val: f32) { self.data.velocity.z = val; }
 }
 
 #[derive(Debug, Serialize, Deserialize)]

@@ -1,5 +1,5 @@
 import { Scene, PerspectiveCamera } from 'three';
-import { createLogger } from '../core/logger';
+import { createLogger, createErrorMetadata } from '../core/logger';
 import { Settings } from '../types/settings/base';
 import { defaultSettings } from '../state/defaultSettings';
 import { XRHandWithHaptics } from '../types/xr';
@@ -86,7 +86,7 @@ export class VisualizationController {
                 timestamp: Date.now()
             });
         }).catch(error => {
-            logger.error('Failed to connect WebSocket:', error);
+            logger.error('Failed to connect WebSocket:', createErrorMetadata(error));
         });
         
         const materialFactory = MaterialFactory.getInstance();

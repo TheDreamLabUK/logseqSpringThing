@@ -75,14 +75,14 @@ export class HandInteractionManager {
         // Send node position update through websocket
         this.websocketService.sendNodeUpdates([{
             id: nodeId,
-            position: { x: position.x, y: position.y, z: position.z },
-            velocity: { x: 0, y: 0, z: 0 }
+            position: position.clone(),
+            velocity: new Vector3(0, 0, 0)
         }]);
 
         // Update local node position
         this.nodeManager.updateNodePositions([{
             id: nodeId,
-            data: { position: [position.x, position.y, position.z], velocity: [0, 0, 0] }
+            data: { position: position.clone(), velocity: new Vector3(0, 0, 0) }
         }]);
     }
 

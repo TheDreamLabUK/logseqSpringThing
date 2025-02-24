@@ -1,4 +1,4 @@
-import { createLogger } from '../core/logger';
+import { createLogger, createErrorMetadata, createDataMetadata } from '../core/logger';
 
 const logger = createLogger('FeatureFlags');
 
@@ -40,7 +40,7 @@ export class FeatureFlagManager {
                     };
                     logger.info('Loaded feature flags from localStorage');
                 } catch (error) {
-                    logger.error('Failed to parse feature flags from localStorage:', error);
+                    logger.error('Failed to parse feature flags from localStorage:', createErrorMetadata(error));
                 }
             }
         }
@@ -82,7 +82,7 @@ export class FeatureFlagManager {
             try {
                 localStorage.setItem('featureFlags', JSON.stringify(this.flags));
             } catch (error) {
-                logger.error('Failed to save feature flags to localStorage:', error);
+                logger.error('Failed to save feature flags to localStorage:', createErrorMetadata(error));
             }
         }
 
@@ -90,10 +90,10 @@ export class FeatureFlagManager {
         Object.keys(updates).forEach(key => {
             const feature = key as keyof FeatureFlags;
             if (oldFlags[feature] !== this.flags[feature]) {
-                logger.info(`Feature flag "${feature}" changed:`, {
+                logger.info(`Feature flag "${feature}" changed:`, createDataMetadata({
                     from: oldFlags[feature],
                     to: this.flags[feature]
-                });
+                }));
             }
         });
 
@@ -125,7 +125,7 @@ export class FeatureFlagManager {
             try {
                 listener(flags);
             } catch (error) {
-                logger.error('Error in feature flag listener:', error);
+                logger.error('Error in feature flag listener:', createErrorMetadata(error));
             }
         });
     }

@@ -6,6 +6,12 @@ export interface DebugState {
     enableDataDebug: boolean;
     enableWebsocketDebug: boolean;
     logBinaryHeaders: boolean;
+    // New debug categories for enhanced monitoring
+    enablePhysicsDebug: boolean;
+    enableNodeDebug: boolean;
+    enableShaderDebug: boolean;
+    enableMatrixDebug: boolean;
+    enablePerformanceDebug: boolean;
 }
 
 class DebugStateManager {
@@ -15,7 +21,12 @@ class DebugStateManager {
         logFullJson: false,
         enableDataDebug: false,
         enableWebsocketDebug: false,
-        logBinaryHeaders: false
+        logBinaryHeaders: false,
+        enablePhysicsDebug: false,
+        enableNodeDebug: false,
+        enableShaderDebug: false,
+        enableMatrixDebug: false,
+        enablePerformanceDebug: false
     };
 
     private constructor() {}
@@ -37,7 +48,12 @@ class DebugStateManager {
             logFullJson: settingsStore.get('system.debug.log_full_json') as boolean ?? false,
             enableDataDebug: settingsStore.get('system.debug.enable_data_debug') as boolean ?? false,
             enableWebsocketDebug: settingsStore.get('system.debug.enable_websocket_debug') as boolean ?? false,
-            logBinaryHeaders: settingsStore.get('system.debug.log_binary_headers') as boolean ?? false
+            logBinaryHeaders: settingsStore.get('system.debug.log_binary_headers') as boolean ?? false,
+            enablePhysicsDebug: settingsStore.get('system.debug.enable_physics_debug') as boolean ?? false,
+            enableNodeDebug: settingsStore.get('system.debug.enable_node_debug') as boolean ?? false,
+            enableShaderDebug: settingsStore.get('system.debug.enable_shader_debug') as boolean ?? false,
+            enableMatrixDebug: settingsStore.get('system.debug.enable_matrix_debug') as boolean ?? false,
+            enablePerformanceDebug: settingsStore.get('system.debug.enable_performance_debug') as boolean ?? false
         };
 
         // Subscribe to debug setting changes
@@ -63,6 +79,32 @@ class DebugStateManager {
             this.state.logBinaryHeaders = value as boolean;
         });
 
+        settingsStore.subscribe('system.debug.enable_physics_debug', (_, value) => {
+            this.state.enablePhysicsDebug = value as boolean;
+        });
+
+        settingsStore.subscribe('system.debug.enable_node_debug', (_, value) => {
+            this.state.enableNodeDebug = value as boolean;
+        });
+
+        settingsStore.subscribe('system.debug.enable_shader_debug', (_, value) => {
+            this.state.enableShaderDebug = value as boolean;
+        });
+
+        settingsStore.subscribe('system.debug.enable_matrix_debug', (_, value) => {
+            this.state.enableMatrixDebug = value as boolean;
+        });
+
+        settingsStore.subscribe('system.debug.enable_performance_debug', (_, value) => {
+            this.state.enablePerformanceDebug = value as boolean;
+        });
+
+        // Log initial debug state if enabled
+        if (this.state.enabled) {
+            const { logger } = require('./logger');
+            logger.debug('Debug state initialized', { ...this.state });
+        }
+
         this.updateLoggerConfig();
     }
 
@@ -86,6 +128,26 @@ class DebugStateManager {
 
     public shouldLogBinaryHeaders(): boolean {
         return this.state.enabled && this.state.logBinaryHeaders;
+    }
+
+    public isPhysicsDebugEnabled(): boolean {
+        return this.state.enabled && this.state.enablePhysicsDebug;
+    }
+
+    public isNodeDebugEnabled(): boolean {
+        return this.state.enabled && this.state.enableNodeDebug;
+    }
+
+    public isShaderDebugEnabled(): boolean {
+        return this.state.enabled && this.state.enableShaderDebug;
+    }
+
+    public isMatrixDebugEnabled(): boolean {
+        return this.state.enabled && this.state.enableMatrixDebug;
+    }
+
+    public isPerformanceDebugEnabled(): boolean {
+        return this.state.enabled && this.state.enablePerformanceDebug;
     }
 
     public getState(): DebugState {

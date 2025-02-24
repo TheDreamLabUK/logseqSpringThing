@@ -12,7 +12,8 @@ import { NodeInteractionManager } from './interaction/NodeInteractionManager';
 import { NodeManagerInterface, NodeManagerError, NodeManagerErrorType } from './NodeManagerInterface';
 import { NodeData } from '../../core/types';
 import { XRHandWithHaptics } from '../../types/xr';
-import { createLogger } from '../../core/logger';
+import { createLogger, createErrorMetadata, createDataMetadata } from '../../core/logger';
+import { Vec3 } from '../../types/vec3';
 
 const logger = createLogger('NodeManagerFacade');
 
@@ -37,6 +38,10 @@ export class NodeManagerFacade implements NodeManagerInterface {
     private frameCount: number = 0;
     private nodeIndices: Map<string, string> = new Map();
     private tempVector = new Vector3();
+
+    private toThreeVec3(vec: Vec3): Vector3 {
+        return new Vector3(vec.x, vec.y, vec.z);
+    }
 
     private constructor(scene: Scene, camera: Camera, material: Material) {
         this.camera = camera;
@@ -83,7 +88,7 @@ export class NodeManagerFacade implements NodeManagerInterface {
             const instanceMesh = this.instanceManager.getInstanceMesh();
             instanceMesh.layers.set(enabled ? 1 : 0);
             this.metadataManager.setXRMode(enabled);
-            logger.debug(`XR mode ${enabled ? 'enabled' : 'disabled'}`);
+            logger.debug('XR mode status changed', createDataMetadata({ enabled }));
         } catch (error) {
             throw new NodeManagerError(
                 NodeManagerErrorType.XR_MODE_SWITCH_FAILED,
@@ -104,7 +109,7 @@ export class NodeManagerFacade implements NodeManagerInterface {
                 );
             }
         } catch (error) {
-            logger.error('Failed to update settings:', error);
+            logger.error('Failed to update settings:', createErrorMetadata(error));
         }
     }
 
@@ -118,30 +123,22 @@ export class NodeManagerFacade implements NodeManagerInterface {
         // Track node IDs
         nodes.forEach(node => {
             this.nodeIndices.set(node.id, node.id);
-            logger.debug(`Tracking node ${node.id}`);
+            logger.debug('Tracking node', createDataMetadata({ nodeId: node.id }));
         });
 
         // Update instance positions
         this.instanceManager.updateNodePositions(nodes.map(node => ({
             id: node.id,
             metadata: node.data.metadata,
-            position: [
-                node.data.position.x,
-                node.data.position.y,
-                node.data.position.z
-            ],
-            velocity: node.data.velocity ? [
-                node.data.velocity.x,
-                node.data.velocity.y,
-                node.data.velocity.z
-            ] : undefined
+            position: this.toThreeVec3(node.data.position),
+            velocity: node.data.velocity ? this.toThreeVec3(node.data.velocity) : undefined
         })));
 
         // Update metadata for each node
         nodes.forEach(node => {
             if (node.data.metadata) {
                 const fileSize = node.data.metadata.fileSize || DEFAULT_FILE_SIZE;
-                logger.debug(`Updating metadata for node ${node.id}`);
+                logger.debug('Updating node metadata', createDataMetadata({ nodeId: node.id }));
                 this.metadataManager.updateMetadata(node.id, {
                     id: node.id,
                     name: node.data.metadata.name || '',
@@ -159,8 +156,8 @@ export class NodeManagerFacade implements NodeManagerInterface {
     public updateNodePositions(nodes: { 
         id: string, 
         data: { 
-            position: [number, number, number],
-            velocity?: [number, number, number]
+            position: Vector3,
+            velocity?: Vector3
         } 
     }[]): void {
         if (!this.isInitialized) return;
@@ -222,7 +219,7 @@ export class NodeManagerFacade implements NodeManagerInterface {
             }
             this.frameCount++;
         } catch (error) {
-            logger.error('Error updating metadata positions:', error);
+            logger.error('Error updating metadata positions:', createErrorMetadata(error));
         }
 
         // Update metadata labels

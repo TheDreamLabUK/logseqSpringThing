@@ -2,7 +2,8 @@
  * Core utilities for the LogseqXR visualization system
  */
 
-import { Vector3 } from './types';
+import { Vector3 } from 'three';
+import { debugState } from './debugState';
 import { THROTTLE_INTERVAL } from './constants';
 
 // Debug logging utility
@@ -12,6 +13,7 @@ export interface Logger {
   warn: (message: string, ...args: any[]) => void;
   debug: (message: string, ...args: any[]) => void;
   info: (message: string, ...args: any[]) => void;
+  performance: (message: string, ...args: any[]) => void;
 }
 
 export function createLogger(namespace: string): Logger {
@@ -20,7 +22,8 @@ export function createLogger(namespace: string): Logger {
     error: (message: string, ...args: any[]) => console.error(`[${namespace}] ${message}`, ...args),
     warn: (message: string, ...args: any[]) => console.warn(`[${namespace}] ${message}`, ...args),
     debug: (message: string, ...args: any[]) => console.debug(`[${namespace}] ${message}`, ...args),
-    info: (message: string, ...args: any[]) => console.info(`[${namespace}] ${message}`, ...args)
+    info: (message: string, ...args: any[]) => console.info(`[${namespace}] ${message}`, ...args),
+    performance: (message: string, ...args: any[]) => console.debug(`[${namespace}][Performance] ${message}`, ...args)
   };
 }
 
@@ -90,47 +93,37 @@ export class UpdateThrottler {
 
 // Vector operations
 export const vectorOps = {
-  add: (a: Vector3, b: Vector3): Vector3 => ({
-    x: a.x + b.x,
-    y: a.y + b.y,
-    z: a.z + b.z
-  }),
+  add: (a: Vector3, b: Vector3): Vector3 => {
+    const result = new Vector3();
+    return result.addVectors(a, b);
+  },
 
-  subtract: (a: Vector3, b: Vector3): Vector3 => ({
-    x: a.x - b.x,
-    y: a.y - b.y,
-    z: a.z - b.z
-  }),
+  subtract: (a: Vector3, b: Vector3): Vector3 => {
+    const result = new Vector3();
+    return result.subVectors(a, b);
+  },
 
-  multiply: (v: Vector3, scalar: number): Vector3 => ({
-    x: v.x * scalar,
-    y: v.y * scalar,
-    z: v.z * scalar
-  }),
+  multiply: (v: Vector3, scalar: number): Vector3 => {
+    const result = v.clone();
+    return result.multiplyScalar(scalar);
+  },
 
-  divide: (v: Vector3, scalar: number): Vector3 => ({
-    x: v.x / scalar,
-    y: v.y / scalar,
-    z: v.z / scalar
-  }),
+  divide: (v: Vector3, scalar: number): Vector3 => {
+    const result = v.clone();
+    return result.multiplyScalar(1 / scalar);
+  },
 
   length: (v: Vector3): number => 
-    Math.sqrt(v.x * v.x + v.y * v.y + v.z * v.z),
+    v.length(),
 
   normalize: (v: Vector3): Vector3 => {
-    const len = vectorOps.length(v);
-    return len > 0 ? vectorOps.divide(v, len) : { x: 0, y: 0, z: 0 };
+    const result = v.clone();
+    return result.normalize().clone();
   },
 
   distance: (a: Vector3, b: Vector3): number => 
-    vectorOps.length(vectorOps.subtract(a, b)),
+    a.distanceTo(b),
 
-  // Convert position array to Vector3
-  fromArray: (arr: number[]): Vector3 => ({
-    x: arr[0] || 0,
-    y: arr[1] || 0,
-    z: arr[2] || 0
-  })
 };
 
 // Scale utilities
@@ -199,11 +192,7 @@ export const binaryToFloat32Array = (buffer: ArrayBuffer): Float32Array => {
 export const float32ArrayToPositions = (array: Float32Array): Vector3[] => {
   const positions: Vector3[] = [];
   for (let i = 0; i < array.length; i += 3) {
-    positions.push({
-      x: array[i],
-      y: array[i + 1],
-      z: array[i + 2]
-    });
+    positions.push(new Vector3(array[i], array[i + 1], array[i + 2]));
   }
   return positions;
 };
@@ -218,23 +207,47 @@ export class VisualizationError extends Error {
 
 // Performance monitoring
 export class PerformanceMonitor {
-  private frames: number = 0;
-  private lastTime: number = performance.now();
-  private fps: number = 0;
+  private logger = createLogger('Performance');
+  private metrics: Map<string, number> = new Map();
+  private operations: Map<string, { startTime: number, count: number, totalTime: number }> = new Map();
 
-  update(): void {
-    this.frames++;
-    const now = performance.now();
-    const delta = now - this.lastTime;
-
-    if (delta >= 1000) {
-      this.fps = (this.frames * 1000) / delta;
-      this.frames = 0;
-      this.lastTime = now;
+  public startOperation(name: string): void {
+    if (debugState.getState().enablePerformanceDebug) {
+      this.metrics.set(name, performance.now());
+      
+      // Initialize operation stats if not exists
+      if (!this.operations.has(name)) {
+        this.operations.set(name, { startTime: 0, count: 0, totalTime: 0 });
+      }
     }
   }
 
-  getFPS(): number {
-    return Math.round(this.fps);
+  public endOperation(name: string): void {
+    if (debugState.getState().enablePerformanceDebug) {
+      const startTime = this.metrics.get(name);
+      if (startTime) {
+        const duration = performance.now() - startTime;
+        this.metrics.delete(name);
+        
+        // Update operation stats
+        const stats = this.operations.get(name);
+        if (stats) {
+          stats.count++;
+          stats.totalTime += duration;
+          
+          this.logger.performance(`Operation: ${name}`, {
+            duration,
+            avgDuration: stats.totalTime / stats.count,
+            count: stats.count,
+            operation: 'measure'
+          });
+        }
+      }
+    }
+  }
+
+  public reset(): void {
+    this.metrics.clear();
+    this.operations.clear();
   }
 }

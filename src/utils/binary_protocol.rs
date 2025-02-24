@@ -15,15 +15,15 @@ pub fn encode_node_data(nodes: &[(u32, BinaryNodeData)]) -> Vec<u8> {
         // Write node ID (u32)
         buffer.write_u32::<LittleEndian>(*node_id).unwrap();
         
-        // Write position (3 f32 values)
-        for &pos in &node.position {
-            buffer.write_f32::<LittleEndian>(pos).unwrap();
-        }
+        // Write position Vec3Data
+        buffer.write_f32::<LittleEndian>(node.position.x).unwrap();
+        buffer.write_f32::<LittleEndian>(node.position.y).unwrap();
+        buffer.write_f32::<LittleEndian>(node.position.z).unwrap();
         
-        // Write velocity (3 f32 values)
-        for &vel in &node.velocity {
-            buffer.write_f32::<LittleEndian>(vel).unwrap();
-        }
+        // Write velocity Vec3Data
+        buffer.write_f32::<LittleEndian>(node.velocity.x).unwrap();
+        buffer.write_f32::<LittleEndian>(node.velocity.y).unwrap();
+        buffer.write_f32::<LittleEndian>(node.velocity.z).unwrap();
     }
     
     if log::log_enabled!(log::Level::Debug) {
@@ -50,27 +50,29 @@ pub fn decode_node_data(data: &[u8]) -> Result<Vec<(u32, BinaryNodeData)>, Strin
         let node_id = cursor.read_u32::<LittleEndian>()
             .map_err(|e| format!("Failed to read node ID: {}", e))?;
         
-        // Read position (3 f32 values)
-        let mut position = [0.0; 3];
-        for pos in &mut position {
-            *pos = cursor.read_f32::<LittleEndian>()
-                .map_err(|e| format!("Failed to read position component: {}", e))?;
-        }
+        // Read position Vec3Data
+        let pos_x = cursor.read_f32::<LittleEndian>()
+            .map_err(|e| format!("Failed to read position.x: {}", e))?;
+        let pos_y = cursor.read_f32::<LittleEndian>()
+            .map_err(|e| format!("Failed to read position.y: {}", e))?;
+        let pos_z = cursor.read_f32::<LittleEndian>()
+            .map_err(|e| format!("Failed to read position.z: {}", e))?;
         
-        // Read velocity (3 f32 values)
-        let mut velocity = [0.0; 3];
-        for vel in &mut velocity {
-            *vel = cursor.read_f32::<LittleEndian>()
-                .map_err(|e| format!("Failed to read velocity component: {}", e))?;
-        }
+        // Read velocity Vec3Data
+        let vel_x = cursor.read_f32::<LittleEndian>()
+            .map_err(|e| format!("Failed to read velocity.x: {}", e))?;
+        let vel_y = cursor.read_f32::<LittleEndian>()
+            .map_err(|e| format!("Failed to read velocity.y: {}", e))?;
+        let vel_z = cursor.read_f32::<LittleEndian>()
+            .map_err(|e| format!("Failed to read velocity.z: {}", e))?;
         
         if log::log_enabled!(log::Level::Debug) {
-            log::debug!("Decoded node {}: pos={:?}, vel={:?}", node_id, position, velocity);
+            log::debug!("Decoded node {}: pos=({},{},{}), vel=({},{},{})", node_id, pos_x, pos_y, pos_z, vel_x, vel_y, vel_z);
         }
         
         updates.push((node_id, BinaryNodeData {
-            position,
-            velocity,
+            position: Vec3Data::new(pos_x, pos_y, pos_z),
+            velocity: Vec3Data::new(vel_x, vel_y, vel_z),
         }));
     }
     

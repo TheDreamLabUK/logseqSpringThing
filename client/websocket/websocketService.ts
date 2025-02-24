@@ -1,6 +1,8 @@
-import { createLogger } from '../core/logger';
+import { createLogger, createErrorMetadata, createMessageMetadata, createDataMetadata } from '../core/logger';
 import { buildWsUrl } from '../core/api';
 import { debugState } from '../core/debugState';
+import { Vector3 } from 'three';
+import { createVector3, zeroVector3, vector3ToObject, isValidVector3, clampVector3, vector3Equals } from '../utils/vectorUtils';
 import pako from 'pako';
 
 const logger = createLogger('WebSocketService');
@@ -26,26 +28,26 @@ enum ConnectionState {
 // Interface for node updates from user interaction
 interface NodeUpdate {
     id: string;          // Node ID (converted to u32 for binary protocol)
-    position: {          // Current position
-        x: number;
-        y: number;
-        z: number;
-    };
-    velocity?: {         // Optional velocity (defaults to 0 if not provided)
-        x: number;
-        y: number;
-        z: number;
+    position: Vector3;   // Current position (Three.js Vector3)
+    velocity?: Vector3;  // Optional velocity (Three.js Vector3)
+    metadata?: {
+        name?: string;
+        lastModified?: number;
+        links?: string[];
+        references?: string[];
+        fileSize?: number;
+        hyperlinkCount?: number;
     };
 }
 
 // Interface matching server's binary protocol format (28 bytes per node):
 // - id: 4 bytes (u32)
-// - position: 12 bytes (3 × f32)
-// - velocity: 12 bytes (3 × f32)
+// - position: 12 bytes (Vec3Data)
+// - velocity: 12 bytes (Vec3Data)
 interface BinaryNodeData {
     id: number;
-    position: [number, number, number];
-    velocity: [number, number, number];
+    position: Vector3;   // Three.js Vector3
+    velocity: Vector3;   // Three.js Vector3
 }
 
 type BinaryMessageCallback = (nodes: BinaryNodeData[]) => void;
@@ -65,23 +67,22 @@ export class WebSocketService {
     private readonly MAX_POSITION = 1000.0;
     private readonly MAX_VELOCITY = 10.0;
 
-    private validateAndClampValue(value: number, max: number): number {
-        if (isNaN(value) || !isFinite(value)) {
-            return 0;
+    private validateAndClampVector3(vec: Vector3, max: number): Vector3 {
+        if (!isValidVector3(vec)) {
+            return zeroVector3();
         }
-        return Math.max(Math.min(value, max), -max);
-    }
-
-    private validateAndClampVector3(vec: [number, number, number], max: number): [number, number, number] {
-        return [
-            this.validateAndClampValue(vec[0], max),
-            this.validateAndClampValue(vec[1], max),
-            this.validateAndClampValue(vec[2], max)
-        ];
+        return clampVector3(vec, -max, max);
     }
 
     private constructor() {
         // Don't automatically connect - wait for explicit connect() call
+    }
+
+    public static getInstance(): WebSocketService {
+        if (!WebSocketService.instance) {
+            WebSocketService.instance = new WebSocketService();
+        }
+        return WebSocketService.instance;
     }
 
     public connect(): Promise<void> {
@@ -128,7 +129,7 @@ export class WebSocketService {
                 this.ws!.addEventListener('error', (e) => reject(e), { once: true });
             });
         } catch (error) {
-            logger.error('Failed to initialize WebSocket:', error);
+            logger.error('Failed to initialize WebSocket:', createErrorMetadata(error));
             this.handleReconnect();
             return Promise.reject(error);
         }
@@ -150,7 +151,7 @@ export class WebSocketService {
         this.ws.binaryType = 'arraybuffer';
 
         this.ws.onopen = (): void => {
-            logger.info(`WebSocket connected successfully to ${this.url}`);
+            logger.info('WebSocket connected successfully to', createMessageMetadata(this.url));
             this.connectionState = ConnectionState.CONNECTED;
             this.reconnectAttempts = 0;
 
@@ -165,14 +166,17 @@ export class WebSocketService {
         };
 
         this.ws.onerror = (event: Event): void => {
-            logger.error('WebSocket error:', event);
+            logger.error('WebSocket error:', createDataMetadata(event));
             if (this.ws?.readyState === WebSocket.CLOSED) {
                 this.handleReconnect();
             }
         };
 
         this.ws.onclose = (event: CloseEvent): void => {
-            logger.warn(`WebSocket closed with code ${event.code}: ${event.reason}`);
+            logger.warn('WebSocket closed', createDataMetadata({
+                code: event.code,
+                reason: event.reason
+            }));
             
             if (this.connectionStatusHandler) {
                 this.connectionStatusHandler(false);
@@ -192,19 +196,19 @@ export class WebSocketService {
                     try {
                         const message = JSON.parse(event.data);
                         if (message.type === 'connection_established' || message.type === 'updatesStarted') {
-                            logger.info(`WebSocket ${message.type}`);
+                            logger.info('WebSocket message received:', createMessageMetadata(message.type));
                         } else {
-                            logger.warn('Unknown message type:', {
+                            logger.warn('Unknown message type:', createDataMetadata({
                                 type: message.type,
                                 message
-                            });
+                            }));
                         }
                     } catch (error) {
-                        logger.error('Failed to parse WebSocket message:', error);
+                        logger.error('Failed to parse WebSocket message:', createErrorMetadata(error));
                     }
                 }
             } catch (error) {
-                logger.error('Critical error in message handler:', error);
+                logger.error('Critical error in message handler:', createErrorMetadata(error));
             }
         };
     }
@@ -227,7 +231,7 @@ export class WebSocketService {
                 const compressed = pako.deflate(new Uint8Array(buffer));
                 return compressed.buffer;
             } catch (error) {
-                logger.warn('Compression failed, using original data:', error);
+                logger.warn('Compression failed, using original data:', createErrorMetadata(error));
                 return buffer;
             }
         }
@@ -237,12 +241,12 @@ export class WebSocketService {
     private handleBinaryMessage(buffer: ArrayBuffer): void {
         try {
             if (debugState.isWebsocketDebugEnabled()) {
-                debugLog('Processing binary message:', { size: buffer.byteLength });
+                debugLog('Processing binary message:', createDataMetadata({ size: buffer.byteLength }));
             }
 
             const decompressedBuffer = this.tryDecompress(buffer);
             if (debugState.isWebsocketDebugEnabled()) {
-                debugLog('After decompression:', { size: decompressedBuffer.byteLength });
+                debugLog('After decompression:', createDataMetadata({ size: decompressedBuffer.byteLength }));
             }
             
             // Each node update is 28 bytes (4 for id, 12 for position, 12 for velocity)
@@ -253,7 +257,7 @@ export class WebSocketService {
             const dataView = new DataView(decompressedBuffer);
             const nodeCount = decompressedBuffer.byteLength / 28;
             if (debugState.isWebsocketDebugEnabled()) {
-                debugLog('Node count:', { count: nodeCount });
+                debugLog('Node count:', createDataMetadata({ count: nodeCount }));
             }
             let offset = 0;
             let invalidValuesFound = false;
@@ -263,35 +267,34 @@ export class WebSocketService {
                 const id = dataView.getUint32(offset, true);
                 offset += 4;
 
-                const position: [number, number, number] = [
-                    dataView.getFloat32(offset, true),
-                    dataView.getFloat32(offset + 4, true),
-                    dataView.getFloat32(offset + 8, true)
-                ];
+                const position = createVector3(
+                    dataView.getFloat32(offset, true),      // x
+                    dataView.getFloat32(offset + 4, true),  // y
+                    dataView.getFloat32(offset + 8, true)   // z
+                );
                 offset += 12;
 
-                const velocity: [number, number, number] = [
-                    dataView.getFloat32(offset, true),
-                    dataView.getFloat32(offset + 4, true),
-                    dataView.getFloat32(offset + 8, true)
-                ];
+                const velocity = createVector3(
+                    dataView.getFloat32(offset, true),      // x
+                    dataView.getFloat32(offset + 4, true),  // y
+                    dataView.getFloat32(offset + 8, true)   // z
+                );
                 offset += 12;
                 
                 // Validate and clamp position and velocity
                 const sanitizedPosition = this.validateAndClampVector3(position, this.MAX_POSITION);
                 const sanitizedVelocity = this.validateAndClampVector3(velocity, this.MAX_VELOCITY);
                 
-                // Check if values were invalid
-                if (sanitizedPosition.some((v, i) => v !== position[i]) ||
-                    sanitizedVelocity.some((v, i) => v !== velocity[i])) {
+                // Check if values were invalid using vector3Equals
+                if (!vector3Equals(position, sanitizedPosition) || !vector3Equals(velocity, sanitizedVelocity)) {
                     invalidValuesFound = true;
-                    logger.warn('Invalid values detected in binary message:', {
+                    logger.warn('Invalid values detected in binary message:', createDataMetadata({
                         nodeId: id,
-                        originalPosition: position,
-                        sanitizedPosition,
-                        originalVelocity: velocity,
-                        sanitizedVelocity
-                    });
+                        originalPosition: vector3ToObject(position),
+                        sanitizedPosition: vector3ToObject(sanitizedPosition),
+                        originalVelocity: vector3ToObject(velocity),
+                        sanitizedVelocity: vector3ToObject(sanitizedVelocity)
+                    }));
                 }
 
                 nodes.push({ id, position: sanitizedPosition, velocity: sanitizedVelocity });
@@ -303,19 +306,19 @@ export class WebSocketService {
 
             if (nodes.length > 0 && this.binaryMessageCallback) {
                 if (debugState.isWebsocketDebugEnabled()) {
-                    debugLog('Calling binary message callback with nodes:', { count: nodes.length });
+                    debugLog('Calling binary message callback with nodes:', createDataMetadata({ count: nodes.length }));
                 }
                 this.binaryMessageCallback(nodes);
             } else {
                 if (debugState.isWebsocketDebugEnabled()) {
-                    debugLog('No nodes to process or no callback registered', {
+                    debugLog('No nodes to process or no callback registered', createDataMetadata({
                         nodesLength: nodes.length,
                         hasCallback: !!this.binaryMessageCallback
-                    });
+                    }));
                 }
             }
         } catch (error) {
-            logger.error('Failed to process binary message:', error);
+            logger.error('Failed to process binary message:', createErrorMetadata(error));
         }
     }
 
@@ -343,7 +346,7 @@ export class WebSocketService {
                 try {
                     await this.connect();
                 } catch (error) {
-                    logger.error('Reconnection attempt failed:', error);
+                    logger.error('Reconnection attempt failed:', createErrorMetadata(error));
                 }
             }, delay);
         } else {
@@ -356,13 +359,6 @@ export class WebSocketService {
         if (this.connectionStatusHandler) {
             this.connectionStatusHandler(false);
         }
-    }
-
-    public static getInstance(): WebSocketService {
-        if (!WebSocketService.instance) {
-            WebSocketService.instance = new WebSocketService();
-        }
-        return WebSocketService.instance;
     }
 
     public onBinaryMessage(callback: BinaryMessageCallback): void {
@@ -378,7 +374,7 @@ export class WebSocketService {
             try {
                 this.ws.send(JSON.stringify(message));
             } catch (error) {
-                logger.error('Error sending message:', error);
+                logger.error('Error sending message:', createErrorMetadata(error));
             }
         }
     }
@@ -402,20 +398,23 @@ export class WebSocketService {
         updates.forEach(update => {
             const id = parseInt(update.id, 10);
             if (isNaN(id)) {
-                logger.warn('Invalid node ID:', update.id);
+                logger.warn('Invalid node ID:', createMessageMetadata(update.id));
                 return;
             }
             dataView.setUint32(offset, id, true);
             offset += 4;
 
+            // Write position
             dataView.setFloat32(offset, update.position.x, true);
             dataView.setFloat32(offset + 4, update.position.y, true);
             dataView.setFloat32(offset + 8, update.position.z, true);
             offset += 12;
 
-            dataView.setFloat32(offset, update.velocity?.x ?? 0, true);
-            dataView.setFloat32(offset + 4, update.velocity?.y ?? 0, true);
-            dataView.setFloat32(offset + 8, update.velocity?.z ?? 0, true);
+            // Write velocity (default to zero vector if not provided)
+            const velocity = update.velocity ?? zeroVector3();
+            dataView.setFloat32(offset, velocity.x, true);
+            dataView.setFloat32(offset + 4, velocity.y, true);
+            dataView.setFloat32(offset + 8, velocity.z, true);
             offset += 12;
         });
 

@@ -24,7 +24,7 @@ import { HologramShaderMaterial } from './materials/HologramShaderMaterial';
 import { Settings } from '../types/settings/base';
 import { defaultSettings } from '../state/defaultSettings';
 import { debugState } from '../core/debugState';
-import { logger } from '../core/logger';
+import { logger, createErrorMetadata, createDataMetadata } from '../core/logger';
 
 const BACKGROUND_COLOR = 0x000000;  // Material Design Grey 900
 const LOW_PERF_FPS_THRESHOLD = 30;  // Lower FPS threshold for low performance mode
@@ -138,7 +138,7 @@ export class SceneManager {
       this.composer.addPass(this.bloomPass);
       
     } catch (error) {
-      logger.error('Failed to initialize renderer or post-processing:', error);
+      logger.error('Failed to initialize renderer or post-processing:', createErrorMetadata(error));
       throw new Error('Failed to initialize rendering system');
     }
   }
@@ -299,7 +299,7 @@ export class SceneManager {
         this.renderer.render(this.scene, this.camera);
       }
     } catch (error) {
-      logger.error('Render error:', error);
+      logger.error('Render error:', createErrorMetadata(error));
       if (this.bloomPass?.enabled) {
         logger.warn('Disabling bloom pass due to render error');
         this.bloomPass.enabled = false;
@@ -480,13 +480,13 @@ export class SceneManager {
 
     // Only log if something actually changed
     if (hasRenderingChanged) {
-      logger.debug('Scene settings updated:', {
+      logger.debug('Scene settings updated:', createDataMetadata({
         rendering: newRendering,
         bloom: {
           enabled: this.bloomPass.enabled,
           strength: this.bloomPass.strength
         }
-      });
+      }));
     }
   }
 
@@ -517,6 +517,8 @@ export class SceneManager {
     }
 
     // Log optimization application
-    logger.debug(`Applied low performance optimizations at ${this.currentFps.toFixed(1)} FPS`);
+    logger.debug('Applied low performance optimizations', createDataMetadata({
+      fps: this.currentFps.toFixed(1)
+    }));
   }
 }

@@ -1,11 +1,11 @@
 import { SettingsStore } from '../state/SettingsStore';
 import { formatSettingName } from '../types/settings/utils';
-import { ValidationErrorDisplay } from '../components/settings/ValidationErrorDisplay';
-import { createLogger } from '../core/logger';
+import { createLogger, createErrorMetadata } from '../core/logger';
 import { platformManager } from '../platform/platformManager';
 import { nostrAuth } from '../services/NostrAuthService';
 import { EventEmitter } from '../utils/eventEmitter';
 import { settingsMap, SettingControl } from './controlPanelConfig';
+import { ValidationErrorDisplay } from '../components/settings/ValidationErrorDisplay';
 import './ModularControlPanel.css';
 
 const logger = createLogger('ModularControlPanel');
@@ -84,7 +84,7 @@ export class ModularControlPanel extends EventEmitter<ModularControlPanelEvents>
             
             logger.info('ModularControlPanel fully initialized');
         } catch (error) {
-            logger.error('Failed to initialize ModularControlPanel:', error);
+            logger.error('Failed to initialize ModularControlPanel:', createErrorMetadata(error));
             throw error;
         }
     }
@@ -94,7 +94,7 @@ export class ModularControlPanel extends EventEmitter<ModularControlPanelEvents>
             await this.settingsStore.initialize();
             logger.info('Settings initialized successfully');
         } catch (error) {
-            logger.error('Failed to initialize settings:', error);
+            logger.error('Failed to initialize settings:', createErrorMetadata(error));
             throw error;
         }
     }
@@ -123,7 +123,7 @@ export class ModularControlPanel extends EventEmitter<ModularControlPanelEvents>
             this.container.appendChild(categoriesContainer);
             logger.info('Panel UI initialized');
         } catch (error) {
-            logger.error('Failed to initialize panel:', error);
+            logger.error('Failed to initialize panel:', createErrorMetadata(error));
             throw error;
         }
     }
@@ -214,7 +214,7 @@ export class ModularControlPanel extends EventEmitter<ModularControlPanelEvents>
                     throw new Error(result.error || 'Authentication failed');
                 }
             } catch (error) {
-                logger.error('Nostr login failed:', error);
+                logger.error('Nostr login failed:', createErrorMetadata(error));
                 const errorMsg = document.createElement('div');
                 errorMsg.className = 'auth-error';
                 
@@ -248,7 +248,7 @@ export class ModularControlPanel extends EventEmitter<ModularControlPanelEvents>
                             loginBtn.textContent = 'Logging out...';
                             await nostrAuth.logout();
                         } catch (error) {
-                            logger.error('Logout failed:', error);
+                            logger.error('Logout failed:', createErrorMetadata(error));
                         }
                     };
                     statusDisplay.innerHTML = `
@@ -506,7 +506,7 @@ export class ModularControlPanel extends EventEmitter<ModularControlPanelEvents>
             this.settingsStore.set(path, processedValue);
             this.emit('settings:updated', { path, value: processedValue });
         } catch (error) {
-            logger.error(`Failed to update setting ${path}:`, error);
+            logger.error(`Failed to update setting ${path}:`, createErrorMetadata(error));
             
             // Create an error element
             const errorElement = document.createElement('div');

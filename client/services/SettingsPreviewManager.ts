@@ -1,4 +1,4 @@
-import { createLogger } from '../core/logger';
+import { createLogger, createErrorMetadata } from '../core/logger';
 import { settingsEvents, SettingsEventType } from './SettingsEventEmitter';
 import { VisualizationController } from '../rendering/VisualizationController';
 import { Settings } from '../types/settings/base';
@@ -126,7 +126,7 @@ export class SettingsPreviewManager {
 
             logger.debug(`Preview applied for ${category}`);
         } catch (error) {
-            logger.error(`Failed to apply preview for ${category}:`, error);
+            logger.error(`Failed to apply preview for ${category}:`, createErrorMetadata(error));
             this.resetPreview(category);
         }
     }
@@ -150,7 +150,7 @@ export class SettingsPreviewManager {
 
                 logger.debug(`Preview reset for ${category}`);
             } catch (error) {
-                logger.error(`Failed to reset preview for ${category}:`, error);
+                logger.error(`Failed to reset preview for ${category}:`, createErrorMetadata(error));
             }
         }
     }

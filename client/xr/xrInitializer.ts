@@ -1,6 +1,6 @@
 import { platformManager } from '../platform/platformManager';
 import { XRSessionManager } from './xrSessionManager';
-import { createLogger } from '../core/logger';
+import { createLogger, createErrorMetadata } from '../core/logger';
 
 const logger = createLogger('XRInitializer');
 
@@ -90,7 +90,7 @@ export class XRInitializer {
                 await this.xrSessionManager.initXRSession();
             }
         } catch (error) {
-            logger.error('Failed to toggle XR session:', error);
+            logger.error('Failed to toggle XR session:', createErrorMetadata(error));
         }
     }
 

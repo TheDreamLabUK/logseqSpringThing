@@ -1,5 +1,5 @@
 import { Settings } from '../types/settings';
-import { createLogger } from '../core/logger';
+import { createLogger, createErrorMetadata } from '../core/logger';
 import { SettingsStore } from './SettingsStore';
 import { defaultSettings } from './defaultSettings';
 import {
@@ -37,7 +37,7 @@ export class SettingsManager {
             this.initialized = true;
             logger.info('Settings initialized from server');
         } catch (error) {
-            logger.error('Failed to initialize settings from server:', error);
+            logger.error('Failed to initialize settings from server:', createErrorMetadata(error));
             this.useDefaultSettings();
         }
     }
@@ -61,7 +61,7 @@ export class SettingsManager {
             }
             logger.debug(`Updated setting ${path} to ${value}`);
         } catch (error) {
-            logger.error(`Failed to update setting ${path}:`, error);
+            logger.error(`Failed to update setting ${path}:`, createErrorMetadata(error));
             throw error;
         }
     }
@@ -74,7 +74,7 @@ export class SettingsManager {
         try {
             return getSettingValue(this.settings, path)!;
         } catch (error) {
-            logger.error(`Error getting setting at path ${path}:`, error);
+            logger.error(`Error getting setting at path ${path}:`, createErrorMetadata(error));
             // Return default value for this path if available
             return getSettingValue(defaultSettings, path)!;
         }
@@ -145,7 +145,7 @@ export class SettingsManager {
                 logger.warn('Settings updated in memory only - store not initialized');
             }
         } catch (error) {
-            logger.error('Failed to apply batch updates:', error);
+            logger.error('Failed to apply batch updates:', createErrorMetadata(error));
             throw error;
         }
     }

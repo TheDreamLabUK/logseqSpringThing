@@ -1,4 +1,4 @@
-import { createLogger } from '../core/logger';
+import { createLogger, createErrorMetadata, createDataMetadata } from '../core/logger';
 
 const logger = createLogger('NodeManagerMetrics');
 
@@ -71,7 +71,7 @@ export class NodeManagerMetrics {
             try {
                 this.performanceObserver.observe({ entryTypes: ['measure'] });
             } catch (error) {
-                logger.warn('Performance observer setup failed:', error);
+                logger.warn('Performance observer setup failed:', createErrorMetadata(error));
             }
         }
     }
@@ -193,25 +193,25 @@ export class NodeManagerMetrics {
 
         // Check FPS
         if (metrics.fps < this.ALERT_THRESHOLD_FPS) {
-            logger.warn('Low FPS detected:', {
+            logger.warn('Low FPS detected:', createDataMetadata({
                 fps: metrics.fps.toFixed(2),
                 nodeCount: metrics.nodeCount
-            });
+            }));
         }
 
         // Check update time
         if (metrics.updateTime > this.ALERT_THRESHOLD_UPDATE_TIME) {
-            logger.warn('High update time detected:', {
+            logger.warn('High update time detected:', createDataMetadata({
                 updateTime: metrics.updateTime.toFixed(2),
                 nodeCount: metrics.nodeCount
-            });
+            }));
         }
     }
 
     private reportMetrics(): void {
         const summary = this.getMetricsSummary();
 
-        logger.info('Performance Summary:', {
+        logger.info('Performance Summary:', createDataMetadata({
             avgFps: summary.avgFps.toFixed(2),
             minFps: summary.minFps.toFixed(2),
             avgUpdateTime: summary.avgUpdateTime.toFixed(2),
@@ -219,7 +219,7 @@ export class NodeManagerMetrics {
             avgMemoryUsage: summary.avgMemoryUsage?.toFixed(2),
             totalUpdates: summary.totalUpdates,
             sampleCount: summary.sampleCount
-        });
+        }));
     }
 
     public dispose(): void {

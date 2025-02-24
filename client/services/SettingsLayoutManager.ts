@@ -1,4 +1,4 @@
-import { createLogger } from '../core/logger';
+import { createLogger, createErrorMetadata } from '../core/logger';
 import { settingsEvents, SettingsEventType } from './SettingsEventEmitter';
 import { SettingVisibility } from '../settings';
 
@@ -178,7 +178,7 @@ export class SettingsLayoutManager {
 
             logger.info('Layout saved successfully');
         } catch (error) {
-            logger.error('Failed to save layout:', error);
+            logger.error('Failed to save layout:', createErrorMetadata(error));
             throw error;
         }
     }
@@ -210,7 +210,7 @@ export class SettingsLayoutManager {
                 logger.info('Layout loaded successfully');
             }
         } catch (error) {
-            logger.error('Failed to load layout:', error);
+            logger.error('Failed to load layout:', createErrorMetadata(error));
             this.currentLayout = this.createDefaultLayout();
         }
     }
