@@ -1,7 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use crate::utils::socket_flow_messages::BinaryNodeData;
-use crate::types::Vec3Data;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -39,9 +38,11 @@ impl Node {
             id: id.clone(),
             label: id,
             data: BinaryNodeData {
-                position: Vec3Data::zero(),
-                velocity: Vec3Data::zero(),
-                mass: 1.0,  // Default mass
+                position: [0.0, 0.0, 0.0],
+                velocity: [0.0, 0.0, 0.0],
+                mass: 0,
+                flags: 1, // Active by default
+                padding: [0, 0],
             },
             metadata: HashMap::new(),
             file_size: 0,
@@ -58,16 +59,17 @@ impl Node {
         self.file_size = size;
         // Calculate mass using log scale to prevent extremely large masses
         let base_mass = ((size + 1) as f32).log10() / 4.0;
-        self.data.mass = base_mass.max(0.1).min(10.0);
+        // Scale to 0-255 range for u8
+        self.data.mass = ((base_mass.max(0.1).min(10.0) * 25.5) as u8).max(1);
     }
 
     pub fn with_position(mut self, x: f32, y: f32, z: f32) -> Self {
-        self.data.position = Vec3Data::new(x, y, z);
+        self.data.position = [x, y, z];
         self
     }
 
     pub fn with_velocity(mut self, vx: f32, vy: f32, vz: f32) -> Self {
-        self.data.velocity = Vec3Data::new(vx, vy, vz);
+        self.data.velocity = [vx, vy, vz];
         self
     }
 
@@ -107,19 +109,19 @@ impl Node {
     }
 
     // Convenience getters/setters for position and velocity
-    pub fn x(&self) -> f32 { self.data.position.x }
-    pub fn y(&self) -> f32 { self.data.position.y }
-    pub fn z(&self) -> f32 { self.data.position.z }
-    pub fn vx(&self) -> f32 { self.data.velocity.x }
-    pub fn vy(&self) -> f32 { self.data.velocity.y }
-    pub fn vz(&self) -> f32 { self.data.velocity.z }
+    pub fn x(&self) -> f32 { self.data.position[0] }
+    pub fn y(&self) -> f32 { self.data.position[1] }
+    pub fn z(&self) -> f32 { self.data.position[2] }
+    pub fn vx(&self) -> f32 { self.data.velocity[0] }
+    pub fn vy(&self) -> f32 { self.data.velocity[1] }
+    pub fn vz(&self) -> f32 { self.data.velocity[2] }
     
-    pub fn set_x(&mut self, val: f32) { self.data.position.x = val; }
-    pub fn set_y(&mut self, val: f32) { self.data.position.y = val; }
-    pub fn set_z(&mut self, val: f32) { self.data.position.z = val; }
-    pub fn set_vx(&mut self, val: f32) { self.data.velocity.x = val; }
-    pub fn set_vy(&mut self, val: f32) { self.data.velocity.y = val; }
-    pub fn set_vz(&mut self, val: f32) { self.data.velocity.z = val; }
+    pub fn set_x(&mut self, val: f32) { self.data.position[0] = val; }
+    pub fn set_y(&mut self, val: f32) { self.data.position[1] = val; }
+    pub fn set_z(&mut self, val: f32) { self.data.position[2] = val; }
+    pub fn set_vx(&mut self, val: f32) { self.data.velocity[0] = val; }
+    pub fn set_vy(&mut self, val: f32) { self.data.velocity[1] = val; }
+    pub fn set_vz(&mut self, val: f32) { self.data.velocity[2] = val; }
 }
 
 #[cfg(test)]
@@ -140,9 +142,8 @@ mod tests {
 
         assert_eq!(node.id, "test");
         assert_eq!(node.label, "Test Node");
-        assert_eq!(node.data.position, Vec3Data::new(1.0, 2.0, 3.0));
-        assert_eq!(node.data.velocity, Vec3Data::new(0.1, 0.2, 0.3));
-        assert_eq!(node.data.mass, 1.0);  // Default mass
+        assert_eq!(node.data.position, [1.0, 2.0, 3.0]);
+        assert_eq!(node.data.velocity, [0.1, 0.2, 0.3]);
         assert_eq!(node.node_type, Some("test_type".to_string()));
         assert_eq!(node.size, Some(1.5));
         assert_eq!(node.color, Some("#FF0000".to_string()));
@@ -175,10 +176,10 @@ mod tests {
         
         // Test small file
         node.set_file_size(100);  // 100 bytes
-        assert!(node.data.mass > 0.1 && node.data.mass < 1.0);
+        assert!(node.data.mass > 0 && node.data.mass < 128);
 
         // Test large file
         node.set_file_size(1_000_000);  // 1MB
-        assert!(node.data.mass > 1.0 && node.data.mass < 10.0);
+        assert!(node.data.mass > 128 && node.data.mass < 255);
     }
 }

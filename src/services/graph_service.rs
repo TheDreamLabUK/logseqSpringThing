@@ -339,8 +339,8 @@ impl GraphService {
             for node in &graph.nodes {
                 log::debug!("Node {}: pos=[{},{},{}], vel=[{},{},{}]",
                     node.id,
-                    node.data.position.x, node.data.position.y, node.data.position.z,
-                    node.data.velocity.x, node.data.velocity.y, node.data.velocity.z
+                    node.data.position[0], node.data.position[1], node.data.position[2],
+                    node.data.velocity[0], node.data.velocity[1], node.data.velocity[2]
                 );
             }
         }

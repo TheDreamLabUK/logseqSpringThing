@@ -43,7 +43,7 @@ wgpu = { version = "0.17", features = ["spirv", "webgl"] }
 bytemuck = { version = "1.21", features = ["derive"] }
 pollster = "0.3"
 naga = { version = "0.13", features = ["wgsl-in", "spv-out", "wgsl-out"] }
-cudarc = { version = "0.10", features = ["driver"] }
+cudarc = { version = "0.11", features = ["driver", "cuda-12040"] }
 
 # HTTP client and API
 reqwest = { version = "0.11", features = ["json", "stream"] }

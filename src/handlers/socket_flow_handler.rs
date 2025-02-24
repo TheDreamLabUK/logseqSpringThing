@@ -143,6 +143,8 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
                                                         position: node.data.position,
                                                         velocity: node.data.velocity,
                                                         mass: node.data.mass,
+                                                        flags: node.data.flags,
+                                                        padding: node.data.padding,
                                                     }));
                                                 }
                                             }

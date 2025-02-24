@@ -2,14 +2,15 @@ use serde::{Deserialize, Serialize};
 use bytemuck::{Pod, Zeroable};
 use std::collections::HashMap;
 use cudarc::driver::{DeviceRepr, ValidAsZeroBits};
-use crate::types::vec3::Vec3Data;
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Pod, Zeroable, Serialize, Deserialize)]
 pub struct BinaryNodeData {
-    pub position: Vec3Data,  // x, y, z
-    pub velocity: Vec3Data,  // vx, vy, vz
-    pub mass: f32,          // derived from file size
+    pub position: [f32; 3],
+    pub velocity: [f32; 3],
+    pub mass: u8,
+    pub flags: u8,
+    pub padding: [u8; 2],
 }
 
 // Implement DeviceRepr for BinaryNodeData
@@ -73,9 +74,11 @@ impl Node {
             id: id.clone(),
             label: id,
             data: BinaryNodeData {
-                position: Vec3Data::zero(),
-                velocity: Vec3Data::zero(),
-                mass: 1.0, // default mass, will be updated based on file size
+                position: [0.0, 0.0, 0.0],
+                velocity: [0.0, 0.0, 0.0],
+                mass: 0, // default mass, will be updated based on file size
+                flags: 0,
+                padding: [0, 0],
             },
             metadata: HashMap::new(),
             file_size: 0,
@@ -88,13 +91,14 @@ impl Node {
         }
     }
 
-    pub fn calculate_mass(file_size: u64) -> f32 {
+    pub fn calculate_mass(file_size: u64) -> u8 {
         // Use log scale to prevent extremely large masses
         // Add 1 to file_size to handle empty files (log(0) is undefined)
         // Scale down by 10000 to keep masses in a reasonable range
         let base_mass = ((file_size + 1) as f32).log10() / 4.0;
         // Ensure minimum mass of 0.1 and maximum of 10.0
-        base_mass.max(0.1).min(10.0)
+        let mass = base_mass.max(0.1).min(10.0);
+        (mass * 255.0 / 10.0) as u8
     }
 
     pub fn set_file_size(&mut self, size: u64) {
@@ -104,19 +108,19 @@ impl Node {
     }
 
     // Convenience getters/setters for x, y, z coordinates
-    pub fn x(&self) -> f32 { self.data.position.x }
-    pub fn y(&self) -> f32 { self.data.position.y }
-    pub fn z(&self) -> f32 { self.data.position.z }
-    pub fn vx(&self) -> f32 { self.data.velocity.x }
-    pub fn vy(&self) -> f32 { self.data.velocity.y }
-    pub fn vz(&self) -> f32 { self.data.velocity.z }
+    pub fn x(&self) -> f32 { self.data.position[0] }
+    pub fn y(&self) -> f32 { self.data.position[1] }
+    pub fn z(&self) -> f32 { self.data.position[2] }
+    pub fn vx(&self) -> f32 { self.data.velocity[0] }
+    pub fn vy(&self) -> f32 { self.data.velocity[1] }
+    pub fn vz(&self) -> f32 { self.data.velocity[2] }
     
-    pub fn set_x(&mut self, val: f32) { self.data.position.x = val; }
-    pub fn set_y(&mut self, val: f32) { self.data.position.y = val; }
-    pub fn set_z(&mut self, val: f32) { self.data.position.z = val; }
-    pub fn set_vx(&mut self, val: f32) { self.data.velocity.x = val; }
-    pub fn set_vy(&mut self, val: f32) { self.data.velocity.y = val; }
-    pub fn set_vz(&mut self, val: f32) { self.data.velocity.z = val; }
+    pub fn set_x(&mut self, val: f32) { self.data.position[0] = val; }
+    pub fn set_y(&mut self, val: f32) { self.data.position[1] = val; }
+    pub fn set_z(&mut self, val: f32) { self.data.position[2] = val; }
+    pub fn set_vx(&mut self, val: f32) { self.data.velocity[0] = val; }
+    pub fn set_vy(&mut self, val: f32) { self.data.velocity[1] = val; }
+    pub fn set_vz(&mut self, val: f32) { self.data.velocity[2] = val; }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
