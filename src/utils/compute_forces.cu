@@ -2,11 +2,16 @@
 #include <math.h>
 
 extern "C" {
-    // Matches Rust Vec3Data memory layout
+    // Vec3Data struct matching Rust layout
+    struct Vec3Data {
+        float x, y, z;  // 12 bytes
+    };
+
+    // Matches Rust BinaryNodeData memory layout exactly
     struct NodeData {
-        float x, y, z;        // position (12 bytes)
-        float vx, vy, vz;     // velocity (12 bytes)
-        float mass;           // mass derived from file size (4 bytes)
+        Vec3Data position;  // 12 bytes
+        Vec3Data velocity;  // 12 bytes
+        float mass;        // 4 bytes
     };
 
     struct EdgeData {
@@ -47,9 +52,9 @@ extern "C" {
 
     __global__ void compute_forces_kernel(
         NodeData* nodes,
-        int num_nodes,
         EdgeData* edges,
         int num_edges,
+        int num_nodes,
         float spring_k,
         float damping,
         float repel_k,
@@ -71,8 +76,8 @@ extern "C" {
         }
 
         float3 total_force = make_float3(0.0f, 0.0f, 0.0f);
-        float3 pos = make_float3(nodes[idx].x, nodes[idx].y, nodes[idx].z);
-        float3 vel = make_float3(nodes[idx].vx, nodes[idx].vy, nodes[idx].vz);
+        float3 pos = make_float3(nodes[idx].position.x, nodes[idx].position.y, nodes[idx].position.z);
+        float3 vel = make_float3(nodes[idx].velocity.x, nodes[idx].velocity.y, nodes[idx].velocity.z);
 
         // Validate input position and velocity
         if (!is_valid_float3(pos) || !is_valid_float3(vel)) {
@@ -83,19 +88,19 @@ extern "C" {
             // Reset to safe values
             pos = make_float3(0.0f, 0.0f, 0.0f);
             vel = make_float3(0.0f, 0.0f, 0.0f);
-            nodes[idx].x = 0.0f;
-            nodes[idx].y = 0.0f;
-            nodes[idx].z = 0.0f;
-            nodes[idx].vx = 0.0f;
-            nodes[idx].vy = 0.0f;
-            nodes[idx].vz = 0.0f;
+            nodes[idx].position = {0.0f, 0.0f, 0.0f};
+            nodes[idx].velocity = {0.0f, 0.0f, 0.0f};
         }
         
         // Process spring forces from edges first
         for (int e = 0; e < num_edges; e++) {
             if (edges[e].source_idx == idx || edges[e].target_idx == idx) {
                 int other_idx = (edges[e].source_idx == idx) ? edges[e].target_idx : edges[e].source_idx;
-                float3 other_pos = make_float3(nodes[other_idx].x, nodes[other_idx].y, nodes[other_idx].z);
+                float3 other_pos = make_float3(
+                    nodes[other_idx].position.x,
+                    nodes[other_idx].position.y,
+                    nodes[other_idx].position.z
+                );
                 float3 diff = make_float3(other_pos.x - pos.x, other_pos.y - pos.y, other_pos.z - pos.z);
                 float dist = sqrtf(diff.x * diff.x + diff.y * diff.y + diff.z * diff.z);
                 
@@ -114,12 +119,11 @@ extern "C" {
         for (int j = 0; j < num_nodes; j++) {
             if (j == idx) continue;
             
-            // Use mass from node data
             float other_mass = nodes[j].mass;
             float3 other_pos = make_float3(
-                nodes[j].x,
-                nodes[j].y,
-                nodes[j].z
+                nodes[j].position.x,
+                nodes[j].position.y,
+                nodes[j].position.z
             );
             
             float3 diff = make_float3(
@@ -170,13 +174,9 @@ extern "C" {
             pos.z = fmaxf(-viewport_bounds, fminf(viewport_bounds, pos.z));
         }
 
-        // Store results back
-        nodes[idx].x = pos.x;
-        nodes[idx].y = pos.y;
-        nodes[idx].z = pos.z;
-        nodes[idx].vx = vel.x;
-        nodes[idx].vy = vel.y;
-        nodes[idx].vz = vel.z;
+        // Store results back using Vec3Data layout
+        nodes[idx].position = {pos.x, pos.y, pos.z};
+        nodes[idx].velocity = {vel.x, vel.y, vel.z};
 
         // Debug output for first node
         if (idx == 0) {
