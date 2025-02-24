@@ -51,59 +51,70 @@ export class GraphVisualization {
         }
 
         if (debugState.isDataDebugEnabled()) {
-            logger.debug('Initializing WebSocket connection');
+            logger.debug('Loading initial graph data via REST');
         }
         
-        // Initialize WebSocket but don't connect yet
-        this.websocketService = WebSocketService.getInstance();
-        
-        // Set up binary message handler before connecting
-        this.websocketService.onBinaryMessage((nodes) => {
-            if (this.initialized && this.componentsReady) {
-                if (debugState.isDataDebugEnabled()) {
-                    logger.debug('Received binary node update', { nodeCount: nodes.length });
-                }
-                this.nodeManager.updateNodePositions(nodes.map(node => ({
-                    id: node.id.toString(),
-                    data: {
-                        position: node.position,
-                        velocity: node.velocity
-                    }
-                })));
-            }
-        });
-        
-        // Set up connection status handler
-        this.websocketService.onConnectionStatusChange((connected) => {
-            if (debugState.isEnabled()) {
-                logger.info(`WebSocket connection status changed: ${connected}`);
-            }
-            if (connected && this.componentsReady) {
-                if (debugState.isDataDebugEnabled()) {
-                    logger.debug('Requesting position updates');
-                }
-                this.websocketService.sendMessage({ type: 'requestInitialData' });
-            }
-        });
-        
-        // Load initial graph data before connecting
-        if (debugState.isDataDebugEnabled()) {
-            logger.debug('Loading initial graph data');
-        }
         try {
+            // First load graph data via REST
             await graphDataManager.fetchInitialData();
             const graphData = graphDataManager.getGraphData();
+            
+            // Update visualization with initial data
             this.nodeManager.updateNodes(graphData.nodes);
             this.edgeManager.updateEdges(graphData.edges);
             
-            // Mark as initialized and connect websocket only after initial data is loaded
-            this.initialized = true;
-            await this.websocketService.connect();
             if (debugState.isDataDebugEnabled()) {
-                logger.debug('Initial graph data loaded and WebSocket connected');
+                logger.debug('Initial graph data loaded via REST', {
+                    nodes: graphData.nodes.length,
+                    edges: graphData.edges.length
+                });
+            }
+
+            // Now initialize WebSocket for binary updates
+            this.websocketService = WebSocketService.getInstance();
+            
+            // Set up binary message handler
+            this.websocketService.onBinaryMessage((nodes) => {
+                if (this.initialized && this.componentsReady) {
+                    if (debugState.isDataDebugEnabled()) {
+                        logger.debug('Received binary node update', { nodeCount: nodes.length });
+                    }
+                    this.nodeManager.updateNodePositions(nodes.map(node => ({
+                        id: node.id.toString(),
+                        data: {
+                            position: node.position,
+                            velocity: node.velocity
+                        }
+                    })));
+                }
+            });
+            
+            // Set up connection status handler
+            this.websocketService.onConnectionStatusChange((connected) => {
+                if (debugState.isEnabled()) {
+                    logger.info(`WebSocket connection status changed: ${connected}`);
+                }
+                if (connected && this.componentsReady) {
+                    // Enable binary updates in GraphDataManager
+                    graphDataManager.setBinaryUpdatesEnabled(true);
+                    if (debugState.isDataDebugEnabled()) {
+                        logger.debug('Binary updates enabled');
+                    }
+                }
+            });
+            
+            // Mark as initialized before connecting WebSocket
+            this.initialized = true;
+            
+            // Finally connect WebSocket
+            await this.websocketService.connect();
+            
+            if (debugState.isDataDebugEnabled()) {
+                logger.debug('WebSocket connected and ready for binary updates');
             }
         } catch (error) {
-            logger.error('Failed to load initial graph data:', createErrorMetadata(error));
+            logger.error('Failed to initialize data and WebSocket:', createErrorMetadata(error));
+            throw error;
         }
     }
 
@@ -332,6 +343,7 @@ async function init() {
     }
 }
 
+// Start the application
 init().catch(error => {
     console.error('Failed to initialize application:', error);
 });

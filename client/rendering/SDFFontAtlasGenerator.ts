@@ -1,5 +1,5 @@
 import { createLogger } from '../core/logger';
-import { Texture, NearestFilter, ClampToEdgeWrapping } from 'three';
+import { Texture, LinearFilter, ClampToEdgeWrapping } from 'three';
 
 const logger = createLogger('SDFFontAtlasGenerator');
 
@@ -27,22 +27,33 @@ export class SDFFontAtlasGenerator {
     private padding: number;
     private spread: number;
     private glyphInfoMap: Map<string, GlyphInfo>;
+    private readonly superSampling: number = 2; // Supersampling factor for higher quality
     
-    constructor(atlasSize = 1024, padding = 4, spread = 8) {
+    constructor(atlasSize = 2048, padding = 8, spread = 16) {
         this.atlasSize = atlasSize;
         this.padding = padding;
         this.spread = spread;
         this.glyphInfoMap = new Map();
         
+        // Create high-res canvas for supersampling
         this.canvas = document.createElement('canvas');
-        this.canvas.width = atlasSize;
-        this.canvas.height = atlasSize;
+        this.canvas.width = atlasSize * this.superSampling;
+        this.canvas.height = atlasSize * this.superSampling;
         
-        const ctx = this.canvas.getContext('2d');
+        const ctx = this.canvas.getContext('2d', { 
+            alpha: true,
+            antialias: true,
+            desynchronized: true
+        }) as CanvasRenderingContext2D;
         if (!ctx) {
             throw new Error('Failed to get 2D context');
         }
         this.ctx = ctx;
+        
+        // Enable high-quality rendering
+        (this.ctx as any).textRendering = 'geometricPrecision';
+        this.ctx.imageSmoothingEnabled = true;
+        this.ctx.imageSmoothingQuality = 'high';
     }
     
     public async generateAtlas(
@@ -56,33 +67,35 @@ export class SDFFontAtlasGenerator {
             atlasSize: this.atlasSize,
             padding: this.padding,
             spread: this.spread,
-            chars: chars.length
+            chars: chars.length,
+            superSampling: this.superSampling
         });
 
-        this.ctx.font = `${fontSize}px ${fontFamily}`;
+        // Scale font size for supersampling
+        const scaledFontSize = fontSize * this.superSampling;
+        this.ctx.font = `${scaledFontSize}px ${fontFamily}`;
         this.ctx.textBaseline = 'alphabetic';
         this.ctx.fillStyle = 'white';
         this.ctx.strokeStyle = 'white';
         
-        // Clear canvas
-        this.ctx.fillStyle = 'black';
-        this.ctx.fillRect(0, 0, this.atlasSize, this.atlasSize);
+        // Clear canvas with transparency
+        this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
         
-        // Calculate glyph positions
-        let x = this.padding;
-        let y = this.padding + fontSize;
-        const lineHeight = fontSize * 1.4;
+        // Calculate glyph positions with supersampling
+        let x = this.padding * this.superSampling;
+        let y = (this.padding + fontSize) * this.superSampling;
+        const lineHeight = fontSize * 1.4 * this.superSampling;
         
         // Generate glyphs and compute SDF
         for (const char of chars) {
             const metrics = this.getGlyphMetrics(char, fontSize);
             
             // Check if we need to move to next line
-            if (x + metrics.width + this.padding > this.atlasSize) {
-                x = this.padding;
+            if (x + metrics.width + this.padding > this.canvas.width) {
+                x = this.padding * this.superSampling;
                 y += lineHeight;
                 
-                if (y + lineHeight > this.atlasSize) {
+                if (y + lineHeight > this.canvas.height) {
                     logger.warn('Atlas size exceeded, some characters may be missing');
                     break;
                 }
@@ -106,11 +119,11 @@ export class SDFFontAtlasGenerator {
         }
         
         // Generate SDF
-        const imageData = this.ctx.getImageData(0, 0, this.atlasSize, this.atlasSize);
+        const imageData = this.ctx.getImageData(0, 0, this.canvas.width, this.canvas.height);
         const sdf = this.computeSDF(imageData.data);
         
         // Apply SDF to canvas
-        const sdfImageData = this.ctx.createImageData(this.atlasSize, this.atlasSize);
+        const sdfImageData = this.ctx.createImageData(this.canvas.width, this.canvas.height);
         for (let i = 0; i < sdf.length; i++) {
             const value = Math.floor(sdf[i] * 255);
             const idx = i * 4;
@@ -134,13 +147,26 @@ export class SDFFontAtlasGenerator {
                 }))
         });
 
-        // Create texture
+        // Create texture with better filtering
         const texture = new Texture(this.canvas);
         texture.needsUpdate = true;
-        texture.minFilter = NearestFilter;
-        texture.magFilter = NearestFilter;
+        texture.minFilter = LinearFilter;
+        texture.magFilter = LinearFilter;
         texture.wrapS = ClampToEdgeWrapping;
         texture.wrapT = ClampToEdgeWrapping;
+        
+        // Downscale canvas to final size
+        const finalCanvas = document.createElement('canvas');
+        finalCanvas.width = this.atlasSize;
+        finalCanvas.height = this.atlasSize;
+        const finalCtx = finalCanvas.getContext('2d');
+        if (finalCtx) {
+            finalCtx.imageSmoothingEnabled = true;
+            finalCtx.imageSmoothingQuality = 'high';
+            finalCtx.drawImage(this.canvas, 0, 0, this.atlasSize, this.atlasSize);
+            (texture as any).image = finalCanvas;
+            texture.needsUpdate = true;
+        }
         
         return {
             texture,
@@ -160,8 +186,8 @@ export class SDFFontAtlasGenerator {
     }
     
     private computeSDF(imageData: Uint8ClampedArray): Float32Array {
-        const width = this.atlasSize;
-        const height = this.atlasSize;
+        const width = this.canvas.width;
+        const height = this.canvas.height;
         const sdf = new Float32Array(width * height);
         
         // Simple 8-bit SDF computation
@@ -185,7 +211,7 @@ export class SDFFontAtlasGenerator {
     
     private computeDistance(x: number, y: number, imageData: Uint8ClampedArray, inside: boolean): number {
         let minDist = this.spread * 2;
-        const width = this.atlasSize;
+        const width = this.canvas.width;
         
         // Search in a square around the point
         for (let dy = -this.spread; dy <= this.spread; dy++) {

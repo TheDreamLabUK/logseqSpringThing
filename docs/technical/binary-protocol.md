@@ -1,154 +1,61 @@
 # WebSocket Binary Protocol
 
-The WebSocket binary protocol has been optimized for efficient transmission of node position and velocity updates using a consistent Vec3 representation across the stack.
+This document describes the binary protocol used for efficient real-time updates of node positions and velocities over WebSockets.
+
+## Overview
+
+The binary protocol is designed to minimize bandwidth usage while providing fast updates for node positions and velocities in the 3D visualization. The protocol uses a fixed-size format for each node to simplify parsing and ensure consistency.
 
 ## Protocol Format
 
-```
-[4 bytes] message_type (u32)
-[4 bytes] node_count (u32)
-For each node:
-  [4 bytes] node_id (u32)
-  [12 bytes] Position (Vec3Data)
-    - [4 bytes] x (f32)
-    - [4 bytes] y (f32)
-    - [4 bytes] z (f32)
-  [12 bytes] Velocity (Vec3Data)
-    - [4 bytes] vx (f32)
-    - [4 bytes] vy (f32)
-    - [4 bytes] vz (f32)
-```
+Each binary message consists of a series of node updates, where each node update is exactly 28 bytes:
 
-### Detailed Breakdown
+| Field    | Type      | Size (bytes) | Description                       |
+|----------|-----------|--------------|-----------------------------------|
+| Node ID  | uint32    | 4            | Unique identifier for the node    |
+| Position | float32[3]| 12           | X, Y, Z coordinates               |
+| Velocity | float32[3]| 12           | X, Y, Z velocity components       |
 
-#### Header (8 bytes)
-- **Message Type (4 bytes):** 
-  - u32 value indicating the type of message
-  - 0x01 = PositionVelocityUpdate
+Total: 28 bytes per node
 
-- **Node Count (4 bytes):**
-  - u32 value indicating the number of nodes in the message
+## Compression
 
-#### Node Data (28 bytes per node)
-For each node in the message:
+For large updates (more than 1KB), the binary data is compressed using zlib compression. The client automatically detects and decompresses these messages using the pako library.
 
-- **Node ID (4 bytes):**
-  - u32 identifier for the node
+## Server-Side Only Fields
 
-- **Position (Vec3Data, 12 bytes):**
-  - Three 32-bit floats (f32) in x, y, z order
-  - Direct memory layout matching Vec3Data struct
-  - CUDA-compatible alignment
-  - No padding between components
+The server maintains additional data for each node that is not transmitted over the wire:
 
-- **Velocity (Vec3Data, 12 bytes):**
-  - Three 32-bit floats (f32) in x, y, z order
-  - Same memory layout as position
-  - CUDA-compatible alignment
-  - No padding between components
+- `mass` (u8): Node mass used for physics calculations
+- `flags` (u8): Bit flags for node properties
+- `padding` (u8[2]): Reserved for future use
 
-#### Total Size
-- **Header:** 8 bytes
-- **Per node:** 28 bytes (4 + 12 + 12)
-- **Message size:** 8 bytes + (28 bytes × number of nodes)
+These fields are used for server-side physics calculations and GPU processing but are not transmitted to clients to optimize bandwidth.
 
-## Protocol Benefits
+## Flow Sequence
 
-### 1. Unified Vec3 Representation
-- Consistent memory layout across entire stack
-- Direct mapping to CUDA structures
-- Zero-copy potential between layers
-- SIMD-friendly alignment
+1. Client connects to WebSocket endpoint (`/wss`)
+2. Server sends a text message: `{"type": "connection_established"}`
+3. Client sends a text message: `{"type": "requestInitialData"}`
+4. Server starts sending binary updates at regular intervals (configured by `binary_update_rate` setting)
+5. Server sends a text message: `{"type": "updatesStarted"}`
+6. Client processes binary updates and updates the visualization
 
-### 2. Direct Value Representation
-- Uses native f32 format for positions and velocities
-- No quantization/dequantization overhead
-- Full floating-point precision maintained
-- Consistent endianness (little-endian)
+## Error Handling
 
-### 3. Efficient Processing
-- Fixed-size format allows for fast, direct memory access
-- CUDA-compatible memory layout
-- Zero-copy potential on supported platforms
-- Vectorization-friendly structure
+If a binary message has an invalid size (not a multiple of 28 bytes), the client will log an error and discard the message. The server includes additional logging to help diagnose issues with binary message transmission.
 
-### 4. Clear Message Structure
-- Simple message type identification
-- Explicit node count for buffer allocation
-- Consistent node data format
-- Self-describing layout
+## Implementation Notes
 
-## Implementation Example
+- All numeric values use little-endian byte order
+- Position and velocity values are clamped to reasonable ranges on the client side
+- The client validates all incoming data to prevent invalid values from affecting the visualization
 
-```typescript
-import { Vec3 } from '../types/vec3';
+## Debugging
 
-// TypeScript implementation using Vec3 type
-function parseNodeUpdate(buffer: ArrayBuffer): NodeUpdate[] {
-    const view = new DataView(buffer);
-    let offset = 0;
+To enable WebSocket debugging:
 
-    // Read header
-    const messageType = view.getUint32(offset, true);
-    offset += 4;
+1. Set `system.debug.enabled = true` in settings.toml
+2. Set `system.debug.enable_websocket_debug = true` in settings.toml
 
-    const nodeCount = view.getUint32(offset, true);
-    offset += 4;
-
-    const nodes: NodeUpdate[] = [];
-
-    for (let i = 0; i < nodeCount; i++) {
-        const nodeId = view.getUint32(offset, true);
-        offset += 4;
-
-        // Read position Vec3
-        const position: Vec3 = {
-            x: view.getFloat32(offset, true),
-            y: view.getFloat32(offset + 4, true),
-            z: view.getFloat32(offset + 8, true)
-        };
-        offset += 12;
-
-        // Read velocity Vec3
-        const velocity: Vec3 = {
-            x: view.getFloat32(offset, true),
-            y: view.getFloat32(offset + 4, true),
-            z: view.getFloat32(offset + 8, true)
-        };
-        offset += 12;
-
-        nodes.push({ nodeId, position, velocity });
-    }
-
-    return nodes;
-}
-```
-
-## Performance Considerations
-
-### Memory Layout Optimization
-- Consistent Vec3 layout across stack
-- CUDA-compatible structure alignment
-- SIMD-friendly data organization
-- Zero-copy potential where supported
-
-### Network Optimization
-- Fixed message size allows for efficient buffer allocation
-- Binary format reduces overhead compared to JSON
-- Direct floating-point values maintain precision
-- Compression for large updates
-
-### Client-Side Processing
-- Fixed-size format enables efficient buffer allocation
-- Direct TypedArray access for fast parsing
-- No string processing or JSON parsing overhead
-- Direct conversion to Three.js Vector3
-
-### Server-Side Generation
-- Efficient packing of data into binary format
-- Direct use of Vec3Data memory layout
-- CUDA-compatible structure
-- Optimized for high-frequency updates
-
-For more information about the Vec3 alignment across the stack, see [Vec3 Alignment](./vec3-alignment.md).
-For performance optimization details, see [Performance Optimizations](./performance.md).
+This will enable detailed logging of WebSocket messages on both client and server.

@@ -25,15 +25,8 @@ pub fn encode_node_data(nodes: &[(u32, BinaryNodeData)]) -> Vec<u8> {
         buffer.write_f32::<LittleEndian>(node.velocity[1]).unwrap();
         buffer.write_f32::<LittleEndian>(node.velocity[2]).unwrap();
 
-        // Write mass (u8)
-        buffer.write_u8(node.mass).unwrap();
-
-        // Write flags (u8)
-        buffer.write_u8(node.flags).unwrap();
-
-        // Write padding [u8; 2]
-        buffer.write_u8(node.padding[0]).unwrap();
-        buffer.write_u8(node.padding[1]).unwrap();
+        // Mass, flags, and padding are no longer sent to the client
+        // They are still available in the BinaryNodeData struct for server-side use
     }
     
     if log::log_enabled!(log::Level::Debug) {
@@ -51,8 +44,8 @@ pub fn decode_node_data(data: &[u8]) -> Result<Vec<(u32, BinaryNodeData)>, Strin
     let mut updates = Vec::new();
     
     while cursor.position() < data.len() as u64 {
-        // Each update is 32 bytes: 4 (nodeId) + 12 (position) + 12 (velocity) + 1 (mass) + 1 (flags) + 2 (padding)
-        if cursor.position() + 32 > data.len() as u64 {
+        // Each update is 28 bytes: 4 (nodeId) + 12 (position) + 12 (velocity)
+        if cursor.position() + 28 > data.len() as u64 {
             return Err("Unexpected end of data while reading node update".into());
         }
         
@@ -76,19 +69,11 @@ pub fn decode_node_data(data: &[u8]) -> Result<Vec<(u32, BinaryNodeData)>, Strin
         let vel_z = cursor.read_f32::<LittleEndian>()
             .map_err(|e| format!("Failed to read velocity[2]: {}", e))?;
 
-        // Read mass (u8)
-        let mass = cursor.read_u8()
-            .map_err(|e| format!("Failed to read mass: {}", e))?;
-
-        // Read flags (u8)
-        let flags = cursor.read_u8()
-            .map_err(|e| format!("Failed to read flags: {}", e))?;
-
-        // Read padding [u8; 2]
-        let padding = [
-            cursor.read_u8().map_err(|e| format!("Failed to read padding[0]: {}", e))?,
-            cursor.read_u8().map_err(|e| format!("Failed to read padding[1]: {}", e))?,
-        ];
+        // Set default values for mass, flags, and padding
+        // These are no longer received from the client but still used server-side
+        let mass = 100u8; // Default mass
+        let flags = 0u8;  // Default flags
+        let padding = [0u8, 0u8]; // Default padding
         
         if log::log_enabled!(log::Level::Debug) {
             log::debug!("Decoded node {}: pos=({},{},{}), vel=({},{},{})", 
@@ -111,9 +96,9 @@ pub fn decode_node_data(data: &[u8]) -> Result<Vec<(u32, BinaryNodeData)>, Strin
 }
 
 pub fn calculate_message_size(updates: &[(u32, BinaryNodeData)]) -> usize {
-    // Each update: u32 (node_id) + 3*f32 (position) + 3*f32 (velocity) + u8 (mass) + u8 (flags) + 2*u8 (padding)
-    // = 4 + 12 + 12 + 1 + 1 + 2 = 32 bytes
-    updates.len() * 32
+    // Each update: u32 (node_id) + 3*f32 (position) + 3*f32 (velocity)
+    // = 4 + 12 + 12 = 28 bytes
+    updates.len() * 28
 }
 
 #[cfg(test)]
@@ -148,16 +133,14 @@ mod tests {
             assert_eq!(orig_id, dec_id);
             assert_eq!(orig_data.position, dec_data.position);
             assert_eq!(orig_data.velocity, dec_data.velocity);
-            assert_eq!(orig_data.mass, dec_data.mass);
-            assert_eq!(orig_data.flags, dec_data.flags);
-            assert_eq!(orig_data.padding, dec_data.padding);
+            // Note: mass, flags, and padding are not compared as they're not transmitted
         }
     }
 
     #[test]
     fn test_decode_invalid_data() {
         // Test with data that's too short
-        let result = decode_node_data(&[0u8; 31]);
+        let result = decode_node_data(&[0u8; 27]);
         assert!(result.is_err());
     }
 }

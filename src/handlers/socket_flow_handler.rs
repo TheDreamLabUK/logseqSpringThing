@@ -158,6 +158,22 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
                                             if should_debug {
                                                 debug!("Binary message size: {} bytes", data.len());
                                             }
+                                            
+                                            // Enhanced logging for production debugging
+                                            if !nodes.is_empty() {
+                                                let node_count = nodes.len();
+                                                let first_node = &nodes[0];
+                                                info!(
+                                                    "Sending binary update: {} nodes, first node: id={}, pos=[{:.2},{:.2},{:.2}], size={} bytes",
+                                                    node_count,
+                                                    first_node.0,
+                                                    first_node.1.position[0],
+                                                    first_node.1.position[1],
+                                                    first_node.1.position[2],
+                                                    data.len()
+                                                );
+                                            }
+                                            
                                             Some(data)
                                         } else {
                                             None
@@ -200,6 +216,16 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
             }
             Ok(ws::Message::Binary(data)) => {
                 info!("Received binary message, length: {}", data.len());
+                
+                // Enhanced logging for binary messages
+                if data.len() % 28 != 0 {
+                    warn!(
+                        "Binary message size mismatch: {} bytes (not a multiple of 28, remainder: {})",
+                        data.len(),
+                        data.len() % 28
+                    );
+                }
+                
                 match binary_protocol::decode_node_data(&data) {
                     Ok(nodes) => {
                         if nodes.len() <= 2 {

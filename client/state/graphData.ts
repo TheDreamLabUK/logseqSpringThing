@@ -37,7 +37,8 @@ export class GraphDataManager {
     this.wsService = {
       send: () => logger.warn('WebSocket service not configured')
     };
-    this.enableBinaryUpdates();  // Start binary updates by default
+    // Don't enable binary updates by default
+    this.binaryUpdatesEnabled = false;
   }
 
   /**
@@ -46,9 +47,6 @@ export class GraphDataManager {
   public setWebSocketService(service: WebSocketService): void {
     this.wsService = service;
     logger.info('WebSocket service configured');
-    if (this.binaryUpdatesEnabled) {
-      this.updatePositions(new Float32Array());  // Send initial empty update
-    }
   }
 
   static getInstance(): GraphDataManager {
@@ -269,11 +267,36 @@ export class GraphDataManager {
   }
 
   /**
-   * Update node positions from binary data
+   * Enable or disable binary position updates
+   */
+  public setBinaryUpdatesEnabled(enabled: boolean): void {
+    if (this.binaryUpdatesEnabled === enabled) return;
+    
+    this.binaryUpdatesEnabled = enabled;
+    logger.info(`Binary updates ${enabled ? 'enabled' : 'disabled'}`);
+    
+    if (enabled) {
+      // Send initial empty update to start receiving binary updates
+      this.updatePositions(new Float32Array());
+    }
+  }
+
+  /**
+   * Update node positions via binary protocol
    */
   private updatePositions(positions: Float32Array): void {
-    if (!this.binaryUpdatesEnabled) return;
-    this.wsService.send(positions.buffer);
+    if (!this.binaryUpdatesEnabled) {
+      logger.warn('Attempted to update positions while binary updates are disabled');
+      return;
+    }
+    
+    try {
+      this.wsService.send(positions.buffer);
+    } catch (error) {
+      logger.error('Failed to send position update:', error);
+      // Disable binary updates on error
+      this.binaryUpdatesEnabled = false;
+    }
   }
 
   /**
@@ -396,23 +419,6 @@ export class GraphDataManager {
       } catch (error) {
         logger.error('Error in position update listener:', error);
       }
-    });
-  }
-
-  public setBinaryUpdatesEnabled(enabled: boolean): void {
-    this.binaryUpdatesEnabled = enabled;
-    if (enabled) {
-      this.updatePositions(new Float32Array());  // Send initial empty update
-    }
-    logger.info(`Binary updates ${enabled ? 'enabled' : 'disabled'}`);
-    
-    // Notify listeners of state change
-    this.updateListeners.forEach(listener => {
-      listener({
-        nodes: Array.from(this.nodes.values()),
-        edges: Array.from(this.edges.values()) as Edge[],
-        metadata: { ...this.metadata, binaryUpdatesEnabled: enabled }
-      });
     });
   }
 

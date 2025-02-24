@@ -251,11 +251,34 @@ export class WebSocketService {
             
             // Each node update is 28 bytes (4 for id, 12 for position, 12 for velocity)
             if (!decompressedBuffer || decompressedBuffer.byteLength % 28 !== 0) {
+                // Enhanced error logging for production debugging
+                const errorDetails = {
+                    bufferSize: buffer.byteLength,
+                    decompressedSize: decompressedBuffer?.byteLength ?? 0,
+                    remainder: (decompressedBuffer?.byteLength ?? 0) % 28,
+                    expectedNodeCount: Math.floor((decompressedBuffer?.byteLength ?? 0) / 28),
+                    url: this.url
+                };
+                logger.error('Invalid binary message size:', createDataMetadata(errorDetails));
                 throw new Error(`Invalid buffer size: ${decompressedBuffer?.byteLength ?? 0} bytes (not a multiple of 28)`);
             }
 
             const dataView = new DataView(decompressedBuffer);
             const nodeCount = decompressedBuffer.byteLength / 28;
+            
+            // Enhanced logging for production debugging
+            if (nodeCount > 0 && (debugState.isWebsocketDebugEnabled() || nodeCount < 5)) {
+                const firstNodeId = dataView.getUint32(0, true);
+                const firstNodeX = dataView.getFloat32(4, true);
+                const firstNodeY = dataView.getFloat32(8, true);
+                const firstNodeZ = dataView.getFloat32(12, true);
+                logger.info('Binary update received:', createDataMetadata({
+                    nodeCount,
+                    firstNode: { id: firstNodeId, x: firstNodeX, y: firstNodeY, z: firstNodeZ },
+                    bufferSize: decompressedBuffer.byteLength
+                }));
+            }
+            
             if (debugState.isWebsocketDebugEnabled()) {
                 debugLog('Node count:', createDataMetadata({ count: nodeCount }));
             }

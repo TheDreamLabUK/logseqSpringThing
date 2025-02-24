@@ -5,12 +5,21 @@ use cudarc::driver::{DeviceRepr, ValidAsZeroBits};
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Pod, Zeroable, Serialize, Deserialize)]
+/// Binary node data structure for efficient transmission and GPU processing
+/// 
+/// Wire format (28 bytes per node):
+/// - position: [f32; 3] (12 bytes)
+/// - velocity: [f32; 3] (12 bytes)
+/// - id: u32 (4 bytes)
+///
+/// Note: mass, flags, and padding are server-side only and not transmitted over the wire
+/// to optimize bandwidth. They are still available for GPU processing and physics calculations.
 pub struct BinaryNodeData {
     pub position: [f32; 3],
     pub velocity: [f32; 3],
-    pub mass: u8,
-    pub flags: u8,
-    pub padding: [u8; 2],
+    pub mass: u8,      // Server-side only, not transmitted
+    pub flags: u8,     // Server-side only, not transmitted
+    pub padding: [u8; 2], // Server-side only, not transmitted
 }
 
 // Implement DeviceRepr for BinaryNodeData

@@ -13,7 +13,8 @@ import {
     Vector3,
     Color,
     NormalBlending,
-    MeshBasicMaterial
+    MeshBasicMaterial,
+    BufferAttribute
 } from 'three';
 import { createLogger } from '../core/logger';
 import { LabelSettings } from '../types/settings';
@@ -23,17 +24,22 @@ import '../types/three-ext.d';
 
 const logger = createLogger('UnifiedTextRenderer');
 
-// Vertex shader for SDF text rendering with instancing
-const vertexShader = `
+// Vertex shader for SDF text rendering with improved billboarding
+const vertexShader = `#version 300 es
     uniform vec3 cameraPosition;
-    attribute vec4 textureCoord;
-    attribute vec3 instancePosition;
-    attribute vec4 instanceColor;
-    attribute float instanceScale;
+    uniform mat4 modelViewMatrix;
+    uniform mat4 projectionMatrix;
+
+    in vec3 position;
+    in vec2 uv;
+    in vec3 instancePosition;
+    in vec4 instanceColor;
+    in float instanceScale;
     
-    varying vec2 vUv;
-    varying vec4 vColor;
-    varying float vScale;
+    out vec2 vUv;
+    out vec4 vColor;
+    out float vScale;
+    out float vViewDistance;
     
     void main() {
         vUv = uv;
@@ -43,52 +49,76 @@ const vertexShader = `
         // Scale the position first
         vec3 scale = vec3(instanceScale);
         vec3 vertexPosition = position * scale;
-        vertexPosition += instancePosition;  // Add instance position after scaling
         
-        #ifdef BILLBOARD_VERTICAL
-            // Calculate billboard rotation based on camera position
-            vec4 worldPosition = modelMatrix * vec4(vertexPosition, 1.0);
-            float angle = atan(cameraPosition.x - worldPosition.x, cameraPosition.z - worldPosition.z);
-            mat4 billboardMatrix = mat4(
-                cos(angle), 0.0, sin(angle), 0.0,
-                0.0, 1.0, 0.0, 0.0,
-                -sin(angle), 0.0, cos(angle), 0.0,
-                0.0, 0.0, 0.0, 1.0
-            );
-            vertexPosition = (billboardMatrix * vec4(vertexPosition, 1.0)).xyz;
-        #endif
+        // Billboard calculation
+        vec3 up = vec3(0.0, 1.0, 0.0);
+        vec3 forward = normalize(cameraPosition - instancePosition);
+        vec3 right = normalize(cross(up, forward));
+        up = normalize(cross(forward, right));
+        
+        mat4 billboardMatrix = mat4(
+            vec4(right, 0.0),
+            vec4(up, 0.0),
+            vec4(forward, 0.0),
+            vec4(0.0, 0.0, 0.0, 1.0)
+        );
+        
+        vertexPosition = (billboardMatrix * vec4(vertexPosition, 1.0)).xyz;
+        vertexPosition += instancePosition;
         
         vec4 mvPosition = modelViewMatrix * vec4(vertexPosition, 1.0);
+        vViewDistance = -mvPosition.z;  // Distance from camera
         gl_Position = projectionMatrix * mvPosition;
     }
 `;
 
-// Fragment shader for SDF text rendering
-const fragmentShader = `
+// Fragment shader for SDF text rendering with improved quality
+const fragmentShader = `#version 300 es
+    precision highp float;
+    
     uniform sampler2D fontAtlas;
     uniform float sdfThreshold;
     uniform float sdfSpread;
     uniform vec3 outlineColor;
     uniform float outlineWidth;
+    uniform float fadeStart;
+    uniform float fadeEnd;
     
-    varying vec2 vUv;
-    varying vec4 vColor;
-    varying float vScale;
+    in vec2 vUv;
+    in vec4 vColor;
+    in float vScale;
+    in float vViewDistance;
+    
+    out vec4 fragColor;
     
     float median(float r, float g, float b) {
         return max(min(r, g), min(max(r, g), b));
     }
     
     void main() {
-        vec3 sample = texture2D(fontAtlas, vUv).rgb;
+        vec3 sample = texture(fontAtlas, vUv).rgb;
         float sigDist = median(sample.r, sample.g, sample.b);
         
-        float alpha = smoothstep(sdfThreshold - sdfSpread, sdfThreshold + sdfSpread, sigDist);
-        float outline = smoothstep(sdfThreshold - outlineWidth - sdfSpread, 
-                                 sdfThreshold - outlineWidth + sdfSpread, sigDist);
+        // Dynamic threshold based on distance
+        float distanceScale = smoothstep(fadeEnd, fadeStart, vViewDistance);
+        float dynamicThreshold = sdfThreshold * (1.0 + (1.0 - distanceScale) * 0.1);
+        float dynamicSpread = sdfSpread * (1.0 + (1.0 - distanceScale) * 0.2);
+        
+        // Improved antialiasing
+        float alpha = smoothstep(dynamicThreshold - dynamicSpread, 
+                               dynamicThreshold + dynamicSpread, 
+                               sigDist);
+                               
+        float outline = smoothstep(dynamicThreshold - outlineWidth - dynamicSpread,
+                                 dynamicThreshold - outlineWidth + dynamicSpread,
+                                 sigDist);
+        
+        // Apply distance-based fade
+        alpha *= distanceScale;
+        outline *= distanceScale;
         
         vec4 color = mix(vec4(outlineColor, outline), vColor, alpha);
-        gl_FragColor = color;
+        fragColor = color;
     }
 `;
 
@@ -128,21 +158,23 @@ export class UnifiedTextRenderer {
         });
 
         this.labels = new Map();
-        this.maxInstances = 1000;
+        this.maxInstances = 2000;
         this.currentInstanceCount = 0;
         this.fontAtlas = null;
         
         this.group = new Group();
         this.scene.add(this.group);
         
-        this.fontAtlasGenerator = new SDFFontAtlasGenerator(1024, 4, 8);
+        this.fontAtlasGenerator = new SDFFontAtlasGenerator(2048, 8, 16);
 
         this.logger.info('Initializing material with settings:', {
             billboardMode: settings.billboardMode,
-            sdfThreshold: 0.5,
-            sdfSpread: 0.1,
+            sdfThreshold: 0.45,
+            sdfSpread: 0.15,
             outlineColor: settings.textOutlineColor,
-            outlineWidth: settings.textOutlineWidth,
+            outlineWidth: 0.2,
+            fadeStart: 10.0,
+            fadeEnd: 100.0,
             depthTest: true
         });
         
@@ -153,11 +185,13 @@ export class UnifiedTextRenderer {
                 fragmentShader,
                 uniforms: {
                     fontAtlas: { value: null },
-                    sdfThreshold: { value: 0.5 },
-                    sdfSpread: { value: 0.1 },
+                    sdfThreshold: { value: 0.45 },
+                    sdfSpread: { value: 0.15 },
                     cameraPosition: { value: this.camera.position },
                     outlineColor: { value: new Color(settings.textOutlineColor) },
-                    outlineWidth: { value: settings.textOutlineWidth }
+                    outlineWidth: { value: 0.2 },
+                    fadeStart: { value: 10.0 },
+                    fadeEnd: { value: 100.0 }
                 },
                 transparent: true,
                 depthTest: true,
@@ -175,7 +209,9 @@ export class UnifiedTextRenderer {
             });
             // Fallback to basic material
             this.material = new MeshBasicMaterial({ 
-                color: new Color(this.settings.textColor) });
+                color: new Color(this.settings.textColor),
+                transparent: true
+            });
         }
         
         this.geometry = this.createInstancedGeometry();
@@ -253,26 +289,39 @@ export class UnifiedTextRenderer {
         // Copy attributes from base geometry
         const position = baseGeometry.getAttribute('position');
         const uv = baseGeometry.getAttribute('uv');
+        const normal = baseGeometry.getAttribute('normal');
+        
         instancedGeometry.setAttribute('position', position);
         instancedGeometry.setAttribute('uv', uv);
+        if (normal) instancedGeometry.setAttribute('normal', normal);
         
-        const instancePositions = new Float32Array(this.maxInstances * 3);
-        const instanceColors = new Float32Array(this.maxInstances * 4);
-        const instanceScales = new Float32Array(this.maxInstances);
+        // Set up instanced attributes with proper sizes
+        const instancePositions = new Float32Array(this.maxInstances * 3); // vec3
+        const instanceColors = new Float32Array(this.maxInstances * 4);    // vec4
+        const instanceScales = new Float32Array(this.maxInstances);        // float
         
-        // Set up instanced attributes
+        // Initialize instance attributes with proper itemSize
         instancedGeometry.setAttribute(
             'instancePosition',
-            new InstancedBufferAttribute(instancePositions, 3)
+            new InstancedBufferAttribute(instancePositions, 3, false)
         );
         instancedGeometry.setAttribute(
             'instanceColor',
-            new InstancedBufferAttribute(instanceColors, 4)
+            new InstancedBufferAttribute(instanceColors, 4, false)
         );
         instancedGeometry.setAttribute(
             'instanceScale',
-            new InstancedBufferAttribute(instanceScales, 1)
+            new InstancedBufferAttribute(instanceScales, 1, false)
         );
+        
+        // Copy index if present
+        const index = (baseGeometry as any).index;
+        if (index instanceof BufferAttribute) {
+            instancedGeometry.setIndex(index);
+        }
+        
+        // Clean up base geometry
+        baseGeometry.dispose();
                 
         return instancedGeometry;
     }
@@ -382,30 +431,30 @@ export class UnifiedTextRenderer {
     }
     
     public update(): void {
-        this.camera.updateMatrixWorld();
+        if (!this.camera || !this.material) return;
         
-        // Update camera position uniform for shader material
-        if (this.material instanceof ShaderMaterial && this.material.uniforms) {
+        // Update only visible labels
+        this.labels.forEach((label, id) => {
+            if (this.isLabelVisible(label)) {
+                this.updateLabel(id, label.text, label.position, label.color);
+            }
+        });
+        
+        // Update camera uniforms
+        if (this.material instanceof ShaderMaterial) {
             this.material.uniforms.cameraPosition.value.copy(this.camera.position);
         }
+    }
+
+    private isLabelVisible(label: LabelInstance): boolean {
+        if (!label.visible) return false;
         
-        // Log state periodically (every ~100 frames)
-        if (Math.random() < 0.01) {
-            const debugInfo: any = {
-                materialType: this.material instanceof ShaderMaterial ? 'ShaderMaterial' : 'MeshBasicMaterial',
-                meshInstanceCount: (this.mesh as any).instanceCount,
-                totalLabels: this.labels.size,
-                visibleLabels: Array.from(this.labels.values()).filter(l => l.visible).length
-            };
-            
-            // Add shader-specific info if available
-            if (this.material instanceof ShaderMaterial && this.material.uniforms) {
-                debugInfo.materialUniforms = {
-                    hasTexture: !!this.material.uniforms.fontAtlas.value
-                };
-            }
-            this.logger.debug('Renderer state:', debugInfo);
-        }
+        // Use distance-based culling with the camera's far plane
+        const distanceToCamera = label.position.distanceTo(this.camera.position);
+        const margin = 5.0;  // Units in world space
+        
+        // Check if label is within camera's view distance (with margin)
+        return distanceToCamera <= (this.camera as any).far + margin;
     }
 
     public dispose(): void {
