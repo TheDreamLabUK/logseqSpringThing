@@ -38,7 +38,7 @@ struct SimulationParams {
 @group(0) @binding(1) var<storage, read> edges_buffer: EdgesBuffer;
 @group(0) @binding(2) var<uniform> params: SimulationParams;
 
-// Physics constants - aligned with settings.toml
+// Physics constants - aligned with settings.yaml
 const WORKGROUP_SIZE: u32 = 256;
 const MAX_FORCE: f32 = 100.0;          // Increased for stronger forces
 const MIN_DISTANCE: f32 = 5.0;         // Increased minimum distance
