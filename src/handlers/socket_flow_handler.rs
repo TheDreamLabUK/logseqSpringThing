@@ -136,18 +136,15 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
                                                 debug!("Processing binary update for {} nodes", raw_nodes.len());
                                             }
 
-                                            let nodes: Vec<(u32, BinaryNodeData)> = raw_nodes
-                                                .into_iter()
-                                                .map(|node| {
-                                                    (
-                                                        node.id.parse().unwrap_or(0),
-                                                        BinaryNodeData {
-                                                            position: node.data.position,
-                                                            velocity: node.data.velocity,
-                                                        },
-                                                    )
-                                                })
-                                                .collect();
+                                            let mut nodes = Vec::with_capacity(raw_nodes.len());
+                                            for node in raw_nodes {
+                                                if let Ok(node_id) = node.id.parse::<u32>() {
+                                                    nodes.push((node_id, BinaryNodeData {
+                                                        position: node.data.position,
+                                                        velocity: node.data.velocity,
+                                                    }));
+                                                }
+                                            }
 
                                             if should_debug {
                                                 debug!("Encoding binary update with {} nodes", nodes.len());
@@ -204,13 +201,13 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
                     Ok(nodes) => {
                         if nodes.len() <= 2 {
                             let app_state = self.app_state.clone();
-                            let nodes_clone = nodes.clone();
+                            let nodes_vec: Vec<_> = nodes.into_iter().collect();
 
                             let fut = async move {
                                 let mut graph = app_state.graph_service.get_graph_data_mut().await;
                                 let mut node_map = app_state.graph_service.get_node_map_mut().await;
 
-                                for (node_id, node_data) in nodes_clone {
+                                for (node_id, node_data) in nodes_vec {
                                     let node_id_str = node_id.to_string();
                                     if let Some(node) = node_map.get_mut(&node_id_str) {
                                         node.data.position = node_data.position;

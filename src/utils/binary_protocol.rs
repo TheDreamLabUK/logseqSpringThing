@@ -1,6 +1,7 @@
 use byteorder::{LittleEndian, WriteBytesExt, ReadBytesExt};
 use std::io::Cursor;
 use crate::utils::socket_flow_messages::BinaryNodeData;
+use crate::types::Vec3Data;
 
 pub fn encode_node_data(nodes: &[(u32, BinaryNodeData)]) -> Vec<u8> {
     if log::log_enabled!(log::Level::Debug) {
@@ -95,12 +96,12 @@ mod tests {
     fn test_encode_decode_roundtrip() {
         let nodes = vec![
             (1, BinaryNodeData {
-                position: [1.0, 2.0, 3.0],
-                velocity: [0.1, 0.2, 0.3],
+                position: Vec3Data::new(1.0, 2.0, 3.0),
+                velocity: Vec3Data::new(0.1, 0.2, 0.3),
             }),
             (2, BinaryNodeData {
-                position: [4.0, 5.0, 6.0],
-                velocity: [0.4, 0.5, 0.6],
+                position: Vec3Data::new(4.0, 5.0, 6.0),
+                velocity: Vec3Data::new(0.4, 0.5, 0.6),
             }),
         ];
 

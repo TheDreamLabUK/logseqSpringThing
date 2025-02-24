@@ -276,12 +276,12 @@ impl GraphService {
             let updated_nodes = gpu_compute.get_node_data()?;
             
             // Update graph with new positions
-            for (node, data) in graph.nodes.iter_mut().zip(updated_nodes.iter()) {
+            for (i, node) in graph.nodes.iter_mut().enumerate() {
                 // Update position and velocity from GPU data
-                node.data = data.clone();
+                node.data = updated_nodes[i];
                 // Update node_map as well
                 if let Some(map_node) = node_map.get_mut(&node.id) {
-                    map_node.data = data.clone();
+                    map_node.data = updated_nodes[i];
                 }
             }
             Ok(())
@@ -339,8 +339,8 @@ impl GraphService {
             for node in &graph.nodes {
                 log::debug!("Node {}: pos=[{},{},{}], vel=[{},{},{}]",
                     node.id,
-                    node.data.position[0], node.data.position[1], node.data.position[2],
-                    node.data.velocity[0], node.data.velocity[1], node.data.velocity[2]
+                    node.data.position.x, node.data.position.y, node.data.position.z,
+                    node.data.velocity.x, node.data.velocity.y, node.data.velocity.z
                 );
             }
         }

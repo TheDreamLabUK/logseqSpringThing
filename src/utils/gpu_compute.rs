@@ -10,6 +10,7 @@ use log::{debug, error, warn};
 use crate::models::graph::GraphData;
 use std::collections::HashMap;
 use crate::models::simulation_params::SimulationParams;
+use crate::types::Vec3Data;
 use crate::utils::socket_flow_messages::BinaryNodeData;
 use tokio::sync::RwLock;
 
@@ -168,9 +169,13 @@ impl GPUCompute {
         }
 
         // Prepare node data
-        let node_data: Vec<BinaryNodeData> = graph.nodes.iter()
-            .map(|node| node.data)
-            .collect();
+        let mut node_data = Vec::with_capacity(graph.nodes.len());
+        for node in &graph.nodes {
+            node_data.push(BinaryNodeData {
+                position: node.data.position,
+                velocity: node.data.velocity,
+            });
+        }
 
         debug!("Copying {} nodes to GPU", graph.nodes.len());
 
@@ -226,11 +231,11 @@ impl GPUCompute {
 
     pub fn get_node_data(&self) -> Result<Vec<BinaryNodeData>, Error> {
         let mut gpu_nodes = vec![BinaryNodeData {
-            position: [0.0; 3],
-            velocity: [0.0; 3],
+            position: Vec3Data::zero(),
+            velocity: Vec3Data::zero(),
         }; self.num_nodes as usize];
 
-        self.device.dtoh_sync_copy_into(&self.node_data, &mut gpu_nodes)
+        self.device.dtoh_sync_copy_into(&self.node_data, gpu_nodes.as_mut_slice())
             .map_err(|e| Error::new(std::io::ErrorKind::Other, e.to_string()))?;
 
         Ok(gpu_nodes)
