@@ -118,9 +118,7 @@ export class EdgeManager {
     }
 
     private createEdgeMaterial(): Material {
-        return new EdgeShaderMaterial(this.settings, 
-            this.settings.visualization.rendering.context || 'desktop'
-        );
+        return new EdgeShaderMaterial(this.settings);
     }
 
     private updateAllEdgeGeometries(): void {
@@ -195,16 +193,18 @@ export class EdgeManager {
         this.settings = settings;
         this.edges.forEach((edge) => {
             if (edge.material instanceof EdgeShaderMaterial) {
-                const uniforms = edge.material.uniforms;
-                uniforms.opacity.value = settings.visualization.edges.opacity;
-                uniforms.color.value.set(settings.visualization.edges.color);
-                uniforms.flowSpeed.value = settings.visualization.edges.flowSpeed;
-                uniforms.flowIntensity.value = settings.visualization.edges.flowIntensity;
-                uniforms.glowStrength.value = settings.visualization.edges.glowStrength;
-                uniforms.distanceIntensity.value = settings.visualization.edges.distanceIntensity;
-                uniforms.useGradient.value = settings.visualization.edges.useGradient;
-                uniforms.gradientColorA.value.set(settings.visualization.edges.gradientColors[0]);
-                uniforms.gradientColorB.value.set(settings.visualization.edges.gradientColors[1]);
+                // Update the material properties directly
+                edge.material.opacity = settings.visualization.edges.opacity;
+                
+                // Try to update color
+                try {
+                  // Use the color property directly since we're now extending MeshBasicMaterial
+                  edge.material.color.set(settings.visualization.edges.color);
+                } catch (error) {
+                  console.warn('Could not update edge material color');
+                }
+                
+                // Mark material as needing update
                 edge.material.needsUpdate = true;
             }
         });

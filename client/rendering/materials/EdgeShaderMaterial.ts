@@ -1,412 +1,140 @@
 import { 
-    ShaderMaterial, 
-    Color, 
     Vector3, 
     WebGLRenderer, 
     MeshBasicMaterial
 } from 'three';
-
-import { Settings } from '../../types/settings/base';
 import { createLogger } from '../../core/logger';
 import { debugState } from '../../core/debugState';
 
 const logger = createLogger('EdgeShaderMaterial');
 
-// Three.js constants
-const FRONT_SIDE = 0;  // THREE.FrontSide
-const DOUBLE_SIDE = 2; // THREE.DoubleSide
-const NORMAL_BLENDING = 1;  // THREE.NormalBlending
-const ADDITIVE_BLENDING = 2;  // THREE.AdditiveBlending
-
-export interface EdgeUniforms {
-    [key: string]: { value: any };
-    time: { value: number };
-    opacity: { value: number };
-    color: { value: Color };
-    flowSpeed: { value: number };
-    flowIntensity: { value: number };
-    glowStrength: { value: number };
-    distanceIntensity: { value: number };
-    useGradient: { value: boolean };
-    gradientColorA: { value: Color };
-    gradientColorB: { value: Color };
-    sourcePosition: { value: Vector3 };
-    targetPosition: { value: Vector3 };
-}
-
-export class EdgeShaderMaterial extends ShaderMaterial {
-    declare uniforms: EdgeUniforms;
-    private updateFrequency: number;
-    private frameCount: number = 0;
+/**
+ * EdgeShaderMaterial - A material for rendering edges in the graph
+ * This version uses Three.js built-in materials instead of custom shaders
+ * to improve compatibility and avoid WebGL context issues
+ */
+export class EdgeShaderMaterial extends MeshBasicMaterial {
     private static instances: Set<EdgeShaderMaterial> = new Set();
-    private static renderer: WebGLRenderer | null = null;
     private fallbackMaterial: MeshBasicMaterial | null = null;
+    private baseOpacity: number;
+    private updateFrequency: number;
+    private frameCount: number;
+    
+    // Store time for animation
+    private time: number = 0;
 
-    private validateUniforms(): boolean {
-        if (!debugState.isShaderDebugEnabled()) return true;
-
-        const uniformErrors: string[] = [];
+    constructor(settings?: any) {
+        // Extract settings
+        const opacity = settings?.visualization?.edges?.opacity ?? 0.7;
+        const colorValue = settings?.visualization?.edges?.color ?? 0x4080ff;
         
-        Object.entries(this.uniforms).forEach(([name, uniform]) => {
-            if (uniform.value === undefined || uniform.value === null) {
-                uniformErrors.push(`Uniform '${name}' has no value`);
-            } else if (uniform.value instanceof Vector3 && 
-                      (isNaN(uniform.value.x) || isNaN(uniform.value.y) || isNaN(uniform.value.z))) {
-                uniformErrors.push(`Uniform '${name}' has invalid Vector3 value`);
-            } else if (uniform.value instanceof Color) {
-                const [r, g, b] = uniform.value.toArray();
-                if (isNaN(r) || isNaN(g) || isNaN(b)) {
-                    uniformErrors.push(`Uniform '${name}' has invalid Color value: ${(uniform.value as any).getHexString()}`);
-                }
-            } else if (typeof uniform.value === 'number' && 
-                      (isNaN(uniform.value) || !isFinite(uniform.value))) {
-                uniformErrors.push(`Uniform '${name}' has invalid number value`);
-            }
-        });
-
-        if (uniformErrors.length > 0) {
-            logger.shader('Uniform validation failed', { errors: uniformErrors });
-            return false;
-        }
-
-        return true;
-    }
-
-    private checkWebGLVersion(renderer: WebGLRenderer): boolean {
-        const gl = renderer.domElement.getContext('webgl2') || renderer.domElement.getContext('webgl');
-        const isWebGL2 = gl instanceof WebGL2RenderingContext;
-        
-        if (debugState.isShaderDebugEnabled()) {
-            logger.shader('WebGL context check', {
-                version: isWebGL2 ? '2.0' : '1.0',
-                glslVersion: (this as any).glslVersion ?? 'none'
-            });
-        }
-        return isWebGL2;
-    }
-
-    constructor(settings: Settings, context: 'ar' | 'desktop' = 'desktop') {
-        const isAR = context === 'ar';
-
-        if (debugState.isShaderDebugEnabled()) {
-            logger.shader('Creating EdgeShaderMaterial', { context, settings });
-        }
-        
-        // Check WebGL version to determine which shader version to use
-        const canvas = document.createElement('canvas');
-        const gl = canvas.getContext('webgl2');
-        const isWebGL2 = !!gl;
-        
-        // Choose appropriate vertex shader based on WebGL version
-        const vertexShader = isWebGL2 ? 
-            /* WebGL2 vertex shader */
-            `#version 300 es
-            in vec2 uv;
-            in vec3 position;
-            out vec2 vUv;
-            out vec3 vPosition;
-            out float vDistance;
-            const float PI = 3.14159265359;
-            
-            uniform vec3 sourcePosition;
-            uniform vec3 targetPosition;
-            
-            void main() {
-                vUv = uv;
-                vPosition = position;
-                
-                // Optimize distance calculation
-                vec3 edgeDir = normalize(targetPosition - sourcePosition);
-                vec3 posVector = position - sourcePosition;
-                vDistance = dot(edgeDir, normalize(posVector));
-                
-                gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-            }` :
-            /* WebGL1 vertex shader */
-            `attribute vec2 uv;
-            attribute vec3 position;
-            varying vec2 vUv;
-            varying vec3 vPosition;
-            varying float vDistance;
-            const float PI = 3.14159265359;
-            
-            uniform vec3 sourcePosition;
-            uniform vec3 targetPosition;
-            
-            void main() {
-                vUv = uv;
-                vPosition = position;
-                
-                // Optimize distance calculation
-                vec3 edgeDir = normalize(targetPosition - sourcePosition);
-                vec3 posVector = position - sourcePosition;
-                vDistance = dot(edgeDir, normalize(posVector));
-                
-                gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-            }`;
-        
-        // Choose appropriate fragment shader based on WebGL version
-        const fragmentShader = isWebGL2 ?
-            /* WebGL2 fragment shader */
-            `#version 300 es
-            precision highp float;
-            uniform float time;
-            uniform float opacity;
-            uniform vec3 color;
-            uniform float flowSpeed;
-            uniform float flowIntensity;
-            uniform float glowStrength;
-            uniform float distanceIntensity;
-            uniform bool useGradient;
-            uniform vec3 gradientColorA;
-            uniform vec3 gradientColorB;
-            
-            in vec2 vUv;
-            in vec3 vPosition;
-            in float vDistance;
-            out vec4 fragColor;
-            
-            void main() {
-                // Simplified flow calculation
-                float flow = sin(vDistance * 8.0 - time * flowSpeed) * 0.5 + 0.5;
-                flow *= flowIntensity;
-
-                // Optimized distance-based intensity
-                float distanceFactor = 1.0 - abs(vDistance - 0.5) * 2.0;
-                distanceFactor = pow(distanceFactor, distanceIntensity);
-                
-                // Base color with gradient
-                vec3 finalColor = useGradient ? 
-                    mix(gradientColorA, gradientColorB, vDistance) : 
-                    color;
-
-                // Add flow and glow effects
-                finalColor += flow * 0.2;
-                finalColor += (1.0 - vUv.y) * glowStrength * 0.3;
-                
-                // Apply distance factor
-                finalColor *= mix(0.5, 1.0, distanceFactor);
-                
-                fragColor = vec4(finalColor, opacity * (0.7 + flow * 0.3));
-            }` :
-            /* WebGL1 fragment shader */
-            `precision highp float;
-            uniform float time;
-            uniform float opacity;
-            uniform vec3 color;
-            uniform float flowSpeed;
-            uniform float flowIntensity;
-            uniform float glowStrength;
-            uniform float distanceIntensity;
-            uniform bool useGradient;
-            uniform vec3 gradientColorA;
-            uniform vec3 gradientColorB;
-            
-            varying vec2 vUv;
-            varying vec3 vPosition;
-            varying float vDistance;
-            
-            void main() {
-                // Simplified flow calculation
-                float flow = sin(vDistance * 8.0 - time * flowSpeed) * 0.5 + 0.5;
-                flow *= flowIntensity;
-
-                // Optimized distance-based intensity
-                float distanceFactor = 1.0 - abs(vDistance - 0.5) * 2.0;
-                distanceFactor = pow(distanceFactor, distanceIntensity);
-                
-                // Base color with gradient
-                vec3 finalColor = useGradient ? 
-                    mix(gradientColorA, gradientColorB, vDistance) : 
-                    color;
-
-                // Add flow and glow effects
-                finalColor += flow * 0.2;
-                finalColor += (1.0 - vUv.y) * glowStrength * 0.3;
-                
-                // Apply distance factor
-                finalColor *= mix(0.5, 1.0, distanceFactor);
-                
-                gl_FragColor = vec4(finalColor, opacity * (0.7 + flow * 0.3));
-            }`;
-        
+        // Initialize MeshBasicMaterial with proper settings
         super({
-            uniforms: {
-                time: { value: 0 },
-                opacity: { value: settings.visualization.edges.opacity },
-                color: { value: new Color(settings.visualization.edges.color) },
-                flowSpeed: { value: settings.visualization.edges.flowSpeed },
-                flowIntensity: { value: settings.visualization.edges.flowIntensity },
-                glowStrength: { value: settings.visualization.edges.glowStrength },
-                distanceIntensity: { value: settings.visualization.edges.distanceIntensity },
-                useGradient: { value: settings.visualization.edges.useGradient },
-                gradientColorA: { value: new Color(settings.visualization.edges.gradientColors[0]) },
-                gradientColorB: { value: new Color(settings.visualization.edges.gradientColors[1]) },
-                sourcePosition: { value: new Vector3() },
-                targetPosition: { value: new Vector3() }
-            },
-            vertexShader,
-            fragmentShader,
+            color: colorValue,
             transparent: true,
-            side: isAR ? FRONT_SIDE : DOUBLE_SIDE,
-            blending: isAR ? NORMAL_BLENDING : ADDITIVE_BLENDING,
-            depthWrite: !isAR
+            opacity: opacity,
+            side: 2, // DoubleSide = 2
+            depthWrite: false
         });
-
-        // Set update frequency based on context
-        this.updateFrequency = isAR ? 3 : 2; // Update less frequently in AR
+        
+        if (debugState.isDataDebugEnabled()) {
+            logger.debug('Creating EdgeShaderMaterial (Three.js version)', { settings });
+        }
+        
+        // Try to set wireframe if available
+        try {
+            (this as any).wireframe = true;
+        } catch (e) {
+            logger.warn('Could not set wireframe property on MeshBasicMaterial');
+        }
+        
+        // Store original values
+        this.baseOpacity = opacity;
+        
+        this.updateFrequency = 1; // Update every frame
+        this.frameCount = 0;
 
         // Add this instance to the set of instances
         EdgeShaderMaterial.instances.add(this);
 
-        if (EdgeShaderMaterial.renderer) {
-            try {
-                if (debugState.isShaderDebugEnabled()) {
-                    logger.shader('Attempting shader compilation', {
-                        context,
-                        hasRenderer: true,
-                        webgl2: this.checkWebGLVersion(EdgeShaderMaterial.renderer)
-                    });
-                }
-
-                // Validate uniforms before compilation
-                if (!this.validateUniforms()) {
-                    throw new Error('Uniform validation failed');
-                }
-
-                this.needsUpdate = true;
-            } catch (error) {
-                const err = error instanceof Error ? error : new Error('Shader compilation failed');
-                if (debugState.isShaderDebugEnabled()) {
-                    logger.shader('Shader compilation failed', {
-                        error: err,
-                        message: err.message,
-                        stack: err.stack,
-                        context
-                    });
-                }
-
-                this.fallbackMaterial = new MeshBasicMaterial({
-                    color: settings.visualization.edges.color,
-                    wireframe: true,
-                    transparent: true,
-                    opacity: settings.visualization.edges.opacity
-                });
-            }
+        if (debugState.isDataDebugEnabled()) {
+            logger.debug('EdgeShaderMaterial initialized (Three.js version)', { 
+                color: colorValue,
+                opacity: opacity
+            });
         }
     }
 
-    public static setRenderer(renderer: WebGLRenderer): void {
-        EdgeShaderMaterial.renderer = renderer;
-        
+    public static setRenderer(_renderer: WebGLRenderer): void {
         if (debugState.isShaderDebugEnabled()) {
-            const gl = renderer.domElement.getContext('webgl2') || renderer.domElement.getContext('webgl');
-            if (gl) {
-                logger.shader('Renderer initialized', {
-                    isWebGL2: gl instanceof WebGL2RenderingContext,
-                    maxTextures: gl.getParameter(gl.MAX_TEXTURE_IMAGE_UNITS),
-                    maxVaryings: gl.getParameter(gl.MAX_VARYING_VECTORS),
-                    maxVertexAttribs: gl.getParameter(gl.MAX_VERTEX_ATTRIBS),
-                    maxVertexUniforms: gl.getParameter(gl.MAX_VERTEX_UNIFORM_VECTORS),
-                    maxFragmentUniforms: gl.getParameter(gl.MAX_FRAGMENT_UNIFORM_VECTORS)
-                });
-            }
+            logger.shader('Renderer set for EdgeShaderMaterial');
         }
-
-        // Force shader compilation for all instances
-        EdgeShaderMaterial.instances.forEach(instance => {
-            try {
-                if (!instance.validateUniforms()) {
-                    logger.shader('Skipping recompilation due to invalid uniforms');
-                    return;
-                }
-
-                instance.needsUpdate = true;
-                
-                // If we had a fallback material and compilation succeeded, remove it
-                if (instance.fallbackMaterial) {
-                    instance.fallbackMaterial.dispose();
-                    instance.fallbackMaterial = null;
-                }
-            } catch (error) {
-                const err = error instanceof Error ? error : new Error('Shader recompilation failed');
-                if (debugState.isShaderDebugEnabled()) {
-                    logger.shader('Shader recompilation failed', {
-                        error: err,
-                        message: err.message,
-                        stack: err.stack
-                    });
-                }
-
-                if (!instance.fallbackMaterial) {
-                    instance.fallbackMaterial = new MeshBasicMaterial({
-                        color: instance.uniforms.color.value,
-                        wireframe: true,
-                        transparent: true,
-                        opacity: instance.uniforms.opacity.value
-                    });
-                }
-            }
-        });
     }
 
     update(deltaTime: number): void {
         this.frameCount++;
         if (this.frameCount % this.updateFrequency === 0) {
-            const oldTime = this.uniforms.time.value;
-            this.uniforms.time.value += deltaTime;
-
-            if (debugState.isShaderDebugEnabled() && 
-                (isNaN(this.uniforms.time.value) || !isFinite(this.uniforms.time.value))) {
-                logger.shader('Invalid time value detected', {
-                    oldTime,
-                    deltaTime,
-                    newTime: this.uniforms.time.value
-                });
-                this.uniforms.time.value = 0;
-            }
+            // Update time for animation
+            this.time += deltaTime;
+            
+            // Simple pulsing effect
+            const pulse = Math.sin(this.time * 1.5) * 0.1 + 0.9;
+            this.opacity = this.baseOpacity * pulse;
         }
     }
 
-    setSourceTarget(source: Vector3, target: Vector3): void {
-        if (debugState.isShaderDebugEnabled()) {
-            logger.shader('Setting source/target positions', {
-                source,
-                target
-            });
-        }
-
-        this.uniforms.sourcePosition.value.copy(source);
-        this.uniforms.targetPosition.value.copy(target);
+    setSourceTarget(_source: Vector3, _target: Vector3): void {
+        // This method is kept for API compatibility
+        // In the simplified version, we don't need to do anything here
     }
 
     clone(): this {
-        if (debugState.isShaderDebugEnabled()) {
-            logger.shader('Cloning EdgeShaderMaterial');
+        if (debugState.isDataDebugEnabled()) {
+            logger.debug('Cloning EdgeShaderMaterial (Three.js version)');
         }
-
-        const material = new EdgeShaderMaterial({
+        
+        // Create settings object from current properties
+        const settings = {
             visualization: {
                 edges: {
-                    opacity: this.uniforms.opacity.value,
-                    color: (this.uniforms.color.value as any).getHexString(),
-                    flowSpeed: this.uniforms.flowSpeed.value,
-                    flowIntensity: this.uniforms.flowIntensity.value,
-                    glowStrength: this.uniforms.glowStrength.value,
-                    distanceIntensity: this.uniforms.distanceIntensity.value,
-                    useGradient: this.uniforms.useGradient.value,
-                    gradientColors: [
-                        (this.uniforms.gradientColorA.value as any).getHexString(),
-                        (this.uniforms.gradientColorB.value as any).getHexString()
-                    ]
+                    opacity: this.opacity,
+                    color: 0x4080ff // Default color as fallback
                 }
             }
-        } as Settings);
-
-        if (debugState.isShaderDebugEnabled()) {
-            logger.shader('Material cloned successfully');
+        };
+        
+        // Try to get the color value
+        try {
+            // Use a simple approach to get the color value
+            if (this.color) {
+                const colorHex = (this.color as any).getHex ? (this.color as any).getHex() : 0x4080ff;
+                settings.visualization.edges.color = colorHex;
+            }
+        } catch (error) {
+            logger.warn('Could not get color value, using default color');
         }
-
+        
+        const material = new EdgeShaderMaterial(settings);
+        
+        // Copy current state
+        try {
+            (material as any).wireframe = (this as any).wireframe || false;
+        } catch (e) {
+            // Ignore errors
+        }
+        material.opacity = this.opacity;
+        try {
+            material.color.set(this.color);
+        } catch (error) {
+            logger.warn('Could not copy color from original material');
+        }
+        
+        material.time = this.time;
+        material.frameCount = this.frameCount;
+        
+        if (debugState.isDataDebugEnabled()) {
+            logger.debug('Material cloned successfully');
+        }
         return material as this;
     }
 
@@ -419,9 +147,5 @@ export class EdgeShaderMaterial extends ShaderMaterial {
         }
         // Call parent dispose
         super.dispose();
-
-        if (debugState.isShaderDebugEnabled()) {
-            logger.shader('Material disposed');
-        }
     }
 }

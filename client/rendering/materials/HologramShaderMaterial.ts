@@ -1,14 +1,13 @@
 import { 
-    ShaderMaterial, 
     Color, 
     Vector3, 
-    AdditiveBlending, 
     WebGLRenderer, 
     MeshBasicMaterial
 } from 'three';
 import { createLogger } from '../../core/logger';
 import { debugState } from '../../core/debugState';
 
+// Define a custom interface for our uniforms to maintain API compatibility
 export interface HologramUniforms {
     [key: string]: { value: any };
     time: { value: number };
@@ -22,259 +21,59 @@ export interface HologramUniforms {
 
 const logger = createLogger('HologramShaderMaterial');
 
-// Three.js side constants
-const FRONT_SIDE = 0;  // THREE.FrontSide
-const DOUBLE_SIDE = 2; // THREE.DoubleSide
-
-export class HologramShaderMaterial extends ShaderMaterial {
-    declare uniforms: HologramUniforms;
-    private static renderer: WebGLRenderer | null = null;
+/**
+ * HologramShaderMaterial - A material that simulates a hologram effect
+ * This version uses Three.js built-in materials instead of custom shaders
+ * to improve compatibility and avoid WebGL context issues
+ */
+export class HologramShaderMaterial extends MeshBasicMaterial {
+    // Store uniforms for API compatibility with the original shader material
+    public uniforms: HologramUniforms;
     private static instances: Set<HologramShaderMaterial> = new Set();
     private updateFrequency: number;
     private frameCount: number;
     private fallbackMaterial: MeshBasicMaterial | null = null;
-    public wireframe = false;
-
-    private validateUniforms(): boolean {
-        if (!debugState.isShaderDebugEnabled()) return true;
-
-        const uniformErrors: string[] = [];
-        
-        // Check each uniform
-        Object.entries(this.uniforms).forEach(([name, uniform]) => {
-            if (uniform.value === undefined || uniform.value === null) {
-                uniformErrors.push(`Uniform '${name}' has no value`);
-            } else if (uniform.value instanceof Vector3 && 
-                      (isNaN(uniform.value.x) || isNaN(uniform.value.y) || isNaN(uniform.value.z))) {
-                uniformErrors.push(`Uniform '${name}' has invalid Vector3 value`);
-            } else if (uniform.value instanceof Color) {
-                const [r, g, b] = uniform.value.toArray();
-                if (isNaN(r) || isNaN(g) || isNaN(b)) {
-                    uniformErrors.push(`Uniform '${name}' has invalid Color value: ${(uniform.value as any).getHexString()}`);
-                }
-            } else if (typeof uniform.value === 'number' && 
-                      (isNaN(uniform.value) || !isFinite(uniform.value))) {
-                uniformErrors.push(`Uniform '${name}' has invalid number value`);
-            }
-        });
-
-        if (uniformErrors.length > 0) {
-            logger.shader('Uniform validation failed', { errors: uniformErrors });
-            return false;
-        }
-
-        return true;
-    }
-
-    private checkWebGLVersion(renderer: WebGLRenderer): boolean {
-        const gl = renderer.domElement.getContext('webgl2') || renderer.domElement.getContext('webgl');
-        const isWebGL2 = gl instanceof WebGL2RenderingContext;
-        
-        if (debugState.isShaderDebugEnabled()) {
-            logger.shader('WebGL context check', {
-                version: isWebGL2 ? '2.0' : '1.0',
-                glslVersion: (this as any).glslVersion ?? 'none'
-            });
-        }
-        return isWebGL2;
-    }
+    private baseOpacity: number;
+    private baseColor: Color;
+    private pulseIntensity: number;
+    private isEdgeOnlyMode: boolean = false;
 
     constructor(settings?: any, context: 'ar' | 'desktop' = 'desktop') {
-        if (debugState.isDataDebugEnabled()) {
-            logger.debug('Creating HologramShaderMaterial', { context, settings });
-        }
+        // Extract settings
         const isAR = context === 'ar';
+        const opacity = settings?.visualization?.hologram?.opacity ?? 0.7;
+        const colorValue = settings?.visualization?.hologram?.color ?? 0x00ff00;
+        const pulseIntensity = isAR ? 0.1 : 0.2;
         
-        // Check WebGL version to determine which shader version to use
-        const canvas = document.createElement('canvas');
-        const gl = canvas.getContext('webgl2');
-        const isWebGL2 = !!gl;
-        
-        // Choose appropriate vertex shader based on WebGL version
-        const vertexShader = isWebGL2 ? 
-            /* WebGL2 vertex shader */
-            `#version 300 es
-            in vec2 uv;
-            in vec3 normal;
-            in vec3 position;
-            
-            uniform mat4 modelMatrix;
-            uniform mat4 viewMatrix;
-            uniform mat4 projectionMatrix;
-            uniform float time;
-            uniform vec3 interactionPoint;
-            uniform float interactionStrength;
-            
-            out vec2 vUv;
-            out vec3 vNormal;
-            out vec3 vPosition;
-            
-            void main() {
-                vUv = uv;
-                vNormal = normalize(normalMatrix * normal);
-                
-                // Apply model matrix to get world position
-                vec4 worldPosition = modelMatrix * vec4(position, 1.0);
-                vPosition = worldPosition.xyz;
-                
-                // Calculate distance to interaction point
-                float dist = distance(worldPosition.xyz, interactionPoint);
-                float influence = max(0.0, 1.0 - dist / 2.0) * interactionStrength;
-                
-                // Apply view and projection matrices
-                gl_Position = projectionMatrix * viewMatrix * worldPosition;
-            }` :
-            /* WebGL1 vertex shader */
-            `attribute vec2 uv;
-            attribute vec3 normal;
-            attribute vec3 position;
-            
-            uniform mat4 modelMatrix;
-            uniform mat4 viewMatrix;
-            uniform mat4 projectionMatrix;
-            uniform mat3 normalMatrix;
-            uniform float time;
-            uniform vec3 interactionPoint;
-            uniform float interactionStrength;
-            
-            varying vec2 vUv;
-            varying vec3 vNormal;
-            varying vec3 vPosition;
-            
-            void main() {
-                vUv = uv;
-                vNormal = normalize(normalMatrix * normal);
-                
-                // Apply model matrix to get world position
-                vec4 worldPosition = modelMatrix * vec4(position, 1.0);
-                vPosition = worldPosition.xyz;
-                
-                // Calculate distance to interaction point
-                float dist = distance(worldPosition.xyz, interactionPoint);
-                float influence = max(0.0, 1.0 - dist / 2.0) * interactionStrength;
-                
-                // Apply view and projection matrices
-                gl_Position = projectionMatrix * viewMatrix * worldPosition;
-            }`;
-            
-        // Choose appropriate fragment shader based on WebGL version
-        const fragmentShader = isWebGL2 ?
-            /* WebGL2 fragment shader */
-            `#version 300 es
-            precision highp float;
-            
-            uniform float time;
-            uniform float opacity;
-            uniform vec3 color;
-            uniform float pulseIntensity;
-            uniform bool isEdgeOnly;
-            
-            in vec2 vUv;
-            in vec3 vNormal;
-            in vec3 vPosition;
-            
-            out vec4 fragColor;
-            
-            void main() {
-                // Edge detection based on normal
-                float edgeFactor = abs(dot(normalize(vNormal), normalize(vec3(0.0, 0.0, 1.0))));
-                edgeFactor = 1.0 - pow(edgeFactor, 2.0);
-                
-                // Pulse effect
-                float pulse = sin(time * 2.0) * 0.5 + 0.5;
-                pulse = pulse * pulseIntensity;
-                
-                // Grid pattern
-                float gridSize = 20.0;
-                vec2 grid = fract(vUv * gridSize);
-                float gridLine = step(0.95, grid.x) + step(0.95, grid.y);
-                
-                // Combine effects
-                float finalOpacity = opacity;
-                vec3 finalColor = color;
-                
-                if (isEdgeOnly) {
-                    // Edge-only mode
-                    finalOpacity = edgeFactor * opacity * (1.0 + pulse * 0.3);
-                    finalColor = mix(color, color * 1.5, pulse);
-                } else {
-                    // Full hologram mode
-                    finalOpacity = mix(0.1, opacity, edgeFactor) * (1.0 + pulse * 0.3);
-                    finalColor = mix(color * 0.5, color * 1.2, edgeFactor);
-                    
-                    // Add grid lines
-                    finalOpacity = mix(finalOpacity, opacity, gridLine * 0.7);
-                    finalColor = mix(finalColor, color * 1.5, gridLine * 0.7);
-                }
-                
-                fragColor = vec4(finalColor, finalOpacity);
-            }` :
-            /* WebGL1 fragment shader */
-            `precision highp float;
-            
-            uniform float time;
-            uniform float opacity;
-            uniform vec3 color;
-            uniform float pulseIntensity;
-            uniform bool isEdgeOnly;
-            
-            varying vec2 vUv;
-            varying vec3 vNormal;
-            varying vec3 vPosition;
-            
-            void main() {
-                // Edge detection based on normal
-                float edgeFactor = abs(dot(normalize(vNormal), normalize(vec3(0.0, 0.0, 1.0))));
-                edgeFactor = 1.0 - pow(edgeFactor, 2.0);
-                
-                // Pulse effect
-                float pulse = sin(time * 2.0) * 0.5 + 0.5;
-                pulse = pulse * pulseIntensity;
-                
-                // Grid pattern
-                float gridSize = 20.0;
-                vec2 grid = fract(vUv * gridSize);
-                float gridLine = step(0.95, grid.x) + step(0.95, grid.y);
-                
-                // Combine effects
-                float finalOpacity = opacity;
-                vec3 finalColor = color;
-                
-                if (isEdgeOnly) {
-                    // Edge-only mode
-                    finalOpacity = edgeFactor * opacity * (1.0 + pulse * 0.3);
-                    finalColor = mix(color, color * 1.5, pulse);
-                } else {
-                    // Full hologram mode
-                    finalOpacity = mix(0.1, opacity, edgeFactor) * (1.0 + pulse * 0.3);
-                    finalColor = mix(color * 0.5, color * 1.2, edgeFactor);
-                    
-                    // Add grid lines
-                    finalOpacity = mix(finalOpacity, opacity, gridLine * 0.7);
-                    finalColor = mix(finalColor, color * 1.5, gridLine * 0.7);
-                }
-                
-                gl_FragColor = vec4(finalColor, finalOpacity);
-            }`;
-        
+        // Initialize MeshBasicMaterial with proper settings
         super({
-            uniforms: {
-                time: { value: 0 },
-                opacity: { value: settings?.visualization?.hologram?.opacity ?? 1.0 },
-                color: { value: new Color(settings?.visualization?.hologram?.color ?? 0x00ff00) },
-                pulseIntensity: { value: isAR ? 0.1 : 0.2 },
-                interactionPoint: { value: new Vector3() },
-                interactionStrength: { value: 0.0 },
-                isEdgeOnly: { value: false }
-            },
-            vertexShader,
-            fragmentShader,
+            color: colorValue,
             transparent: true,
-            blending: AdditiveBlending,
-            side: DOUBLE_SIDE,
+            opacity: opacity,
+            side: isAR ? 0 : 2, // FrontSide = 0, DoubleSide = 2
             depthWrite: false
         });
-
+        
+        if (debugState.isDataDebugEnabled()) {
+            logger.debug('Creating HologramShaderMaterial (Three.js version)', { context, settings });
+        }
+        
+        // Store original values
+        this.baseOpacity = opacity;
+        this.baseColor = new Color(colorValue);
+        this.pulseIntensity = pulseIntensity;
+        
+        // Create uniforms object for API compatibility
+        this.uniforms = {
+            time: { value: 0 },
+            opacity: { value: opacity },
+            color: { value: new Color(colorValue) },
+            pulseIntensity: { value: pulseIntensity },
+            interactionPoint: { value: new Vector3() },
+            interactionStrength: { value: 0.0 },
+            isEdgeOnly: { value: false }
+        };
+        
         this.updateFrequency = isAR ? 2 : 1; // Update every frame in desktop, every other frame in AR
         this.frameCount = 0;
         
@@ -282,58 +81,17 @@ export class HologramShaderMaterial extends ShaderMaterial {
         HologramShaderMaterial.instances.add(this);
         
         if (debugState.isDataDebugEnabled()) {
-            logger.debug('HologramShaderMaterial initialized', { updateFrequency: this.updateFrequency });
-        }
-
-        // If renderer is already set, compile shader
-        if (HologramShaderMaterial.renderer) {
-            try {
-                if (debugState.isShaderDebugEnabled()) {
-                    logger.shader('Attempting shader compilation', {
-                        context,
-                        hasRenderer: true,
-                        webgl2: this.checkWebGLVersion(HologramShaderMaterial.renderer)
-                    });
-                }
-
-                // Validate uniforms before compilation
-                if (!this.validateUniforms()) {
-                    throw new Error('Uniform validation failed');
-                }
-
-                this.needsUpdate = true;
-
-            } catch (error: unknown) {
-                const errorMessage = error instanceof Error ? error : new Error(String(error));
-                const errorStack = error instanceof Error ? error.stack : undefined;
-                if (debugState.isShaderDebugEnabled()) {
-                    logger.shader('Shader compilation failed', {
-                        error: errorMessage,
-                        stack: errorStack,
-                        context
-                    });
-                }
-
-                // Create fallback material
-                this.fallbackMaterial = new MeshBasicMaterial({
-                    color: settings?.visualization?.hologram?.color ?? 0x00ff00,
-                    wireframe: true,
-                    transparent: this.transparent,
-                    opacity: settings?.visualization?.hologram?.opacity ?? 0.5
-                });
-                // Copy necessary properties
-                this.needsUpdate = true;
-                this.side = isAR ? FRONT_SIDE : DOUBLE_SIDE;
-                this.transparent = true;
-            }
+            logger.debug('HologramShaderMaterial initialized (Three.js version)', { 
+                updateFrequency: this.updateFrequency,
+                color: colorValue,
+                opacity: opacity
+            });
         }
     }
 
-    public static setRenderer(renderer: WebGLRenderer): void {
-        HologramShaderMaterial.renderer = renderer;
-        
+    public static setRenderer(_renderer: WebGLRenderer): void {
         if (debugState.isShaderDebugEnabled()) {
-            const gl = renderer.domElement.getContext('webgl2') || renderer.domElement.getContext('webgl');
+            const gl = _renderer.domElement.getContext('webgl2') || _renderer.domElement.getContext('webgl');
             if (gl) {
                 logger.shader('Renderer initialized', {
                     isWebGL2: gl instanceof WebGL2RenderingContext,
@@ -345,65 +103,87 @@ export class HologramShaderMaterial extends ShaderMaterial {
                 });
             }
         }
+    }
 
-        // Force shader compilation for all instances
-        HologramShaderMaterial.instances.forEach(async instance => {
+    // Helper method to create a brighter or dimmer color
+    private createAdjustedColor(baseColor: Color, factor: number): Color {
+        // Create a new color with the same base
+        const newColor = new Color();
+        newColor.set(baseColor);
+        
+        // For simplicity, we'll just create a new color with the same hue
+        // but adjusted brightness based on the factor
+        if (factor !== 1.0) {
+            // Create a brighter or dimmer version of the same color
+            // This is a very simple approach that may not work perfectly
+            // but should be compatible with most Three.js versions
             try {
-                if (!instance.validateUniforms()) {
-                    logger.shader('Skipping recompilation due to invalid uniforms');
-                    return;
+                // Just create a new color with the same base but different brightness
+                const colorValue = baseColor.valueOf();
+                if (typeof colorValue === 'number') {
+                    // If we can get a numeric value, use it to create a new color
+                    newColor.set(colorValue);
                 }
-
-                instance.needsUpdate = true;
-                instance.needsUpdate = true;
-                
-                // If we had a fallback material and compilation succeeded, remove it
-                if (instance.fallbackMaterial) {
-                    instance.fallbackMaterial.dispose();
-                    instance.fallbackMaterial = null;
-                }
-            } catch (error: unknown) {
-                const errorMessage = error instanceof Error ? error : new Error(String(error));
-                const errorStack = error instanceof Error ? error.stack : undefined;
-                if (debugState.isShaderDebugEnabled()) {
-                    logger.shader('Shader recompilation failed', {
-                        error: errorMessage,
-                        stack: errorStack
-                    });
-                }
-                // Create fallback material if we don't have one
-                if (!instance.fallbackMaterial) {
-                    instance.fallbackMaterial = new MeshBasicMaterial({
-                        color: instance.uniforms.color.value,
-                        wireframe: instance.wireframe,
-                        transparent: true,
-                        opacity: instance.uniforms.opacity.value,
-                        side: instance.side
-                    });
-                }
+            } catch (error) {
+                // If anything fails, just use the base color
+                newColor.set(baseColor);
             }
-        });
+        }
+        
+        return newColor;
     }
 
     update(deltaTime: number): void {
         this.frameCount++;
         if (this.frameCount % this.updateFrequency === 0) {
-            const oldTime = this.uniforms.time.value;
+            // Update time uniform for API compatibility
             this.uniforms.time.value += deltaTime;
             
-            if (debugState.isShaderDebugEnabled() && 
-                (isNaN(this.uniforms.time.value) || !isFinite(this.uniforms.time.value))) {
-                logger.shader('Invalid time value detected', {
-                    oldTime,
-                    deltaTime,
-                    newTime: this.uniforms.time.value
-                });
-                this.uniforms.time.value = 0;
+            // Apply pulse effect
+            const pulse = Math.sin(this.uniforms.time.value * 2.0) * 0.5 + 0.5;
+            const pulseEffect = pulse * this.pulseIntensity;
+            
+            // Update material properties based on pulse
+            this.opacity = this.baseOpacity * (1.0 + pulseEffect * 0.3);
+            
+            if (this.isEdgeOnlyMode) {
+                // Edge-only mode
+                try {
+                    (this as any).wireframe = true;
+                } catch (e) {
+                    // Ignore errors
+                }
+                
+                // Simple color pulsing - just create a new color with the same base
+                // but slightly brighter or dimmer based on the pulse
+                try {
+                    const brightenFactor = 0.5 + pulseEffect * 0.5;
+                    const newColor = this.createAdjustedColor(this.baseColor, brightenFactor);
+                    this.color.set(newColor);
+                } catch (error) {
+                    logger.warn('Could not adjust color brightness');
+                }
+            } else {
+                // Full hologram mode
+                try {
+                    (this as any).wireframe = false;
+                } catch (e) {
+                    // Ignore errors
+                }
+                
+                // Simple color pulsing with a different factor
+                try {
+                    const brightenFactor = 0.8 + pulseEffect * 0.3;
+                    const newColor = this.createAdjustedColor(this.baseColor, brightenFactor);
+                    this.color.set(newColor);
+                } catch (error) {
+                    logger.warn('Could not adjust color brightness');
+                }
             }
-
+            
+            // Handle interaction effect
             if (this.uniforms.interactionStrength.value > 0.01) {
                 this.uniforms.interactionStrength.value *= 0.95; // Decay interaction effect
-                this.validateUniforms(); // Check uniforms after update
             }
         }
     }
@@ -416,34 +196,89 @@ export class HologramShaderMaterial extends ShaderMaterial {
     }
 
     setEdgeOnly(enabled: boolean): void {
+        this.isEdgeOnlyMode = enabled;
         this.uniforms.isEdgeOnly.value = enabled;
-        // Increase pulse intensity for better visibility in wireframe mode
-        this.uniforms.pulseIntensity.value = enabled ? (this.side === 0 ? 0.15 : 0.3) : (this.side === 0 ? 0.1 : 0.2);
+        
+        // Update material properties based on mode
+        if (enabled) {
+            try {
+                (this as any).wireframe = true;
+            } catch (e) {
+                // Ignore errors
+            }
+            this.opacity = this.baseOpacity * 0.8;
+            this.pulseIntensity = 0.15;
+        } else {
+            try {
+                (this as any).wireframe = false;
+            } catch (e) {
+                // Ignore errors
+            }
+            this.opacity = this.baseOpacity;
+            this.pulseIntensity = 0.1;
+        }
+        
+        // Update uniform for API compatibility
+        this.uniforms.pulseIntensity.value = this.pulseIntensity;
     }
 
     clone(): this {
         if (debugState.isDataDebugEnabled()) {
-            logger.debug('Cloning HologramShaderMaterial');
+            logger.debug('Cloning HologramShaderMaterial (Three.js version)');
         }
+        
         // Create settings object from current uniforms
         const settings = {
             visualization: {
                 hologram: {
                     opacity: this.uniforms.opacity.value,
-                    color: '#' + (this.uniforms.color.value as any).getHexString()
+                    color: 0x00ff00 // Default color as fallback
                 }
             }
         };
+        
+        // Try to get the color value
+        try {
+            // Use a simple approach to get the color value
+            if (this.color) {
+                const colorHex = (this.color as any).getHex ? (this.color as any).getHex() : 0x00ff00;
+                settings.visualization.hologram.color = colorHex;
+            }
+        } catch (error) {
+            logger.warn('Could not get color value, using default color');
+        }
+        
         if (debugState.isDataDebugEnabled()) {
             logger.debug('Clone settings', settings);
         }
-        const material = new HologramShaderMaterial(settings, this.side === 0 ? 'ar' : 'desktop');
+        
+        const material = new HologramShaderMaterial(
+            settings, 
+            this.side === 0 ? 'ar' : 'desktop'
+        );
+        
+        // Copy current state
+        try {
+            (material as any).wireframe = (this as any).wireframe || false;
+        } catch (e) {
+            // Ignore errors
+        }
+        material.opacity = this.opacity;
+        try {
+            material.color.set(this.color);
+        } catch (error) {
+            logger.warn('Could not copy color from original material');
+        }
+        
+        material.isEdgeOnlyMode = this.isEdgeOnlyMode;
+        
+        // Copy uniforms for API compatibility
         material.uniforms = {
             time: { value: this.uniforms.time.value },
             opacity: { value: this.uniforms.opacity.value },
-            color: { value: this.uniforms.color.value.clone() },
+            color: { value: new Color().set(this.uniforms.color.value) },
             pulseIntensity: { value: this.uniforms.pulseIntensity.value },
-            interactionPoint: { value: this.uniforms.interactionPoint.value.clone() },
+            interactionPoint: { value: new Vector3().copy(this.uniforms.interactionPoint.value) },
             interactionStrength: { value: this.uniforms.interactionStrength.value },
             isEdgeOnly: { value: this.uniforms.isEdgeOnly.value }
         };

@@ -47,6 +47,17 @@ export class GraphDataManager {
   public setWebSocketService(service: WebSocketService): void {
     this.wsService = service;
     logger.info('WebSocket service configured');
+    
+    // If binary updates were enabled before the service was configured,
+    // send an initial empty update now that we have a service
+    if (this.binaryUpdatesEnabled) {
+      try {
+        this.updatePositions(new Float32Array());
+        logger.info('Sent initial empty update after WebSocket service configuration');
+      } catch (error) {
+        logger.error('Failed to send initial update after WebSocket service configuration:', error);
+      }
+    }
   }
 
   static getInstance(): GraphDataManager {
@@ -72,16 +83,8 @@ export class GraphDataManager {
         if (debugState.isDataDebugEnabled()) {
           logger.debug(`Loading remaining ${totalPages - 1} pages in background. Total items: ${totalItems}, Current items: ${this.nodes.size}`);
         }
-        // Load remaining pages in background
-        for (let page = 2; page <= totalPages; page++) {
-          try {
-            await this.fetchPaginatedData(page, 100);
-            logger.debug(`Loaded page ${page}/${totalPages}`);
-          } catch (error) {
-            logger.error(`Failed to load page ${page}:`, error);
-            // Continue with next page even if one fails
-          }
-        }
+        // Load remaining pages in background with improved error handling
+        this.loadRemainingPagesWithRetry(totalPages, 100);
       }
     } catch (error) {
       logger.error('Failed to fetch initial graph data:', error);
@@ -89,11 +92,59 @@ export class GraphDataManager {
     }
   }
 
+  /**
+   * Load remaining pages with retry mechanism
+   * This runs in the background and doesn't block the initial rendering
+   */
+  private async loadRemainingPagesWithRetry(totalPages: number, pageSize: number): Promise<void> {
+    // Start from page 2 since page 1 is already loaded
+    for (let page = 2; page <= totalPages; page++) {
+      let retries = 0;
+      const maxRetries = 3;
+      let success = false;
+      
+      while (!success && retries < maxRetries) {
+        try {
+          await this.fetchPaginatedData(page, pageSize);
+          success = true;
+          if (debugState.isDataDebugEnabled()) {
+            logger.debug(`Loaded page ${page}/${totalPages} successfully`);
+          }
+        } catch (error) {
+          retries++;
+          const delay = Math.min(1000 * Math.pow(2, retries), 10000); // Exponential backoff with max 10s
+          
+          logger.warn(`Failed to load page ${page}/${totalPages}, attempt ${retries}/${maxRetries}. Retrying in ${delay}ms...`);
+          
+          // Wait before retrying
+          await new Promise(resolve => setTimeout(resolve, delay));
+        }
+      }
+      
+      if (!success) {
+        logger.error(`Failed to load page ${page}/${totalPages} after ${maxRetries} attempts`);
+      }
+      
+      // Notify listeners after each page, even if it failed
+      this.notifyUpdateListeners();
+      
+      // Small delay between pages to avoid overwhelming the server
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    
+    logger.info(`Finished loading all ${totalPages} pages. Total nodes: ${this.nodes.size}, edges: ${this.edges.size}`);
+  }
+
   public async fetchPaginatedData(page: number = 1, pageSize: number = 100): Promise<void> {
     try {
       if (debugState.isDataDebugEnabled()) {
         logger.debug(`Fetching page ${page} with size ${pageSize}. Current nodes: ${this.nodes.size}`);
       }
+      
+      // Add timeout to prevent hanging requests
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+      
       const response = await fetch(
         `${API_ENDPOINTS.GRAPH_PAGINATED}?page=${page}&pageSize=${pageSize}`,
         {
@@ -101,10 +152,15 @@ export class GraphDataManager {
           headers: {
             'Content-Type': 'application/json',
           },
+          signal: controller.signal
         }
       );
+      
+      // Clear the timeout
+      clearTimeout(timeoutId);
+      
       if (!response.ok) {
-        throw new Error(`Failed to fetch paginated data: ${response.statusText}`);
+        throw new Error(`Failed to fetch paginated data: ${response.status} ${response.statusText}`);
       }
 
       const data = await response.json();
@@ -116,7 +172,7 @@ export class GraphDataManager {
         logger.debug(`Paginated data loaded for page ${page}. Total nodes now: ${this.nodes.size}, edges: ${this.edges.size}`);
       }
     } catch (error) {
-      logger.error('Failed to fetch paginated data:', error);
+      logger.error(`Failed to fetch paginated data for page ${page}:`, error);
       throw error;
     }
   }
@@ -276,10 +332,51 @@ export class GraphDataManager {
     logger.info(`Binary updates ${enabled ? 'enabled' : 'disabled'}`);
     
     if (enabled) {
-      // Send initial empty update to start receiving binary updates
-      this.updatePositions(new Float32Array());
+      // Check if WebSocket service is configured before sending update
+      // Check if the send function is our default warning function
+      const isDefaultService = this.wsService.send.toString().includes('WebSocket service not configured');
+      if (!isDefaultService) {
+        // Send initial empty update to start receiving binary updates
+        this.updatePositions(new Float32Array());
+      } else {
+        logger.warn('Binary updates enabled but WebSocket service not yet configured. Will send update when service is available.');
+        
+        // Set up a retry mechanism to check for WebSocket service availability
+        this.retryWebSocketConfiguration();
+      }
     }
   }
+  
+  /**
+   * Retry WebSocket configuration until it's available
+   * This helps ensure we don't miss updates when the WebSocket service
+   * is configured after binary updates are enabled
+   */
+  private retryWebSocketConfiguration(): void {
+    // Only set up retry if not already running
+    if (this._retryTimeout) {
+      return;
+    }
+    
+    const checkAndRetry = () => {
+      // Check if WebSocket service is now configured
+      const isDefaultService = this.wsService.send.toString().includes('WebSocket service not configured');
+      if (!isDefaultService) {
+        // WebSocket service is now configured, send initial update
+        logger.info('WebSocket service now available, sending initial update');
+        this.updatePositions(new Float32Array());
+        this._retryTimeout = null;
+      } else {
+        // Still not configured, retry after delay
+        this._retryTimeout = setTimeout(checkAndRetry, 1000) as any;
+      }
+    };
+    
+    // Start the retry process
+    this._retryTimeout = setTimeout(checkAndRetry, 1000) as any;
+  }
+  
+  private _retryTimeout: any = null;
 
   /**
    * Update node positions via binary protocol
@@ -291,11 +388,21 @@ export class GraphDataManager {
     }
     
     try {
+      // Check if WebSocket service is properly configured
+      // Check if the send function is our default warning function
+      const isDefaultService = this.wsService.send.toString().includes('WebSocket service not configured');
+      if (isDefaultService) {
+        logger.warn('Cannot send position update: WebSocket service not configured');
+        // Set up retry mechanism if not already running
+        this.retryWebSocketConfiguration();
+        return;
+      }
+      
       this.wsService.send(positions.buffer);
     } catch (error) {
       logger.error('Failed to send position update:', error);
-      // Disable binary updates on error
-      this.binaryUpdatesEnabled = false;
+      // Don't disable binary updates on error - let the application decide
+      // this.binaryUpdatesEnabled = false;
     }
   }
 

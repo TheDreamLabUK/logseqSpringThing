@@ -25,6 +25,7 @@ import { Settings } from '../types/settings/base';
 import { defaultSettings } from '../state/defaultSettings';
 import { debugState } from '../core/debugState';
 import { logger, createErrorMetadata, createDataMetadata } from '../core/logger';
+import { resourceMonitor } from '../core/resourceMonitor';
 
 const BACKGROUND_COLOR = 0x000000;  // Material Design Grey 900
 const LOW_PERF_FPS_THRESHOLD = 30;  // Lower FPS threshold for low performance mode
@@ -98,13 +99,14 @@ export class SceneManager {
         canvas: this.canvas,
         antialias: true,
         alpha: true,
-        powerPreference: 'high-performance',
-        xr: {
-          enabled: true
-        }
+        preserveDrawingBuffer: true,
+        powerPreference: 'high-performance'
       });
       this.renderer.setSize(window.innerWidth, window.innerHeight);
       HologramShaderMaterial.setRenderer(this.renderer);
+      
+      // Track renderer in resource monitor
+      resourceMonitor.trackRenderer(this.renderer);
       
       // Remove unsupported properties
       // this.renderer.sortObjects = false;
@@ -170,6 +172,9 @@ export class SceneManager {
       SceneManager.instance.dispose();
       SceneManager.instance = null as any;
     }
+    
+    // Stop resource monitoring
+    resourceMonitor.stopMonitoring();
   }
 
   private setupLighting(): void {
@@ -206,9 +211,13 @@ export class SceneManager {
     }
   }
 
-  start(): void {
+  public start(): void {
     if (this.isRunning) return;
     this.isRunning = true;
+    
+    // Start resource monitoring
+    resourceMonitor.startMonitoring();
+    
     requestAnimationFrame(this.animate);
     logger.log('Scene rendering started');
   }
@@ -333,7 +342,7 @@ export class SceneManager {
     this.scene.remove(object);
   }
 
-  dispose(): void {
+  public dispose(): void {
     this.stop();
     
     // Remove event listeners
@@ -376,12 +385,11 @@ export class SceneManager {
       this.controls.dispose();
     }
 
-    // Dispose of renderer and materials
+    // Untrack renderer
     if (this.renderer) {
+      resourceMonitor.untrackRenderer(this.renderer);
       this.renderer.dispose();
-      this.renderer.domElement.remove();
-      (this.renderer.domElement as any).width = 0;
-      (this.renderer.domElement as any).height = 0;
+      this.renderer = null as any;
     }
 
     // Dispose of scene objects
