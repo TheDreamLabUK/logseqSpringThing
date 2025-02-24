@@ -41,6 +41,7 @@ impl Node {
             data: BinaryNodeData {
                 position: Vec3Data::zero(),
                 velocity: Vec3Data::zero(),
+                mass: 1.0,  // Default mass
             },
             metadata: HashMap::new(),
             file_size: 0,
@@ -51,6 +52,13 @@ impl Node {
             group: None,
             user_data: None,
         }
+    }
+
+    pub fn set_file_size(&mut self, size: u64) {
+        self.file_size = size;
+        // Calculate mass using log scale to prevent extremely large masses
+        let base_mass = ((size + 1) as f32).log10() / 4.0;
+        self.data.mass = base_mass.max(0.1).min(10.0);
     }
 
     pub fn with_position(mut self, x: f32, y: f32, z: f32) -> Self {
@@ -134,6 +142,7 @@ mod tests {
         assert_eq!(node.label, "Test Node");
         assert_eq!(node.data.position, Vec3Data::new(1.0, 2.0, 3.0));
         assert_eq!(node.data.velocity, Vec3Data::new(0.1, 0.2, 0.3));
+        assert_eq!(node.data.mass, 1.0);  // Default mass
         assert_eq!(node.node_type, Some("test_type".to_string()));
         assert_eq!(node.size, Some(1.5));
         assert_eq!(node.color, Some("#FF0000".to_string()));
@@ -158,5 +167,18 @@ mod tests {
         assert_eq!(node.vx(), 0.1);
         assert_eq!(node.vy(), 0.2);
         assert_eq!(node.vz(), 0.3);
+    }
+
+    #[test]
+    fn test_mass_calculation() {
+        let mut node = Node::new("test".to_string());
+        
+        // Test small file
+        node.set_file_size(100);  // 100 bytes
+        assert!(node.data.mass > 0.1 && node.data.mass < 1.0);
+
+        // Test large file
+        node.set_file_size(1_000_000);  // 1MB
+        assert!(node.data.mass > 1.0 && node.data.mass < 10.0);
     }
 }

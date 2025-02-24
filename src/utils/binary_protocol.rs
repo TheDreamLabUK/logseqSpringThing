@@ -74,6 +74,7 @@ pub fn decode_node_data(data: &[u8]) -> Result<Vec<(u32, BinaryNodeData)>, Strin
         updates.push((node_id, BinaryNodeData {
             position: Vec3Data::new(pos_x, pos_y, pos_z),
             velocity: Vec3Data::new(vel_x, vel_y, vel_z),
+            mass: 1.0,  // Mass is not transmitted in binary protocol, server maintains this
         }));
     }
     
@@ -98,10 +99,12 @@ mod tests {
             (1, BinaryNodeData {
                 position: Vec3Data::new(1.0, 2.0, 3.0),
                 velocity: Vec3Data::new(0.1, 0.2, 0.3),
+                mass: 1.0  // Mass is not transmitted, but required for struct
             }),
             (2, BinaryNodeData {
                 position: Vec3Data::new(4.0, 5.0, 6.0),
                 velocity: Vec3Data::new(0.4, 0.5, 0.6),
+                mass: 1.0  // Mass is not transmitted, but required for struct
             }),
         ];
 
@@ -112,8 +115,8 @@ mod tests {
 
         for ((orig_id, orig_data), (dec_id, dec_data)) in nodes.iter().zip(decoded.iter()) {
             assert_eq!(orig_id, dec_id);
-            assert_eq!(orig_data.position, dec_data.position);
-            assert_eq!(orig_data.velocity, dec_data.velocity);
+            assert_eq!(orig_data.position.as_array(), dec_data.position.as_array());
+            assert_eq!(orig_data.velocity.as_array(), dec_data.velocity.as_array());
         }
     }
 

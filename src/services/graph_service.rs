@@ -98,8 +98,8 @@ impl GraphService {
             
             // Get metadata for this node
             if let Some(metadata) = metadata.get(&format!("{}.md", node_id)) {
+                node.set_file_size(metadata.file_size as u64);  // This will update both file_size and mass
                 node.size = Some(metadata.node_size as f32);
-                node.file_size = metadata.file_size as u64;
                 node.label = node_id.clone(); // Set label to node ID (filename without .md)
                 
                 // Add metadata fields to node's metadata map
@@ -175,8 +175,8 @@ impl GraphService {
             
             // Get metadata for this node
             if let Some(metadata) = graph.metadata.get(&format!("{}.md", node_id)) {
+                node.set_file_size(metadata.file_size as u64);  // This will update both file_size and mass
                 node.size = Some(metadata.node_size as f32);
-                node.file_size = metadata.file_size as u64;
                 node.label = node_id.clone(); // Set label to node ID (filename without .md)
                 
                 // Add metadata fields to node's metadata map

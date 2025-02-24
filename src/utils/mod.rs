@@ -1,5 +1,6 @@
 pub mod audio_processor;
 pub mod binary_protocol;
+pub mod edge_data;
 pub mod case_conversion;
 // TODO: Re-enable when force calculation is implemented
 // pub mod force_calculation;

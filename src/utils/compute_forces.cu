@@ -6,6 +6,13 @@ extern "C" {
     struct NodeData {
         float x, y, z;        // position (12 bytes)
         float vx, vy, vz;     // velocity (12 bytes)
+        float mass;           // mass derived from file size (4 bytes)
+    };
+
+    struct EdgeData {
+        int source_idx;      // Index of source node (4 bytes)
+        int target_idx;      // Index of target node (4 bytes)
+        float weight;        // Edge weight from bi-directional links (4 bytes)
     };
 
     // Constants for validation
@@ -41,6 +48,8 @@ extern "C" {
     __global__ void compute_forces_kernel(
         NodeData* nodes,
         int num_nodes,
+        EdgeData* edges,
+        int num_edges,
         float spring_k,
         float damping,
         float repel_k,
@@ -82,15 +91,31 @@ extern "C" {
             nodes[idx].vz = 0.0f;
         }
         
-        // Default mass and flags since they're no longer in the struct
-        float mass = 1.0f;  // Use uniform mass for all nodes
-        bool is_active = true;  // All nodes are considered active
+        // Process spring forces from edges first
+        for (int e = 0; e < num_edges; e++) {
+            if (edges[e].source_idx == idx || edges[e].target_idx == idx) {
+                int other_idx = (edges[e].source_idx == idx) ? edges[e].target_idx : edges[e].source_idx;
+                float3 other_pos = make_float3(nodes[other_idx].x, nodes[other_idx].y, nodes[other_idx].z);
+                float3 diff = make_float3(other_pos.x - pos.x, other_pos.y - pos.y, other_pos.z - pos.z);
+                float dist = sqrtf(diff.x * diff.x + diff.y * diff.y + diff.z * diff.z);
+                
+                if (dist > MIN_DIST) {
+                    float3 dir = make_float3(diff.x / dist, diff.y / dist, diff.z / dist);
+                    float spring_force = spring_k * (dist - 1.0f) * edges[e].weight;
+                    float spring_scale = nodes[idx].mass * nodes[other_idx].mass;
+                    total_force.x += dir.x * spring_force * spring_scale;
+                    total_force.y += dir.y * spring_force * spring_scale;
+                    total_force.z += dir.z * spring_force * spring_scale;
+                }
+            }
+        }
         
         // Process all node interactions
         for (int j = 0; j < num_nodes; j++) {
             if (j == idx) continue;
             
-            float other_mass = 1.0f;  // Use uniform mass for all nodes
+            // Use mass from node data
+            float other_mass = nodes[j].mass;
             float3 other_pos = make_float3(
                 nodes[j].x,
                 nodes[j].y,
@@ -111,16 +136,9 @@ extern "C" {
                     diff.z / dist
                 );
                 
-                // Spring forces - apply to all nodes since we no longer have flags
-                float spring_force = spring_k * (dist - 1.0f);
-                float spring_scale = mass * other_mass;
-                total_force.x += dir.x * spring_force * spring_scale;
-                total_force.y += dir.y * spring_force * spring_scale;
-                total_force.z += dir.z * spring_force * spring_scale;
-                
                 // Repulsion forces
                 if (dist < max_repulsion_dist) {
-                    float repel_scale = repel_k * mass * other_mass;
+                    float repel_scale = repel_k * nodes[idx].mass * other_mass;
                     float repel_force = repel_scale / (dist * dist);
                     total_force.x -= dir.x * repel_force;
                     total_force.y -= dir.y * repel_force;

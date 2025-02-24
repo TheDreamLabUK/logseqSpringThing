@@ -9,6 +9,7 @@ use crate::types::vec3::Vec3Data;
 pub struct BinaryNodeData {
     pub position: Vec3Data,  // x, y, z
     pub velocity: Vec3Data,  // vx, vy, vz
+    pub mass: f32,          // derived from file size
 }
 
 // Implement DeviceRepr for BinaryNodeData
@@ -74,6 +75,7 @@ impl Node {
             data: BinaryNodeData {
                 position: Vec3Data::zero(),
                 velocity: Vec3Data::zero(),
+                mass: 1.0, // default mass, will be updated based on file size
             },
             metadata: HashMap::new(),
             file_size: 0,
@@ -86,8 +88,19 @@ impl Node {
         }
     }
 
-    pub fn update_from_binary_data(&mut self, binary_data: &BinaryNodeData) {
-        self.data = *binary_data;
+    pub fn calculate_mass(file_size: u64) -> f32 {
+        // Use log scale to prevent extremely large masses
+        // Add 1 to file_size to handle empty files (log(0) is undefined)
+        // Scale down by 10000 to keep masses in a reasonable range
+        let base_mass = ((file_size + 1) as f32).log10() / 4.0;
+        // Ensure minimum mass of 0.1 and maximum of 10.0
+        base_mass.max(0.1).min(10.0)
+    }
+
+    pub fn set_file_size(&mut self, size: u64) {
+        self.file_size = size;
+        // Update mass based on new file size
+        self.data.mass = Self::calculate_mass(size);
     }
 
     // Convenience getters/setters for x, y, z coordinates

@@ -142,6 +142,7 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
                                                     nodes.push((node_id, BinaryNodeData {
                                                         position: node.data.position,
                                                         velocity: node.data.velocity,
+                                                        mass: node.data.mass,
                                                     }));
                                                 }
                                             }

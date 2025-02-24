@@ -11,7 +11,8 @@ use crate::models::graph::GraphData;
 use std::collections::HashMap;
 use crate::models::simulation_params::SimulationParams;
 use crate::types::Vec3Data;
-use crate::utils::socket_flow_messages::BinaryNodeData;
+use crate::utils::socket_flow_messages::{BinaryNodeData, Node};
+use crate::utils::edge_data::EdgeData;
 use tokio::sync::RwLock;
 
 // Constants for GPU computation
@@ -41,6 +42,8 @@ pub struct GPUCompute {
     pub device: Arc<CudaDevice>,
     pub force_kernel: CudaFunction,
     pub node_data: CudaSlice<BinaryNodeData>,
+    pub edge_data: CudaSlice<EdgeData>,
+    pub num_edges: u32,
     pub num_nodes: u32,
     pub node_indices: HashMap<String, usize>,
     pub simulation_params: SimulationParams,
@@ -119,7 +122,7 @@ impl GPUCompute {
 
         debug!("Successfully loaded PTX file");
             
-        device.load_ptx(ptx.clone(), "compute_forces_kernel", &["compute_forces_kernel"])
+        device.load_ptx(ptx, "compute_forces_kernel", &["compute_forces_kernel"])
             .map_err(|e| Error::new(std::io::ErrorKind::Other, e.to_string()))?;
             
         let force_kernel = device.get_func("compute_forces_kernel", "compute_forces_kernel")
@@ -128,6 +131,7 @@ impl GPUCompute {
         debug!("Allocating device memory for {} nodes", num_nodes);
         let node_data = device.alloc_zeros::<BinaryNodeData>(num_nodes as usize)
             .map_err(|e| Error::new(std::io::ErrorKind::Other, e.to_string()))?;
+        let edge_data = device.alloc_zeros::<EdgeData>(0).map_err(|e| Error::new(std::io::ErrorKind::Other, e.to_string()))?;
 
         debug!("Creating GPU compute instance");
         // Create node ID to index mapping
@@ -140,6 +144,8 @@ impl GPUCompute {
             device: Arc::clone(&device),
             force_kernel,
             node_data,
+            edge_data,
+            num_edges: 0,
             num_nodes,
             node_indices,
             simulation_params: SimulationParams::default(),
@@ -166,6 +172,29 @@ impl GPUCompute {
             self.node_data = self.device.alloc_zeros::<BinaryNodeData>(graph.nodes.len())
                 .map_err(|e| Error::new(std::io::ErrorKind::Other, e.to_string()))?;
             self.num_nodes = graph.nodes.len() as u32;
+            
+            // Reallocate edge buffer if needed
+            if graph.edges.len() as u32 != self.num_edges {
+                debug!("Reallocating GPU buffer for {} edges", graph.edges.len());
+                self.edge_data = self.device.alloc_zeros::<EdgeData>(graph.edges.len())
+                    .map_err(|e| Error::new(std::io::ErrorKind::Other, e.to_string()))?;
+                self.num_edges = graph.edges.len() as u32;
+            }
+        }
+
+        // Prepare edge data
+        let mut edge_data = Vec::with_capacity(graph.edges.len());
+        for edge in &graph.edges {
+            if let (Some(&source_idx), Some(&target_idx)) = (
+                self.node_indices.get(&edge.source),
+                self.node_indices.get(&edge.target)
+            ) {
+                edge_data.push(EdgeData {
+                    source_idx: source_idx as i32,
+                    target_idx: target_idx as i32,
+                    weight: edge.weight,
+                });
+            }
         }
 
         // Prepare node data
@@ -174,6 +203,7 @@ impl GPUCompute {
             node_data.push(BinaryNodeData {
                 position: node.data.position,
                 velocity: node.data.velocity,
+                mass: node.data.mass,  // Use mass from node data
             });
         }
 
@@ -183,6 +213,11 @@ impl GPUCompute {
         self.device.htod_sync_copy_into(&node_data, &mut self.node_data)
             .map_err(|e| Error::new(std::io::ErrorKind::Other, e.to_string()))?;
 
+        // Copy edge data to GPU
+        if !edge_data.is_empty() {
+            self.device.htod_sync_copy_into(edge_data.as_slice(), &mut self.edge_data)
+                .map_err(|e| Error::new(std::io::ErrorKind::Other, e.to_string()))?;
+        }
         Ok(())
     }
 
@@ -208,6 +243,8 @@ impl GPUCompute {
         unsafe {
             self.force_kernel.clone().launch(cfg, (
                 &self.node_data,
+                &self.edge_data,
+                self.num_edges as i32,
                 self.num_nodes as i32,
                 self.simulation_params.spring_strength,
                 self.simulation_params.damping,
@@ -233,6 +270,7 @@ impl GPUCompute {
         let mut gpu_nodes = vec![BinaryNodeData {
             position: Vec3Data::zero(),
             velocity: Vec3Data::zero(),
+            mass: 1.0,  // Default mass for zero-sized nodes
         }; self.num_nodes as usize];
 
         self.device.dtoh_sync_copy_into(&self.node_data, gpu_nodes.as_mut_slice())
@@ -274,6 +312,6 @@ mod tests {
     #[test]
     fn test_node_data_memory_layout() {
         use std::mem::size_of;
-        assert_eq!(size_of::<BinaryNodeData>(), 24); // 24 bytes for position/velocity (2 * 3 * 4 bytes)
+        assert_eq!(size_of::<BinaryNodeData>(), 28); // 24 bytes for position/velocity (2 * 3 * 4 bytes) + 4 bytes for mass
     }
 }
