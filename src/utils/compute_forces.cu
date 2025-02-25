@@ -1,14 +1,14 @@
 #include <cuda_runtime.h>
 
 extern "C" {
-    // Updated struct that matches what's transmitted over the wire
+    // This struct matches the Rust BinaryNodeData struct
     struct BinaryNodeData {
         float position[3];    // 12 bytes - matches Rust [f32; 3]
         float velocity[3];    // 12 bytes - matches Rust [f32; 3]
-        // These fields are used internally on the server but not transmitted over the wire
-        // Default values will be used in the kernel
-        unsigned char mass;   // 1 byte - matches Rust u8 (defaults to 128 - mid-range value)
-        unsigned char flags;  // 1 byte - matches Rust u8 (defaults to 3 - active + connected)
+        // These fields are used internally but not transmitted over the wire
+        // The binary_protocol.rs sets default values when decoding
+        unsigned char mass;   // 1 byte - matches Rust u8
+        unsigned char flags;  // 1 byte - matches Rust u8
         unsigned char padding[2]; // 2 bytes - matches Rust padding
     };
 
@@ -30,14 +30,16 @@ extern "C" {
         float3 vel = make_float3(nodes[idx].velocity[0], nodes[idx].velocity[1], nodes[idx].velocity[2]);
         
         // Convert mass from u8 to float (0-1 range)
-        // Use a default mass value if mass is 0 (not transmitted over wire)
+        // When decoding from the wire, binary_protocol.rs sets mass=100
+        // But to be safe, we still handle the case where mass=0
         float mass;
         if (nodes[idx].mass == 0) {
             mass = 0.5f; // Default mid-range mass value
         } else {
             mass = (nodes[idx].mass + 1.0f) / 256.0f; // Add 1 to avoid zero mass
         }
-        bool is_active = true; // All nodes are considered active by default
+        
+        bool is_active = true; // All nodes are active by default
         
         if (!is_active) return; // Skip inactive nodes
         
@@ -45,10 +47,10 @@ extern "C" {
         for (int j = 0; j < num_nodes; j++) {
             if (j == idx) continue;
             
-            // All nodes are active by default
-            // if (!(nodes[j].flags & 0x1)) continue; // Skip inactive nodes - no longer needed
-            // Use default mass if not set
+            // All nodes are considered active by default
+            // We no longer check the flags since all nodes are treated as active
             
+            // Handle other node's mass the same way
             float other_mass = (nodes[j].mass == 0) ? 0.5f : (nodes[j].mass + 1.0f) / 256.0f;
             
             float3 other_pos = make_float3(
@@ -72,7 +74,6 @@ extern "C" {
                 );
                 
                 // Apply spring forces to all nodes by default
-                // Previously checked for connected flag: (nodes[idx].flags & 0x2) && (nodes[j].flags & 0x2)
                 {
                     // Use natural length of 1.0 to match world units
                     float spring_force = spring_k * (dist - 1.0f);
@@ -126,9 +127,10 @@ extern "C" {
                 total_force.z * total_force.z
             );
             printf("Node %d: force_mag=%f, pos=(%f,%f,%f), vel=(%f,%f,%f)\n",
-                idx, force_mag,
+                idx, force_mag, 
                 pos.x, pos.y, pos.z,
                 vel.x, vel.y, vel.z);
+            printf("Node %d: mass=%f\n", idx, mass);
         }
     }
 }

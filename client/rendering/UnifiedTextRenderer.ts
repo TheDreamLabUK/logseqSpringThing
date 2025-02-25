@@ -26,96 +26,99 @@ const logger = createLogger('UnifiedTextRenderer');
 
 // Vertex shader for SDF text rendering with improved billboarding
 const vertexShader = `
-    // Three.js automatically provides cameraPosition uniform
-    
-    attribute vec3 position;
-    attribute vec2 uv;
-    attribute vec3 instancePosition;
-    attribute vec4 instanceColor;
-    attribute float instanceScale;
-    
-    varying vec2 vUv;
-    varying vec4 vColor;
-    varying float vScale;
-    varying float vViewDistance;
-    
-    void main() {
-        vUv = uv;
-        vColor = instanceColor;
-        vScale = instanceScale;
+#version 300 es
+// Three.js automatically provides cameraPosition uniform
 
-        // Scale the position first
-        vec3 scale = vec3(instanceScale);
-        vec3 vertexPosition = position * scale;
-        
-        // Billboard calculation
-        vec3 up = vec3(0.0, 1.0, 0.0);
-        vec3 forward = normalize(cameraPosition - instancePosition);
-        vec3 right = normalize(cross(up, forward));
-        up = normalize(cross(forward, right));
-        
-        mat4 billboardMatrix = mat4(
-            vec4(right, 0.0),
-            vec4(up, 0.0),
-            vec4(forward, 0.0),
-            vec4(0.0, 0.0, 0.0, 1.0)
-        );
-        
-        vertexPosition = (billboardMatrix * vec4(vertexPosition, 1.0)).xyz;
-        vertexPosition += instancePosition;
-        
-        vec4 mvPosition = modelViewMatrix * vec4(vertexPosition, 1.0);
-        vViewDistance = -mvPosition.z;  // Distance from camera
-        gl_Position = projectionMatrix * mvPosition;
-    }
+in vec3 position;
+in vec2 uv;
+in vec3 instancePosition;
+in vec4 instanceColor;
+in float instanceScale;
+
+out vec2 vUv;
+out vec4 vColor;
+out float vScale;
+out float vViewDistance;
+
+void main() {
+    vUv = uv;
+    vColor = instanceColor;
+    vScale = instanceScale;
+
+    // Scale the position first
+    vec3 scale = vec3(instanceScale);
+    vec3 vertexPosition = position * scale;
+    
+    // Billboard calculation
+    vec3 up = vec3(0.0, 1.0, 0.0);
+    vec3 forward = normalize(cameraPosition - instancePosition);
+    vec3 right = normalize(cross(up, forward));
+    up = normalize(cross(forward, right));
+    
+    mat4 billboardMatrix = mat4(
+        vec4(right, 0.0),
+        vec4(up, 0.0),
+        vec4(forward, 0.0),
+        vec4(0.0, 0.0, 0.0, 1.0)
+    );
+    
+    vertexPosition = (billboardMatrix * vec4(vertexPosition, 1.0)).xyz;
+    vertexPosition += instancePosition;
+    
+    vec4 mvPosition = modelViewMatrix * vec4(vertexPosition, 1.0);
+    vViewDistance = -mvPosition.z;  // Distance from camera
+    gl_Position = projectionMatrix * mvPosition;
+}
 `;
 
 // Fragment shader for SDF text rendering with improved quality
 const fragmentShader = `
-    precision highp float;
+#version 300 es
+precision highp float;
+
+uniform sampler2D fontAtlas;
+uniform float sdfThreshold;
+uniform float sdfSpread;
+uniform vec3 outlineColor;
+uniform float outlineWidth;
+uniform float fadeStart;
+uniform float fadeEnd;
+
+in vec2 vUv;
+in vec4 vColor;
+in float vScale;
+in float vViewDistance;
+out vec4 fragColor;
+
+float median(float r, float g, float b) {
+    return max(min(r, g), min(max(r, g), b));
+}
+
+void main() {
+    vec3 fontSample = texture(fontAtlas, vUv).rgb;
+    float sigDist = median(fontSample.r, fontSample.g, fontSample.b);
     
-    uniform sampler2D fontAtlas;
-    uniform float sdfThreshold;
-    uniform float sdfSpread;
-    uniform vec3 outlineColor;
-    uniform float outlineWidth;
-    uniform float fadeStart;
-    uniform float fadeEnd;
+    // Dynamic threshold based on distance
+    float distanceScale = smoothstep(fadeEnd, fadeStart, vViewDistance);
+    float dynamicThreshold = sdfThreshold * (1.0 + (1.0 - distanceScale) * 0.1);
+    float dynamicSpread = sdfSpread * (1.0 + (1.0 - distanceScale) * 0.2);
     
-    varying vec2 vUv;
-    varying vec4 vColor;
-    varying float vScale;
-    varying float vViewDistance;
+    // Improved antialiasing
+    float alpha = smoothstep(dynamicThreshold - dynamicSpread, 
+                           dynamicThreshold + dynamicSpread, 
+                           sigDist);
+                           
+    float outline = smoothstep(dynamicThreshold - outlineWidth - dynamicSpread,
+                             dynamicThreshold - outlineWidth + dynamicSpread,
+                             sigDist);
     
-    float median(float r, float g, float b) {
-        return max(min(r, g), min(max(r, g), b));
-    }
+    // Apply distance-based fade
+    alpha *= distanceScale;
+    outline *= distanceScale;
     
-    void main() {
-        vec3 fontSample = texture2D(fontAtlas, vUv).rgb;
-        float sigDist = median(fontSample.r, fontSample.g, fontSample.b);
-        
-        // Dynamic threshold based on distance
-        float distanceScale = smoothstep(fadeEnd, fadeStart, vViewDistance);
-        float dynamicThreshold = sdfThreshold * (1.0 + (1.0 - distanceScale) * 0.1);
-        float dynamicSpread = sdfSpread * (1.0 + (1.0 - distanceScale) * 0.2);
-        
-        // Improved antialiasing
-        float alpha = smoothstep(dynamicThreshold - dynamicSpread, 
-                               dynamicThreshold + dynamicSpread, 
-                               sigDist);
-                               
-        float outline = smoothstep(dynamicThreshold - outlineWidth - dynamicSpread,
-                                 dynamicThreshold - outlineWidth + dynamicSpread,
-                                 sigDist);
-        
-        // Apply distance-based fade
-        alpha *= distanceScale;
-        outline *= distanceScale;
-        
-        vec4 color = mix(vec4(outlineColor, outline), vColor, alpha);
-        gl_FragColor = color;
-    }
+    vec4 color = mix(vec4(outlineColor, outline), vColor, alpha);
+    fragColor = color;
+}
 `;
 
 interface LabelInstance {

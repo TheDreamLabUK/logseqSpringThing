@@ -10,7 +10,10 @@ pub fn encode_node_data(nodes: &[(u32, BinaryNodeData)]) -> Vec<u8> {
     
     for (node_id, node) in nodes {
         if log::log_enabled!(log::Level::Debug) {
-            log::debug!("Encoding node {}: pos={:?}, vel={:?}", node_id, node.position, node.velocity);
+            log::debug!(
+                "Encoding node {}: pos={:?}, vel={:?}, mass={} (not transmitted)", 
+                node_id, node.position, node.velocity, node.mass
+            );
         }
         // Write node ID (u32)
         buffer.write_u32::<LittleEndian>(*node_id).unwrap();
@@ -69,15 +72,17 @@ pub fn decode_node_data(data: &[u8]) -> Result<Vec<(u32, BinaryNodeData)>, Strin
         let vel_z = cursor.read_f32::<LittleEndian>()
             .map_err(|e| format!("Failed to read velocity[2]: {}", e))?;
 
-        // Set default values for mass, flags, and padding
-        // These are no longer received from the client but still used server-side
+        // Default mass value - this will be replaced with the actual mass from the node_map
+        // in socket_flow_handler.rs for accurate physics calculations
         let mass = 100u8; // Default mass
         let flags = 0u8;  // Default flags
         let padding = [0u8, 0u8]; // Default padding
         
         if log::log_enabled!(log::Level::Debug) {
-            log::debug!("Decoded node {}: pos=({},{},{}), vel=({},{},{})", 
-                node_id, pos_x, pos_y, pos_z, vel_x, vel_y, vel_z);
+            log::debug!(
+                "Decoded node {}: pos=({:.3},{:.3},{:.3}), vel=({:.3},{:.3},{:.3}), default_mass={} (will be replaced)", 
+                node_id, pos_x, pos_y, pos_z, vel_x, vel_y, vel_z, mass
+            );
         }
         
         updates.push((node_id, BinaryNodeData {

@@ -67,11 +67,30 @@ export class WebSocketService {
     private readonly MAX_POSITION = 1000.0;
     private readonly MAX_VELOCITY = 10.0;
 
+    // Added a method to validate vector3 values without clamping
+    private validateVector3(vec: Vector3, max: number): boolean {
+        if (!isValidVector3(vec)) {
+            return false;
+        }
+        return Math.abs(vec.x) <= max && 
+               Math.abs(vec.y) <= max && 
+               Math.abs(vec.z) <= max;
+    }
+
     private validateAndClampVector3(vec: Vector3, max: number): Vector3 {
         if (!isValidVector3(vec)) {
+            // Return a valid vector at origin rather than zeroing out
             return zeroVector3();
         }
-        return clampVector3(vec, -max, max);
+        
+        // If the vector has NaN or infinite values, replace with zero
+        const sanitizedVec = new Vector3(
+            isNaN(vec.x) || !isFinite(vec.x) ? 0 : vec.x,
+            isNaN(vec.y) || !isFinite(vec.y) ? 0 : vec.y,
+            isNaN(vec.z) || !isFinite(vec.z) ? 0 : vec.z
+        );
+        
+        return clampVector3(sanitizedVec, -max, max);
     }
 
     private constructor() {
@@ -163,7 +182,7 @@ export class WebSocketService {
 
             // Send request for position updates after connection
             debugLog('Requesting position updates');
-            this.sendMessage({ type: 'requestInitialData' });
+            this.sendMessage({ type: 'request-initial-data' }); // Using kebab-case for API consistency
         };
 
         this.ws.onerror = (event: Event): void => {
@@ -314,7 +333,14 @@ export class WebSocketService {
                 offset += 12;
                 
                 // Validate and clamp position and velocity
-                const sanitizedPosition = this.validateAndClampVector3(position, this.MAX_POSITION);
+                // Important: Be more lenient with position validation initially
+                // Force-directed graph positioning can have larger values at first
+                let sanitizedPosition: Vector3;
+                if (this.validateVector3(position, this.MAX_POSITION * 10)) {
+                    sanitizedPosition = position.clone(); // If within a generous range, keep original
+                } else {
+                    sanitizedPosition = this.validateAndClampVector3(position, this.MAX_POSITION);
+                }
                 const sanitizedVelocity = this.validateAndClampVector3(velocity, this.MAX_VELOCITY);
                 
                 // Check if values were invalid using vector3Equals
@@ -441,17 +467,23 @@ export class WebSocketService {
             dataView.setUint32(offset, id, true);
             offset += 4;
 
+            // Validate and clamp position
+            const validPosition = this.validateAndClampVector3(update.position, this.MAX_POSITION);
+            
             // Write position
-            dataView.setFloat32(offset, update.position.x, true);
-            dataView.setFloat32(offset + 4, update.position.y, true);
-            dataView.setFloat32(offset + 8, update.position.z, true);
+            dataView.setFloat32(offset, validPosition.x, true);
+            dataView.setFloat32(offset + 4, validPosition.y, true);
+            dataView.setFloat32(offset + 8, validPosition.z, true);
             offset += 12;
 
-            // Write velocity (default to zero vector if not provided)
-            const velocity = update.velocity ?? zeroVector3();
-            dataView.setFloat32(offset, velocity.x, true);
-            dataView.setFloat32(offset + 4, velocity.y, true);
-            dataView.setFloat32(offset + 8, velocity.z, true);
+            // Validate and clamp velocity (default to zero vector if not provided)
+            const rawVelocity = update.velocity ?? zeroVector3();
+            const validVelocity = this.validateAndClampVector3(rawVelocity, this.MAX_VELOCITY);
+            
+            // Write velocity
+            dataView.setFloat32(offset, validVelocity.x, true);
+            dataView.setFloat32(offset + 4, validVelocity.y, true);
+            dataView.setFloat32(offset + 8, validVelocity.z, true);
             offset += 12;
         });
 

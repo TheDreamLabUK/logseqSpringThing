@@ -35,6 +35,8 @@ Directories:
 │   ├── resourceMonitor.ts
 │   ├── types.ts
 │   └── utils.ts
+├── diagnostics
+│   └── systemDiagnostics.ts
 ├── diagnostics.ts
 ├── index.html
 ├── index.ts
@@ -224,7 +226,7 @@ Directories:
 
 # Project Codebase
 
-Generated: Tue 25 Feb 12:16:32 GMT 2025
+Generated: Tue 25 Feb 14:20:12 GMT 2025
 
 ## Project Structure
 
@@ -2663,11 +2665,25 @@ fi
                 "IPv4Address": "172.19.0.2/16",
                 "IPv6Address": ""
             },
+            "47106bcd9d196c54cb3f9e46fd594f26312fd48159fccf345c87a42ace34386a": {
+                "Name": "logseq-xr-webxr",
+                "EndpointID": "9701c62479cf10fe2cb205238e2333d911cd09fa270eae820cf6d80327c487e6",
+                "MacAddress": "02:42:ac:13:00:0c",
+                "IPv4Address": "172.19.0.12/16",
+                "IPv6Address": ""
+            },
             "6f29e52e755469407f276c8296b30e93e939cd4fb971c861a6391f9f7c3b6e16": {
                 "Name": "ragflow-mysql",
                 "EndpointID": "654c07ea7d9d5fc00918d71bcf5d0df1a029fefc2587e036ffca8f4660f95961",
                 "MacAddress": "02:42:ac:13:00:05",
                 "IPv4Address": "172.19.0.5/16",
+                "IPv6Address": ""
+            },
+            "705be9c4fd07e7f2f2453e2b167632079684523232b3546d42ed5fbf4d013711": {
+                "Name": "cloudflared-tunnel",
+                "EndpointID": "64588bfc1c91cbb47718249e94ad923b152b0c11f9aa77bc902f9396f0bd66e4",
+                "MacAddress": "02:42:ac:13:00:0b",
+                "IPv4Address": "172.19.0.11/16",
                 "IPv6Address": ""
             },
             "8b7cea10b14ce843b477c50ab0f47c3c606494e101acaaf074d75481d9c65f80": {
@@ -2691,13 +2707,6 @@ fi
                 "IPv4Address": "172.19.0.10/16",
                 "IPv6Address": ""
             },
-            "99ea4dc3ee58f5723c240fc7dbdd25ead4218cd2428cfb759d686bab9d4322d4": {
-                "Name": "cloudflared-tunnel",
-                "EndpointID": "e7f9417d24f0e52a2f5c936a62b5d512df434ae1ea6448fb2db401aa0ee3932b",
-                "MacAddress": "02:42:ac:13:00:0b",
-                "IPv4Address": "172.19.0.11/16",
-                "IPv6Address": ""
-            },
             "c5b92a96025baeae548518eaafe88ef76e70e6d90e5951a8750d01c56b6c8d4a": {
                 "Name": "xinference",
                 "EndpointID": "44cee519c20433e6f98f813ce2d313f091996b2779ce3e3be8b6d4ac9c0888e5",
@@ -2710,13 +2719,6 @@ fi
                 "EndpointID": "9ef7557ae8cb9b03a1e62d9cf76356e0873475b0962ac963e4f30607754d242f",
                 "MacAddress": "02:42:ac:13:00:08",
                 "IPv4Address": "172.19.0.8/16",
-                "IPv6Address": ""
-            },
-            "f13604a60d683119b80b679fc8da6dafbf06847294c7fee63c8f24ecf5655df9": {
-                "Name": "logseq-xr-webxr",
-                "EndpointID": "e841c2f19a7846aab4ee38267f1e2f0c79b0c635d9c9372ed037c5b9db8169b9",
-                "MacAddress": "02:42:ac:13:00:0c",
-                "IPv4Address": "172.19.0.12/16",
                 "IPv6Address": ""
             }
         },
@@ -4901,10 +4903,12 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
                                     if let Some(node) = node_map.get_mut(&node_id_str) {
                                         node.data.position = node_data.position;
                                         node.data.velocity = node_data.velocity;
+                                    // Mass, flags, and padding are not overwritten as they're only 
+                                    // present on the server side and not transmitted over the wire
                                     }
                                 }
 
-                                // Update graph nodes with new positions from the map
+                                // Update graph nodes with new positions/velocities from the map, preserving other properties
                                 for node in &mut graph.nodes {
                                     if let Some(updated_node) = node_map.get(&node.id) {
                                         node.data.position = updated_node.data.position;
@@ -8489,15 +8493,28 @@ impl GraphService {
 
     pub async fn get_node_positions(&self) -> Vec<Node> {
         let graph = self.graph_data.read().await;
-        if log::log_enabled!(log::Level::Debug) {
-            log::debug!("get_node_positions: returning {} nodes", graph.nodes.len());
-            for node in &graph.nodes {
-                log::debug!("Node {}: pos=[{},{},{}], vel=[{},{},{}]",
+        
+        // Always log this information to diagnose issues with node movement
+        log::info!("get_node_positions: returning {} nodes", graph.nodes.len());
+        
+        // Log first 5 nodes (or fewer if there are less)
+        let sample_size = std::cmp::min(5, graph.nodes.len());
+        if sample_size > 0 {
+            log::info!("Node position sample:");
+            
+            for (i, node) in graph.nodes.iter().take(sample_size).enumerate() {
+                log::info!(
+                    "Node {}: id={}, pos=[{:.3},{:.3},{:.3}], vel=[{:.3},{:.3},{:.3}], mass={}, flags={}",
+                    i,
                     node.id,
                     node.data.position[0], node.data.position[1], node.data.position[2],
-                    node.data.velocity[0], node.data.velocity[1], node.data.velocity[2]
+                    node.data.velocity[0], node.data.velocity[1], node.data.velocity[2],
+                    node.data.mass,
+                    node.data.flags
                 );
             }
+            
+            log::info!("End of node position sample (showing {} of {} nodes)", sample_size, graph.nodes.len());
         }
         graph.nodes.clone()
     }
@@ -10993,11 +11010,14 @@ utils/compute_forces.cu
 #include <cuda_runtime.h>
 
 extern "C" {
+    // Updated struct that matches what's transmitted over the wire
     struct BinaryNodeData {
         float position[3];    // 12 bytes - matches Rust [f32; 3]
         float velocity[3];    // 12 bytes - matches Rust [f32; 3]
-        unsigned char mass;   // 1 byte - matches Rust u8
-        unsigned char flags;  // 1 byte - matches Rust u8
+        // These fields are used internally on the server but not transmitted over the wire
+        // Default values will be used in the kernel
+        unsigned char mass;   // 1 byte - matches Rust u8 (defaults to 128 - mid-range value)
+        unsigned char flags;  // 1 byte - matches Rust u8 (defaults to 3 - active + connected)
         unsigned char padding[2]; // 2 bytes - matches Rust padding
     };
 
@@ -11019,8 +11039,14 @@ extern "C" {
         float3 vel = make_float3(nodes[idx].velocity[0], nodes[idx].velocity[1], nodes[idx].velocity[2]);
         
         // Convert mass from u8 to float (0-1 range)
-        float mass = (nodes[idx].mass + 1.0f) / 256.0f; // Add 1 to avoid zero mass
-        bool is_active = (nodes[idx].flags & 0x1) != 0;
+        // Use a default mass value if mass is 0 (not transmitted over wire)
+        float mass;
+        if (nodes[idx].mass == 0) {
+            mass = 0.5f; // Default mid-range mass value
+        } else {
+            mass = (nodes[idx].mass + 1.0f) / 256.0f; // Add 1 to avoid zero mass
+        }
+        bool is_active = true; // All nodes are considered active by default
         
         if (!is_active) return; // Skip inactive nodes
         
@@ -11028,9 +11054,12 @@ extern "C" {
         for (int j = 0; j < num_nodes; j++) {
             if (j == idx) continue;
             
-            if (!(nodes[j].flags & 0x1)) continue; // Skip inactive nodes
+            // All nodes are active by default
+            // if (!(nodes[j].flags & 0x1)) continue; // Skip inactive nodes - no longer needed
+            // Use default mass if not set
             
-            float other_mass = (nodes[j].mass + 1.0f) / 256.0f;
+            float other_mass = (nodes[j].mass == 0) ? 0.5f : (nodes[j].mass + 1.0f) / 256.0f;
+            
             float3 other_pos = make_float3(
                 nodes[j].position[0],
                 nodes[j].position[1],
@@ -11051,8 +11080,9 @@ extern "C" {
                     diff.z / dist
                 );
                 
-                // Spring forces - apply only if both nodes have the connected flag
-                if ((nodes[idx].flags & 0x2) && (nodes[j].flags & 0x2)) {
+                // Apply spring forces to all nodes by default
+                // Previously checked for connected flag: (nodes[idx].flags & 0x2) && (nodes[j].flags & 0x2)
+                {
                     // Use natural length of 1.0 to match world units
                     float spring_force = spring_k * (dist - 1.0f);
                     float spring_scale = mass * other_mass;
@@ -11149,9 +11179,9 @@ utils/compute_forces.ptx
 	.local .align 16 .b8 	__local_depot0[64];
 	.reg .b64 	%SP;
 	.reg .b64 	%SPL;
-	.reg .pred 	%p<36>;
-	.reg .b16 	%rs<20>;
-	.reg .f32 	%f<215>;
+	.reg .pred 	%p<21>;
+	.reg .b16 	%rs<5>;
+	.reg .f32 	%f<209>;
 	.reg .b32 	%r<21>;
 	.reg .f64 	%fd<8>;
 	.reg .b64 	%rd<14>;
@@ -11161,311 +11191,283 @@ utils/compute_forces.ptx
 	cvta.local.u64 	%SP, %SPL;
 	ld.param.u64 	%rd5, [compute_forces_kernel_param_0];
 	ld.param.u32 	%r9, [compute_forces_kernel_param_1];
-	ld.param.f32 	%f90, [compute_forces_kernel_param_2];
-	ld.param.f32 	%f91, [compute_forces_kernel_param_3];
-	ld.param.f32 	%f92, [compute_forces_kernel_param_4];
-	ld.param.f32 	%f93, [compute_forces_kernel_param_5];
-	ld.param.f32 	%f94, [compute_forces_kernel_param_6];
-	ld.param.f32 	%f95, [compute_forces_kernel_param_7];
+	ld.param.f32 	%f85, [compute_forces_kernel_param_2];
+	ld.param.f32 	%f86, [compute_forces_kernel_param_3];
+	ld.param.f32 	%f87, [compute_forces_kernel_param_4];
+	ld.param.f32 	%f88, [compute_forces_kernel_param_5];
+	ld.param.f32 	%f89, [compute_forces_kernel_param_6];
+	ld.param.f32 	%f90, [compute_forces_kernel_param_7];
 	cvta.to.global.u64 	%rd1, %rd5;
 	mov.u32 	%r10, %ntid.x;
 	mov.u32 	%r11, %ctaid.x;
 	mov.u32 	%r12, %tid.x;
 	mad.lo.s32 	%r1, %r11, %r10, %r12;
 	setp.ge.s32 	%p1, %r1, %r9;
-	@%p1 bra 	$L__BB0_32;
+	@%p1 bra 	$L__BB0_30;
 
 	mul.wide.s32 	%rd6, %r1, 28;
 	add.s64 	%rd2, %rd1, %rd6;
 	ld.global.f32 	%f1, [%rd2];
 	ld.global.f32 	%f2, [%rd2+4];
 	ld.global.f32 	%f3, [%rd2+8];
-	ld.global.v2.u8 	{%rs5, %rs6}, [%rd2+24];
-	cvt.rn.f32.u16 	%f96, %rs5;
-	add.ftz.f32 	%f97, %f96, 0f3F800000;
-	mov.f32 	%f98, 0f43800000;
-	div.approx.ftz.f32 	%f4, %f97, %f98;
-	and.b16  	%rs7, %rs6, 1;
-	setp.eq.b16 	%p2, %rs7, 1;
-	mov.pred 	%p3, 0;
-	xor.pred  	%p4, %p2, %p3;
-	not.pred 	%p5, %p4;
-	@%p5 bra 	$L__BB0_32;
+	ld.global.f32 	%f4, [%rd2+12];
+	ld.global.f32 	%f5, [%rd2+16];
+	ld.global.f32 	%f6, [%rd2+20];
+	ld.global.u8 	%rs1, [%rd2+24];
+	setp.eq.s16 	%p2, %rs1, 0;
+	mov.f32 	%f184, 0f3F000000;
+	@%p2 bra 	$L__BB0_3;
 
-	ld.global.f32 	%f5, [%rd2+12];
-	ld.global.f32 	%f6, [%rd2+16];
-	ld.global.f32 	%f7, [%rd2+20];
-	setp.lt.s32 	%p6, %r9, 1;
-	mov.f32 	%f197, 0f00000000;
-	mov.f32 	%f198, %f197;
-	mov.f32 	%f199, %f197;
-	@%p6 bra 	$L__BB0_28;
+	cvt.rn.f32.u16 	%f92, %rs1;
+	add.ftz.f32 	%f93, %f92, 0f3F800000;
+	mov.f32 	%f94, 0f43800000;
+	div.approx.ftz.f32 	%f184, %f93, %f94;
 
-	mul.ftz.f32 	%f8, %f4, %f92;
+$L__BB0_3:
+	setp.lt.s32 	%p3, %r9, 1;
+	mov.f32 	%f193, 0f00000000;
+	mov.f32 	%f194, %f193;
+	mov.f32 	%f195, %f193;
+	@%p3 bra 	$L__BB0_26;
+
+	mul.ftz.f32 	%f9, %f184, %f87;
 	and.b32  	%r2, %r9, 1;
-	setp.eq.s32 	%p7, %r9, 1;
-	mov.f32 	%f199, 0f00000000;
+	setp.eq.s32 	%p4, %r9, 1;
+	mov.f32 	%f195, 0f00000000;
 	mov.u32 	%r20, 0;
-	mov.f32 	%f198, %f199;
-	mov.f32 	%f197, %f199;
-	@%p7 bra 	$L__BB0_20;
+	mov.f32 	%f194, %f195;
+	mov.f32 	%f193, %f195;
+	@%p4 bra 	$L__BB0_19;
 
 	sub.s32 	%r19, %r9, %r2;
-	mov.f32 	%f199, 0f00000000;
+	mov.f32 	%f195, 0f00000000;
 	mov.u32 	%r20, 0;
 
-$L__BB0_5:
+$L__BB0_6:
 	mul.wide.s32 	%rd7, %r20, 28;
 	add.s64 	%rd3, %rd1, %rd7;
-	setp.eq.s32 	%p8, %r20, %r1;
+	setp.eq.s32 	%p5, %r20, %r1;
+	@%p5 bra 	$L__BB0_12;
+
+	ld.global.u8 	%rs2, [%rd3+24];
+	setp.eq.s16 	%p6, %rs2, 0;
+	mov.f32 	%f188, 0f3F000000;
+	@%p6 bra 	$L__BB0_9;
+
+	cvt.rn.f32.u16 	%f106, %rs2;
+	add.ftz.f32 	%f107, %f106, 0f3F800000;
+	mov.f32 	%f108, 0f43800000;
+	div.approx.ftz.f32 	%f188, %f107, %f108;
+
+$L__BB0_9:
+	ld.global.f32 	%f109, [%rd3];
+	sub.ftz.f32 	%f15, %f109, %f1;
+	ld.global.f32 	%f110, [%rd3+4];
+	sub.ftz.f32 	%f16, %f110, %f2;
+	ld.global.f32 	%f111, [%rd3+8];
+	sub.ftz.f32 	%f17, %f111, %f3;
+	mul.ftz.f32 	%f112, %f16, %f16;
+	fma.rn.ftz.f32 	%f113, %f15, %f15, %f112;
+	fma.rn.ftz.f32 	%f114, %f17, %f17, %f113;
+	sqrt.approx.ftz.f32 	%f18, %f114;
+	setp.leu.ftz.f32 	%p7, %f18, 0f38D1B717;
+	@%p7 bra 	$L__BB0_12;
+
+	div.approx.ftz.f32 	%f19, %f15, %f18;
+	add.ftz.f32 	%f115, %f18, 0fBF800000;
+	mul.ftz.f32 	%f116, %f115, %f85;
+	mul.ftz.f32 	%f117, %f116, %f19;
+	mul.ftz.f32 	%f118, %f184, %f188;
+	fma.rn.ftz.f32 	%f193, %f118, %f117, %f193;
+	div.approx.ftz.f32 	%f21, %f16, %f18;
+	mul.ftz.f32 	%f119, %f116, %f21;
+	fma.rn.ftz.f32 	%f194, %f118, %f119, %f194;
+	div.approx.ftz.f32 	%f23, %f17, %f18;
+	mul.ftz.f32 	%f120, %f116, %f23;
+	fma.rn.ftz.f32 	%f195, %f118, %f120, %f195;
+	setp.geu.ftz.f32 	%p8, %f18, %f89;
 	@%p8 bra 	$L__BB0_12;
 
-	ld.global.u8 	%rs2, [%rd3+25];
-	and.b16  	%rs8, %rs2, 1;
-	setp.eq.b16 	%p9, %rs8, 1;
-	mov.pred 	%p10, 0;
-	xor.pred  	%p11, %p9, %p10;
-	not.pred 	%p12, %p11;
-	@%p12 bra 	$L__BB0_12;
-
-	ld.global.u8 	%rs9, [%rd3+24];
-	cvt.rn.f32.u16 	%f109, %rs9;
-	add.ftz.f32 	%f110, %f109, 0f3F800000;
-	mov.f32 	%f111, 0f43800000;
-	div.approx.ftz.f32 	%f12, %f110, %f111;
-	ld.global.f32 	%f112, [%rd3];
-	sub.ftz.f32 	%f13, %f112, %f1;
-	ld.global.f32 	%f113, [%rd3+4];
-	sub.ftz.f32 	%f14, %f113, %f2;
-	ld.global.f32 	%f114, [%rd3+8];
-	sub.ftz.f32 	%f15, %f114, %f3;
-	mul.ftz.f32 	%f115, %f14, %f14;
-	fma.rn.ftz.f32 	%f116, %f13, %f13, %f115;
-	fma.rn.ftz.f32 	%f117, %f15, %f15, %f116;
-	sqrt.approx.ftz.f32 	%f16, %f117;
-	setp.leu.ftz.f32 	%p13, %f16, 0f38D1B717;
-	@%p13 bra 	$L__BB0_12;
-
-	div.approx.ftz.f32 	%f17, %f13, %f16;
-	div.approx.ftz.f32 	%f18, %f14, %f16;
-	div.approx.ftz.f32 	%f19, %f15, %f16;
-	and.b16  	%rs10, %rs6, %rs2;
-	and.b16  	%rs11, %rs10, 2;
-	setp.eq.s16 	%p14, %rs11, 0;
-	@%p14 bra 	$L__BB0_10;
-
-	add.ftz.f32 	%f118, %f16, 0fBF800000;
-	mul.ftz.f32 	%f119, %f118, %f90;
-	mul.ftz.f32 	%f120, %f119, %f17;
-	mul.ftz.f32 	%f121, %f4, %f12;
-	fma.rn.ftz.f32 	%f197, %f121, %f120, %f197;
-	mul.ftz.f32 	%f122, %f119, %f18;
-	fma.rn.ftz.f32 	%f198, %f121, %f122, %f198;
-	mul.ftz.f32 	%f123, %f119, %f19;
-	fma.rn.ftz.f32 	%f199, %f121, %f123, %f199;
-
-$L__BB0_10:
-	setp.geu.ftz.f32 	%p15, %f16, %f94;
-	@%p15 bra 	$L__BB0_12;
-
-	mul.ftz.f32 	%f124, %f8, %f12;
-	mul.ftz.f32 	%f125, %f16, %f16;
-	div.approx.ftz.f32 	%f126, %f124, %f125;
-	mul.ftz.f32 	%f127, %f17, %f126;
-	sub.ftz.f32 	%f197, %f197, %f127;
-	mul.ftz.f32 	%f128, %f18, %f126;
-	sub.ftz.f32 	%f198, %f198, %f128;
-	mul.ftz.f32 	%f129, %f19, %f126;
-	sub.ftz.f32 	%f199, %f199, %f129;
+	mul.ftz.f32 	%f121, %f9, %f188;
+	mul.ftz.f32 	%f122, %f18, %f18;
+	div.approx.ftz.f32 	%f123, %f121, %f122;
+	mul.ftz.f32 	%f124, %f19, %f123;
+	sub.ftz.f32 	%f193, %f193, %f124;
+	mul.ftz.f32 	%f125, %f21, %f123;
+	sub.ftz.f32 	%f194, %f194, %f125;
+	mul.ftz.f32 	%f126, %f23, %f123;
+	sub.ftz.f32 	%f195, %f195, %f126;
 
 $L__BB0_12:
 	add.s32 	%r15, %r20, 1;
-	setp.eq.s32 	%p16, %r15, %r1;
-	@%p16 bra 	$L__BB0_19;
+	setp.eq.s32 	%p9, %r15, %r1;
+	@%p9 bra 	$L__BB0_18;
 
-	ld.global.u8 	%rs3, [%rd3+53];
-	and.b16  	%rs12, %rs3, 1;
-	setp.eq.b16 	%p17, %rs12, 1;
-	mov.pred 	%p18, 0;
-	xor.pred  	%p19, %p17, %p18;
-	not.pred 	%p20, %p19;
-	@%p20 bra 	$L__BB0_19;
+	ld.global.u8 	%rs3, [%rd3+52];
+	setp.eq.s16 	%p10, %rs3, 0;
+	mov.f32 	%f192, 0f3F000000;
+	@%p10 bra 	$L__BB0_15;
 
-	ld.global.u8 	%rs13, [%rd3+52];
-	cvt.rn.f32.u16 	%f130, %rs13;
-	add.ftz.f32 	%f131, %f130, 0f3F800000;
-	mov.f32 	%f132, 0f43800000;
-	div.approx.ftz.f32 	%f32, %f131, %f132;
-	ld.global.f32 	%f133, [%rd3+28];
-	sub.ftz.f32 	%f33, %f133, %f1;
-	ld.global.f32 	%f134, [%rd3+32];
-	sub.ftz.f32 	%f34, %f134, %f2;
-	ld.global.f32 	%f135, [%rd3+36];
-	sub.ftz.f32 	%f35, %f135, %f3;
-	mul.ftz.f32 	%f136, %f34, %f34;
-	fma.rn.ftz.f32 	%f137, %f33, %f33, %f136;
-	fma.rn.ftz.f32 	%f138, %f35, %f35, %f137;
-	sqrt.approx.ftz.f32 	%f36, %f138;
-	setp.leu.ftz.f32 	%p21, %f36, 0f38D1B717;
-	@%p21 bra 	$L__BB0_19;
+	cvt.rn.f32.u16 	%f128, %rs3;
+	add.ftz.f32 	%f129, %f128, 0f3F800000;
+	mov.f32 	%f130, 0f43800000;
+	div.approx.ftz.f32 	%f192, %f129, %f130;
+
+$L__BB0_15:
+	ld.global.f32 	%f131, [%rd3+28];
+	sub.ftz.f32 	%f33, %f131, %f1;
+	ld.global.f32 	%f132, [%rd3+32];
+	sub.ftz.f32 	%f34, %f132, %f2;
+	ld.global.f32 	%f133, [%rd3+36];
+	sub.ftz.f32 	%f35, %f133, %f3;
+	mul.ftz.f32 	%f134, %f34, %f34;
+	fma.rn.ftz.f32 	%f135, %f33, %f33, %f134;
+	fma.rn.ftz.f32 	%f136, %f35, %f35, %f135;
+	sqrt.approx.ftz.f32 	%f36, %f136;
+	setp.leu.ftz.f32 	%p11, %f36, 0f38D1B717;
+	@%p11 bra 	$L__BB0_18;
 
 	div.approx.ftz.f32 	%f37, %f33, %f36;
-	div.approx.ftz.f32 	%f38, %f34, %f36;
-	div.approx.ftz.f32 	%f39, %f35, %f36;
-	and.b16  	%rs14, %rs6, %rs3;
-	and.b16  	%rs15, %rs14, 2;
-	setp.eq.s16 	%p22, %rs15, 0;
-	@%p22 bra 	$L__BB0_17;
+	add.ftz.f32 	%f137, %f36, 0fBF800000;
+	mul.ftz.f32 	%f138, %f137, %f85;
+	mul.ftz.f32 	%f139, %f138, %f37;
+	mul.ftz.f32 	%f140, %f184, %f192;
+	fma.rn.ftz.f32 	%f193, %f140, %f139, %f193;
+	div.approx.ftz.f32 	%f39, %f34, %f36;
+	mul.ftz.f32 	%f141, %f138, %f39;
+	fma.rn.ftz.f32 	%f194, %f140, %f141, %f194;
+	div.approx.ftz.f32 	%f41, %f35, %f36;
+	mul.ftz.f32 	%f142, %f138, %f41;
+	fma.rn.ftz.f32 	%f195, %f140, %f142, %f195;
+	setp.geu.ftz.f32 	%p12, %f36, %f89;
+	@%p12 bra 	$L__BB0_18;
 
-	add.ftz.f32 	%f139, %f36, 0fBF800000;
-	mul.ftz.f32 	%f140, %f139, %f90;
-	mul.ftz.f32 	%f141, %f140, %f37;
-	mul.ftz.f32 	%f142, %f4, %f32;
-	fma.rn.ftz.f32 	%f197, %f142, %f141, %f197;
-	mul.ftz.f32 	%f143, %f140, %f38;
-	fma.rn.ftz.f32 	%f198, %f142, %f143, %f198;
-	mul.ftz.f32 	%f144, %f140, %f39;
-	fma.rn.ftz.f32 	%f199, %f142, %f144, %f199;
+	mul.ftz.f32 	%f143, %f9, %f192;
+	mul.ftz.f32 	%f144, %f36, %f36;
+	div.approx.ftz.f32 	%f145, %f143, %f144;
+	mul.ftz.f32 	%f146, %f37, %f145;
+	sub.ftz.f32 	%f193, %f193, %f146;
+	mul.ftz.f32 	%f147, %f39, %f145;
+	sub.ftz.f32 	%f194, %f194, %f147;
+	mul.ftz.f32 	%f148, %f41, %f145;
+	sub.ftz.f32 	%f195, %f195, %f148;
 
-$L__BB0_17:
-	setp.geu.ftz.f32 	%p23, %f36, %f94;
-	@%p23 bra 	$L__BB0_19;
-
-	mul.ftz.f32 	%f145, %f8, %f32;
-	mul.ftz.f32 	%f146, %f36, %f36;
-	div.approx.ftz.f32 	%f147, %f145, %f146;
-	mul.ftz.f32 	%f148, %f37, %f147;
-	sub.ftz.f32 	%f197, %f197, %f148;
-	mul.ftz.f32 	%f149, %f38, %f147;
-	sub.ftz.f32 	%f198, %f198, %f149;
-	mul.ftz.f32 	%f150, %f39, %f147;
-	sub.ftz.f32 	%f199, %f199, %f150;
-
-$L__BB0_19:
+$L__BB0_18:
 	add.s32 	%r20, %r20, 2;
 	add.s32 	%r19, %r19, -2;
-	setp.ne.s32 	%p24, %r19, 0;
-	@%p24 bra 	$L__BB0_5;
+	setp.ne.s32 	%p13, %r19, 0;
+	@%p13 bra 	$L__BB0_6;
 
-$L__BB0_20:
-	setp.eq.s32 	%p25, %r2, 0;
-	@%p25 bra 	$L__BB0_28;
+$L__BB0_19:
+	setp.eq.s32 	%p14, %r2, 0;
+	@%p14 bra 	$L__BB0_26;
 
-	setp.eq.s32 	%p26, %r20, %r1;
-	@%p26 bra 	$L__BB0_28;
+	setp.eq.s32 	%p15, %r20, %r1;
+	@%p15 bra 	$L__BB0_26;
 
 	mul.wide.s32 	%rd8, %r20, 28;
 	add.s64 	%rd9, %rd1, %rd8;
-	add.s64 	%rd4, %rd9, 25;
-	ld.global.u8 	%rs4, [%rd9+25];
-	and.b16  	%rs16, %rs4, 1;
-	setp.eq.b16 	%p27, %rs16, 1;
-	mov.pred 	%p28, 0;
-	xor.pred  	%p29, %p27, %p28;
-	not.pred 	%p30, %p29;
-	@%p30 bra 	$L__BB0_28;
+	add.s64 	%rd4, %rd9, 24;
+	ld.global.u8 	%rs4, [%rd9+24];
+	setp.eq.s16 	%p16, %rs4, 0;
+	mov.f32 	%f202, 0f3F000000;
+	@%p16 bra 	$L__BB0_23;
 
-	ld.global.u8 	%rs17, [%rd4+-1];
-	cvt.rn.f32.u16 	%f151, %rs17;
-	add.ftz.f32 	%f152, %f151, 0f3F800000;
-	mov.f32 	%f153, 0f43800000;
-	div.approx.ftz.f32 	%f58, %f152, %f153;
-	ld.global.f32 	%f154, [%rd4+-25];
-	sub.ftz.f32 	%f59, %f154, %f1;
-	ld.global.f32 	%f155, [%rd4+-21];
-	sub.ftz.f32 	%f60, %f155, %f2;
-	ld.global.f32 	%f156, [%rd4+-17];
-	sub.ftz.f32 	%f61, %f156, %f3;
-	mul.ftz.f32 	%f157, %f60, %f60;
+	cvt.rn.f32.u16 	%f150, %rs4;
+	add.ftz.f32 	%f151, %f150, 0f3F800000;
+	mov.f32 	%f152, 0f43800000;
+	div.approx.ftz.f32 	%f202, %f151, %f152;
+
+$L__BB0_23:
+	ld.global.f32 	%f153, [%rd4+-24];
+	sub.ftz.f32 	%f57, %f153, %f1;
+	ld.global.f32 	%f154, [%rd4+-20];
+	sub.ftz.f32 	%f58, %f154, %f2;
+	ld.global.f32 	%f155, [%rd4+-16];
+	sub.ftz.f32 	%f59, %f155, %f3;
+	mul.ftz.f32 	%f156, %f58, %f58;
+	fma.rn.ftz.f32 	%f157, %f57, %f57, %f156;
 	fma.rn.ftz.f32 	%f158, %f59, %f59, %f157;
-	fma.rn.ftz.f32 	%f159, %f61, %f61, %f158;
-	sqrt.approx.ftz.f32 	%f62, %f159;
-	setp.leu.ftz.f32 	%p31, %f62, 0f38D1B717;
-	@%p31 bra 	$L__BB0_28;
+	sqrt.approx.ftz.f32 	%f60, %f158;
+	setp.leu.ftz.f32 	%p17, %f60, 0f38D1B717;
+	@%p17 bra 	$L__BB0_26;
 
-	div.approx.ftz.f32 	%f63, %f59, %f62;
-	div.approx.ftz.f32 	%f64, %f60, %f62;
-	div.approx.ftz.f32 	%f65, %f61, %f62;
-	and.b16  	%rs18, %rs6, %rs4;
-	and.b16  	%rs19, %rs18, 2;
-	setp.eq.s16 	%p32, %rs19, 0;
-	@%p32 bra 	$L__BB0_26;
+	div.approx.ftz.f32 	%f61, %f57, %f60;
+	add.ftz.f32 	%f159, %f60, 0fBF800000;
+	mul.ftz.f32 	%f160, %f159, %f85;
+	mul.ftz.f32 	%f161, %f160, %f61;
+	mul.ftz.f32 	%f162, %f184, %f202;
+	fma.rn.ftz.f32 	%f193, %f162, %f161, %f193;
+	div.approx.ftz.f32 	%f63, %f58, %f60;
+	mul.ftz.f32 	%f163, %f160, %f63;
+	fma.rn.ftz.f32 	%f194, %f162, %f163, %f194;
+	div.approx.ftz.f32 	%f65, %f59, %f60;
+	mul.ftz.f32 	%f164, %f160, %f65;
+	fma.rn.ftz.f32 	%f195, %f162, %f164, %f195;
+	setp.geu.ftz.f32 	%p18, %f60, %f89;
+	@%p18 bra 	$L__BB0_26;
 
-	add.ftz.f32 	%f160, %f62, 0fBF800000;
-	mul.ftz.f32 	%f161, %f160, %f90;
-	mul.ftz.f32 	%f162, %f161, %f63;
-	mul.ftz.f32 	%f163, %f4, %f58;
-	fma.rn.ftz.f32 	%f197, %f163, %f162, %f197;
-	mul.ftz.f32 	%f164, %f161, %f64;
-	fma.rn.ftz.f32 	%f198, %f163, %f164, %f198;
-	mul.ftz.f32 	%f165, %f161, %f65;
-	fma.rn.ftz.f32 	%f199, %f163, %f165, %f199;
+	mul.ftz.f32 	%f165, %f9, %f202;
+	mul.ftz.f32 	%f166, %f60, %f60;
+	div.approx.ftz.f32 	%f167, %f165, %f166;
+	mul.ftz.f32 	%f168, %f61, %f167;
+	sub.ftz.f32 	%f193, %f193, %f168;
+	mul.ftz.f32 	%f169, %f63, %f167;
+	sub.ftz.f32 	%f194, %f194, %f169;
+	mul.ftz.f32 	%f170, %f65, %f167;
+	sub.ftz.f32 	%f195, %f195, %f170;
 
 $L__BB0_26:
-	setp.geu.ftz.f32 	%p33, %f62, %f94;
-	@%p33 bra 	$L__BB0_28;
+	mov.f32 	%f171, 0f3F800000;
+	sub.ftz.f32 	%f172, %f171, %f86;
+	mul.ftz.f32 	%f173, %f193, %f88;
+	fma.rn.ftz.f32 	%f73, %f172, %f4, %f173;
+	mul.ftz.f32 	%f174, %f194, %f88;
+	fma.rn.ftz.f32 	%f74, %f172, %f5, %f174;
+	mul.ftz.f32 	%f175, %f195, %f88;
+	fma.rn.ftz.f32 	%f75, %f172, %f6, %f175;
+	fma.rn.ftz.f32 	%f206, %f73, %f88, %f1;
+	fma.rn.ftz.f32 	%f207, %f74, %f88, %f2;
+	fma.rn.ftz.f32 	%f208, %f75, %f88, %f3;
+	setp.leu.ftz.f32 	%p19, %f90, 0f00000000;
+	@%p19 bra 	$L__BB0_28;
 
-	mul.ftz.f32 	%f166, %f8, %f58;
-	mul.ftz.f32 	%f167, %f62, %f62;
-	div.approx.ftz.f32 	%f168, %f166, %f167;
-	mul.ftz.f32 	%f169, %f63, %f168;
-	sub.ftz.f32 	%f197, %f197, %f169;
-	mul.ftz.f32 	%f170, %f64, %f168;
-	sub.ftz.f32 	%f198, %f198, %f170;
-	mul.ftz.f32 	%f171, %f65, %f168;
-	sub.ftz.f32 	%f199, %f199, %f171;
+	neg.ftz.f32 	%f176, %f90;
+	min.ftz.f32 	%f177, %f90, %f206;
+	max.ftz.f32 	%f206, %f176, %f177;
+	min.ftz.f32 	%f178, %f90, %f207;
+	max.ftz.f32 	%f207, %f176, %f178;
+	min.ftz.f32 	%f179, %f90, %f208;
+	max.ftz.f32 	%f208, %f176, %f179;
 
 $L__BB0_28:
-	mov.f32 	%f172, 0f3F800000;
-	sub.ftz.f32 	%f173, %f172, %f91;
-	mul.ftz.f32 	%f174, %f197, %f93;
-	fma.rn.ftz.f32 	%f78, %f173, %f5, %f174;
-	mul.ftz.f32 	%f175, %f198, %f93;
-	fma.rn.ftz.f32 	%f79, %f173, %f6, %f175;
-	mul.ftz.f32 	%f176, %f199, %f93;
-	fma.rn.ftz.f32 	%f80, %f173, %f7, %f176;
-	fma.rn.ftz.f32 	%f212, %f78, %f93, %f1;
-	fma.rn.ftz.f32 	%f213, %f79, %f93, %f2;
-	fma.rn.ftz.f32 	%f214, %f80, %f93, %f3;
-	setp.leu.ftz.f32 	%p34, %f95, 0f00000000;
-	@%p34 bra 	$L__BB0_30;
+	st.global.f32 	[%rd2], %f206;
+	st.global.f32 	[%rd2+4], %f207;
+	st.global.f32 	[%rd2+8], %f208;
+	st.global.f32 	[%rd2+12], %f73;
+	st.global.f32 	[%rd2+16], %f74;
+	st.global.f32 	[%rd2+20], %f75;
+	setp.ne.s32 	%p20, %r1, 0;
+	@%p20 bra 	$L__BB0_30;
 
-	neg.ftz.f32 	%f177, %f95;
-	min.ftz.f32 	%f178, %f95, %f212;
-	max.ftz.f32 	%f212, %f177, %f178;
-	min.ftz.f32 	%f179, %f95, %f213;
-	max.ftz.f32 	%f213, %f177, %f179;
-	min.ftz.f32 	%f180, %f95, %f214;
-	max.ftz.f32 	%f214, %f177, %f180;
-
-$L__BB0_30:
-	st.global.f32 	[%rd2], %f212;
-	st.global.f32 	[%rd2+4], %f213;
-	st.global.f32 	[%rd2+8], %f214;
-	st.global.f32 	[%rd2+12], %f78;
-	st.global.f32 	[%rd2+16], %f79;
-	st.global.f32 	[%rd2+20], %f80;
-	setp.ne.s32 	%p35, %r1, 0;
-	@%p35 bra 	$L__BB0_32;
-
-	mul.ftz.f32 	%f181, %f198, %f198;
-	fma.rn.ftz.f32 	%f182, %f197, %f197, %f181;
-	fma.rn.ftz.f32 	%f183, %f199, %f199, %f182;
-	sqrt.approx.ftz.f32 	%f184, %f183;
-	cvt.ftz.f64.f32 	%fd1, %f184;
+	mul.ftz.f32 	%f180, %f194, %f194;
+	fma.rn.ftz.f32 	%f181, %f193, %f193, %f180;
+	fma.rn.ftz.f32 	%f182, %f195, %f195, %f181;
+	sqrt.approx.ftz.f32 	%f183, %f182;
+	cvt.ftz.f64.f32 	%fd1, %f183;
 	add.u64 	%rd10, %SP, 0;
 	add.u64 	%rd11, %SPL, 0;
 	mov.u32 	%r16, 0;
 	st.local.u32 	[%rd11], %r16;
 	st.local.f64 	[%rd11+8], %fd1;
-	cvt.ftz.f64.f32 	%fd2, %f213;
-	cvt.ftz.f64.f32 	%fd3, %f212;
+	cvt.ftz.f64.f32 	%fd2, %f207;
+	cvt.ftz.f64.f32 	%fd3, %f206;
 	st.local.v2.f64 	[%rd11+16], {%fd3, %fd2};
-	cvt.ftz.f64.f32 	%fd4, %f78;
-	cvt.ftz.f64.f32 	%fd5, %f214;
+	cvt.ftz.f64.f32 	%fd4, %f73;
+	cvt.ftz.f64.f32 	%fd5, %f208;
 	st.local.v2.f64 	[%rd11+32], {%fd5, %fd4};
-	cvt.ftz.f64.f32 	%fd6, %f80;
-	cvt.ftz.f64.f32 	%fd7, %f79;
+	cvt.ftz.f64.f32 	%fd6, %f75;
+	cvt.ftz.f64.f32 	%fd7, %f74;
 	st.local.v2.f64 	[%rd11+48], {%fd7, %fd6};
 	mov.u64 	%rd12, $str;
 	cvta.global.u64 	%rd13, %rd12;
@@ -11485,7 +11487,7 @@ $L__BB0_30:
 	ld.param.b32 	%r17, [retval0+0];
 	} // callseq 0
 
-$L__BB0_32:
+$L__BB0_30:
 	ret;
 
 }
@@ -17351,7 +17353,8 @@ export class HologramManager {
         this.settingsStore = SettingsStore.getInstance();
         
         // Enable bloom layer
-        this.group.layers.enable(1);
+        this.group.layers.set(0);  // First set default layer
+        this.group.layers.enable(1);  // Then enable bloom layer
         this.createHolograms();
         this.scene.add(this.group);
 
@@ -17405,7 +17408,9 @@ export class HologramManager {
             }
             
             ring.instanceMatrix.needsUpdate = true;
-            ring.layers.enable(1); // Enable bloom layer
+            // Make sure each ring has bloom layer enabled properly
+            ring.layers.set(0);  // Set default layer first
+            ring.layers.enable(1);  // Then enable bloom layer
             this.ringInstances.push(ring);
             this.group.add(ring);
         });
@@ -17435,7 +17440,9 @@ export class HologramManager {
             material.uniforms.opacity.value = this.settings.visualization.hologram.triangleSphereOpacity;
             material.setEdgeOnly(true);
             
-            sphereMesh.layers.enable(1); // Enable bloom layer
+            // Make sure sphere has bloom layer enabled properly
+            sphereMesh.layers.set(0);  // Set default layer first
+            sphereMesh.layers.enable(1);  // Then enable bloom layer
             this.sphereInstances.push(sphereMesh);
             this.group.add(sphereMesh);
         }
@@ -20314,96 +20321,99 @@ const logger = createLogger('UnifiedTextRenderer');
 
 // Vertex shader for SDF text rendering with improved billboarding
 const vertexShader = `
-    uniform vec3 cameraPosition;
-    
-    attribute vec3 position;
-    attribute vec2 uv;
-    attribute vec3 instancePosition;
-    attribute vec4 instanceColor;
-    attribute float instanceScale;
-    
-    varying vec2 vUv;
-    varying vec4 vColor;
-    varying float vScale;
-    varying float vViewDistance;
-    
-    void main() {
-        vUv = uv;
-        vColor = instanceColor;
-        vScale = instanceScale;
+#version 300 es
+// Three.js automatically provides cameraPosition uniform
 
-        // Scale the position first
-        vec3 scale = vec3(instanceScale);
-        vec3 vertexPosition = position * scale;
-        
-        // Billboard calculation
-        vec3 up = vec3(0.0, 1.0, 0.0);
-        vec3 forward = normalize(cameraPosition - instancePosition);
-        vec3 right = normalize(cross(up, forward));
-        up = normalize(cross(forward, right));
-        
-        mat4 billboardMatrix = mat4(
-            vec4(right, 0.0),
-            vec4(up, 0.0),
-            vec4(forward, 0.0),
-            vec4(0.0, 0.0, 0.0, 1.0)
-        );
-        
-        vertexPosition = (billboardMatrix * vec4(vertexPosition, 1.0)).xyz;
-        vertexPosition += instancePosition;
-        
-        vec4 mvPosition = modelViewMatrix * vec4(vertexPosition, 1.0);
-        vViewDistance = -mvPosition.z;  // Distance from camera
-        gl_Position = projectionMatrix * mvPosition;
-    }
+in vec3 position;
+in vec2 uv;
+in vec3 instancePosition;
+in vec4 instanceColor;
+in float instanceScale;
+
+out vec2 vUv;
+out vec4 vColor;
+out float vScale;
+out float vViewDistance;
+
+void main() {
+    vUv = uv;
+    vColor = instanceColor;
+    vScale = instanceScale;
+
+    // Scale the position first
+    vec3 scale = vec3(instanceScale);
+    vec3 vertexPosition = position * scale;
+    
+    // Billboard calculation
+    vec3 up = vec3(0.0, 1.0, 0.0);
+    vec3 forward = normalize(cameraPosition - instancePosition);
+    vec3 right = normalize(cross(up, forward));
+    up = normalize(cross(forward, right));
+    
+    mat4 billboardMatrix = mat4(
+        vec4(right, 0.0),
+        vec4(up, 0.0),
+        vec4(forward, 0.0),
+        vec4(0.0, 0.0, 0.0, 1.0)
+    );
+    
+    vertexPosition = (billboardMatrix * vec4(vertexPosition, 1.0)).xyz;
+    vertexPosition += instancePosition;
+    
+    vec4 mvPosition = modelViewMatrix * vec4(vertexPosition, 1.0);
+    vViewDistance = -mvPosition.z;  // Distance from camera
+    gl_Position = projectionMatrix * mvPosition;
+}
 `;
 
 // Fragment shader for SDF text rendering with improved quality
 const fragmentShader = `
-    precision highp float;
+#version 300 es
+precision highp float;
+
+uniform sampler2D fontAtlas;
+uniform float sdfThreshold;
+uniform float sdfSpread;
+uniform vec3 outlineColor;
+uniform float outlineWidth;
+uniform float fadeStart;
+uniform float fadeEnd;
+
+in vec2 vUv;
+in vec4 vColor;
+in float vScale;
+in float vViewDistance;
+out vec4 fragColor;
+
+float median(float r, float g, float b) {
+    return max(min(r, g), min(max(r, g), b));
+}
+
+void main() {
+    vec3 fontSample = texture(fontAtlas, vUv).rgb;
+    float sigDist = median(fontSample.r, fontSample.g, fontSample.b);
     
-    uniform sampler2D fontAtlas;
-    uniform float sdfThreshold;
-    uniform float sdfSpread;
-    uniform vec3 outlineColor;
-    uniform float outlineWidth;
-    uniform float fadeStart;
-    uniform float fadeEnd;
+    // Dynamic threshold based on distance
+    float distanceScale = smoothstep(fadeEnd, fadeStart, vViewDistance);
+    float dynamicThreshold = sdfThreshold * (1.0 + (1.0 - distanceScale) * 0.1);
+    float dynamicSpread = sdfSpread * (1.0 + (1.0 - distanceScale) * 0.2);
     
-    varying vec2 vUv;
-    varying vec4 vColor;
-    varying float vScale;
-    varying float vViewDistance;
+    // Improved antialiasing
+    float alpha = smoothstep(dynamicThreshold - dynamicSpread, 
+                           dynamicThreshold + dynamicSpread, 
+                           sigDist);
+                           
+    float outline = smoothstep(dynamicThreshold - outlineWidth - dynamicSpread,
+                             dynamicThreshold - outlineWidth + dynamicSpread,
+                             sigDist);
     
-    float median(float r, float g, float b) {
-        return max(min(r, g), min(max(r, g), b));
-    }
+    // Apply distance-based fade
+    alpha *= distanceScale;
+    outline *= distanceScale;
     
-    void main() {
-        vec3 sample = texture2D(fontAtlas, vUv).rgb;
-        float sigDist = median(sample.r, sample.g, sample.b);
-        
-        // Dynamic threshold based on distance
-        float distanceScale = smoothstep(fadeEnd, fadeStart, vViewDistance);
-        float dynamicThreshold = sdfThreshold * (1.0 + (1.0 - distanceScale) * 0.1);
-        float dynamicSpread = sdfSpread * (1.0 + (1.0 - distanceScale) * 0.2);
-        
-        // Improved antialiasing
-        float alpha = smoothstep(dynamicThreshold - dynamicSpread, 
-                               dynamicThreshold + dynamicSpread, 
-                               sigDist);
-                               
-        float outline = smoothstep(dynamicThreshold - outlineWidth - dynamicSpread,
-                                 dynamicThreshold - outlineWidth + dynamicSpread,
-                                 sigDist);
-        
-        // Apply distance-based fade
-        alpha *= distanceScale;
-        outline *= distanceScale;
-        
-        vec4 color = mix(vec4(outlineColor, outline), vColor, alpha);
-        gl_FragColor = color;
-    }
+    vec4 color = mix(vec4(outlineColor, outline), vColor, alpha);
+    fragColor = color;
+}
 `;
 
 interface LabelInstance {
@@ -20467,7 +20477,7 @@ export class UnifiedTextRenderer {
             this.material = new ShaderMaterial({
                 vertexShader,
                 fragmentShader,
-                glslVersion: null, // Ensure WebGL1 compatibility
+                // Using WebGL1 compatibility by default
                 uniforms: {
                     fontAtlas: { value: null },
                     sdfThreshold: { value: 0.45 },
@@ -21954,6 +21964,8 @@ export class MetadataVisualizer {
     private metadataGroups: Map<string, MetadataLabelGroup>;
     private logger: Logger;
     private debugHelpers: Map<string, Object3D>;
+    private labelUpdateCount: number = 0;
+    private visibilityThreshold: number = 50; // Default visibility threshold
 
     constructor(camera: PerspectiveCamera, scene: Scene, settings: Settings) {
         this.scene = scene;
@@ -21962,11 +21974,15 @@ export class MetadataVisualizer {
         this.logger = createLogger('MetadataVisualizer');
         
         this.debugHelpers = new Map();
+        this.visibilityThreshold = settings.visualization.labels.visibilityThreshold || 50;
         
         this.logger.info('Initializing MetadataVisualizer with settings:', {
             enableLabels: settings.visualization.labels.enableLabels,
             textColor: settings.visualization.labels.textColor,
-            desktopFontSize: settings.visualization.labels.desktopFontSize
+            desktopFontSize: settings.visualization.labels.desktopFontSize,
+            visibilityThreshold: this.visibilityThreshold,
+            textOutlineColor: settings.visualization.labels.textOutlineColor,
+            billboardMode: settings.visualization.labels.billboardMode
         });
 
         this.labelGroup = new Group();
@@ -21989,6 +22005,9 @@ export class MetadataVisualizer {
     }
 
     public async createMetadataLabel(metadata: NodeMetadata, nodeId: string): Promise<MetadataLabelGroup> {
+        // Track how many labels we've created
+        this.labelUpdateCount++;
+        
         const group = new Group() as MetadataLabelGroup;
         group.name = 'metadata-label';
         group.userData = { 
@@ -22003,13 +22022,14 @@ export class MetadataVisualizer {
                 ? `${(metadata.fileSize / 1024).toFixed(1)}KB`
                 : `${metadata.fileSize}B`;
 
-        this.logger.info('Creating metadata label:', {
+        this.logger.info(`Creating metadata label #${this.labelUpdateCount}:`, {
             nodeId,
             metadata: {
                 name: metadata.name,
                 fileSize: fileSizeFormatted,
                 nodeSize: metadata.nodeSize,
-                hyperlinkCount: metadata.hyperlinkCount
+                hyperlinkCount: metadata.hyperlinkCount,
+                position: metadata.position
             }
         });
 
@@ -22025,12 +22045,27 @@ export class MetadataVisualizer {
         labelTexts.forEach((text, index) => {
             const position = new Vector3(0, labelPositions[index], 0);
             const labelId = `${nodeId}-label-${index}`;
-            this.textRenderer.updateLabel(
-                labelId,
-                text,
-                position,
-                new Color(this.settings.visualization.labels.textColor)
-            );
+            
+            try {
+                this.textRenderer.updateLabel(
+                    labelId,
+                    text,
+                    position,
+                    new Color(this.settings.visualization.labels.textColor)
+                );
+                
+                this.logger.debug(`Created label ${index+1}/3 for node ${nodeId}`, {
+                    labelId,
+                    text,
+                    position
+                });
+            } catch (error) {
+                this.logger.error(`Failed to create label ${index+1}/3 for node ${nodeId}`, {
+                    error: error instanceof Error ? error.message : String(error),
+                    labelId,
+                    text
+                });
+            }
         });
 
         this.metadataGroups.set(nodeId, group);
@@ -22038,6 +22073,8 @@ export class MetadataVisualizer {
     }
 
     private setGroupLayer(group: Object3D, enabled: boolean): void {
+        this.logger.debug(`Setting layer mode: ${enabled ? 'XR' : 'Desktop'}`);
+        
         if (enabled) {
             group.traverse(child => {
                 child.layers.disable(0);
@@ -22055,7 +22092,12 @@ export class MetadataVisualizer {
         }
     }
 
+    /**
+     * Update visibility threshold for labels
+     */
     public setXRMode(enabled: boolean): void {
+        this.logger.info(`Switching to ${enabled ? 'XR' : 'Desktop'} mode`);
+        this.textRenderer.setXRMode(enabled);
         this.setGroupLayer(this.labelGroup, enabled);
         // Text renderer handles its own XR mode
     }
@@ -22071,12 +22113,13 @@ export class MetadataVisualizer {
                 const labelId = `${nodeId}-label-${index}`;
                 const labelPosition = position.clone().add(new Vector3(0, yOffset, 0));
                 this.textRenderer.updateLabel(labelId, '', labelPosition); // Text content remains unchanged
-                this.logger.debug('Updating label position:', {
-                    nodeId,
-                    labelId,
-                    position: labelPosition,
-                    yOffset
-                });
+                
+                if (index === 0 && debugState.isEnabled()) {
+                    this.logger.debug('Updating label position:', {
+                        nodeId,
+                        position: labelPosition
+                    });
+                }
                 
                 // Only show debug helpers when debug is enabled
                 if (debugState.isEnabled()) {
@@ -22094,6 +22137,17 @@ export class MetadataVisualizer {
                 }
             });
         }
+    }
+
+    /**
+     * Updates the visibility threshold for metadata labels
+     */
+    public updateVisibilityThreshold(threshold: number): void {
+        this.visibilityThreshold = threshold;
+        this.logger.info('Updated visibility threshold:', { 
+            threshold, 
+            labelsCount: this.metadataGroups.size 
+        });
     }
 
     public removeMetadata(nodeId: string): void {
@@ -22116,6 +22170,21 @@ export class MetadataVisualizer {
                 if (this.debugHelpers.has(debugId)) this.debugHelpers.delete(debugId);
             });
         }
+    }
+    
+    /**
+     * Update all metadata labels - called once per frame
+     */
+    public update(_camera: PerspectiveCamera): void {
+        // Very occasionally log how many labels we're tracking
+        if (Math.random() < 0.01 && this.metadataGroups.size > 0) {
+            this.logger.info('Metadata update stats:', {
+                labelsCount: this.metadataGroups.size,
+                renderingEnabled: this.settings.visualization.labels.enableLabels,
+                visibilityThreshold: this.visibilityThreshold
+            });
+        }
+        // The text renderer handles label positions and visibility
     }
 
     public dispose(): void {
@@ -24226,11 +24295,14 @@ export class NodeInstanceManager {
     private readonly MAX_POSITION = 1000.0; // Reasonable limit for graph visualization
     private readonly MAX_VELOCITY = 100.0;   // Increased maximum allowed velocity value
     private isReady: boolean = false;
+    private positionUpdateCount: number = 0;
+    private lastPositionLog: number = 0;
 
     private validateAndLogVector3(vec: Vector3, max: number, context: string, nodeId?: string): boolean {
         const isValid = this.validateVector3(vec, max);
         
-        if (!isValid && debugState.isNodeDebugEnabled()) {
+        // Always log validation failures to catch these issues
+        if (!isValid) {
             logger.node('Vector3 validation failed', createDataMetadata({
                 nodeId,
                 component: context,
@@ -24426,10 +24498,31 @@ export class NodeInstanceManager {
             return;
         }
 
-        if (debugState.isNodeDebugEnabled()) {
-            logger.node('Starting node position updates', createDataMetadata({
-                updateCount: updates.length,
-                nodes: updates.map(u => u.id).join(',')
+        this.positionUpdateCount++;
+        
+        // Log information about the updates being received
+        const currentTime = performance.now();
+        const logInterval = 1000; // Log at most every second
+        
+        if (currentTime - this.lastPositionLog > logInterval || updates.length <= 5) {
+            this.lastPositionLog = currentTime;
+            // Enhanced logging for better diagnostics
+            logger.info('Node position update batch received', createDataMetadata({
+                updateCount: this.positionUpdateCount,
+                batchSize: updates.length,
+                sample: updates.slice(0, Math.min(5, updates.length)).map(u => ({ 
+                    id: u.id, 
+                    pos: { 
+                        x: u.position.x.toFixed(3), 
+                        y: u.position.y.toFixed(3), 
+                        z: u.position.z.toFixed(3) 
+                    },
+                    vel: u.velocity ? { 
+                        x: u.velocity.x.toFixed(3), 
+                        y: u.velocity.y.toFixed(3), 
+                        z: u.velocity.z.toFixed(3) 
+                    } : 'none'
+                }))
             }));
         }
 
@@ -24439,16 +24532,16 @@ export class NodeInstanceManager {
             
             // Validate and clamp position
             position.copy(update.position); // Using Three.js Vector3 copy
-            if (!this.validateAndLogVector3(position, this.MAX_POSITION, 'position', update.id)) {
-                if (debugState.isNodeDebugEnabled()) {
-                    logger.node('Position validation failed, attempting recovery', createDataMetadata({
-                        nodeId: update.id,
-                        originalPosition: { x: position.x, y: position.y, z: position.z }
-                    }));
-                }
-                if (debugState.isEnabled()) {
-                    logger.warn(`Invalid position for node ${update.id}, clamping to valid range`);
-                }
+            
+            const isValid = this.validateVector3(position, this.MAX_POSITION);
+            if (!isValid) {
+                logger.warn('Position validation failed, attempting recovery', createDataMetadata({
+                    nodeId: update.id,
+                    component: 'position',
+                    maxAllowed: this.MAX_POSITION,
+                    originalPosition: { x: position.x, y: position.y, z: position.z }
+                }));
+                
                 position.x = Math.max(-this.MAX_POSITION, Math.min(this.MAX_POSITION, position.x));
                 position.y = Math.max(-this.MAX_POSITION, Math.min(this.MAX_POSITION, position.y));
                 position.z = Math.max(-this.MAX_POSITION, Math.min(this.MAX_POSITION, position.z));
@@ -24471,6 +24564,18 @@ export class NodeInstanceManager {
                     velocity.y = Math.max(-this.MAX_VELOCITY, Math.min(this.MAX_VELOCITY, velocity.y));
                     velocity.z = Math.max(-this.MAX_VELOCITY, Math.min(this.MAX_VELOCITY, velocity.z));
                 }
+                
+                // Log velocity data for the first few nodes to help debug node movement
+                if (index === undefined && debugState.isPhysicsDebugEnabled()) {
+                    logger.physics('New node with velocity', createDataMetadata({
+                        nodeId: update.id,
+                        velocity: velocity ? { 
+                            x: velocity.x.toFixed(3), 
+                            y: velocity.y.toFixed(3), 
+                            z: velocity.z.toFixed(3) 
+                        } : 'none'
+                    }));
+                }
             }
 
             if (index === undefined) {
@@ -24491,7 +24596,7 @@ export class NodeInstanceManager {
                     });
                     scale.set(scaleValue, scaleValue, scaleValue);
                     
-                    if (update.velocity) {
+                    if (update.velocity && this.validateVector3(update.velocity, this.MAX_VELOCITY)) {
                         const vel = update.velocity.clone(); // Using Three.js Vector3 clone
                         this.velocities.set(newIndex, vel);
                     }
@@ -24530,8 +24635,20 @@ export class NodeInstanceManager {
             }
 
             // Update existing node
-            if (update.velocity) {
-                this.velocities.set(index, velocity.clone());
+            if (update.velocity && this.validateVector3(update.velocity, this.MAX_VELOCITY)) {
+                this.velocities.set(index, update.velocity.clone());
+                
+                // Add detailed velocity logging to debug physics
+                if (debugState.isPhysicsDebugEnabled()) {
+                    logger.physics('Updated velocity for node', createDataMetadata({
+                        nodeId: update.id,
+                        velocity: { 
+                            x: update.velocity.x.toFixed(3), 
+                            y: update.velocity.y.toFixed(3), 
+                            z: update.velocity.z.toFixed(3) 
+                        }
+                    }));
+                }
             }
             
             // Calculate scale based on node properties
@@ -24572,8 +24689,15 @@ export class NodeInstanceManager {
 
         if (this.pendingUpdates.size > 0) {
             this.nodeInstances.instanceMatrix.needsUpdate = true;
-            if (debugState.isDataDebugEnabled()) {
-                logger.debug(`Updated ${updatedCount} nodes`);
+            
+            // Log a summary of what we updated
+            if (updatedCount > 0) {
+                logger.info('Node position update complete', createDataMetadata({
+                    updatedCount,
+                    pendingUpdates: this.pendingUpdates.size,
+                    totalNodes: this.nodeInstances.count,
+                    activeVelocityTracking: this.velocities.size
+                }));
             }
             this.pendingUpdates.clear();
         }
@@ -24594,14 +24718,25 @@ export class NodeInstanceManager {
         this.frameCount++;
         
         // Update positions based on velocity
-        const currentTime = performance.now();
-        const deltaTime = passedDeltaTime !== undefined ? 
-            passedDeltaTime : 
-            (currentTime - this.lastUpdateTime) / 1000; // Convert to seconds
+        const currentTime = performance.now(); 
+        
+        // Calculate and cap deltaTime to prevent large jumps
+        const rawDeltaTime = (currentTime - this.lastUpdateTime) / 1000; // Convert to seconds
+        const deltaTime = passedDeltaTime !== undefined ? passedDeltaTime : Math.min(0.1, rawDeltaTime);
+        
+        // Log unusually large deltaTime values that could cause physics instability
+        if (deltaTime > 0.05 && this.velocities.size > 0 && debugState.isPhysicsDebugEnabled()) {
+            logger.physics('Large delta time detected', createDataMetadata({
+                deltaTime: deltaTime.toFixed(3),
+                velocityCount: this.velocities.size,
+                timeSinceLastUpdate: rawDeltaTime.toFixed(3)
+            }));
+        }
+        
         this.lastUpdateTime = currentTime;
 
-        if (debugState.isPhysicsDebugEnabled()) {
-            logger.physics('Starting physics update', createDataMetadata({
+        if (this.velocities.size > 0 && debugState.isPhysicsDebugEnabled()) {
+            logger.physics('Physics update', createDataMetadata({
                 deltaTime,
                 velocityCount: this.velocities.size
             }));
@@ -24610,12 +24745,32 @@ export class NodeInstanceManager {
         // Update positions based on velocities
         this.velocities.forEach((nodeVelocity, index) => {
             if (nodeVelocity.lengthSq() > 0) {
+                // Only process nodes with non-zero velocity
                 this.nodeInstances.getMatrixAt(index, matrix);
                 matrix.decompose(position, quaternion, scale);
+                
+                // Debug logging for position before velocity update
+                if (index === 0 && debugState.isPhysicsDebugEnabled()) {
+                    logger.physics('Position before velocity update', createDataMetadata({
+                        nodeId: this.getNodeId(index) || 'unknown',
+                        position: { x: position.x.toFixed(3), y: position.y.toFixed(3), z: position.z.toFixed(3) },
+                        velocity: { x: nodeVelocity.x.toFixed(3), y: nodeVelocity.y.toFixed(3), z: nodeVelocity.z.toFixed(3) },
+                        deltaTime: deltaTime.toFixed(3)
+                    }));
+                }
                 
                 // Apply velocity
                 velocity.copy(nodeVelocity).multiplyScalar(deltaTime);
                 position.add(velocity);
+                
+                // Debug logging for position after velocity update for first node
+                if (index === 0 && debugState.isPhysicsDebugEnabled()) {
+                    logger.physics('Position after velocity update', createDataMetadata({
+                        nodeId: this.getNodeId(index) || 'unknown',
+                        newPosition: { x: position.x.toFixed(3), y: position.y.toFixed(3), z: position.z.toFixed(3) },
+                        appliedDelta: { x: velocity.x.toFixed(3), y: velocity.y.toFixed(3), z: velocity.z.toFixed(3) }
+                    }));
+                }
 
                 // Validate position after velocity update
                 if (!this.validateAndLogVector3(position, this.MAX_POSITION, 'physics-update')) {
@@ -24658,6 +24813,17 @@ export class NodeInstanceManager {
             this.nodeInstances.instanceMatrix.needsUpdate = true;
             this.pendingUpdates.clear();
         }
+    }
+    
+    /**
+     * Diagnostic function to log current node positions
+     */
+    public logNodePositions(): void {
+        if (!this.isReady || this.nodeIndices.size === 0) return;
+        
+        const sampleNodes = Array.from(this.nodeIndices.entries()).slice(0, 5);
+        const positions = sampleNodes.map(([id, _]) => ({ id, position: this.getNodePosition(id) }));
+        logger.info('Current node positions:', createDataMetadata({ positions }));
     }
 
     private updateVisibilityAndLOD(camera: Camera): void {
@@ -27900,11 +28066,30 @@ export class WebSocketService {
     private readonly MAX_POSITION = 1000.0;
     private readonly MAX_VELOCITY = 10.0;
 
+    // Added a method to validate vector3 values without clamping
+    private validateVector3(vec: Vector3, max: number): boolean {
+        if (!isValidVector3(vec)) {
+            return false;
+        }
+        return Math.abs(vec.x) <= max && 
+               Math.abs(vec.y) <= max && 
+               Math.abs(vec.z) <= max;
+    }
+
     private validateAndClampVector3(vec: Vector3, max: number): Vector3 {
         if (!isValidVector3(vec)) {
+            // Return a valid vector at origin rather than zeroing out
             return zeroVector3();
         }
-        return clampVector3(vec, -max, max);
+        
+        // If the vector has NaN or infinite values, replace with zero
+        const sanitizedVec = new Vector3(
+            isNaN(vec.x) || !isFinite(vec.x) ? 0 : vec.x,
+            isNaN(vec.y) || !isFinite(vec.y) ? 0 : vec.y,
+            isNaN(vec.z) || !isFinite(vec.z) ? 0 : vec.z
+        );
+        
+        return clampVector3(sanitizedVec, -max, max);
     }
 
     private constructor() {
@@ -27992,10 +28177,11 @@ export class WebSocketService {
                 this.connectionStatusHandler(true);
                 debugLog('Connection status handler notified: connected');
             }
+            logger.info('WebSocket connected successfully, requesting initial position data');
 
             // Send request for position updates after connection
             debugLog('Requesting position updates');
-            this.sendMessage({ type: 'requestInitialData' });
+            this.sendMessage({ type: 'request-initial-data' }); // Using kebab-case for API consistency
         };
 
         this.ws.onerror = (event: Event): void => {
@@ -28021,17 +28207,23 @@ export class WebSocketService {
         this.ws.onmessage = (event: MessageEvent) => {
             try {
                 if (event.data instanceof ArrayBuffer) {
-                    if (debugState.isWebsocketDebugEnabled()) {
-                        debugLog('Received binary position update');
-                    }
+                    const byteSize = event.data.byteLength;
+                    logger.info('Received binary position update', createDataMetadata({
+                        byteSize,
+                        expectedNodeCount: Math.floor(byteSize / 28)
+                    }));
+                    
                     this.handleBinaryMessage(event.data);
                 } else if (typeof event.data === 'string') {
                     try {
                         const message = JSON.parse(event.data);
                         if (message.type === 'connection_established' || message.type === 'updatesStarted') {
-                            logger.info('WebSocket message received:', createMessageMetadata(message.type));
+                            logger.info('WebSocket message received:', createDataMetadata({
+                                type: message.type,
+                                details: message
+                            }));
                         } else {
-                            logger.warn('Unknown message type:', createDataMetadata({
+                            logger.info('WebSocket message received:', createDataMetadata({
                                 type: message.type,
                                 message
                             }));
@@ -28073,6 +28265,8 @@ export class WebSocketService {
 
     private handleBinaryMessage(buffer: ArrayBuffer): void {
         try {
+            // Log raw buffer details before processing
+            logger.info('Processing binary data', createDataMetadata({ rawSize: buffer.byteLength, isCompressed: buffer.byteLength > 0 && buffer.byteLength % 28 !== 0 }));
             if (debugState.isWebsocketDebugEnabled()) {
                 debugLog('Processing binary message:', createDataMetadata({ size: buffer.byteLength }));
             }
@@ -28106,7 +28300,7 @@ export class WebSocketService {
                 const firstNodeY = dataView.getFloat32(8, true);
                 const firstNodeZ = dataView.getFloat32(12, true);
                 logger.info('Binary update received:', createDataMetadata({
-                    nodeCount,
+                    nodeCount: nodeCount > 0 ? nodeCount : 'empty buffer',
                     firstNode: { id: firstNodeId, x: firstNodeX, y: firstNodeY, z: firstNodeZ },
                     bufferSize: decompressedBuffer.byteLength
                 }));
@@ -28138,7 +28332,14 @@ export class WebSocketService {
                 offset += 12;
                 
                 // Validate and clamp position and velocity
-                const sanitizedPosition = this.validateAndClampVector3(position, this.MAX_POSITION);
+                // Important: Be more lenient with position validation initially
+                // Force-directed graph positioning can have larger values at first
+                let sanitizedPosition: Vector3;
+                if (this.validateVector3(position, this.MAX_POSITION * 10)) {
+                    sanitizedPosition = position.clone(); // If within a generous range, keep original
+                } else {
+                    sanitizedPosition = this.validateAndClampVector3(position, this.MAX_POSITION);
+                }
                 const sanitizedVelocity = this.validateAndClampVector3(velocity, this.MAX_VELOCITY);
                 
                 // Check if values were invalid using vector3Equals
@@ -28160,11 +28361,16 @@ export class WebSocketService {
                 logger.warn('Some nodes had invalid position/velocity values that were clamped');
             }
 
+            // Add summary of processed nodes
+            if (nodes.length > 0) {
+                logger.info('Node position summary:', createDataMetadata({
+                    count: nodes.length,
+                    sample: nodes.slice(0, Math.min(3, nodes.length)).map(n => ({ id: n.id, pos: vector3ToObject(n.position) }))
+                }));
+            }
+
             if (nodes.length > 0 && this.binaryMessageCallback) {
-                if (debugState.isWebsocketDebugEnabled()) {
-                    debugLog('Calling binary message callback with nodes:', createDataMetadata({ count: nodes.length }));
-                }
-                this.binaryMessageCallback(nodes);
+                this.binaryMessageCallback(nodes);  // Send to NodeManagerFacade
             } else {
                 if (debugState.isWebsocketDebugEnabled()) {
                     debugLog('No nodes to process or no callback registered', createDataMetadata({
@@ -28260,17 +28466,23 @@ export class WebSocketService {
             dataView.setUint32(offset, id, true);
             offset += 4;
 
+            // Validate and clamp position
+            const validPosition = this.validateAndClampVector3(update.position, this.MAX_POSITION);
+            
             // Write position
-            dataView.setFloat32(offset, update.position.x, true);
-            dataView.setFloat32(offset + 4, update.position.y, true);
-            dataView.setFloat32(offset + 8, update.position.z, true);
+            dataView.setFloat32(offset, validPosition.x, true);
+            dataView.setFloat32(offset + 4, validPosition.y, true);
+            dataView.setFloat32(offset + 8, validPosition.z, true);
             offset += 12;
 
-            // Write velocity (default to zero vector if not provided)
-            const velocity = update.velocity ?? zeroVector3();
-            dataView.setFloat32(offset, velocity.x, true);
-            dataView.setFloat32(offset + 4, velocity.y, true);
-            dataView.setFloat32(offset + 8, velocity.z, true);
+            // Validate and clamp velocity (default to zero vector if not provided)
+            const rawVelocity = update.velocity ?? zeroVector3();
+            const validVelocity = this.validateAndClampVector3(rawVelocity, this.MAX_VELOCITY);
+            
+            // Write velocity
+            dataView.setFloat32(offset, validVelocity.x, true);
+            dataView.setFloat32(offset + 4, validVelocity.y, true);
+            dataView.setFloat32(offset + 8, validVelocity.z, true);
             offset += 12;
         });
 
@@ -30741,6 +30953,7 @@ export interface LabelSettings {
     textResolution: number;
     textPadding: number;
     billboardMode: 'camera' | 'vertical';
+    visibilityThreshold?: number; // Distance threshold for labels visibility
 }
 
 export interface BloomSettings {
@@ -32677,4 +32890,413 @@ export function vector3Equals(a: Vector3, b: Vector3, epsilon: number = 0.000001
            Math.abs(a.z - b.z) < epsilon;
 }
 
+----
+diagnostics/systemDiagnostics.ts
+import { createLogger } from '../core/logger';
+import { WebSocketService } from '../websocket/websocketService';
+import { graphDataManager } from '../state/graphData';
+import { debugState } from '../core/debugState';
+import { SettingsStore } from '../state/SettingsStore';
+
+const logger = createLogger('SystemDiagnostics');
+
+/**
+ * SystemDiagnostics provides tools for diagnosing and debugging the application.
+ * It offers methods to analyze various aspects of the system and log detailed information.
+ */
+export class SystemDiagnostics {
+    private static instance: SystemDiagnostics | null = null;
+    private webSocketService: WebSocketService;
+    private settingsStore: SettingsStore;
+    private isActive: boolean = false;
+    private intervalId: number | null = null;
+    
+    private constructor() {
+        this.webSocketService = WebSocketService.getInstance();
+        this.settingsStore = SettingsStore.getInstance();
+        logger.info('SystemDiagnostics initialized');
+    }
+    
+    public static getInstance(): SystemDiagnostics {
+        if (!SystemDiagnostics.instance) {
+            SystemDiagnostics.instance = new SystemDiagnostics();
+        }
+        return SystemDiagnostics.instance;
+    }
+    
+    /**
+     * Start continuous diagnostics logging
+     * @param intervalMs Interval in milliseconds between diagnostics runs
+     */
+    public startDiagnostics(intervalMs: number = 5000): void {
+        if (this.isActive) {
+            logger.warn('Diagnostics already running');
+            return;
+        }
+        
+        logger.info(`Starting system diagnostics with ${intervalMs}ms interval`);
+        this.isActive = true;
+        
+        // Enable all debug flags
+        // Use the settings store to update debug settings
+        this.settingsStore.set('system.debug.enabled', true);
+        this.settingsStore.set('system.debug.enable_data_debug', true);
+        this.settingsStore.set('system.debug.enable_websocket_debug', true);
+        this.settingsStore.set('system.debug.enable_node_debug', true);
+        this.settingsStore.set('system.debug.enable_shader_debug', true);
+        this.settingsStore.set('system.debug.enable_physics_debug', true);
+        this.settingsStore.set('system.debug.enable_matrix_debug', true);
+        
+        // Log the current debug state
+        logger.info('Debug flags enabled:', {
+            globalDebug: debugState.isEnabled(),
+            dataDebug: debugState.isDataDebugEnabled(),
+            websocketDebug: debugState.isWebsocketDebugEnabled(),
+            nodeDebug: debugState.isNodeDebugEnabled()
+        });
+        
+        // Run initial diagnostics immediately
+        this.runDiagnostics();
+        
+        // Set up interval for continuous diagnostics
+        this.intervalId = window.setInterval(() => {
+            this.runDiagnostics();
+        }, intervalMs);
+    }
+    
+    /**
+     * Stop continuous diagnostics logging
+     */
+    public stopDiagnostics(): void {
+        if (!this.isActive || this.intervalId === null) {
+            logger.warn('Diagnostics not running');
+            return;
+        }
+        
+        logger.info('Stopping system diagnostics');
+        window.clearInterval(this.intervalId);
+        this.intervalId = null;
+        this.isActive = false;
+    }
+    
+    /**
+     * Run a full system diagnostics check
+     */
+    public runDiagnostics(): void {
+        try {
+            logger.info('Running full system diagnostics');
+            
+            this.checkWebSocketStatus();
+            this.checkGraphData();
+            this.checkRendererStatus();
+            this.checkMemoryUsage();
+            
+            logger.info('Diagnostics completed successfully');
+        } catch (error) {
+            logger.error('Error running diagnostics', {
+                error: error instanceof Error ? error.message : String(error),
+                stack: error instanceof Error ? error.stack : undefined
+            });
+        }
+    }
+    
+    /**
+     * Check WebSocket connection status and health
+     */
+    private checkWebSocketStatus(): void {
+        // Get connection status as string safely
+        const connectionStatus = String(this.webSocketService.getConnectionStatus());
+        
+        logger.info('WebSocket status:', { 
+            statusString: connectionStatus, 
+            isConnected: connectionStatus === 'connected',
+            readyState: this.getWebSocketReadyState()
+        });
+        
+        // If not connected, try to reconnect
+        if (connectionStatus !== 'connected') {
+            logger.warn('WebSocket not connected, trying to reconnect');
+            this.webSocketService.connect().catch(error => {
+                logger.error('Failed to reconnect', { error });
+            });
+        }
+    }
+
+    /**
+     * Get the current WebSocket readyState as a string
+     */
+    private getWebSocketReadyState(): string {
+        const ws = (this.webSocketService as any).ws;
+        const readyStates = ['CONNECTING', 'OPEN', 'CLOSING', 'CLOSED'];
+        
+        if (!ws) {
+            return 'CLOSED (No WebSocket)';
+        }
+        
+        // readyState is a number from 0-3
+        const readyState = ws.readyState;
+        
+        if (readyState >= 0 && readyState <= 3) {
+            return `${readyStates[readyState]} (${readyState})`;
+        }
+        
+        // Fallback for unexpected values
+        if (typeof readyState === 'number') {
+            return `UNKNOWN (${readyState})`;
+        }
+        
+        return 'UNKNOWN (null)';
+    }
+    
+    /**
+     * Check graph data state
+     */
+    private checkGraphData(): void {
+        const graphData = graphDataManager.getGraphData();
+        logger.info('Graph data status:', {
+            nodeCount: graphData.nodes.length,
+            edgeCount: graphData.edges.length,
+            metadata: graphData.metadata
+        });
+        
+        // Check sample node positions
+        if (graphData.nodes.length > 0) {
+            const sampleNodes = graphData.nodes.slice(0, 3);
+            logger.info('Sample node positions:', {
+                samples: sampleNodes.map(node => ({
+                    id: node.id,
+                    position: node.data.position,
+                    velocity: node.data.velocity,
+                    metadata: {
+                        name: node.data.metadata?.name,
+                        fileSize: node.data.metadata?.fileSize
+                    }
+                }))
+            });
+        }
+    }
+    
+    /**
+     * Check renderer status
+     */
+    private checkRendererStatus(): void {
+        // Get WebGL context information
+        try {
+            const canvas = document.querySelector('canvas');
+            if (!canvas) {
+                logger.warn('No canvas element found');
+                return;
+            }
+            
+            const gl = canvas.getContext('webgl') || canvas.getContext('webgl2');
+            if (!gl) {
+                logger.error('WebGL context not available');
+                return;
+            }
+            
+            const debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
+            
+            logger.info('WebGL context info:', {
+                webgl2: gl instanceof WebGL2RenderingContext,
+                vendor: debugInfo ? gl.getParameter(debugInfo.UNMASKED_VENDOR_WEBGL) : 'unknown',
+                renderer: debugInfo ? gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL) : 'unknown',
+                maxTextureSize: gl.getParameter(gl.MAX_TEXTURE_SIZE),
+                maxVaryings: gl.getParameter(gl.MAX_VARYING_VECTORS),
+                maxVertexAttribs: gl.getParameter(gl.MAX_VERTEX_ATTRIBS),
+                maxVertexUniforms: gl.getParameter(gl.MAX_VERTEX_UNIFORM_VECTORS),
+                maxFragmentUniforms: gl.getParameter(gl.MAX_FRAGMENT_UNIFORM_VECTORS)
+            });
+            
+            // Check for WebGL errors
+            const error = gl.getError();
+            if (error !== gl.NO_ERROR) {
+                logger.error('WebGL error detected', { 
+                    code: error,
+                    description: this.getWebGLErrorDescription(error)
+                });
+            }
+        } catch (error) {
+            logger.error('Error checking renderer status', { error });
+        }
+    }
+    
+    /**
+     * Check memory usage
+     */
+    private checkMemoryUsage(): void {
+        if (window.performance && (performance as any).memory) {
+            const memory = (performance as any).memory;
+            logger.info('Memory usage:', {
+                usedJSHeapSize: this.formatBytes(memory.usedJSHeapSize),
+                totalJSHeapSize: this.formatBytes(memory.totalJSHeapSize),
+                jsHeapSizeLimit: this.formatBytes(memory.jsHeapSizeLimit),
+                percentUsed: (memory.usedJSHeapSize / memory.totalJSHeapSize * 100).toFixed(1) + '%'
+            });
+        }
+    }
+    
+    /**
+     * Convert bytes to a human-readable format
+     */
+    private formatBytes(bytes: number): string {
+        if (bytes === 0) return '0 Bytes';
+        const k = 1024;
+        const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    }
+    
+    /**
+     * Get a human-readable description of a WebGL error code
+     */
+    private getWebGLErrorDescription(errorCode: number): string {
+        // Get a sample WebGL context to access error constants
+        const canvas = document.createElement('canvas');
+        const gl = canvas.getContext('webgl') || canvas.getContext('webgl2');
+        if (!gl) return 'Unknown error';
+        
+        switch (errorCode) {
+            case gl.INVALID_ENUM: return 'INVALID_ENUM: An unacceptable value has been specified for an enumerated argument';
+            case gl.INVALID_VALUE: return 'INVALID_VALUE: A numeric argument is out of range';
+            case gl.INVALID_OPERATION: return 'INVALID_OPERATION: The specified command is not allowed for the current state';
+            case gl.INVALID_FRAMEBUFFER_OPERATION: return 'INVALID_FRAMEBUFFER_OPERATION: The currently bound framebuffer is not framebuffer complete';
+            case gl.OUT_OF_MEMORY: return 'OUT_OF_MEMORY: Not enough memory is left to execute the command';
+            case gl.CONTEXT_LOST_WEBGL: return 'CONTEXT_LOST_WEBGL: The WebGL context has been lost';
+            default: return `Unknown WebGL error code: ${errorCode}`;
+        }
+    }
+    
+    /**
+     * Test a shader for compatibility/compilation issues
+     * @param vertexShader Vertex shader source code
+     * @param fragmentShader Fragment shader source code
+     */
+    public testShaderCompilation(vertexShader: string, fragmentShader: string): boolean {
+        try {
+            const canvas = document.createElement('canvas');
+            const gl = canvas.getContext('webgl') || canvas.getContext('webgl2');
+            if (!gl) {
+                logger.error('WebGL context not available for shader test');
+                return false;
+            }
+            
+            // Create and compile vertex shader
+            const vs = gl.createShader(gl.VERTEX_SHADER);
+            if (!vs) {
+                logger.error('Failed to create vertex shader');
+                return false;
+            }
+            gl.shaderSource(vs, vertexShader);
+            gl.compileShader(vs);
+            
+            // Check vertex shader compilation status
+            if (!gl.getShaderParameter(vs, gl.COMPILE_STATUS)) {
+                logger.error('Vertex shader compilation failed', {
+                    error: gl.getShaderInfoLog(vs),
+                    source: vertexShader
+                });
+                gl.deleteShader(vs);
+                return false;
+            }
+            
+            // Create and compile fragment shader
+            const fs = gl.createShader(gl.FRAGMENT_SHADER);
+            if (!fs) {
+                logger.error('Failed to create fragment shader');
+                gl.deleteShader(vs);
+                return false;
+            }
+            gl.shaderSource(fs, fragmentShader);
+            gl.compileShader(fs);
+            
+            // Check fragment shader compilation status
+            if (!gl.getShaderParameter(fs, gl.COMPILE_STATUS)) {
+                logger.error('Fragment shader compilation failed', {
+                    error: gl.getShaderInfoLog(fs),
+                    source: fragmentShader
+                });
+                gl.deleteShader(vs);
+                gl.deleteShader(fs);
+                return false;
+            }
+            
+            // Create program and link shaders
+            const program = gl.createProgram();
+            if (!program) {
+                logger.error('Failed to create shader program');
+                gl.deleteShader(vs);
+                gl.deleteShader(fs);
+                return false;
+            }
+            gl.attachShader(program, vs);
+            gl.attachShader(program, fs);
+            gl.linkProgram(program);
+            
+            // Check program link status
+            if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+                logger.error('Shader program linking failed', {
+                    error: gl.getProgramInfoLog(program)
+                });
+                gl.deleteShader(vs);
+                gl.deleteShader(fs);
+                gl.deleteProgram(program);
+                return false;
+            }
+            
+            // Validate program
+            gl.validateProgram(program);
+            if (!gl.getProgramParameter(program, gl.VALIDATE_STATUS)) {
+                logger.error('Shader program validation failed', {
+                    error: gl.getProgramInfoLog(program)
+                });
+                gl.deleteShader(vs);
+                gl.deleteShader(fs);
+                gl.deleteProgram(program);
+                return false;
+            }
+            
+            // Success! Clean up resources
+            gl.deleteShader(vs);
+            gl.deleteShader(fs);
+            gl.deleteProgram(program);
+            
+            logger.info('Shader compilation test passed');
+            return true;
+        } catch (error) {
+            logger.error('Error during shader compilation test', {
+                error: error instanceof Error ? error.message : String(error),
+                stack: error instanceof Error ? error.stack : undefined
+            });
+            return false;
+        }
+    }
+    
+    /**
+     * Force a websocket reconnection
+     */
+    public forceWebSocketReconnect(): void {
+        logger.info('Forcing WebSocket reconnection');
+        this.webSocketService.close();
+        this.webSocketService.connect().then(() => {
+            logger.info('WebSocket reconnected successfully');
+        }).catch(error => {
+            logger.error('WebSocket reconnection failed', { error });
+        });
+    }
+    
+    /**
+     * Force a refresh of graph data from server
+     */
+    public refreshGraphData(): void {
+        logger.info('Refreshing graph data from server');
+        graphDataManager.fetchInitialData().then(() => {
+            logger.info('Graph data refreshed successfully');
+        }).catch(error => {
+            logger.error('Failed to refresh graph data', { error });
+        });
+    }
+}
+
+// Export a singleton instance
+export const systemDiagnostics = SystemDiagnostics.getInstance();
 --END--

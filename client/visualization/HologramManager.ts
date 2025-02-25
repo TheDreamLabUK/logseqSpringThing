@@ -34,7 +34,8 @@ export class HologramManager {
         this.settingsStore = SettingsStore.getInstance();
         
         // Enable bloom layer
-        this.group.layers.enable(1);
+        this.group.layers.set(0);  // First set default layer
+        this.group.layers.enable(1);  // Then enable bloom layer
         this.createHolograms();
         this.scene.add(this.group);
 
@@ -88,7 +89,9 @@ export class HologramManager {
             }
             
             ring.instanceMatrix.needsUpdate = true;
-            ring.layers.enable(1); // Enable bloom layer
+            // Make sure each ring has bloom layer enabled properly
+            ring.layers.set(0);  // Set default layer first
+            ring.layers.enable(1);  // Then enable bloom layer
             this.ringInstances.push(ring);
             this.group.add(ring);
         });
@@ -118,7 +121,9 @@ export class HologramManager {
             material.uniforms.opacity.value = this.settings.visualization.hologram.triangleSphereOpacity;
             material.setEdgeOnly(true);
             
-            sphereMesh.layers.enable(1); // Enable bloom layer
+            // Make sure sphere has bloom layer enabled properly
+            sphereMesh.layers.set(0);  // Set default layer first
+            sphereMesh.layers.enable(1);  // Then enable bloom layer
             this.sphereInstances.push(sphereMesh);
             this.group.add(sphereMesh);
         }

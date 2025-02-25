@@ -72,3 +72,4 @@ services/SettingsLayoutManager.ts
 services/SettingsPreviewManager.ts
 services/NostrAuthService.ts
 services/SettingsPersistenceService.ts
+diagnostics/systemDiagnostics.ts

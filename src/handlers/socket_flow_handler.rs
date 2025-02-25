@@ -239,18 +239,32 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
                                 for (node_id, node_data) in nodes_vec {
                                     let node_id_str = node_id.to_string();
                                     if let Some(node) = node_map.get_mut(&node_id_str) {
+                                        // Explicitly preserve existing mass and flags
+                                        let original_mass = node.data.mass;
+                                        let original_flags = node.data.flags;
+                                        
                                         node.data.position = node_data.position;
                                         node.data.velocity = node_data.velocity;
+                                        // Explicitly restore mass and flags after updating position/velocity
+                                        node.data.mass = original_mass;
                                     // Mass, flags, and padding are not overwritten as they're only 
                                     // present on the server side and not transmitted over the wire
                                     }
                                 }
+                                
+                                // Add more detailed debug information for mass maintenance
+                                debug!("Updated node positions from binary data, preserving server-side mass values");
 
                                 // Update graph nodes with new positions/velocities from the map, preserving other properties
                                 for node in &mut graph.nodes {
                                     if let Some(updated_node) = node_map.get(&node.id) {
+                                        // Explicitly preserve mass and flags before updating
+                                        let original_mass = node.data.mass;
+                                        let original_flags = node.data.flags;
                                         node.data.position = updated_node.data.position;
                                         node.data.velocity = updated_node.data.velocity;
+                                        node.data.mass = original_mass; // Restore mass after updating
+                                        node.data.flags = original_flags; // Restore flags after updating
                                     }
                                 }
                             };
