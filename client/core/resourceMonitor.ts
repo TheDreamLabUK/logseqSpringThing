@@ -1,5 +1,6 @@
 import { createLogger } from './logger';
 import { WebGLRenderer, Texture, BufferGeometry, Material } from 'three';
+import { debugState } from './debugState';
 
 const logger = createLogger('ResourceMonitor');
 
@@ -16,7 +17,7 @@ export class ResourceMonitor {
   
   private monitoringEnabled: boolean = false;
   private monitorInterval: any = null;
-  private monitorFrequency: number = 10000; // 10 seconds
+  private monitorFrequency: number = 30000; // 30 seconds (increased from 10)
   
   private constructor() {
     // Private constructor for singleton
@@ -213,16 +214,19 @@ export class ResourceMonitor {
    * Log current resource usage
    */
   public logResourceUsage(): void {
-    logger.info('WebGL resource usage', {
-      renderers: this.renderers.size,
-      textures: this.textures.size,
-      geometries: this.geometries.size,
-      materials: this.materials.size,
-      memory: this.getMemoryUsage()
-    });
-    
-    // Check for potential issues
-    this.checkForIssues();
+    // Only log detailed resource usage if performance debugging is enabled
+    if (debugState.isPerformanceDebugEnabled()) {
+      logger.performance('WebGL resource usage', {
+        renderers: this.renderers.size,
+        textures: this.textures.size,
+        geometries: this.geometries.size,
+        materials: this.materials.size,
+        memory: this.getMemoryUsage()
+      });
+      
+      // Check for potential issues
+      this.checkForIssues();
+    }
   }
   
   /**

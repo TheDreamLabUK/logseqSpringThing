@@ -14,6 +14,8 @@ import { FontLoader, Font } from 'three/examples/jsm/loaders/FontLoader.js';
 import { NodeMetadata } from '../types/metadata';
 import { Settings } from '../types/settings';
 import { platformManager } from '../platform/platformManager';
+import { debugState } from '../core/debugState';
+import { logger } from '../core/logger';
 
 type GeometryWithBoundingBox = THREE.BufferGeometry & {
     boundingBox: THREE.Box3 | null;
@@ -101,7 +103,9 @@ export class MetadataVisualizer {
             await new Promise(resolve => setTimeout(resolve, 1000));
             try {
                 await this.attemptFontLoad();
-                console.log('Font loaded successfully after retry');
+                if (debugState.isShaderDebugEnabled()) {
+                    logger.shader('Font loaded successfully after retry');
+                }
                 break;
             } catch (error) {
                 console.error(`Font load attempt ${this.fontLoadAttempts} failed:`, error);

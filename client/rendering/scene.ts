@@ -60,6 +60,8 @@ export class SceneManager {
   private frameCount: number = 0;
   private lastFpsUpdate: number = 0;
   private currentFps: number = 60;
+  private lastLoggedFps: number = 60; // Track last logged FPS
+  private readonly FPS_LOG_THRESHOLD = 1.0; // Only log when FPS changes by this amount
 
   private constructor(canvas: HTMLCanvasElement) {
     logger.log('Initializing SceneManager');
@@ -569,9 +571,13 @@ export class SceneManager {
       }
     }
 
-    // Log optimization application
-    logger.debug('Applied low performance optimizations', createDataMetadata({
-      fps: this.currentFps.toFixed(1)
-    }));
+    // Log optimization application only when FPS changes significantly
+    const fpsDiff = Math.abs(this.currentFps - this.lastLoggedFps);
+    if (fpsDiff >= this.FPS_LOG_THRESHOLD) {
+      logger.debug('Applied low performance optimizations', createDataMetadata({
+        fps: this.currentFps.toFixed(1)
+      }));
+      this.lastLoggedFps = this.currentFps;
+    }
   }
 }

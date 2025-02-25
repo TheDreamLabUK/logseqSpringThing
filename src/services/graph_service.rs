@@ -25,6 +25,7 @@ pub struct GraphService {
     node_map: Arc<RwLock<HashMap<String, Node>>>,
     gpu_compute: Option<Arc<RwLock<GPUCompute>>>,
     debug_randomize_timer: Arc<RwLock<Option<tokio::time::Instant>>>,
+    randomization_enabled: Arc<RwLock<bool>>,
 }
 
 impl GraphService {
@@ -33,11 +34,13 @@ impl GraphService {
         let physics_settings = settings.read().await.visualization.physics.clone();
         let node_map = Arc::new(RwLock::new(HashMap::new()));
         let debug_randomize_timer = Arc::new(RwLock::new(None));
+        let randomization_enabled = Arc::new(RwLock::new(false));
 
         let graph_service = Self {
             graph_data: Arc::new(RwLock::new(GraphData::default())),
             node_map: node_map.clone(),
             gpu_compute,
+            randomization_enabled: randomization_enabled.clone(),
             debug_randomize_timer: debug_randomize_timer.clone(),
         };
         
@@ -62,6 +65,7 @@ impl GraphService {
             };
             
             let debug_randomize_timer = debug_randomize_timer.clone();
+            let randomization_enabled = randomization_enabled.clone();
 
             loop {
                 // Update positions
@@ -83,7 +87,9 @@ impl GraphService {
                 let mut timer_guard = debug_randomize_timer.write().await;
                 let now = tokio::time::Instant::now();
                 
-                let should_trigger = if let Some(last_time) = *timer_guard {
+                // Only check for randomization if it's enabled
+                let is_randomization_enabled = *randomization_enabled.read().await;
+                let should_trigger = is_randomization_enabled && if let Some(last_time) = *timer_guard {
                     // Check if 30 seconds have passed since the last randomization
                     now.duration_since(last_time).as_secs() >= 30 // 5-minute interval instead of 10 seconds
                 } else {
@@ -441,6 +447,12 @@ impl GraphService {
     // Add method to get GPU compute instance
     pub async fn get_gpu_compute(&self) -> Option<Arc<RwLock<GPUCompute>>> {
         self.gpu_compute.clone()
+    }
+    
+    // Set randomization enabled status
+    pub async fn set_randomization_enabled(&self, enabled: bool) {
+        let mut status = self.randomization_enabled.write().await;
+        *status = enabled;
     }
 
     pub async fn update_node_positions(&self, updates: Vec<(u32, Node)>) -> Result<(), Error> {

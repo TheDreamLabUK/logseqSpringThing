@@ -3,14 +3,14 @@ import { createLogger } from '../core/utils';
 import { API_ENDPOINTS } from '../core/constants';
 import { debugState } from '../core/debugState';
 
+import { WebSocketService as WebSocketServiceClass } from '../websocket/websocketService';
 const logger = createLogger('GraphDataManager');
 
 // Constants
 const FLOATS_PER_NODE = 6;     // x, y, z, vx, vy, vz
 
-interface WebSocketService {
-  send(data: ArrayBuffer): void;
-}
+// Interface for the internal WebSocket service used by this class
+type InternalWebSocketService = { send(data: ArrayBuffer): void };
 
 // Extend Edge interface to include id
 interface EdgeWithId extends Edge {
@@ -21,7 +21,7 @@ export class GraphDataManager {
   private static instance: GraphDataManager;
   private nodes: Map<string, Node>;
   private edges: Map<string, EdgeWithId>;
-  private wsService!: WebSocketService;  // Use definite assignment assertion
+  private wsService!: InternalWebSocketService;  // Use definite assignment assertion
   private metadata: Record<string, any>;
   private updateListeners: Set<(data: GraphData) => void>;
   private positionUpdateListeners: Set<(positions: Float32Array) => void>;
@@ -44,7 +44,7 @@ export class GraphDataManager {
   /**
    * Configure the WebSocket service for binary updates
    */
-  public setWebSocketService(service: WebSocketService): void {
+  public setWebSocketService(service: InternalWebSocketService): void {
     this.wsService = service;
     logger.info('WebSocket service configured');
     
@@ -132,6 +132,14 @@ export class GraphDataManager {
       await new Promise(resolve => setTimeout(resolve, 100));
     }
     
+    // All pages are now loaded, enable randomization
+    try {
+      const websocketService = WebSocketServiceClass.getInstance();
+      logger.info(`Finished loading all ${totalPages} pages. Enabling server-side randomization.`);
+      websocketService.enableRandomization(true);
+    } catch (error) {
+      logger.warn('Failed to enable randomization after loading all pages:', error);
+    }
     logger.info(`Finished loading all ${totalPages} pages. Total nodes: ${this.nodes.size}, edges: ${this.edges.size}`);
   }
 
@@ -230,6 +238,13 @@ export class GraphDataManager {
       // Load remaining pages if any
       if (data.totalPages > 1) {
         await this.loadRemainingPages(data.totalPages, data.pageSize);
+      }
+      
+      // If there's only one page, enable randomization immediately
+      if (data.totalPages <= 1) {
+        const websocketService = WebSocketServiceClass.getInstance();
+        logger.info('Single page graph data loaded. Enabling server-side randomization.');
+        websocketService.enableRandomization(true);
       }
       
       logger.info('Initial graph data loaded successfully');

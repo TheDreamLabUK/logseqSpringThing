@@ -85,6 +85,12 @@ export class VisualizationController {
                 type: 'requestInitialData',
                 timestamp: Date.now()
             });
+            
+            // Initially disable randomization until data loading is finished
+            this.websocketService.sendMessage({
+                type: 'enableRandomization',
+                enabled: false
+            });
         }).catch(error => {
             logger.error('Failed to connect WebSocket:', createErrorMetadata(error));
         });

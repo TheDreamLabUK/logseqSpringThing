@@ -3,7 +3,10 @@ use std::io::Cursor;
 use crate::utils::socket_flow_messages::BinaryNodeData;
 
 pub fn encode_node_data(nodes: &[(u32, BinaryNodeData)]) -> Vec<u8> {
-    log::info!("Encoding {} nodes for binary transmission", nodes.len());
+    // Only log non-empty node transmissions to reduce spam
+    if nodes.len() > 0 {
+        log::info!("Encoding {} nodes for binary transmission", nodes.len());
+    }
     
     let mut buffer = Vec::new();
     
@@ -38,7 +41,10 @@ pub fn encode_node_data(nodes: &[(u32, BinaryNodeData)]) -> Vec<u8> {
         // They are still available in the BinaryNodeData struct for server-side use
     }
 
-    log::info!("Encoded binary data: {} bytes for {} nodes", buffer.len(), nodes.len());
+    // Only log non-empty node transmissions to reduce spam
+    if nodes.len() > 0 {
+        log::info!("Encoded binary data: {} bytes for {} nodes", buffer.len(), nodes.len());
+    }
     buffer
 }
 

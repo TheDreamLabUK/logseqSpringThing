@@ -25,99 +25,8 @@ import '../types/three-ext.d';
 
 const logger = createLogger('UnifiedTextRenderer');
 
-// Vertex shader for SDF text rendering with improved billboarding
-const vertexShader = `
-// Three.js automatically provides cameraPosition uniform
-
-attribute vec3 position;
-attribute vec2 uv;
-attribute vec3 instancePosition;
-attribute vec4 instanceColor;
-attribute float instanceScale;
-
-varying vec2 vUv;
-varying vec4 vColor;
-varying float vScale;
-varying float vViewDistance;
-
-void main() {
-    vUv = uv;
-    vColor = instanceColor;
-    vScale = instanceScale;
-
-    // Scale the position first
-    vec3 scale = vec3(instanceScale);
-    vec3 vertexPosition = position * scale;
-    
-    // Billboard calculation
-    vec3 up = vec3(0.0, 1.0, 0.0);
-    vec3 forward = normalize(cameraPosition - instancePosition);
-    vec3 right = normalize(cross(up, forward));
-    up = normalize(cross(forward, right));
-    
-    mat4 billboardMatrix = mat4(
-        vec4(right, 0.0),
-        vec4(up, 0.0),
-        vec4(forward, 0.0),
-        vec4(0.0, 0.0, 0.0, 1.0)
-    );
-    
-    vertexPosition = (billboardMatrix * vec4(vertexPosition, 1.0)).xyz;
-    vertexPosition += instancePosition;
-    
-    vec4 mvPosition = modelViewMatrix * vec4(vertexPosition, 1.0);
-    vViewDistance = -mvPosition.z;  // Distance from camera
-    gl_Position = projectionMatrix * mvPosition;
-}
-`;
-
-// Fragment shader for SDF text rendering with improved quality
-const fragmentShader = `
-precision mediump float;
-
-uniform sampler2D fontAtlas;
-uniform float sdfThreshold;
-uniform float sdfSpread;
-uniform vec3 outlineColor;
-uniform float outlineWidth;
-uniform float fadeStart;
-uniform float fadeEnd;
-
-varying vec2 vUv;
-varying vec4 vColor;
-varying float vScale;
-varying float vViewDistance;
-
-float median(float r, float g, float b) {
-    return max(min(r, g), min(max(r, g), b));
-}
-
-void main() {
-    vec3 fontSample = texture(fontAtlas, vUv).rgb;
-    float sigDist = median(fontSample.r, fontSample.g, fontSample.b);
-    
-    // Dynamic threshold based on distance
-    float distanceScale = smoothstep(fadeEnd, fadeStart, vViewDistance);
-    float dynamicThreshold = sdfThreshold * (1.0 + (1.0 - distanceScale) * 0.1);
-    float dynamicSpread = sdfSpread * (1.0 + (1.0 - distanceScale) * 0.2);
-    
-    // Improved antialiasing
-    float alpha = smoothstep(dynamicThreshold - dynamicSpread, 
-                           dynamicThreshold + dynamicSpread, 
-                           sigDist);
-                           
-    float outline = smoothstep(dynamicThreshold - outlineWidth - dynamicSpread,
-                             dynamicThreshold - outlineWidth + dynamicSpread,
-                             sigDist);
-    
-    // Apply distance-based fade
-    alpha *= distanceScale;
-    outline *= distanceScale;
-    
-    vec4 color = mix(vec4(outlineColor, outline), vColor, alpha);
-    gl_FragColor = color;
-}
-`;
+// Note: Using fallback basic material approach instead of custom shaders
+// to avoid WebGL shader compilation issues
 
 interface LabelInstance {
     id: string;
@@ -132,7 +41,7 @@ export class UnifiedTextRenderer {
     private scene: Scene;
     private camera: Camera;
     private group: Group;
-    private material: ShaderMaterial | MeshBasicMaterial;
+    private material: MeshBasicMaterial;
     private geometry: BufferGeometry;
     private mesh: Mesh;
     private fontAtlas: Texture | null;
@@ -147,12 +56,16 @@ export class UnifiedTextRenderer {
         this.scene = scene;
         this.camera = camera;
         this.settings = settings;
-        logger.info('UnifiedTextRenderer settings:', {
-            enableLabels: this.settings.enableLabels,
-            desktopFontSize: this.settings.desktopFontSize,
-            textColor: this.settings.textColor,
-            billboardMode: this.settings.billboardMode
-        });
+        
+        // Only log detailed settings when data debugging is enabled
+        if (debugState.isDataDebugEnabled()) {
+            logger.info('UnifiedTextRenderer settings:', {
+                enableLabels: this.settings.enableLabels,
+                desktopFontSize: this.settings.desktopFontSize,
+                textColor: this.settings.textColor,
+                billboardMode: this.settings.billboardMode
+            });
+        }
 
         this.labels = new Map();
         this.maxInstances = 2000;
@@ -164,63 +77,31 @@ export class UnifiedTextRenderer {
         
         this.fontAtlasGenerator = new SDFFontAtlasGenerator(2048, 8, 16);
 
-        this.logger.info('Initializing material with settings:', {
-            billboardMode: settings.billboardMode,
-            sdfThreshold: 0.45,
-            sdfSpread: 0.15,
-            outlineColor: settings.textOutlineColor,
-            outlineWidth: 0.2,
-            fadeStart: 10.0,
-            fadeEnd: 100.0,
-            depthTest: true
-        });
-        
-        // Initialize the material with error handling
-        try {
-            this.material = new ShaderMaterial({
-                vertexShader,
-                fragmentShader,
-                // Using WebGL1 compatibility by default
-                uniforms: {
-                    fontAtlas: { value: null },
-                    sdfThreshold: { value: 0.45 },
-                    sdfSpread: { value: 0.15 },
-                    cameraPosition: { value: this.camera.position },
-                    outlineColor: { value: new Color(settings.textOutlineColor) },
-                    outlineWidth: { value: 0.2 },
-                    fadeStart: { value: 10.0 },
-                    fadeEnd: { value: 100.0 }
-                },
-                transparent: true,
-                depthTest: true,
-                depthWrite: false,
-                blending: NormalBlending
-            });
-
-            // Force shader compilation
-            this.material.needsUpdate = true;
-        } catch (error) {
-            logger.error('Failed to initialize text shader:', {
-                error,
-                message: error instanceof Error ? error.message : String(error),
-                stack: error instanceof Error ? error.stack : undefined
-            });
-            // Fallback to basic material
-            this.material = new MeshBasicMaterial({ 
-                color: new Color(this.settings.textColor),
+        // Only log initialization details when debugging is enabled
+        if (debugState.isDataDebugEnabled()) {
+            this.logger.info('Initializing material with basic settings', {
+                color: this.settings.textColor,
                 transparent: true
             });
         }
         
+        // Use basic material instead of shader material to avoid WebGL issues
+        this.material = new MeshBasicMaterial({ 
+            color: new Color(this.settings.textColor),
+            transparent: true
+        });
+        
         this.geometry = this.createInstancedGeometry();
         
-        // Debug log instance buffer setup
-        this.logger.info('Created instanced geometry:', {
-            maxInstances: this.maxInstances,
-            instancePosition: this.geometry.getAttribute('instancePosition')?.count,
-            instanceColor: this.geometry.getAttribute('instanceColor')?.count,
-            instanceScale: this.geometry.getAttribute('instanceScale')?.count
-        });
+        // Only log geometry details when debugging is enabled
+        if (debugState.isDataDebugEnabled()) {
+            this.logger.info('Created instanced geometry:', {
+                maxInstances: this.maxInstances,
+                instancePosition: this.geometry.getAttribute('instancePosition')?.count,
+                instanceColor: this.geometry.getAttribute('instanceColor')?.count,
+                instanceScale: this.geometry.getAttribute('instanceScale')?.count
+            });
+        }
         
         this.mesh = new Mesh(this.geometry, this.material);
         this.group.add(this.mesh);
@@ -236,13 +117,16 @@ export class UnifiedTextRenderer {
     
     private async initializeFontAtlas(): Promise<void> {
         try {
-            this.logger.info('Starting font atlas generation with params:', {
-                fontFamily: 'Arial',
-                fontSize: 32,
-                textureSize: (this.fontAtlasGenerator as any)['atlasSize'],
-                padding: (this.fontAtlasGenerator as any)['padding'],
-                spread: (this.fontAtlasGenerator as any)['spread']
-            });
+            // Only log font atlas generation details when debugging is enabled
+            if (debugState.isDataDebugEnabled()) {
+                this.logger.info('Starting font atlas generation with params:', {
+                    fontFamily: 'Arial',
+                    fontSize: 32,
+                    textureSize: (this.fontAtlasGenerator as any)['atlasSize'],
+                    padding: (this.fontAtlasGenerator as any)['padding'],
+                    spread: (this.fontAtlasGenerator as any)['spread']
+                });
+            }
 
             const { texture } = await this.fontAtlasGenerator.generateAtlas(
                 'Arial',
@@ -256,23 +140,23 @@ export class UnifiedTextRenderer {
             texture.wrapT = ClampToEdgeWrapping;
             
             this.fontAtlas = texture;
-            if (this.material instanceof ShaderMaterial && this.material.uniforms) {
-                this.material.uniforms.fontAtlas.value = texture;
-            }
             
-            this.logger.info('Font atlas generated successfully:', {
-                textureWidth: (texture as any).image?.width,
-                textureHeight: (texture as any).image?.height,
-                format: (texture as any).format,
-                mipmaps: (texture as any).mipmaps?.length || 0
-            });
+            // Only log atlas generation completion when debugging is enabled
+            if (debugState.isDataDebugEnabled()) {
+                this.logger.info('Font atlas generated successfully:', {
+                    textureWidth: (texture as any).image?.width,
+                    textureHeight: (texture as any).image?.height,
+                    format: (texture as any).format,
+                    mipmaps: (texture as any).mipmaps?.length || 0
+                });
+            }
             
             // Update all existing labels
             this.labels.forEach((label, id) => {
                 this.updateLabel(id, label.text, label.position, label.color);
             });
         } catch (error) {
-            logger.error('Failed to initialize font atlas:', {
+            this.logger.error('Failed to initialize font atlas:', {
                 error,
                 message: error instanceof Error ? error.message : String(error),
                 stack: error instanceof Error ? error.stack : undefined
@@ -337,13 +221,13 @@ export class UnifiedTextRenderer {
         
         // Only log when debug is enabled
         if (debugState.isDataDebugEnabled()) {
-        this.logger.debug('Updating label:', {
-            id,
-            text,
-            position,
-            color: color ? [(color as any).r, (color as any).g, (color as any).b] : undefined,
-            hasAtlas: !!this.fontAtlas
-        });
+            this.logger.debug('Updating label:', {
+                id,
+                text,
+                position,
+                color: color ? [(color as any).r, (color as any).g, (color as any).b] : undefined,
+                hasAtlas: !!this.fontAtlas
+            });
         }
         
         let label = this.labels.get(id);
@@ -364,12 +248,12 @@ export class UnifiedTextRenderer {
             };
             
             if (debugState.isDataDebugEnabled()) {
-            this.logger.debug('Created new label instance:', {
-                id,
-                instanceIndex: this.currentInstanceCount,
-                position,
-                color: color ? [(color as any).r, (color as any).g, (color as any).b] : undefined
-            });
+                this.logger.debug('Created new label instance:', {
+                    id,
+                    instanceIndex: this.currentInstanceCount,
+                    position,
+                    color: color ? [(color as any).r, (color as any).g, (color as any).b] : undefined
+                });
             }
             
             this.labels.set(id, label);
@@ -456,11 +340,6 @@ export class UnifiedTextRenderer {
                 this.updateLabel(id, label.text, label.position, label.color);
             }
         });
-        
-        // Update camera uniforms
-        if (this.material instanceof ShaderMaterial) {
-            this.material.uniforms.cameraPosition.value.copy(this.camera.position);
-        }
     }
 
     private isLabelVisible(label: LabelInstance): boolean {

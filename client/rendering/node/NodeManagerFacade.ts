@@ -36,6 +36,7 @@ export class NodeManagerFacade implements NodeManagerInterface {
     private interactionManager: NodeInteractionManager;
     private isInitialized: boolean = false;
     private frameCount: number = 0;
+    private readonly LOG_FREQUENCY = 10; // Only log every 10 frames
     private nodeIndices: Map<string, string> = new Map();
     private tempVector = new Vector3();
 
@@ -215,7 +216,10 @@ export class NodeManagerFacade implements NodeManagerInterface {
                         this.metadataManager.updatePosition(id, this.tempVector);
                     }
                 });
-                logger.debug('Updated metadata positions');
+                // Only log position updates every LOG_FREQUENCY frames to reduce log spam
+                if (this.frameCount % this.LOG_FREQUENCY === 0) {
+                    logger.debug('Updated metadata positions');
+                }
             }
             this.frameCount++;
         } catch (error) {

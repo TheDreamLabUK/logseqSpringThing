@@ -140,4 +140,7 @@ pub enum Message {
     
     #[serde(rename = "pong")]
     Pong { timestamp: u64 },
+    
+    #[serde(rename = "enableRandomization")]
+    EnableRandomization { enabled: bool },
 }

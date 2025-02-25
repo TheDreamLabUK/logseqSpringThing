@@ -92,16 +92,17 @@ export class MetadataVisualizer {
                 ? `${(metadata.fileSize / 1024).toFixed(1)}KB`
                 : `${metadata.fileSize}B`;
 
-        this.logger.info(`Creating metadata label #${this.labelUpdateCount}:`, {
-            nodeId,
-            metadata: {
-                name: metadata.name,
-                fileSize: fileSizeFormatted,
-                nodeSize: metadata.nodeSize,
-                hyperlinkCount: metadata.hyperlinkCount,
-                position: metadata.position
-            }
+        // Only log detailed metadata at trace level (effectively disabling it)
+        if (debugState.isDataDebugEnabled()) {
+            this.logger.debug(`Creating metadata label #${this.labelUpdateCount}:`, {
+                nodeId,
+                metadata: {
+                    name: metadata.name,
+                    fileSize: fileSizeFormatted,
+                    nodeSize: metadata.nodeSize
+                }
         });
+        }
 
         // Create text labels using UnifiedTextRenderer
         const labelTexts = [
@@ -123,12 +124,12 @@ export class MetadataVisualizer {
                     position,
                     new Color(this.settings.visualization.labels.textColor)
                 );
-                
-                this.logger.debug(`Created label ${index+1}/3 for node ${nodeId}`, {
-                    labelId,
-                    text,
-                    position
-                });
+                // Only log when specific data debugging is enabled
+                if (debugState.isDataDebugEnabled()) {
+                    this.logger.debug(`Created label ${index+1}/3 for node ${nodeId}`, {
+                        labelId
+                    });
+                }
             } catch (error) {
                 this.logger.error(`Failed to create label ${index+1}/3 for node ${nodeId}`, {
                     error: error instanceof Error ? error.message : String(error),
@@ -183,12 +184,10 @@ export class MetadataVisualizer {
                 const labelId = `${nodeId}-label-${index}`;
                 const labelPosition = position.clone().add(new Vector3(0, yOffset, 0));
                 this.textRenderer.updateLabel(labelId, '', labelPosition); // Text content remains unchanged
-                
-                if (index === 0 && debugState.isEnabled()) {
-                    this.logger.debug('Updating label position:', {
-                        nodeId,
-                        position: labelPosition
-                    });
+                // Only log position updates when specific data debugging is enabled
+                if (index === 0 && debugState.isDataDebugEnabled()) {
+                    this.logger.debug(`Updating label position for ${nodeId}`, {
+                        labelId });
                 }
                 
                 // Only show debug helpers when debug is enabled
@@ -246,13 +245,17 @@ export class MetadataVisualizer {
      * Update all metadata labels - called once per frame
      */
     public update(_camera: PerspectiveCamera): void {
-        // Very occasionally log how many labels we're tracking
-        if (Math.random() < 0.01 && this.metadataGroups.size > 0) {
-            this.logger.info('Metadata update stats:', {
-                labelsCount: this.metadataGroups.size,
-                renderingEnabled: this.settings.visualization.labels.enableLabels,
-                visibilityThreshold: this.visibilityThreshold
-            });
+        // Very rarely log how many labels we're tracking
+        if (Math.random() < 0.0001 && this.metadataGroups.size > 0) {
+            // Only log if data debugging is specifically enabled
+            if (debugState.isDataDebugEnabled()) {
+                this.logger.debug('Metadata update stats:', {
+                    labelsCount: this.metadataGroups.size,
+                    enabled: this.settings.visualization.labels.enableLabels,
+                    rendererActive: this.textRenderer !== null,
+                    visibilityThreshold: this.visibilityThreshold
+                });
+            }
         }
         // The text renderer handles label positions and visibility
     }

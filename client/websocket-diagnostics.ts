@@ -20,6 +20,8 @@
 
 import { buildWsUrl } from './core/api';
 import pako from 'pako';
+import { debugState } from './core/debugState';
+import { logger } from './core/logger';
 
 // Configuration
 const CONFIG = {
@@ -457,5 +459,7 @@ export const WebSocketDiagnostics = {
 
 // Auto-run diagnostics if in development mode
 if (process.env.NODE_ENV === 'development') {
-  console.log('WebSocket diagnostics tool loaded. Call WebSocketDiagnostics.runDiagnostics() to start diagnostics.');
+  if (debugState.isWebsocketDebugEnabled()) {
+    logger.debug('WebSocket diagnostics tool loaded. Call WebSocketDiagnostics.runDiagnostics() to start diagnostics.');
+  }
 } 

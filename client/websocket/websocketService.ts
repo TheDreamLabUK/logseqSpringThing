@@ -183,6 +183,9 @@ export class WebSocketService {
             // Send request for position updates after connection
             debugLog('Requesting position updates');
             this.sendMessage({ type: 'requestInitialData' }); // Matching the server's camelCase type
+
+            // Randomization is disabled by default until client is ready
+            logger.info('WebSocket connection established. Randomization disabled by default.');
         };
 
         this.ws.onerror = (event: Event): void => {
@@ -405,6 +408,22 @@ export class WebSocketService {
         }
     }
 
+    /**
+     * Enable or disable server-side node position randomization
+     * This should only be called after the initial data loading is complete
+     * @param enabled Whether randomization should be enabled
+     */
+    public enableRandomization(enabled: boolean): void {
+        if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+            logger.warn('WebSocket not connected, cannot control randomization');
+            return;
+        }
+
+        logger.info(`${enabled ? 'Enabling' : 'Disabling'} server-side position randomization`);
+        this.sendMessage({ type: 'enableRandomization', enabled });
+    }
+    
+    
     public sendNodeUpdates(updates: NodeUpdate[]): void {
         if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
             logger.warn('WebSocket not connected, cannot send node updates');

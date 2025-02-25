@@ -12,6 +12,9 @@
  * 4. Check the console for detailed logs about the WebSocket connection
  */
 
+import { debugState } from './core/debugState';
+import { logger, createDataMetadata } from './core/logger';
+
 // Configuration
 const TEST_TIMEOUT_MS = 10000; // 10 seconds
 const PING_INTERVAL_MS = 2000; // 2 seconds
@@ -19,29 +22,32 @@ const CONNECTION_ATTEMPTS = 3;  // Number of connection attempts
 
 // Utility functions
 function log(message: string, data?: any) {
-  const timestamp = new Date().toISOString();
-  if (data) {
-    console.log(`[${timestamp}] ${message}`, data);
-  } else {
-    console.log(`[${timestamp}] ${message}`);
+  if (debugState.isWebsocketDebugEnabled()) {
+    if (data) {
+      logger.debug(`[WebsocketTest] ${message}`, createDataMetadata(data));
+    } else {
+      logger.debug(`[WebsocketTest] ${message}`);
+    }
   }
 }
 
 function error(message: string, err?: any) {
+  // Error logs are always shown regardless of debug state
   const timestamp = new Date().toISOString();
   if (err) {
-    console.error(`[${timestamp}] ERROR: ${message}`, err);
+    console.error(`[${timestamp}] ${message}`, err);
   } else {
-    console.error(`[${timestamp}] ERROR: ${message}`);
+    console.error(`[${timestamp}] ${message}`);
   }
 }
 
 function warn(message: string, data?: any) {
+  // Warning logs are always shown regardless of debug state
   const timestamp = new Date().toISOString();
   if (data) {
-    console.warn(`[${timestamp}] WARNING: ${message}`, data);
+    console.warn(`[${timestamp}] ${message}`, data);
   } else {
-    console.warn(`[${timestamp}] WARNING: ${message}`);
+    console.warn(`[${timestamp}] ${message}`);
   }
 }
 
