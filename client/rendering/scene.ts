@@ -8,6 +8,7 @@ import {
   WebGLRenderer,
   Color,
   GridHelper,
+  Layers,
   Vector2,
   Object3D,
   Mesh,
@@ -42,6 +43,10 @@ export class SceneManager {
   private controls!: OrbitControlsModule.OrbitControls & { dispose: () => void };
   private sceneGrid: GridHelper | null = null;
   
+  // Define bloom layer
+  private readonly BLOOM_LAYER = 1;
+  private readonly bloomLayer = new Layers();
+  
   // Post-processing
   private composer!: EffectComposerModule.EffectComposer;
   private bloomPass!: UnrealBloomPassModule.UnrealBloomPass;
@@ -74,9 +79,12 @@ export class SceneManager {
     this.camera.position.set(0, 10, 50); // Position for better overview
     this.camera.lookAt(0, 0, 0);
     
+    // Configure bloom layer
+    this.bloomLayer.set(this.BLOOM_LAYER);
+    
     // Enable both layers for desktop mode by default
     this.camera.layers.enable(0); // Desktop layer
-    this.camera.layers.enable(1); // XR layer
+    this.camera.layers.enable(this.BLOOM_LAYER); // Bloom/XR layer
 
     this.initializeRenderer();
     this.setupControls();
@@ -127,15 +135,15 @@ export class SceneManager {
       // Initialize bloom
       this.bloomPass = new UnrealBloomPassModule.UnrealBloomPass(
         new Vector2(window.innerWidth, window.innerHeight),
-        bloomSettings.strength,
-        bloomSettings.radius,
-        bloomSettings.threshold
+        bloomSettings.strength || 3.0,
+        bloomSettings.radius || 2.0,
+        bloomSettings.threshold || 0.0
       );
 
-      // Update bloom settings using the standard properties
-      this.bloomPass.strength = bloomSettings.edgeBloomStrength;
-      this.bloomPass.radius = bloomSettings.nodeBloomStrength;
-      this.bloomPass.threshold = bloomSettings.environmentBloomStrength;
+      // Store custom bloom settings as properties
+      (this.bloomPass as any).edgeStrength = bloomSettings.edgeBloomStrength || 2.0;
+      (this.bloomPass as any).nodeStrength = bloomSettings.nodeBloomStrength || 3.0;
+      (this.bloomPass as any).environmentStrength = bloomSettings.environmentBloomStrength || 3.0;
       
       this.composer.addPass(this.bloomPass);
       
@@ -296,9 +304,11 @@ export class SceneManager {
 
       if (remainingTime >= 0) {
         if (!this.renderer.xr.enabled && this.bloomPass?.enabled) {
-          if (remainingTime >= 8) {
+          // Always use composer with bloom when enabled, regardless of remaining time
+          try {
             this.composer.render();
-          } else {
+          } catch (error) {
+            logger.error('Error rendering with bloom, falling back to standard render', createErrorMetadata(error));
             this.renderer.render(this.scene, this.camera);
           }
         } else {
@@ -423,13 +433,13 @@ export class SceneManager {
     // Update bloom settings
     if (newBloom) {
       const currentBloom = {
-        enabled: this.bloomPass.enabled,
-        strength: this.bloomPass.strength,
-        radius: this.bloomPass.radius,
-        threshold: this.bloomPass.threshold,
-        edgeStrength: (this.bloomPass as any).edgeStrength,
-        nodeStrength: (this.bloomPass as any).nodeStrength,
-        environmentStrength: (this.bloomPass as any).environmentStrength
+        enabled: this.bloomPass?.enabled ?? false,
+        strength: this.bloomPass?.strength ?? 0,
+        radius: this.bloomPass?.radius ?? 0,
+        threshold: this.bloomPass?.threshold ?? 0,
+        edgeStrength: (this.bloomPass as any)?.edgeStrength ?? 0,
+        nodeStrength: (this.bloomPass as any)?.nodeStrength ?? 0,
+        environmentStrength: (this.bloomPass as any)?.environmentStrength ?? 0
       };
 
       const newBloomSettings = {
@@ -445,13 +455,31 @@ export class SceneManager {
       const hasBloomChanged = JSON.stringify(currentBloom) !== JSON.stringify(newBloomSettings);
       
       if (hasBloomChanged) {
-        this.bloomPass.enabled = newBloomSettings.enabled;
-        this.bloomPass.strength = newBloomSettings.strength;
-        this.bloomPass.radius = newBloomSettings.radius;
-        this.bloomPass.threshold = newBloomSettings.threshold;
-        (this.bloomPass as any).edgeStrength = newBloomSettings.edgeStrength;
-        (this.bloomPass as any).nodeStrength = newBloomSettings.nodeStrength;
-        (this.bloomPass as any).environmentStrength = newBloomSettings.environmentStrength;
+        // Log bloom settings change
+        logger.debug('Updating bloom settings', createDataMetadata({
+          from: currentBloom,
+          to: newBloomSettings
+        }));
+        
+        // Apply new settings
+        if (this.bloomPass) {
+          // Handle the enabled state change separately to avoid flashing
+          const wasEnabled = this.bloomPass.enabled;
+          const shouldBeEnabled = newBloomSettings.enabled;
+          
+          // Update all other properties first
+          this.bloomPass.strength = newBloomSettings.strength;
+          this.bloomPass.radius = newBloomSettings.radius;
+          this.bloomPass.threshold = newBloomSettings.threshold;
+          (this.bloomPass as any).edgeStrength = newBloomSettings.edgeStrength;
+          (this.bloomPass as any).nodeStrength = newBloomSettings.nodeStrength;
+          (this.bloomPass as any).environmentStrength = newBloomSettings.environmentStrength;
+          
+          // Update enabled state last to avoid flashing
+          if (wasEnabled !== shouldBeEnabled) {
+            this.bloomPass.enabled = shouldBeEnabled;
+          }
+        }
       }
     }
 
@@ -521,7 +549,24 @@ export class SceneManager {
     
     // Only disable bloom at very low FPS
     if (this.bloomPass?.enabled && this.currentFps < 20) {
-      this.bloomPass.enabled = false;
+      // Instead of disabling bloom completely, reduce its intensity
+      if (this.currentFps < 15) {
+        // Only disable bloom at extremely low FPS
+        logger.warn('Disabling bloom due to very low FPS', createDataMetadata({
+          fps: this.currentFps.toFixed(1)
+        }));
+        this.bloomPass.enabled = false;
+      } else {
+        // Reduce bloom strength at moderately low FPS
+        const reducedStrength = Math.max(0.5, this.bloomPass.strength * 0.7);
+        if (this.bloomPass.strength !== reducedStrength) {
+          this.bloomPass.strength = reducedStrength;
+          logger.debug('Reducing bloom strength due to low FPS', createDataMetadata({
+            fps: this.currentFps.toFixed(1),
+            newStrength: this.bloomPass.strength
+          }));
+        }
+      }
     }
 
     // Log optimization application
