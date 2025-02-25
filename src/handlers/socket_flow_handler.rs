@@ -69,7 +69,7 @@ impl Actor for SocketFlowServer {
     type Context = ws::WebsocketContext<Self>;
 
     fn started(&mut self, ctx: &mut Self::Context) {
-        info!("[WebSocket] Client connected from {:?}", ctx.address());
+        info!("[WebSocket] Client connected successfully");
 
         // Send simple connection established message
         let response = serde_json::json!({
@@ -113,12 +113,14 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
                                 }
                             }
                             Some("requestInitialData") => {
+                                info!("Received request for position updates");
                                 let app_state = self.app_state.clone();
                                 
                                 ctx.run_interval(self.update_interval, move |act, ctx| {
                                     let app_state_clone = app_state.clone();
 
                                     let fut = async move {
+                                        debug!("[WebSocket] Interval tick - fetching node positions");
                                         let raw_nodes = app_state_clone
                                             .graph_service
                                             .get_node_positions()
@@ -127,10 +129,10 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
                                         // Always log essential position updates, regardless of debug settings
                                         let node_count = raw_nodes.len();
                                         if node_count == 0 {
-                                            return None;
+                                            debug!("[WebSocket] No nodes to send! Empty graph data."); return None;
                                         }
 
-                                        info!("Processing binary update for {} nodes, preparing to send to client", node_count);
+                                        debug!("[WebSocket] Processing binary update for {} nodes", node_count);
 
                                         // Check if detailed debugging should be enabled
                                         let detailed_debug = if let Ok(settings) = app_state_clone.settings.try_read() {
@@ -158,6 +160,7 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
                                         }
 
                                         let data = binary_protocol::encode_node_data(&nodes);
+                                        debug!("[WebSocket] Encoded binary data: {} bytes for {} nodes", data.len(), nodes.len());
 
                                         if detailed_debug {
                                             debug!("Binary message size: {} bytes", data.len());
@@ -166,18 +169,20 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
                                         if !nodes.is_empty() {
                                             let node_count = nodes.len();
                                             // Log details about a few sample nodes to track position changes
-                                            for i in 0..std::cmp::min(3, node_count) {
-                                                let node = &nodes[i];
-                                                info!(
+                                            if detailed_debug {
+                                              for i in 0..std::cmp::min(3, node_count) {
+                                                  let node = &nodes[i];
+                                                  debug!(
                                                     "Node {}/{}: id={}, pos=[{:.2},{:.2},{:.2}], vel=[{:.2},{:.2},{:.2}]",
                                                     i+1, node_count,
                                                     node.0,
                                                     node.1.position[0], node.1.position[1], node.1.position[2],
                                                     node.1.velocity[0], node.1.velocity[1], node.1.velocity[2]
                                                 );
+                                              }
                                             }
                                         }
-                                        
+                                        debug!("[WebSocket] Sending binary update of {} bytes to client", data.len());
                                         Some(data)
                                     };
 
@@ -185,6 +190,7 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
                                     ctx.spawn(fut.map(|maybe_binary_data, act, ctx| {
                                         if let Some(binary_data) = maybe_binary_data {
                                             let final_data = act.maybe_compress(binary_data);
+                                            debug!("[WebSocket] Final binary update sent to client: {} bytes", final_data.len());
                                             ctx.binary(final_data);
                                         }
                                     }));
@@ -248,6 +254,7 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
                                         node.data.velocity = node_data.velocity;
                                         // Explicitly restore mass and flags after updating position/velocity
                                         node.data.mass = original_mass;
+                                        node.data.flags = original_flags; // Restore flags needed for GPU code
                                     // Mass, flags, and padding are not overwritten as they're only 
                                     // present on the server side and not transmitted over the wire
                                     }

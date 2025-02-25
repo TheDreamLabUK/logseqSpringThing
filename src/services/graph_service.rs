@@ -85,7 +85,7 @@ impl GraphService {
                 
                 let should_trigger = if let Some(last_time) = *timer_guard {
                     // Check if 30 seconds have passed since the last randomization
-                    now.duration_since(last_time).as_secs() >= 30 // 30-second interval
+                    now.duration_since(last_time).as_secs() >= 30 // 5-minute interval instead of 10 seconds
                 } else {
                     // Initialize timer on first run
                     *timer_guard = Some(now);
@@ -94,7 +94,7 @@ impl GraphService {
                 
                 if should_trigger {
                     // Log the randomization event
-                    info!("Randomizing node positions to maintain graph dynamism");
+                    info!("Randomizing node positions for graph exploration");
                     Self::randomize_node_positions(&graph_data).await;
                     *timer_guard = Some(now); // Reset timer after randomization
                 }
@@ -258,16 +258,21 @@ impl GraphService {
     fn initialize_random_positions(graph: &mut GraphData) {
         let mut rng = rand::thread_rng();
         let node_count = graph.nodes.len() as f32;
-        let initial_radius = 0.5; // Half of viewport bounds
+        let initial_radius = 3.0; // Increasing radius for better visibility
         let golden_ratio = (1.0 + 5.0_f32.sqrt()) / 2.0;
+        
+        // Log the initialization process
+        info!("Initializing random positions for {} nodes with radius {}", 
+             node_count, initial_radius);
+        info!("First 5 node IDs: {}", graph.nodes.iter().take(5).map(|n| n.id.clone()).collect::<Vec<_>>().join(", "));
         
         // Use Fibonacci sphere distribution for more uniform initial positions
         for (i, node) in graph.nodes.iter_mut().enumerate() {
-            let i = i as f32;
+            let i_float: f32 = i as f32;
             
             // Calculate Fibonacci sphere coordinates
-            let theta = 2.0 * std::f32::consts::PI * i / golden_ratio;
-            let phi = (1.0 - 2.0 * (i + 0.5) / node_count).acos();
+            let theta = 2.0 * std::f32::consts::PI * i_float / golden_ratio;
+            let phi = (1.0 - 2.0 * (i_float + 0.5) / node_count).acos();
             
             // Add slight randomness to prevent exact overlaps
             let r = initial_radius * (0.9 + rng.gen_range(0.0..0.2));
@@ -280,6 +285,16 @@ impl GraphService {
             node.set_vx(0.0);
             node.set_vy(0.0);
             node.set_vz(0.0);
+
+            // Log first 5 nodes for debugging
+            if i < 5 {
+                info!("Initialized node {}: id={}, pos=[{:.3},{:.3},{:.3}]", 
+                     i, 
+                     node.id,
+                     node.data.position[0], 
+                     node.data.position[1], 
+                     node.data.position[2]);
+            }
         }
     }
     
@@ -290,22 +305,25 @@ impl GraphService {
         let mut rng = rand::thread_rng();
         
         // Log more information about what we're doing
-        info!("POSITION RANDOMIZATION: Started for {} nodes", node_count);
+        info!("Position randomization: started for {} nodes", node_count);
         
         // Use a cube distribution for randomization to encourage exploration
         // This differs from the initialization distribution (Fibonacci sphere) to ensure movement
         for (i, node) in graph.nodes.iter_mut().enumerate() {
             let old_pos = [node.data.position[0], node.data.position[1], node.data.position[2]];
             
-            // Generate random position within a cube (-1, -1, -1) to (1, 1, 1)
-            node.set_x(rng.gen_range(-1.0..1.0)); 
-            node.set_y(rng.gen_range(-1.0..1.0));
-            node.set_z(rng.gen_range(-1.0..1.0));
+            // Generate random position with a wider range (-2, -2, -2) to (2, 2, 2) 
+            // to make randomization more visible
+            node.set_x(rng.gen_range(-2.0..2.0)); 
+            node.set_y(rng.gen_range(-2.0..2.0));
+            node.set_z(rng.gen_range(-2.0..2.0));
             
-            // Reset velocities to zero for a fresh start
-            node.set_vx(0.0);
-            node.set_vy(0.0);
-            node.set_vz(0.0);
+            // Add a bit of initial velocity to make nodes move visibly
+            // This helps confirm the randomization is working
+            node.set_vx(rng.gen_range(-0.1..0.1));
+            node.set_vy(rng.gen_range(-0.1..0.1));
+            node.set_vz(rng.gen_range(-0.1..0.1));
+            
             
             // Log a sample of node movements 
             if i < 3 || i == node_count - 1 {
@@ -315,7 +333,7 @@ impl GraphService {
                     node.data.position[0], node.data.position[1], node.data.position[2]);
             }
         }
-        info!("POSITION RANDOMIZATION: Completed for {} nodes", node_count);
+        info!("Position randomization: completed for {} nodes", node_count);
         
         node_count
     }
@@ -399,27 +417,15 @@ impl GraphService {
     pub async fn get_node_positions(&self) -> Vec<Node> {
         let graph = self.graph_data.read().await;
         
-        // Always log this information to diagnose issues with node movement
-        log::info!("get_node_positions: returning {} nodes", graph.nodes.len());
+        // Only log node position data in debug level
+        log::debug!("get_node_positions: returning {} nodes", graph.nodes.len());
         
-        // Log first 5 nodes (or fewer if there are less)
-        let sample_size = std::cmp::min(5, graph.nodes.len());
-        if sample_size > 0 {
-            log::info!("Node position sample:");
-            
-            for (i, node) in graph.nodes.iter().take(sample_size).enumerate() {
-                log::info!(
-                    "Node {}: id={}, pos=[{:.3},{:.3},{:.3}], vel=[{:.3},{:.3},{:.3}], mass={}, flags={}",
-                    i,
-                    node.id,
-                    node.data.position[0], node.data.position[1], node.data.position[2],
-                    node.data.velocity[0], node.data.velocity[1], node.data.velocity[2],
-                    node.data.mass,
-                    node.data.flags
-                );
+        if log::log_enabled!(log::Level::Debug) {
+            // Log first 5 nodes only when debug is enabled
+            let sample_size = std::cmp::min(5, graph.nodes.len());
+            if sample_size > 0 {
+                log::debug!("Node position sample: {} samples of {} nodes", sample_size, graph.nodes.len());
             }
-            
-            log::info!("End of node position sample (showing {} of {} nodes)", sample_size, graph.nodes.len());
         }
         graph.nodes.clone()
     }
@@ -430,6 +436,11 @@ impl GraphService {
 
     pub async fn get_node_map_mut(&self) -> tokio::sync::RwLockWriteGuard<'_, HashMap<String, Node>> {
         self.node_map.write().await
+    }
+    
+    // Add method to get GPU compute instance
+    pub async fn get_gpu_compute(&self) -> Option<Arc<RwLock<GPUCompute>>> {
+        self.gpu_compute.clone()
     }
 
     pub async fn update_node_positions(&self, updates: Vec<(u32, Node)>) -> Result<(), Error> {

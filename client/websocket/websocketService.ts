@@ -208,11 +208,6 @@ export class WebSocketService {
         this.ws.onmessage = (event: MessageEvent) => {
             try {
                 if (event.data instanceof ArrayBuffer) {
-                    const byteSize = event.data.byteLength;
-                    logger.info('Received binary position update', createDataMetadata({
-                        byteSize,
-                        expectedNodeCount: Math.floor(byteSize / 28)
-                    }));
                     
                     this.handleBinaryMessage(event.data);
                 } else if (typeof event.data === 'string') {
@@ -220,14 +215,10 @@ export class WebSocketService {
                         const message = JSON.parse(event.data);
                         if (message.type === 'connection_established' || message.type === 'updatesStarted') {
                             logger.info('WebSocket message received:', createDataMetadata({
-                                type: message.type,
-                                details: message
+                                type: message.type
                             }));
-                        } else {
-                            logger.info('WebSocket message received:', createDataMetadata({
-                                type: message.type,
-                                message
-                            }));
+                        } else if (debugState.isWebsocketDebugEnabled()) {
+                            logger.debug('WebSocket message received:', message);
                         }
                     } catch (error) {
                         logger.error('Failed to parse WebSocket message:', createErrorMetadata(error));
@@ -267,17 +258,12 @@ export class WebSocketService {
     private handleBinaryMessage(buffer: ArrayBuffer): void {
         try {
             // Log raw buffer details before processing
-            logger.info('Processing binary data', createDataMetadata({ rawSize: buffer.byteLength, isCompressed: buffer.byteLength > 0 && buffer.byteLength % 28 !== 0 }));
-            if (debugState.isWebsocketDebugEnabled()) {
-                debugLog('Processing binary message:', createDataMetadata({ size: buffer.byteLength }));
-            }
+            const isCompressed = buffer.byteLength > 0 && buffer.byteLength % 28 !== 0;
 
             const decompressedBuffer = this.tryDecompress(buffer);
             if (debugState.isWebsocketDebugEnabled()) {
-                debugLog('After decompression:', createDataMetadata({ size: decompressedBuffer.byteLength }));
-            }
-            
-            // Each node update is 28 bytes (4 for id, 12 for position, 12 for velocity)
+                debugLog('Binary data processed:', createDataMetadata({ rawSize: buffer.byteLength, decompressedSize: decompressedBuffer.byteLength, isCompressed }));
+            }            
             if (!decompressedBuffer || decompressedBuffer.byteLength % 28 !== 0) {
                 // Enhanced error logging for production debugging
                 const errorDetails = {
@@ -293,19 +279,11 @@ export class WebSocketService {
 
             const dataView = new DataView(decompressedBuffer);
             const nodeCount = decompressedBuffer.byteLength / 28;
-            
-            // Enhanced logging for production debugging
-            if (nodeCount > 0 && (debugState.isWebsocketDebugEnabled() || nodeCount < 5)) {
-                const firstNodeId = dataView.getUint32(0, true);
-                const firstNodeX = dataView.getFloat32(4, true);
-                const firstNodeY = dataView.getFloat32(8, true);
-                const firstNodeZ = dataView.getFloat32(12, true);
-                logger.info('Binary update received:', createDataMetadata({
-                    nodeCount: nodeCount > 0 ? nodeCount : 'empty buffer',
-                    firstNode: { id: firstNodeId, x: firstNodeX, y: firstNodeY, z: firstNodeZ },
-                    bufferSize: decompressedBuffer.byteLength
-                }));
-            }
+
+            // Only log detailed information when debug is enabled
+            if (debugState.isWebsocketDebugEnabled()) {
+                debugLog('Binary update:', createDataMetadata({ nodeCount, bufferSize: decompressedBuffer.byteLength }));
+            }            
             
             if (debugState.isWebsocketDebugEnabled()) {
                 debugLog('Node count:', createDataMetadata({ count: nodeCount }));
@@ -362,23 +340,8 @@ export class WebSocketService {
                 logger.warn('Some nodes had invalid position/velocity values that were clamped');
             }
 
-            // Add summary of processed nodes
-            if (nodes.length > 0) {
-                logger.info('Node position summary:', createDataMetadata({
-                    count: nodes.length,
-                    sample: nodes.slice(0, Math.min(3, nodes.length)).map(n => ({ id: n.id, pos: vector3ToObject(n.position) }))
-                }));
-            }
-
             if (nodes.length > 0 && this.binaryMessageCallback) {
                 this.binaryMessageCallback(nodes);  // Send to NodeManagerFacade
-            } else {
-                if (debugState.isWebsocketDebugEnabled()) {
-                    debugLog('No nodes to process or no callback registered', createDataMetadata({
-                        nodesLength: nodes.length,
-                        hasCallback: !!this.binaryMessageCallback
-                    }));
-                }
             }
         } catch (error) {
             logger.error('Failed to process binary message:', createErrorMetadata(error));

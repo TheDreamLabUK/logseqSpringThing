@@ -16,6 +16,7 @@ import {
     MeshBasicMaterial,
     BufferAttribute
 } from 'three';
+import { debugState } from '../core/debugState';
 import { createLogger } from '../core/logger';
 import { LabelSettings } from '../types/settings';
 import { platformManager } from '../platform/platformManager';
@@ -26,19 +27,18 @@ const logger = createLogger('UnifiedTextRenderer');
 
 // Vertex shader for SDF text rendering with improved billboarding
 const vertexShader = `
-#version 300 es
 // Three.js automatically provides cameraPosition uniform
 
-in vec3 position;
-in vec2 uv;
-in vec3 instancePosition;
-in vec4 instanceColor;
-in float instanceScale;
+attribute vec3 position;
+attribute vec2 uv;
+attribute vec3 instancePosition;
+attribute vec4 instanceColor;
+attribute float instanceScale;
 
-out vec2 vUv;
-out vec4 vColor;
-out float vScale;
-out float vViewDistance;
+varying vec2 vUv;
+varying vec4 vColor;
+varying float vScale;
+varying float vViewDistance;
 
 void main() {
     vUv = uv;
@@ -73,8 +73,7 @@ void main() {
 
 // Fragment shader for SDF text rendering with improved quality
 const fragmentShader = `
-#version 300 es
-precision highp float;
+precision mediump float;
 
 uniform sampler2D fontAtlas;
 uniform float sdfThreshold;
@@ -84,11 +83,10 @@ uniform float outlineWidth;
 uniform float fadeStart;
 uniform float fadeEnd;
 
-in vec2 vUv;
-in vec4 vColor;
-in float vScale;
-in float vViewDistance;
-out vec4 fragColor;
+varying vec2 vUv;
+varying vec4 vColor;
+varying float vScale;
+varying float vViewDistance;
 
 float median(float r, float g, float b) {
     return max(min(r, g), min(max(r, g), b));
@@ -117,7 +115,7 @@ void main() {
     outline *= distanceScale;
     
     vec4 color = mix(vec4(outlineColor, outline), vColor, alpha);
-    fragColor = color;
+    gl_FragColor = color;
 }
 `;
 
@@ -327,6 +325,18 @@ export class UnifiedTextRenderer {
     }
     
     public updateLabel(id: string, text: string, position: Vector3, color?: Color): void {
+        // Skip empty text (reduces debug spam)
+        if (!text || text.trim() === '') {
+            return;
+        }
+        
+        // Skip positions with all zeros (likely uninitialized nodes)
+        if (position.x === 0 && position.y === 0 && position.z === 0) {
+            return;
+        }
+        
+        // Only log when debug is enabled
+        if (debugState.isDataDebugEnabled()) {
         this.logger.debug('Updating label:', {
             id,
             text,
@@ -334,6 +344,7 @@ export class UnifiedTextRenderer {
             color: color ? [(color as any).r, (color as any).g, (color as any).b] : undefined,
             hasAtlas: !!this.fontAtlas
         });
+        }
         
         let label = this.labels.get(id);
         
@@ -352,12 +363,14 @@ export class UnifiedTextRenderer {
                 visible: true
             };
             
+            if (debugState.isDataDebugEnabled()) {
             this.logger.debug('Created new label instance:', {
                 id,
                 instanceIndex: this.currentInstanceCount,
                 position,
                 color: color ? [(color as any).r, (color as any).g, (color as any).b] : undefined
             });
+            }
             
             this.labels.set(id, label);
             this.currentInstanceCount++;
@@ -375,13 +388,15 @@ export class UnifiedTextRenderer {
         const colors = (this.geometry.getAttribute('instanceColor') as InstancedBufferAttribute).array as Float32Array;
         const scales = (this.geometry.getAttribute('instanceScale') as InstancedBufferAttribute).array as Float32Array;
 
-        // Debug log instance updates
-        this.logger.debug('Updating instance attributes:', {
-            currentInstanceCount: this.currentInstanceCount,
-            labelsCount: this.labels.size,
-            positionsLength: positions.length,
-            colorsLength: colors.length
-        });
+        if (debugState.isDataDebugEnabled()) {
+            // Debug log instance updates
+            this.logger.debug('Updating instance attributes:', {
+                currentInstanceCount: this.currentInstanceCount,
+                labelsCount: this.labels.size,
+                positionsLength: positions.length,
+                colorsLength: colors.length
+            });
+        }
         
         let index = 0;
         this.labels.forEach(label => {
@@ -402,11 +417,13 @@ export class UnifiedTextRenderer {
         // Set instance count on the mesh
         (this.mesh as any).instanceCount = this.currentInstanceCount;
         
-        // Debug log final state
-        this.logger.debug('Instance attributes updated:', {
-            instanceCount: (this.mesh as any).instanceCount,
-            visibleLabels: index
-        });
+        if (debugState.isDataDebugEnabled()) {
+            // Debug log final state
+            this.logger.debug('Instance attributes updated:', {
+                instanceCount: (this.mesh as any).instanceCount,
+                visibleLabels: index
+            });
+        }
         
         (this.geometry.getAttribute('instancePosition') as InstancedBufferAttribute).needsUpdate = true;
         (this.geometry.getAttribute('instanceColor') as InstancedBufferAttribute).needsUpdate = true;

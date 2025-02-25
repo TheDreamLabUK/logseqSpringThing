@@ -41,7 +41,57 @@ pub struct GraphQuery {
 
 pub async fn get_graph_data(state: web::Data<AppState>) -> impl Responder {
     info!("Received request for graph data");
+    
+    // Make sure the GPU layout is calculated before sending data
+    if let Some(gpu_compute) = &state.graph_service.get_gpu_compute().await {
+        let mut graph = state.graph_service.get_graph_data_mut().await;
+        let mut node_map = state.graph_service.get_node_map_mut().await;
+        
+        // Get physics settings
+        let settings = state.settings.read().await;
+        let physics_settings = settings.visualization.physics.clone();
+        
+        // Create simulation parameters
+        let params = crate::models::simulation_params::SimulationParams {
+            iterations: physics_settings.iterations,
+            spring_strength: physics_settings.spring_strength,
+            repulsion: physics_settings.repulsion_strength,
+            damping: physics_settings.damping,
+            max_repulsion_distance: physics_settings.repulsion_distance,
+            viewport_bounds: physics_settings.bounds_size,
+            mass_scale: physics_settings.mass_scale,
+            boundary_damping: physics_settings.boundary_damping,
+            enable_bounds: physics_settings.enable_bounds,
+            time_step: 0.016,
+            phase: crate::models::simulation_params::SimulationPhase::Dynamic,
+            mode: crate::models::simulation_params::SimulationMode::Remote,
+        };
+        
+        // Calculate graph layout using GPU
+        info!("Processing graph layout with GPU before sending to client");
+        if let Err(e) = crate::services::graph_service::GraphService::calculate_layout(
+            gpu_compute, &mut graph, &mut node_map, &params
+        ).await {
+            warn!("Error calculating graph layout: {}", e);
+        }
+        
+        // Drop locks
+        drop(graph);
+        drop(node_map);
+    } else {
+        info!("GPU compute not available, sending graph without GPU processing");
+    }
+    
     let graph = state.graph_service.get_graph_data_mut().await;
+    
+    // Log position data to debug zero positions
+    if !graph.nodes.is_empty() {
+        // Log a few nodes for debugging
+        for (i, node) in graph.nodes.iter().take(3).enumerate() {
+            debug!("Node {}: id={}, pos=[{:.3},{:.3},{:.3}]", 
+                i, node.id, node.data.position[0], node.data.position[1], node.data.position[2]);
+        }
+    }
     
     debug!("Preparing graph response with {} nodes and {} edges",
         graph.nodes.len(),
@@ -62,6 +112,48 @@ pub async fn get_paginated_graph_data(
     query: web::Query<GraphQuery>,
 ) -> impl Responder {
     info!("Received request for paginated graph data with params: {:?}", query);
+    
+    // Ensure GPU layout is calculated before sending first page of data
+    if query.page.unwrap_or(1) == 1 {
+        if let Some(gpu_compute) = &state.graph_service.get_gpu_compute().await {
+            let mut graph = state.graph_service.get_graph_data_mut().await;
+            let mut node_map = state.graph_service.get_node_map_mut().await;
+            
+            // Get physics settings
+            let settings = state.settings.read().await;
+            let physics_settings = settings.visualization.physics.clone();
+            
+            // Create simulation parameters
+            let params = crate::models::simulation_params::SimulationParams {
+                iterations: physics_settings.iterations,
+                spring_strength: physics_settings.spring_strength,
+                repulsion: physics_settings.repulsion_strength,
+                damping: physics_settings.damping,
+                max_repulsion_distance: physics_settings.repulsion_distance,
+                viewport_bounds: physics_settings.bounds_size,
+                mass_scale: physics_settings.mass_scale,
+                boundary_damping: physics_settings.boundary_damping,
+                enable_bounds: physics_settings.enable_bounds,
+                time_step: 0.016,
+                phase: crate::models::simulation_params::SimulationPhase::Dynamic,
+                mode: crate::models::simulation_params::SimulationMode::Remote,
+            };
+            
+            // Calculate graph layout using GPU
+            info!("Processing paginated graph layout with GPU before sending to client");
+            if let Err(e) = crate::services::graph_service::GraphService::calculate_layout(
+                gpu_compute, &mut graph, &mut node_map, &params
+            ).await {
+                warn!("Error calculating graph layout for paginated data: {}", e);
+            }
+            
+            // Drop locks
+            drop(graph);
+            drop(node_map);
+        } else {
+            info!("GPU compute not available, sending paginated graph without GPU processing");
+        }
+    }
 
     // Convert to 0-based indexing internally
     let page = query.page.map(|p| p.saturating_sub(1)).unwrap_or(0);
