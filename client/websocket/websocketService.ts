@@ -159,6 +159,7 @@ export class WebSocketService {
                 this.connectionStatusHandler(true);
                 debugLog('Connection status handler notified: connected');
             }
+            logger.info('WebSocket connected successfully, requesting initial position data');
 
             // Send request for position updates after connection
             debugLog('Requesting position updates');
@@ -188,17 +189,23 @@ export class WebSocketService {
         this.ws.onmessage = (event: MessageEvent) => {
             try {
                 if (event.data instanceof ArrayBuffer) {
-                    if (debugState.isWebsocketDebugEnabled()) {
-                        debugLog('Received binary position update');
-                    }
+                    const byteSize = event.data.byteLength;
+                    logger.info('Received binary position update', createDataMetadata({
+                        byteSize,
+                        expectedNodeCount: Math.floor(byteSize / 28)
+                    }));
+                    
                     this.handleBinaryMessage(event.data);
                 } else if (typeof event.data === 'string') {
                     try {
                         const message = JSON.parse(event.data);
                         if (message.type === 'connection_established' || message.type === 'updatesStarted') {
-                            logger.info('WebSocket message received:', createMessageMetadata(message.type));
+                            logger.info('WebSocket message received:', createDataMetadata({
+                                type: message.type,
+                                details: message
+                            }));
                         } else {
-                            logger.warn('Unknown message type:', createDataMetadata({
+                            logger.info('WebSocket message received:', createDataMetadata({
                                 type: message.type,
                                 message
                             }));
@@ -240,6 +247,8 @@ export class WebSocketService {
 
     private handleBinaryMessage(buffer: ArrayBuffer): void {
         try {
+            // Log raw buffer details before processing
+            logger.info('Processing binary data', createDataMetadata({ rawSize: buffer.byteLength, isCompressed: buffer.byteLength > 0 && buffer.byteLength % 28 !== 0 }));
             if (debugState.isWebsocketDebugEnabled()) {
                 debugLog('Processing binary message:', createDataMetadata({ size: buffer.byteLength }));
             }
@@ -273,7 +282,7 @@ export class WebSocketService {
                 const firstNodeY = dataView.getFloat32(8, true);
                 const firstNodeZ = dataView.getFloat32(12, true);
                 logger.info('Binary update received:', createDataMetadata({
-                    nodeCount,
+                    nodeCount: nodeCount > 0 ? nodeCount : 'empty buffer',
                     firstNode: { id: firstNodeId, x: firstNodeX, y: firstNodeY, z: firstNodeZ },
                     bufferSize: decompressedBuffer.byteLength
                 }));
@@ -327,11 +336,16 @@ export class WebSocketService {
                 logger.warn('Some nodes had invalid position/velocity values that were clamped');
             }
 
+            // Add summary of processed nodes
+            if (nodes.length > 0) {
+                logger.info('Node position summary:', createDataMetadata({
+                    count: nodes.length,
+                    sample: nodes.slice(0, Math.min(3, nodes.length)).map(n => ({ id: n.id, pos: vector3ToObject(n.position) }))
+                }));
+            }
+
             if (nodes.length > 0 && this.binaryMessageCallback) {
-                if (debugState.isWebsocketDebugEnabled()) {
-                    debugLog('Calling binary message callback with nodes:', createDataMetadata({ count: nodes.length }));
-                }
-                this.binaryMessageCallback(nodes);
+                this.binaryMessageCallback(nodes);  // Send to NodeManagerFacade
             } else {
                 if (debugState.isWebsocketDebugEnabled()) {
                     debugLog('No nodes to process or no callback registered', createDataMetadata({

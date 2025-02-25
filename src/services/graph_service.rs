@@ -334,15 +334,28 @@ impl GraphService {
 
     pub async fn get_node_positions(&self) -> Vec<Node> {
         let graph = self.graph_data.read().await;
-        if log::log_enabled!(log::Level::Debug) {
-            log::debug!("get_node_positions: returning {} nodes", graph.nodes.len());
-            for node in &graph.nodes {
-                log::debug!("Node {}: pos=[{},{},{}], vel=[{},{},{}]",
+        
+        // Always log this information to diagnose issues with node movement
+        log::info!("get_node_positions: returning {} nodes", graph.nodes.len());
+        
+        // Log first 5 nodes (or fewer if there are less)
+        let sample_size = std::cmp::min(5, graph.nodes.len());
+        if sample_size > 0 {
+            log::info!("Node position sample:");
+            
+            for (i, node) in graph.nodes.iter().take(sample_size).enumerate() {
+                log::info!(
+                    "Node {}: id={}, pos=[{:.3},{:.3},{:.3}], vel=[{:.3},{:.3},{:.3}], mass={}, flags={}",
+                    i,
                     node.id,
                     node.data.position[0], node.data.position[1], node.data.position[2],
-                    node.data.velocity[0], node.data.velocity[1], node.data.velocity[2]
+                    node.data.velocity[0], node.data.velocity[1], node.data.velocity[2],
+                    node.data.mass,
+                    node.data.flags
                 );
             }
+            
+            log::info!("End of node position sample (showing {} of {} nodes)", sample_size, graph.nodes.len());
         }
         graph.nodes.clone()
     }

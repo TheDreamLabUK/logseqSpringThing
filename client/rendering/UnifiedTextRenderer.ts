@@ -26,7 +26,7 @@ const logger = createLogger('UnifiedTextRenderer');
 
 // Vertex shader for SDF text rendering with improved billboarding
 const vertexShader = `
-    uniform vec3 cameraPosition;
+    // Three.js automatically provides cameraPosition uniform
     
     attribute vec3 position;
     attribute vec2 uv;
@@ -92,8 +92,8 @@ const fragmentShader = `
     }
     
     void main() {
-        vec3 sample = texture2D(fontAtlas, vUv).rgb;
-        float sigDist = median(sample.r, sample.g, sample.b);
+        vec3 fontSample = texture2D(fontAtlas, vUv).rgb;
+        float sigDist = median(fontSample.r, fontSample.g, fontSample.b);
         
         // Dynamic threshold based on distance
         float distanceScale = smoothstep(fadeEnd, fadeStart, vViewDistance);
@@ -179,7 +179,7 @@ export class UnifiedTextRenderer {
             this.material = new ShaderMaterial({
                 vertexShader,
                 fragmentShader,
-                glslVersion: null, // Ensure WebGL1 compatibility
+                // Using WebGL1 compatibility by default
                 uniforms: {
                     fontAtlas: { value: null },
                     sdfThreshold: { value: 0.45 },

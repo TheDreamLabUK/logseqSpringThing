@@ -64,11 +64,14 @@ export class NodeInstanceManager {
     private readonly MAX_POSITION = 1000.0; // Reasonable limit for graph visualization
     private readonly MAX_VELOCITY = 100.0;   // Increased maximum allowed velocity value
     private isReady: boolean = false;
+    private positionUpdateCount: number = 0;
+    private lastPositionLog: number = 0;
 
     private validateAndLogVector3(vec: Vector3, max: number, context: string, nodeId?: string): boolean {
         const isValid = this.validateVector3(vec, max);
         
-        if (!isValid && debugState.isNodeDebugEnabled()) {
+        // Always log validation failures to catch these issues
+        if (!isValid) {
             logger.node('Vector3 validation failed', createDataMetadata({
                 nodeId,
                 component: context,
@@ -264,10 +267,31 @@ export class NodeInstanceManager {
             return;
         }
 
-        if (debugState.isNodeDebugEnabled()) {
-            logger.node('Starting node position updates', createDataMetadata({
-                updateCount: updates.length,
-                nodes: updates.map(u => u.id).join(',')
+        this.positionUpdateCount++;
+        
+        // Log information about the updates being received
+        const currentTime = performance.now();
+        const logInterval = 1000; // Log at most every second
+        
+        if (currentTime - this.lastPositionLog > logInterval || updates.length <= 5) {
+            this.lastPositionLog = currentTime;
+            // Enhanced logging for better diagnostics
+            logger.info('Node position update batch received', createDataMetadata({
+                updateCount: this.positionUpdateCount,
+                batchSize: updates.length,
+                sample: updates.slice(0, Math.min(5, updates.length)).map(u => ({ 
+                    id: u.id, 
+                    pos: { 
+                        x: u.position.x.toFixed(3), 
+                        y: u.position.y.toFixed(3), 
+                        z: u.position.z.toFixed(3) 
+                    },
+                    vel: u.velocity ? { 
+                        x: u.velocity.x.toFixed(3), 
+                        y: u.velocity.y.toFixed(3), 
+                        z: u.velocity.z.toFixed(3) 
+                    } : 'none'
+                }))
             }));
         }
 
@@ -277,16 +301,16 @@ export class NodeInstanceManager {
             
             // Validate and clamp position
             position.copy(update.position); // Using Three.js Vector3 copy
-            if (!this.validateAndLogVector3(position, this.MAX_POSITION, 'position', update.id)) {
-                if (debugState.isNodeDebugEnabled()) {
-                    logger.node('Position validation failed, attempting recovery', createDataMetadata({
-                        nodeId: update.id,
-                        originalPosition: { x: position.x, y: position.y, z: position.z }
-                    }));
-                }
-                if (debugState.isEnabled()) {
-                    logger.warn(`Invalid position for node ${update.id}, clamping to valid range`);
-                }
+            
+            const isValid = this.validateVector3(position, this.MAX_POSITION);
+            if (!isValid) {
+                logger.warn('Position validation failed, attempting recovery', createDataMetadata({
+                    nodeId: update.id,
+                    component: 'position',
+                    maxAllowed: this.MAX_POSITION,
+                    originalPosition: { x: position.x, y: position.y, z: position.z }
+                }));
+                
                 position.x = Math.max(-this.MAX_POSITION, Math.min(this.MAX_POSITION, position.x));
                 position.y = Math.max(-this.MAX_POSITION, Math.min(this.MAX_POSITION, position.y));
                 position.z = Math.max(-this.MAX_POSITION, Math.min(this.MAX_POSITION, position.z));
@@ -309,6 +333,18 @@ export class NodeInstanceManager {
                     velocity.y = Math.max(-this.MAX_VELOCITY, Math.min(this.MAX_VELOCITY, velocity.y));
                     velocity.z = Math.max(-this.MAX_VELOCITY, Math.min(this.MAX_VELOCITY, velocity.z));
                 }
+                
+                // Log velocity data for the first few nodes to help debug node movement
+                if (index === undefined && debugState.isPhysicsDebugEnabled()) {
+                    logger.physics('New node with velocity', createDataMetadata({
+                        nodeId: update.id,
+                        velocity: velocity ? { 
+                            x: velocity.x.toFixed(3), 
+                            y: velocity.y.toFixed(3), 
+                            z: velocity.z.toFixed(3) 
+                        } : 'none'
+                    }));
+                }
             }
 
             if (index === undefined) {
@@ -329,7 +365,7 @@ export class NodeInstanceManager {
                     });
                     scale.set(scaleValue, scaleValue, scaleValue);
                     
-                    if (update.velocity) {
+                    if (update.velocity && this.validateVector3(update.velocity, this.MAX_VELOCITY)) {
                         const vel = update.velocity.clone(); // Using Three.js Vector3 clone
                         this.velocities.set(newIndex, vel);
                     }
@@ -368,8 +404,20 @@ export class NodeInstanceManager {
             }
 
             // Update existing node
-            if (update.velocity) {
-                this.velocities.set(index, velocity.clone());
+            if (update.velocity && this.validateVector3(update.velocity, this.MAX_VELOCITY)) {
+                this.velocities.set(index, update.velocity.clone());
+                
+                // Add detailed velocity logging to debug physics
+                if (debugState.isPhysicsDebugEnabled()) {
+                    logger.physics('Updated velocity for node', createDataMetadata({
+                        nodeId: update.id,
+                        velocity: { 
+                            x: update.velocity.x.toFixed(3), 
+                            y: update.velocity.y.toFixed(3), 
+                            z: update.velocity.z.toFixed(3) 
+                        }
+                    }));
+                }
             }
             
             // Calculate scale based on node properties
@@ -410,8 +458,15 @@ export class NodeInstanceManager {
 
         if (this.pendingUpdates.size > 0) {
             this.nodeInstances.instanceMatrix.needsUpdate = true;
-            if (debugState.isDataDebugEnabled()) {
-                logger.debug(`Updated ${updatedCount} nodes`);
+            
+            // Log a summary of what we updated
+            if (updatedCount > 0) {
+                logger.info('Node position update complete', createDataMetadata({
+                    updatedCount,
+                    pendingUpdates: this.pendingUpdates.size,
+                    totalNodes: this.nodeInstances.count,
+                    activeVelocityTracking: this.velocities.size
+                }));
             }
             this.pendingUpdates.clear();
         }
@@ -432,14 +487,25 @@ export class NodeInstanceManager {
         this.frameCount++;
         
         // Update positions based on velocity
-        const currentTime = performance.now();
-        const deltaTime = passedDeltaTime !== undefined ? 
-            passedDeltaTime : 
-            (currentTime - this.lastUpdateTime) / 1000; // Convert to seconds
+        const currentTime = performance.now(); 
+        
+        // Calculate and cap deltaTime to prevent large jumps
+        const rawDeltaTime = (currentTime - this.lastUpdateTime) / 1000; // Convert to seconds
+        const deltaTime = passedDeltaTime !== undefined ? passedDeltaTime : Math.min(0.1, rawDeltaTime);
+        
+        // Log unusually large deltaTime values that could cause physics instability
+        if (deltaTime > 0.05 && this.velocities.size > 0 && debugState.isPhysicsDebugEnabled()) {
+            logger.physics('Large delta time detected', createDataMetadata({
+                deltaTime: deltaTime.toFixed(3),
+                velocityCount: this.velocities.size,
+                timeSinceLastUpdate: rawDeltaTime.toFixed(3)
+            }));
+        }
+        
         this.lastUpdateTime = currentTime;
 
-        if (debugState.isPhysicsDebugEnabled()) {
-            logger.physics('Starting physics update', createDataMetadata({
+        if (this.velocities.size > 0 && debugState.isPhysicsDebugEnabled()) {
+            logger.physics('Physics update', createDataMetadata({
                 deltaTime,
                 velocityCount: this.velocities.size
             }));
@@ -448,12 +514,32 @@ export class NodeInstanceManager {
         // Update positions based on velocities
         this.velocities.forEach((nodeVelocity, index) => {
             if (nodeVelocity.lengthSq() > 0) {
+                // Only process nodes with non-zero velocity
                 this.nodeInstances.getMatrixAt(index, matrix);
                 matrix.decompose(position, quaternion, scale);
+                
+                // Debug logging for position before velocity update
+                if (index === 0 && debugState.isPhysicsDebugEnabled()) {
+                    logger.physics('Position before velocity update', createDataMetadata({
+                        nodeId: this.getNodeId(index) || 'unknown',
+                        position: { x: position.x.toFixed(3), y: position.y.toFixed(3), z: position.z.toFixed(3) },
+                        velocity: { x: nodeVelocity.x.toFixed(3), y: nodeVelocity.y.toFixed(3), z: nodeVelocity.z.toFixed(3) },
+                        deltaTime: deltaTime.toFixed(3)
+                    }));
+                }
                 
                 // Apply velocity
                 velocity.copy(nodeVelocity).multiplyScalar(deltaTime);
                 position.add(velocity);
+                
+                // Debug logging for position after velocity update for first node
+                if (index === 0 && debugState.isPhysicsDebugEnabled()) {
+                    logger.physics('Position after velocity update', createDataMetadata({
+                        nodeId: this.getNodeId(index) || 'unknown',
+                        newPosition: { x: position.x.toFixed(3), y: position.y.toFixed(3), z: position.z.toFixed(3) },
+                        appliedDelta: { x: velocity.x.toFixed(3), y: velocity.y.toFixed(3), z: velocity.z.toFixed(3) }
+                    }));
+                }
 
                 // Validate position after velocity update
                 if (!this.validateAndLogVector3(position, this.MAX_POSITION, 'physics-update')) {
@@ -496,6 +582,17 @@ export class NodeInstanceManager {
             this.nodeInstances.instanceMatrix.needsUpdate = true;
             this.pendingUpdates.clear();
         }
+    }
+    
+    /**
+     * Diagnostic function to log current node positions
+     */
+    public logNodePositions(): void {
+        if (!this.isReady || this.nodeIndices.size === 0) return;
+        
+        const sampleNodes = Array.from(this.nodeIndices.entries()).slice(0, 5);
+        const positions = sampleNodes.map(([id, _]) => ({ id, position: this.getNodePosition(id) }));
+        logger.info('Current node positions:', createDataMetadata({ positions }));
     }
 
     private updateVisibilityAndLOD(camera: Camera): void {

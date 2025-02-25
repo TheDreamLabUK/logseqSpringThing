@@ -72,6 +72,7 @@ export interface LabelSettings {
     textResolution: number;
     textPadding: number;
     billboardMode: 'camera' | 'vertical';
+    visibilityThreshold?: number; // Distance threshold for labels visibility
 }
 
 export interface BloomSettings {

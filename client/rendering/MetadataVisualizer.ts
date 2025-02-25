@@ -34,6 +34,8 @@ export class MetadataVisualizer {
     private metadataGroups: Map<string, MetadataLabelGroup>;
     private logger: Logger;
     private debugHelpers: Map<string, Object3D>;
+    private labelUpdateCount: number = 0;
+    private visibilityThreshold: number = 50; // Default visibility threshold
 
     constructor(camera: PerspectiveCamera, scene: Scene, settings: Settings) {
         this.scene = scene;
@@ -42,11 +44,15 @@ export class MetadataVisualizer {
         this.logger = createLogger('MetadataVisualizer');
         
         this.debugHelpers = new Map();
+        this.visibilityThreshold = settings.visualization.labels.visibilityThreshold || 50;
         
         this.logger.info('Initializing MetadataVisualizer with settings:', {
             enableLabels: settings.visualization.labels.enableLabels,
             textColor: settings.visualization.labels.textColor,
-            desktopFontSize: settings.visualization.labels.desktopFontSize
+            desktopFontSize: settings.visualization.labels.desktopFontSize,
+            visibilityThreshold: this.visibilityThreshold,
+            textOutlineColor: settings.visualization.labels.textOutlineColor,
+            billboardMode: settings.visualization.labels.billboardMode
         });
 
         this.labelGroup = new Group();
@@ -69,6 +75,9 @@ export class MetadataVisualizer {
     }
 
     public async createMetadataLabel(metadata: NodeMetadata, nodeId: string): Promise<MetadataLabelGroup> {
+        // Track how many labels we've created
+        this.labelUpdateCount++;
+        
         const group = new Group() as MetadataLabelGroup;
         group.name = 'metadata-label';
         group.userData = { 
@@ -83,13 +92,14 @@ export class MetadataVisualizer {
                 ? `${(metadata.fileSize / 1024).toFixed(1)}KB`
                 : `${metadata.fileSize}B`;
 
-        this.logger.info('Creating metadata label:', {
+        this.logger.info(`Creating metadata label #${this.labelUpdateCount}:`, {
             nodeId,
             metadata: {
                 name: metadata.name,
                 fileSize: fileSizeFormatted,
                 nodeSize: metadata.nodeSize,
-                hyperlinkCount: metadata.hyperlinkCount
+                hyperlinkCount: metadata.hyperlinkCount,
+                position: metadata.position
             }
         });
 
@@ -105,12 +115,27 @@ export class MetadataVisualizer {
         labelTexts.forEach((text, index) => {
             const position = new Vector3(0, labelPositions[index], 0);
             const labelId = `${nodeId}-label-${index}`;
-            this.textRenderer.updateLabel(
-                labelId,
-                text,
-                position,
-                new Color(this.settings.visualization.labels.textColor)
-            );
+            
+            try {
+                this.textRenderer.updateLabel(
+                    labelId,
+                    text,
+                    position,
+                    new Color(this.settings.visualization.labels.textColor)
+                );
+                
+                this.logger.debug(`Created label ${index+1}/3 for node ${nodeId}`, {
+                    labelId,
+                    text,
+                    position
+                });
+            } catch (error) {
+                this.logger.error(`Failed to create label ${index+1}/3 for node ${nodeId}`, {
+                    error: error instanceof Error ? error.message : String(error),
+                    labelId,
+                    text
+                });
+            }
         });
 
         this.metadataGroups.set(nodeId, group);
@@ -118,6 +143,8 @@ export class MetadataVisualizer {
     }
 
     private setGroupLayer(group: Object3D, enabled: boolean): void {
+        this.logger.debug(`Setting layer mode: ${enabled ? 'XR' : 'Desktop'}`);
+        
         if (enabled) {
             group.traverse(child => {
                 child.layers.disable(0);
@@ -135,7 +162,12 @@ export class MetadataVisualizer {
         }
     }
 
+    /**
+     * Update visibility threshold for labels
+     */
     public setXRMode(enabled: boolean): void {
+        this.logger.info(`Switching to ${enabled ? 'XR' : 'Desktop'} mode`);
+        this.textRenderer.setXRMode(enabled);
         this.setGroupLayer(this.labelGroup, enabled);
         // Text renderer handles its own XR mode
     }
@@ -151,12 +183,13 @@ export class MetadataVisualizer {
                 const labelId = `${nodeId}-label-${index}`;
                 const labelPosition = position.clone().add(new Vector3(0, yOffset, 0));
                 this.textRenderer.updateLabel(labelId, '', labelPosition); // Text content remains unchanged
-                this.logger.debug('Updating label position:', {
-                    nodeId,
-                    labelId,
-                    position: labelPosition,
-                    yOffset
-                });
+                
+                if (index === 0 && debugState.isEnabled()) {
+                    this.logger.debug('Updating label position:', {
+                        nodeId,
+                        position: labelPosition
+                    });
+                }
                 
                 // Only show debug helpers when debug is enabled
                 if (debugState.isEnabled()) {
@@ -174,6 +207,17 @@ export class MetadataVisualizer {
                 }
             });
         }
+    }
+
+    /**
+     * Updates the visibility threshold for metadata labels
+     */
+    public updateVisibilityThreshold(threshold: number): void {
+        this.visibilityThreshold = threshold;
+        this.logger.info('Updated visibility threshold:', { 
+            threshold, 
+            labelsCount: this.metadataGroups.size 
+        });
     }
 
     public removeMetadata(nodeId: string): void {
@@ -196,6 +240,21 @@ export class MetadataVisualizer {
                 if (this.debugHelpers.has(debugId)) this.debugHelpers.delete(debugId);
             });
         }
+    }
+    
+    /**
+     * Update all metadata labels - called once per frame
+     */
+    public update(_camera: PerspectiveCamera): void {
+        // Very occasionally log how many labels we're tracking
+        if (Math.random() < 0.01 && this.metadataGroups.size > 0) {
+            this.logger.info('Metadata update stats:', {
+                labelsCount: this.metadataGroups.size,
+                renderingEnabled: this.settings.visualization.labels.enableLabels,
+                visibilityThreshold: this.visibilityThreshold
+            });
+        }
+        // The text renderer handles label positions and visibility
     }
 
     public dispose(): void {

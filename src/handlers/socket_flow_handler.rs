@@ -241,10 +241,12 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
                                     if let Some(node) = node_map.get_mut(&node_id_str) {
                                         node.data.position = node_data.position;
                                         node.data.velocity = node_data.velocity;
+                                    // Mass, flags, and padding are not overwritten as they're only 
+                                    // present on the server side and not transmitted over the wire
                                     }
                                 }
 
-                                // Update graph nodes with new positions from the map
+                                // Update graph nodes with new positions/velocities from the map, preserving other properties
                                 for node in &mut graph.nodes {
                                     if let Some(updated_node) = node_map.get(&node.id) {
                                         node.data.position = updated_node.data.position;
