@@ -25,21 +25,19 @@ import '../types/three-ext.d';
 const logger = createLogger('UnifiedTextRenderer');
 
 // Vertex shader for SDF text rendering with improved billboarding
-const vertexShader = `#version 300 es
+const vertexShader = `
     uniform vec3 cameraPosition;
-    uniform mat4 modelViewMatrix;
-    uniform mat4 projectionMatrix;
-
-    in vec3 position;
-    in vec2 uv;
-    in vec3 instancePosition;
-    in vec4 instanceColor;
-    in float instanceScale;
     
-    out vec2 vUv;
-    out vec4 vColor;
-    out float vScale;
-    out float vViewDistance;
+    attribute vec3 position;
+    attribute vec2 uv;
+    attribute vec3 instancePosition;
+    attribute vec4 instanceColor;
+    attribute float instanceScale;
+    
+    varying vec2 vUv;
+    varying vec4 vColor;
+    varying float vScale;
+    varying float vViewDistance;
     
     void main() {
         vUv = uv;
@@ -73,7 +71,7 @@ const vertexShader = `#version 300 es
 `;
 
 // Fragment shader for SDF text rendering with improved quality
-const fragmentShader = `#version 300 es
+const fragmentShader = `
     precision highp float;
     
     uniform sampler2D fontAtlas;
@@ -84,19 +82,17 @@ const fragmentShader = `#version 300 es
     uniform float fadeStart;
     uniform float fadeEnd;
     
-    in vec2 vUv;
-    in vec4 vColor;
-    in float vScale;
-    in float vViewDistance;
-    
-    out vec4 fragColor;
+    varying vec2 vUv;
+    varying vec4 vColor;
+    varying float vScale;
+    varying float vViewDistance;
     
     float median(float r, float g, float b) {
         return max(min(r, g), min(max(r, g), b));
     }
     
     void main() {
-        vec3 sample = texture(fontAtlas, vUv).rgb;
+        vec3 sample = texture2D(fontAtlas, vUv).rgb;
         float sigDist = median(sample.r, sample.g, sample.b);
         
         // Dynamic threshold based on distance
@@ -118,7 +114,7 @@ const fragmentShader = `#version 300 es
         outline *= distanceScale;
         
         vec4 color = mix(vec4(outlineColor, outline), vColor, alpha);
-        fragColor = color;
+        gl_FragColor = color;
     }
 `;
 
@@ -183,6 +179,7 @@ export class UnifiedTextRenderer {
             this.material = new ShaderMaterial({
                 vertexShader,
                 fragmentShader,
+                glslVersion: null, // Ensure WebGL1 compatibility
                 uniforms: {
                     fontAtlas: { value: null },
                     sdfThreshold: { value: 0.45 },

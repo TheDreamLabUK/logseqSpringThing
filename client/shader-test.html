@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebGL Shader Compatibility Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            line-height: 1.6;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        .result {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 5px;
+            background-color: #f5f5f5;
+        }
+        .success {
+            color: green;
+            font-weight: bold;
+        }
+        .error {
+            color: red;
+            font-weight: bold;
+        }
+        pre {
+            background-color: #f0f0f0;
+            padding: 10px;
+            border-radius: 5px;
+            overflow-x: auto;
+        }
+        button {
+            padding: 10px 15px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            margin-top: 10px;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>WebGL Shader Compatibility Test</h1>
+        <p>This page tests if the modified shaders in UnifiedTextRenderer.ts will compile correctly in your browser's WebGL context.</p>
+        
+        <button id="runTest">Run Shader Test</button>
+        
+        <div id="result" class="result">
+            <p>Click the button above to run the test.</p>
+        </div>
+        
+        <h2>WebGL Information</h2>
+        <div id="webglInfo"></div>
+        
+        <h2>Modified Shaders</h2>
+        <h3>Vertex Shader</h3>
+        <pre id="vertexShader"></pre>
+        
+        <h3>Fragment Shader</h3>
+        <pre id="fragmentShader"></pre>
+    </div>
+    
+    <script src="shader-test.js"></script>
+    <script>
+        document.getElementById('runTest').addEventListener('click', function() {
+            const resultDiv = document.getElementById('result');
+            resultDiv.innerHTML = '<p>Running shader test...</p>';
+            
+            try {
+                const success = window.testShaders();
+                if (success) {
+                    resultDiv.innerHTML = '<p class="success">✅ SUCCESS: Modified shaders are compatible with this browser\'s WebGL implementation.</p>';
+                } else {
+                    resultDiv.innerHTML = '<p class="error">❌ ERROR: Modified shaders are NOT compatible with this browser\'s WebGL implementation. Check the console for details.</p>';
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `<p class="error">❌ ERROR: Test failed with exception: ${error.message}</p>`;
+                console.error(error);
+            }
+        });
+        
+        // Display WebGL information
+        function displayWebGLInfo() {
+            const infoDiv = document.getElementById('webglInfo');
+            const canvas = document.createElement('canvas');
+            let gl = canvas.getContext('webgl2');
+            let version = 2;
+            
+            if (!gl) {
+                gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+                version = 1;
+            }
+            
+            if (!gl) {
+                infoDiv.innerHTML = '<p class="error">WebGL is not supported in this browser.</p>';
+                return;
+            }
+            
+            const info = {
+                version: version,
+                vendor: gl.getParameter(gl.VENDOR),
+                renderer: gl.getParameter(gl.RENDERER),
+                glVersion: gl.getParameter(gl.VERSION),
+                shadingLanguageVersion: gl.getParameter(gl.SHADING_LANGUAGE_VERSION)
+            };
+            
+            let html = '<ul>';
+            for (const [key, value] of Object.entries(info)) {
+                html += `<li><strong>${key}:</strong> ${value}</li>`;
+            }
+            html += '</ul>';
+            
+            infoDiv.innerHTML = html;
+        }
+        
+        // Display shader code
+        function displayShaderCode() {
+            // This function extracts the shader code from shader-test.js
+            fetch('shader-test.js')
+                .then(response => response.text())
+                .then(text => {
+                    const vertexMatch = text.match(/const vertexShader = `([\s\S]*?)`/);
+                    const fragmentMatch = text.match(/const fragmentShader = `([\s\S]*?)`/);
+                    
+                    if (vertexMatch && vertexMatch[1]) {
+                        document.getElementById('vertexShader').textContent = vertexMatch[1].trim();
+                    }
+                    
+                    if (fragmentMatch && fragmentMatch[1]) {
+                        document.getElementById('fragmentShader').textContent = fragmentMatch[1].trim();
+                    }
+                })
+                .catch(error => console.error('Error loading shader code:', error));
+        }
+        
+        // Run on page load
+        displayWebGLInfo();
+        displayShaderCode();
+    </script>
+</body>
+</html>
