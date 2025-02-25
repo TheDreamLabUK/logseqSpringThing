@@ -182,7 +182,7 @@ export class WebSocketService {
 
             // Send request for position updates after connection
             debugLog('Requesting position updates');
-            this.sendMessage({ type: 'request-initial-data' }); // Using kebab-case for API consistency
+            this.sendMessage({ type: 'requestInitialData' }); // Matching the server's camelCase type
         };
 
         this.ws.onerror = (event: Event): void => {

@@ -124,60 +124,61 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
                                             .get_node_positions()
                                             .await;
 
-                                        if !raw_nodes.is_empty() {
-                                            let should_debug = if let Ok(settings) = app_state_clone.settings.try_read() {
-                                                settings.system.debug.enabled && 
-                                                settings.system.debug.enable_websocket_debug
-                                            } else {
-                                                false
-                                            };
+                                        // Always log essential position updates, regardless of debug settings
+                                        let node_count = raw_nodes.len();
+                                        if node_count == 0 {
+                                            return None;
+                                        }
 
-                                            if should_debug {
-                                                debug!("Processing binary update for {} nodes", raw_nodes.len());
+                                        info!("Processing binary update for {} nodes, preparing to send to client", node_count);
+
+                                        // Check if detailed debugging should be enabled
+                                        let detailed_debug = if let Ok(settings) = app_state_clone.settings.try_read() {
+                                            settings.system.debug.enabled && 
+                                            settings.system.debug.enable_websocket_debug
+                                        } else {
+                                            false
+                                        };
+
+                                        let mut nodes = Vec::with_capacity(raw_nodes.len());
+                                        for node in raw_nodes {
+                                            if let Ok(node_id) = node.id.parse::<u32>() {
+                                                nodes.push((node_id, BinaryNodeData {
+                                                    position: node.data.position,
+                                                    velocity: node.data.velocity,
+                                                    mass: node.data.mass,
+                                                    flags: node.data.flags,
+                                                    padding: node.data.padding,
+                                                }));
                                             }
+                                        }
 
-                                            let mut nodes = Vec::with_capacity(raw_nodes.len());
-                                            for node in raw_nodes {
-                                                if let Ok(node_id) = node.id.parse::<u32>() {
-                                                    nodes.push((node_id, BinaryNodeData {
-                                                        position: node.data.position,
-                                                        velocity: node.data.velocity,
-                                                        mass: node.data.mass,
-                                                        flags: node.data.flags,
-                                                        padding: node.data.padding,
-                                                    }));
-                                                }
-                                            }
+                                        if detailed_debug {
+                                            debug!("Encoding binary update with {} nodes", nodes.len());
+                                        }
 
-                                            if should_debug {
-                                                debug!("Encoding binary update with {} nodes", nodes.len());
-                                            }
+                                        let data = binary_protocol::encode_node_data(&nodes);
 
-                                            let data = binary_protocol::encode_node_data(&nodes);
-
-                                            if should_debug {
-                                                debug!("Binary message size: {} bytes", data.len());
-                                            }
-                                            
-                                            // Enhanced logging for production debugging
-                                            if !nodes.is_empty() {
-                                                let node_count = nodes.len();
-                                                let first_node = &nodes[0];
+                                        if detailed_debug {
+                                            debug!("Binary message size: {} bytes", data.len());
+                                        }
+                                        
+                                        if !nodes.is_empty() {
+                                            let node_count = nodes.len();
+                                            // Log details about a few sample nodes to track position changes
+                                            for i in 0..std::cmp::min(3, node_count) {
+                                                let node = &nodes[i];
                                                 info!(
-                                                    "Sending binary update: {} nodes, first node: id={}, pos=[{:.2},{:.2},{:.2}], size={} bytes",
-                                                    node_count,
-                                                    first_node.0,
-                                                    first_node.1.position[0],
-                                                    first_node.1.position[1],
-                                                    first_node.1.position[2],
-                                                    data.len()
+                                                    "Node {}/{}: id={}, pos=[{:.2},{:.2},{:.2}], vel=[{:.2},{:.2},{:.2}]",
+                                                    i+1, node_count,
+                                                    node.0,
+                                                    node.1.position[0], node.1.position[1], node.1.position[2],
+                                                    node.1.velocity[0], node.1.velocity[1], node.1.velocity[2]
                                                 );
                                             }
-                                            
-                                            Some(data)
-                                        } else {
-                                            None
                                         }
+                                        
+                                        Some(data)
                                     };
 
                                     let fut = fut.into_actor(act);

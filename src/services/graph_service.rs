@@ -24,6 +24,7 @@ pub struct GraphService {
     graph_data: Arc<RwLock<GraphData>>,
     node_map: Arc<RwLock<HashMap<String, Node>>>,
     gpu_compute: Option<Arc<RwLock<GPUCompute>>>,
+    debug_randomize_timer: Arc<RwLock<Option<tokio::time::Instant>>>,
 }
 
 impl GraphService {
@@ -31,11 +32,13 @@ impl GraphService {
         // Get physics settings
         let physics_settings = settings.read().await.visualization.physics.clone();
         let node_map = Arc::new(RwLock::new(HashMap::new()));
-        
+        let debug_randomize_timer = Arc::new(RwLock::new(None));
+
         let graph_service = Self {
             graph_data: Arc::new(RwLock::new(GraphData::default())),
             node_map: node_map.clone(),
             gpu_compute,
+            debug_randomize_timer: debug_randomize_timer.clone(),
         };
         
         // Start simulation loop
@@ -57,6 +60,8 @@ impl GraphService {
                 phase: SimulationPhase::Dynamic,
                 mode: SimulationMode::Remote,
             };
+            
+            let debug_randomize_timer = debug_randomize_timer.clone();
 
             loop {
                 // Update positions
@@ -71,6 +76,28 @@ impl GraphService {
                 }
                 drop(graph); // Release locks
                 drop(node_map);
+               
+                // Periodically randomize node positions to prevent stabilization
+                // This ensures the graph keeps moving and doesn't get stuck in local minima
+                // It helps users discover new connections and relationships in the data
+                let mut timer_guard = debug_randomize_timer.write().await;
+                let now = tokio::time::Instant::now();
+                
+                let should_trigger = if let Some(last_time) = *timer_guard {
+                    // Check if 30 seconds have passed since the last randomization
+                    now.duration_since(last_time).as_secs() >= 30 // 30-second interval
+                } else {
+                    // Initialize timer on first run
+                    *timer_guard = Some(now);
+                    false
+                };
+                
+                if should_trigger {
+                    // Log the randomization event
+                    info!("Randomizing node positions to maintain graph dynamism");
+                    Self::randomize_node_positions(&graph_data).await;
+                    *timer_guard = Some(now); // Reset timer after randomization
+                }
 
                 // Sleep for ~16ms (60fps)
                 tokio::time::sleep(tokio::time::Duration::from_millis(16)).await;
@@ -254,6 +281,43 @@ impl GraphService {
             node.set_vy(0.0);
             node.set_vz(0.0);
         }
+    }
+    
+    /// Randomizes positions of all nodes for debugging purposes
+    pub async fn randomize_node_positions(graph_data: &Arc<RwLock<GraphData>>) -> usize {
+        let mut graph = graph_data.write().await;
+        let node_count = graph.nodes.len();
+        let mut rng = rand::thread_rng();
+        
+        // Log more information about what we're doing
+        info!("POSITION RANDOMIZATION: Started for {} nodes", node_count);
+        
+        // Use a cube distribution for randomization to encourage exploration
+        // This differs from the initialization distribution (Fibonacci sphere) to ensure movement
+        for (i, node) in graph.nodes.iter_mut().enumerate() {
+            let old_pos = [node.data.position[0], node.data.position[1], node.data.position[2]];
+            
+            // Generate random position within a cube (-1, -1, -1) to (1, 1, 1)
+            node.set_x(rng.gen_range(-1.0..1.0)); 
+            node.set_y(rng.gen_range(-1.0..1.0));
+            node.set_z(rng.gen_range(-1.0..1.0));
+            
+            // Reset velocities to zero for a fresh start
+            node.set_vx(0.0);
+            node.set_vy(0.0);
+            node.set_vz(0.0);
+            
+            // Log a sample of node movements 
+            if i < 3 || i == node_count - 1 {
+                info!("Node {}: id={}, old_pos=[{:.3},{:.3},{:.3}], new_pos=[{:.3},{:.3},{:.3}]",
+                    i, node.id, 
+                    old_pos[0], old_pos[1], old_pos[2],
+                    node.data.position[0], node.data.position[1], node.data.position[2]);
+            }
+        }
+        info!("POSITION RANDOMIZATION: Completed for {} nodes", node_count);
+        
+        node_count
     }
 
     pub async fn calculate_layout(
