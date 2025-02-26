@@ -1,5 +1,20 @@
-import { Scene, PerspectiveCamera } from 'three';
-import { createLogger, createErrorMetadata } from '../core/logger';
+import {
+  Scene,
+  PerspectiveCamera,
+  // WebGLRenderer,
+  Vector3,
+  // Quaternion,
+  // Matrix4,
+  // Group,
+  // Mesh,
+  // MeshBasicMaterial,
+  // Color,
+  // Raycaster,
+  // Object3D,
+  // Euler,
+  // MathUtils,
+} from 'three';
+import { createLogger, createErrorMetadata, createDataMetadata } from '../core/logger';
 import { Settings } from '../types/settings/base';
 import { defaultSettings } from '../state/defaultSettings';
 import { XRHandWithHaptics } from '../types/xr';
@@ -11,6 +26,10 @@ import { GraphData } from '../core/types';
 import { WebSocketService } from '../websocket/websocketService';
 import { NodeMetadata } from '../types/metadata';
 import { MaterialFactory } from './factories/MaterialFactory';
+// import { SettingsStore } from '../state/SettingsStore'; // Commented out as it's unused
+// import { debugState } from '../core/debugState'; // Commented out as it's unused
+import { GraphDataManager } from '../state/graphData';
+import { Node } from '../core/types';
 
 const logger = createLogger('VisualizationController');
 
@@ -314,6 +333,76 @@ export class VisualizationController {
     public updateNodePositions(nodes: any[]): void {
         if (this.nodeManager) {
             this.nodeManager.updateNodePositions(nodes);
+        }
+    }
+
+    /**
+     * Randomly distributes all nodes in 3D space and triggers WebSocket updates
+     * @param radius The radius of the sphere within which to distribute nodes
+     */
+    public randomizeNodePositions(radius: number = 100): void {
+        if (!this.nodeManager || !this.isInitialized) {
+            logger.warn('Cannot randomize node positions - Node manager not initialized');
+            return;
+        }
+
+        logger.info('Randomizing node positions with radius:', createDataMetadata({ radius }));
+        
+        // Get node data from the graph manager
+        const graphData = GraphDataManager.getInstance().getGraphData();
+        if (!graphData || !graphData.nodes || graphData.nodes.length === 0) {
+            logger.warn('No nodes found to randomize');
+            return;
+        }
+        
+        // Create node updates with random positions
+        const updates = graphData.nodes.map((node: Node) => {
+            // Generate random position within a sphere
+            const theta = Math.random() * Math.PI * 2; // Random angle around Y axis
+            const phi = Math.acos((Math.random() * 2) - 1); // Random angle from Y axis
+            const r = radius * Math.cbrt(Math.random()); // Random distance from center (cube root for even distribution)
+            
+            // Convert spherical to Cartesian coordinates
+            const x = r * Math.sin(phi) * Math.cos(theta);
+            const y = r * Math.sin(phi) * Math.sin(theta);
+            const z = r * Math.cos(phi);
+            
+            // Create random velocity vector (small magnitude)
+            const vx = (Math.random() - 0.5) * 0.5;
+            const vy = (Math.random() - 0.5) * 0.5;
+            const vz = (Math.random() - 0.5) * 0.5;
+            
+            return {
+                id: node.id,
+                data: {
+                    position: new Vector3(x, y, z),
+                    velocity: new Vector3(vx, vy, vz)
+                }
+            };
+        });
+        
+        // Update local node positions
+        this.nodeManager.updateNodePositions(updates);
+        
+        // Send updates to server via WebSocket
+        if (this.websocketService) {
+            updates.forEach((update) => {
+                this.websocketService.sendNodeUpdates([{
+                    id: update.id,
+                    position: update.data.position,
+                    velocity: update.data.velocity
+                }]);
+            });
+            
+            // Enable server-side randomization to ensure physics simulation applies
+            this.websocketService.enableRandomization(true);
+            
+            // Disable server-side randomization after a short delay
+            setTimeout(() => {
+                this.websocketService.enableRandomization(false);
+            }, 1000);
+        } else {
+            logger.warn('WebSocket service not available, node positions only updated locally');
         }
     }
 

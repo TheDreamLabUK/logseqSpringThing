@@ -324,3 +324,43 @@
 .control-panel-enter {
     animation: slideIn 0.3s ease forwards;
 }
+
+/* Action Buttons */
+.action-button {
+    display: block;
+    width: 100%;
+    padding: 10px 15px;
+    margin-bottom: 10px;
+    background-color: var(--accent-color);
+    color: var(--text-light);
+    border: none;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background-color 0.2s ease, transform 0.2s ease;
+    text-align: center;
+}
+
+.action-button:hover {
+    background-color: var(--accent-hover);
+    transform: translateY(-1px);
+}
+
+.action-button:active {
+    transform: translateY(1px);
+}
+
+.action-button:disabled {
+    background-color: var(--accent-disabled);
+    cursor: not-allowed;
+    opacity: 0.7;
+}
+
+.randomize-btn {
+    background-color: var(--accent-color);
+}
+
+.action-section {
+    margin-bottom: 15px;
+}

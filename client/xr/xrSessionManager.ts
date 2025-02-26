@@ -99,6 +99,9 @@ export class XRSessionManager {
         this.hitTestMarker = this.createHitTestMarker();
         this.arLight = this.createARLight();
 
+        // Explicitly ensure ground plane is not visible by default
+        this.groundPlane.visible = false;
+
         this.setupXRObjects();
     }
 
@@ -472,76 +475,23 @@ export class XRSessionManager {
         }
     }
 
-    private onXRSessionEnd = (): void => {
-        // Clean up hit test source
-        logger.info('XR session ending, cleaning up resources');
+    public onXRSessionEnd = (): void => {
+        // This happens when user exits XR mode
         
-        if (this.hitTestSource) {
-            this.hitTestSource.cancel();
-            this.hitTestSource = null;
-        }
+        // Explicitly ensure ground plane and other AR objects are hidden
+        this.gridHelper.visible = false;
+        this.groundPlane.visible = false;
+        this.hitTestMarker.visible = false;
+        this.arLight.visible = false;
         
-        // Reset session state
-        this.session = null;
-        this.referenceSpace = null;
-        this.hitTestSourceRequested = false;
-        this.isPresenting = false;
-        this.isCleaningUp = false;
-
-        // Hide AR visualization elements if in Quest mode
-        if (platformManager.isQuest()) {
-            this.gridHelper.visible = false;
-            this.groundPlane.visible = false;
-            this.hitTestMarker.visible = false;
-            this.arLight.visible = false;
-            
-            // Move node instances back to main scene
-            const instanceMesh = this.nodeManager.getInstancedMesh();
-            if (instanceMesh) {
-                this.sceneManager.getScene().add(instanceMesh);
-            }
-        }
-
-        // Reset camera and scene
-        this.cameraRig.position.set(0, 0, 0);
-        this.cameraRig.quaternion.identity();
-
-        // Reset scene background
-        const scene = this.sceneManager.getScene();
-        scene.background = new Color(BACKGROUND_COLOR);
-
-        // Reset camera layers
-        const camera = this.sceneManager.getCamera();
-        camera.layers.disable(1); // AR layer
-
-        // Reset renderer
-        const renderer = this.sceneManager.getRenderer();
-        renderer.xr.enabled = false;
-        renderer.setAnimationLoop(null);
+        platformManager.xrSessionState = 'inactive';
+        // Return to desktop mode
+        platformManager.setXRMode(false);
         
-        // Force a GPU resource cleanup and memory release
-        renderer.dispose();
-        
-        // Force a garbage collection hint
-        if (window.gc) {
-            try {
-                window.gc();
-            } catch (e) {
-                // Ignore if gc is not available
-            }
-        }
-        
-        // Force a final render to apply changes
-        try {
-            renderer.render(this.sceneManager.getScene(), this.sceneManager.getCamera());
-        } catch (e) {
-            logger.warn('Error during final render:', e);
-        }
-
         if (debugState.isEnabled()) {
-            logger.info('XR session ended');
+            logger.info('XR session ended and cleaned up');
         }
-
+        
         // Show control panel and notify session end (only once)
         ModularControlPanel.getInstance()?.show();
         

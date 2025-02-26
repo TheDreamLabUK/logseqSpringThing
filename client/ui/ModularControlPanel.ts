@@ -7,6 +7,7 @@ import { EventEmitter } from '../utils/eventEmitter';
 import { settingsMap, SettingControl } from './controlPanelConfig';
 import { ValidationErrorDisplay } from '../components/settings/ValidationErrorDisplay';
 import './ModularControlPanel.css';
+import { VisualizationController } from '../rendering/VisualizationController';
 
 const logger = createLogger('ModularControlPanel');
 
@@ -74,18 +75,25 @@ export class ModularControlPanel extends EventEmitter<ModularControlPanelEvents>
 
     private async initializeComponents(): Promise<void> {
         try {
+            // Initialize nostr auth if available
+            if (typeof nostrAuth !== 'undefined') {
+                await this.initializeNostrAuth();
+            }
+
+            // Add custom action buttons
+            await this.createActionsSection();
+
+            // Initialize settings
             await this.initializeSettings();
             await this.initializePanel();
             this.initializeDragAndDrop();
-            await this.initializeNostrAuth();
             
             this.isInitialized = true;
             this.emit('settings:ready', null);
             
             logger.info('ModularControlPanel fully initialized');
         } catch (error) {
-            logger.error('Failed to initialize ModularControlPanel:', createErrorMetadata(error));
-            throw error;
+            logger.error('Failed to initialize components:', createErrorMetadata(error));
         }
     }
 
@@ -267,6 +275,52 @@ export class ModularControlPanel extends EventEmitter<ModularControlPanelEvents>
         );
 
         await nostrAuth.initialize();
+    }
+
+    private async createActionsSection(): Promise<void> {
+        const actionsSection = document.createElement('div');
+        actionsSection.className = 'settings-section action-section';
+        
+        const header = document.createElement('div');
+        header.className = 'section-header';
+        header.innerHTML = '<h4>Actions</h4>';
+        actionsSection.appendChild(header);
+
+        const content = document.createElement('div');
+        content.className = 'section-content';
+
+        // Create randomize nodes button
+        const randomizeBtn = document.createElement('button');
+        randomizeBtn.className = 'action-button randomize-btn';
+        randomizeBtn.textContent = 'Randomly Distribute Nodes';
+        randomizeBtn.title = 'Randomly distribute all nodes in 3D space';
+        
+        // Add event listener
+        randomizeBtn.onclick = () => {
+            try {
+                randomizeBtn.disabled = true;
+                randomizeBtn.textContent = 'Distributing...';
+                
+                // Call the visualization controller to randomize nodes
+                const controller = VisualizationController.getInstance();
+                controller.randomizeNodePositions(200); // Use a radius of 200 units
+                
+                setTimeout(() => {
+                    randomizeBtn.disabled = false;
+                    randomizeBtn.textContent = 'Randomly Distribute Nodes';
+                }, 1500);
+            } catch (error) {
+                console.error('Failed to randomize nodes:', error);
+                randomizeBtn.disabled = false;
+                randomizeBtn.textContent = 'Randomly Distribute Nodes';
+            }
+        };
+        
+        content.appendChild(randomizeBtn);
+        actionsSection.appendChild(content);
+
+        // Add the actions section to the container
+        this.container.appendChild(actionsSection);
     }
 
     private isAdvancedCategory(category: string): boolean {

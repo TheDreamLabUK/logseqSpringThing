@@ -8,7 +8,7 @@ import {
     Camera,
     Material
 } from 'three';
-import { NodeGeometryManager, LODLevel } from '../geometry/NodeGeometryManager';
+import { NodeGeometryManager } from '../geometry/NodeGeometryManager';
 import { createLogger, createDataMetadata } from '../../../core/logger';
 import { SettingsStore } from '../../../state/SettingsStore';
 import { NodeSettings } from '../../../types/settings/base';
@@ -33,7 +33,7 @@ const scale = new Vector3();
 
 // Visibility states (using setRGB for proper initialization)
 const VISIBLE = new Color(0xffffff);
-const INVISIBLE = new Color(0x000000);
+// Removed INVISIBLE constant
 
 interface NodeUpdate {
     id: string;
@@ -610,9 +610,9 @@ export class NodeInstanceManager {
             // Update geometry based on distance
             void this.geometryManager.getGeometryForDistance(distance);
 
-            // Show nodes within the maximum LOD distance
-            const visible = distance <= this.geometryManager.getThresholdForLOD(LODLevel.LOW);
-            this.nodeInstances.setColorAt(i, visible ? VISIBLE : INVISIBLE);
+            // Always keep nodes visible regardless of distance
+            // Just update the LOD level without making them invisible
+            this.nodeInstances.setColorAt(i, VISIBLE);
         }
 
         // Ensure updates are applied

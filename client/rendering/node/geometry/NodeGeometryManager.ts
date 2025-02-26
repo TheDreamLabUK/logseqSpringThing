@@ -11,9 +11,9 @@ const logger = createLogger('NodeGeometryManager');
 // LOD level definitions
 export enum LODLevel {
     HIGH = 0,    // < 10 meters: Full detail
-    MEDIUM = 1,  // 10-30 meters: Medium detail
-    LOW = 2      // > 30 meters: Low detail
-}
+    MEDIUM = 1,  // 10-50 meters: Medium detail
+    LOW = 2      // > 50 meters: Low detail
+} 
 
 interface LODThresholds {
     [LODLevel.HIGH]: number;   // Distance threshold for high detail
@@ -32,8 +32,8 @@ export class NodeGeometryManager {
     private currentLOD: LODLevel = LODLevel.HIGH;
     
     private readonly lodThresholds: LODThresholds = {
-        [LODLevel.HIGH]: 25.0,    // Show full detail when closer than 25 meters
-        [LODLevel.MEDIUM]: 50.0,  // Medium detail between 25-50 meters
+        [LODLevel.HIGH]: 10.0,    // Show full detail when closer than 10 meters
+        [LODLevel.MEDIUM]: 50.0,  // Medium detail between 10-50 meters
         [LODLevel.LOW]: 150.0     // Low detail beyond 50 meters
     };
 
@@ -114,10 +114,17 @@ export class NodeGeometryManager {
         // Use adjusted thresholds for AR mode
         const mediumThreshold = isAR ? this.lodThresholds[LODLevel.MEDIUM] * 1.5 : this.lodThresholds[LODLevel.MEDIUM];
         
-        if (distance >= this.lodThresholds[LODLevel.LOW]) {
-            targetLOD = LODLevel.LOW;
-        } else if (distance > mediumThreshold) {
+        // Fix the LOD logic to ensure nodes don't vanish as we get closer
+        // The closer we are, the higher the detail should be
+        if (distance <= this.lodThresholds[LODLevel.HIGH]) {
+            // Close distance: use high detail
+            targetLOD = LODLevel.HIGH;
+        } else if (distance <= mediumThreshold) {
+            // Medium distance: use medium detail
             targetLOD = LODLevel.MEDIUM;
+        } else {
+            // Far distance: use low detail
+            targetLOD = LODLevel.LOW;
         }
 
         // Only update if LOD level changed
