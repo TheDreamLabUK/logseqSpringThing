@@ -108,7 +108,7 @@ system:
     retry_delay: 5
   websocket:
     binary_chunk_size: 2048
-    binary_update_rate: 15
+    binary_update_rate: 30
     binary_message_version: 1
     compression_enabled: false
     compression_threshold: 512
@@ -118,7 +118,7 @@ system:
     max_message_size: 10485760
     reconnect_attempts: 3
     reconnect_delay: 3000
-    update_rate: 90
+    update_rate: 60
   security:
     allowed_origins:
     - https://www.visionflow.info

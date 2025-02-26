@@ -40,12 +40,21 @@ export class GraphVisualization {
     private textRenderer: TextRenderer;
     private websocketService!: WebSocketService;
     private initialized: boolean = false;
+    private websocketInitialized: boolean = false;
     private componentsReady: boolean = false;
 
     public async initializeWebSocket(): Promise<void> {
         if (!this.componentsReady) {
             if (debugState.isEnabled()) {
                 logger.warn('Attempting to initialize WebSocket before components are ready');
+            }
+            return;
+        }
+        
+        // Prevent duplicate WebSocket initialization
+        if (this.websocketInitialized) {
+            if (debugState.isEnabled()) {
+                logger.warn('WebSocket already initialized, skipping duplicate initialization');
             }
             return;
         }
@@ -105,6 +114,7 @@ export class GraphVisualization {
             
             // Mark as initialized before connecting WebSocket
             this.initialized = true;
+            this.websocketInitialized = true;
             
             // Finally connect WebSocket
             await this.websocketService.connect();

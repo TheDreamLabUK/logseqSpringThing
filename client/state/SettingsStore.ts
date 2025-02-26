@@ -19,6 +19,7 @@ export class SettingsStore {
     private initializationPromise: Promise<void> | null = null;
     private subscribers: Map<string, SettingsChangeCallback[]> = new Map();
     private validationSubscribers: ValidationErrorCallback[] = [];
+    private settingsInitialized: boolean = false;
     private logger: Logger;
     private retryCount: number = 0;
     private readonly MAX_RETRIES: number = 3;
@@ -48,6 +49,22 @@ export class SettingsStore {
 
         this.initializationPromise = (async () => {
             try {
+                // Start with default settings immediately to avoid waiting for server
+                this.settings = { ...defaultSettings };
+                this.settingsOrigin = 'default';
+                
+                // Initialize logger with default settings right away
+                if (this.settings.system?.debug) {
+                    LoggerConfig.setGlobalDebug(this.settings.system.debug.enabled);
+                    LoggerConfig.setFullJson(this.settings.system.debug.logFullJson);
+                }
+                
+                // Mark as initialized with defaults
+                this.settingsInitialized = true;
+                this.initialized = true;
+                logger.info('SettingsStore initialized with defaults, will update from server asynchronously');
+                
+                // Now try to fetch settings from server in the background
                 // Try to fetch settings from server first
                 try {
                     const settingsUrl = buildApiUrl(API_ENDPOINTS.SETTINGS_ROOT);
@@ -69,7 +86,7 @@ export class SettingsStore {
                         }
                         
                         // Use server settings as base, filling in any missing fields with defaults
-                        this.settings = this.deepMerge({ ...defaultSettings }, camelCaseSettings);
+                        this.settings = this.deepMerge(this.settings, camelCaseSettings);
                         this.settingsOrigin = 'server';
                         
                         // Initialize logger configuration from settings
@@ -77,7 +94,7 @@ export class SettingsStore {
                             LoggerConfig.setGlobalDebug(this.settings.system.debug.enabled);
                             LoggerConfig.setFullJson(this.settings.system.debug.logFullJson);
                         }
-                        logger.info('Using server settings with defaults as fallback');
+                        logger.info('Updated settings from server');
                     } else {
                         const errorText = await response.text();
                         logger.error('Response text:', createMessageMetadata(errorText));
@@ -89,23 +106,10 @@ export class SettingsStore {
                         logger.error('Full error:', createErrorMetadata(error));
                     }
                     logger.warn('Error loading server settings, falling back to defaults:', createErrorMetadata(error));
-                    this.settings = { ...defaultSettings };
-                    
-                    // Initialize logger with default settings
-                    if (this.settings.system?.debug) {
-                        LoggerConfig.setGlobalDebug(this.settings.system.debug.enabled);
-                        LoggerConfig.setFullJson(this.settings.system.debug.logFullJson);
-                    }
-                    this.settingsOrigin = 'default';
-                    
-                    // Validate default settings
-                    const validationResult = validateSettings(this.settings);
-                    if (!validationResult.isValid) {
-                        this.logger.error('Default settings validation failed:', createDataMetadata(validationResult.errors));
-                        this.notifyValidationErrors(validationResult.errors);
-                    }
-                    
-                    logger.info('Using default settings:', createDataMetadata(this.settings));
+                    // We already initialized with defaults, so just log the error
+                    // No need to reset settings or settingsOrigin
+                    // We'll keep using the defaults we already set
+                    logger.info('Continuing with default settings');
                 }
 
                 this.initialized = true;

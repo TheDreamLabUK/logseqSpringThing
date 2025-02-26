@@ -9,7 +9,7 @@ use tokio::sync::RwLock;
 
 use crate::app_state::AppState;
 use crate::utils::binary_protocol;
-use crate::utils::socket_flow_messages::{BinaryNodeData, PingMessage, PongMessage, Message};
+use crate::utils::socket_flow_messages::{BinaryNodeData, PingMessage, PongMessage};
 
 // Constants for throttling debug logs
 const DEBUG_LOG_SAMPLE_RATE: usize = 10; // Only log 1 in 10 updates
@@ -18,6 +18,7 @@ pub struct SocketFlowServer {
     app_state: Arc<AppState>,
     settings: Arc<RwLock<crate::config::Settings>>,
     last_ping: Option<u64>,
+    initial_data_sent: bool, // Track if initial data has been sent
     update_counter: usize, // Counter for throttling debug logs
     update_interval: std::time::Duration,
 }
@@ -37,6 +38,7 @@ impl SocketFlowServer {
             app_state,
             settings,
             last_ping: None,
+            initial_data_sent: false,
             update_counter: 0,
             update_interval,
         }
@@ -125,10 +127,18 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
                             }
                             Some("requestInitialData") => {
                                 info!("Received request for position updates");
+                                
+                                // Check if initial data has already been sent to prevent duplicate intervals
+                                if self.initial_data_sent {
+                                    debug!("Initial data already sent, ignoring duplicate request");
+                                    return;
+                                }
+                                self.initial_data_sent = true;
                                 let app_state = self.app_state.clone();
                                 
-                                ctx.run_interval(self.update_interval, move |act, ctx| {
+                                ctx.run_interval(self.update_interval, move |act: &mut SocketFlowServer, ctx| {
                                     let app_state_clone = app_state.clone();
+                                    let settings_clone = act.settings.clone();
 
                                     let fut = async move {
                                         let raw_nodes = app_state_clone
@@ -142,7 +152,7 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
                                         }
 
                                         // Check if detailed debugging should be enabled
-                                        let detailed_debug = if let Ok(settings) = app_state_clone.settings.try_read() {
+                                        let detailed_debug = if let Ok(settings) = settings_clone.try_read() {
                                             settings.system.debug.enabled && 
                                             settings.system.debug.enable_websocket_debug
                                         } else {
@@ -170,13 +180,22 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
                                        
                                         let data = binary_protocol::encode_node_data(&nodes);
                                         
-                                        if detailed_debug {
-                                            // Only log occasionally to reduce log volume
-                                            if act.should_log_update() {
-                                                debug!("[WebSocket] Encoded binary data: {} bytes for {} nodes", data.len(), nodes.len());
+                                        // Return detailed debug info along with the data
+                                        Some((data, detailed_debug, nodes))
+                                    };
+
+                                    // First check if we should log this update (before spawning the future)
+                                    let should_log = act.should_log_update();
+                                    
+                                    let fut = fut.into_actor(act);
+                                    ctx.spawn(fut.map(move |result, act, ctx| {
+                                        if let Some((binary_data, detailed_debug, nodes)) = result {
+                                            // Log debug info if needed
+                                            if detailed_debug && should_log {
+                                                debug!("[WebSocket] Encoded binary data: {} bytes for {} nodes", binary_data.len(), nodes.len());
                                                 
                                                 // Log details about a sample node to track position changes
-                                                 if !nodes.is_empty() {
+                                                if !nodes.is_empty() {
                                                     let node = &nodes[0];
                                                     debug!(
                                                         "Sample node: id={}, pos=[{:.2},{:.2},{:.2}], vel=[{:.2},{:.2},{:.2}]",
@@ -186,23 +205,12 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
                                                     );
                                                 }
                                             }
-                                            }
-                                      
-                                        Some(data)
-                                    };
 
-                                    let fut = fut.into_actor(act);
-                                    ctx.spawn(fut.map(|maybe_binary_data, act, ctx| {
-                                        if let Some(binary_data) = maybe_binary_data {
                                             let final_data = act.maybe_compress(binary_data);
                                             
                                             // Only log if detailed debugging is enabled
-                                            if let Ok(settings) = act.settings.try_read() {
-                                                if settings.system.debug.enabled && 
-                                                   settings.system.debug.enable_websocket_debug && 
-                                                   act.should_log_update() {
+                                            if detailed_debug && should_log {
                                                     debug!("[WebSocket] Final binary update sent to client: {} bytes", final_data.len());
-                                                }
                                             }
                                             
                                             ctx.binary(final_data);

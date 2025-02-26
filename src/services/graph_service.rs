@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use tokio::sync::RwLock;
 use std::collections::{HashMap, HashSet};
 use actix_web::web;
@@ -18,6 +19,9 @@ use crate::config::Settings;
 use crate::utils::gpu_compute::GPUCompute;
 use crate::models::simulation_params::{SimulationParams, SimulationPhase, SimulationMode};
 use crate::models::pagination::PaginatedGraphData;
+
+// Static flag to prevent multiple simultaneous graph rebuilds
+static GRAPH_REBUILD_IN_PROGRESS: AtomicBool = AtomicBool::new(false);
 
 #[derive(Clone)]
 pub struct GraphService {
@@ -114,6 +118,22 @@ impl GraphService {
     }
 
     pub async fn build_graph_from_metadata(metadata: &MetadataStore) -> Result<GraphData, Box<dyn std::error::Error + Send + Sync>> {
+        // Check if a rebuild is already in progress
+        if GRAPH_REBUILD_IN_PROGRESS.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_err() {
+            warn!("Graph rebuild already in progress, skipping duplicate rebuild");
+            return Err("Graph rebuild already in progress".into());
+        }
+        
+        // Create a guard struct to ensure the flag is reset when this function returns
+        struct RebuildGuard;
+        impl Drop for RebuildGuard {
+            fn drop(&mut self) {
+                GRAPH_REBUILD_IN_PROGRESS.store(false, Ordering::SeqCst);
+            }
+        }
+        // This guard will reset the flag when it goes out of scope
+        let _guard = RebuildGuard;
+        
         let mut graph = GraphData::new();
         let mut edge_map = HashMap::new();
         let mut node_map = HashMap::new();
@@ -186,6 +206,22 @@ impl GraphService {
     }
 
     pub async fn build_graph(state: &web::Data<AppState>) -> Result<GraphData, Box<dyn std::error::Error + Send + Sync>> {
+        // Check if a rebuild is already in progress
+        if GRAPH_REBUILD_IN_PROGRESS.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_err() {
+            warn!("Graph rebuild already in progress, skipping duplicate rebuild");
+            return Err("Graph rebuild already in progress".into());
+        }
+        
+        // Create a guard struct to ensure the flag is reset when this function returns
+        struct RebuildGuard;
+        impl Drop for RebuildGuard {
+            fn drop(&mut self) {
+                GRAPH_REBUILD_IN_PROGRESS.store(false, Ordering::SeqCst);
+            }
+        }
+        // This guard will reset the flag when it goes out of scope
+        let _guard = RebuildGuard;
+        
         let current_graph = state.graph_service.get_graph_data_mut().await;
         let mut graph = GraphData::new();
         let mut node_map = HashMap::new();
