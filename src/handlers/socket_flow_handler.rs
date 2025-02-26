@@ -11,10 +11,14 @@ use crate::app_state::AppState;
 use crate::utils::binary_protocol;
 use crate::utils::socket_flow_messages::{BinaryNodeData, PingMessage, PongMessage, Message};
 
+// Constants for throttling debug logs
+const DEBUG_LOG_SAMPLE_RATE: usize = 10; // Only log 1 in 10 updates
+
 pub struct SocketFlowServer {
     app_state: Arc<AppState>,
     settings: Arc<RwLock<crate::config::Settings>>,
     last_ping: Option<u64>,
+    update_counter: usize, // Counter for throttling debug logs
     update_interval: std::time::Duration,
 }
 
@@ -33,6 +37,7 @@ impl SocketFlowServer {
             app_state,
             settings,
             last_ping: None,
+            update_counter: 0,
             update_interval,
         }
     }
@@ -62,6 +67,12 @@ impl SocketFlowServer {
             }
         }
         data
+    }
+    
+    // Helper method to determine if we should log this update (for throttling)
+    fn should_log_update(&mut self) -> bool {
+        self.update_counter = (self.update_counter + 1) % DEBUG_LOG_SAMPLE_RATE;
+        self.update_counter == 0
     }
 }
 
@@ -120,20 +131,14 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
                                     let app_state_clone = app_state.clone();
 
                                     let fut = async move {
-                                        debug!("[WebSocket] Interval tick - fetching node positions");
                                         let raw_nodes = app_state_clone
                                             .graph_service
                                             .get_node_positions()
                                             .await;
 
-                                        // Always log essential position updates, regardless of debug settings
                                         let node_count = raw_nodes.len();
                                         if node_count == 0 {
                                             debug!("[WebSocket] No nodes to send! Empty graph data."); return None;
-                                        }
-
-                                                                if node_count > 0 {
-                    debug!("[WebSocket] Processing binary update for {} nodes", node_count);
                                         }
 
                                         // Check if detailed debugging should be enabled
@@ -157,36 +162,32 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
                                             }
                                         }
 
-                                        if detailed_debug {
-                                            debug!("Encoding binary update with {} nodes", nodes.len());
-                                        }
-
                                         // Only generate binary data if we have nodes to send
                                         if nodes.is_empty() {
                                             return None;
 
-                                        
-                   }                     let data = binary_protocol::encode_node_data(&nodes);
+                                        }
+                                       
+                                        let data = binary_protocol::encode_node_data(&nodes);
                                         
                                         if detailed_debug {
-                                            debug!("[WebSocket] Encoded binary data: {} bytes for {} nodes", data.len(), nodes.len());
-                                            debug!("Binary message size: {} bytes", data.len());
-                                            
-                                            // Log details about a few sample nodes to track position changes
-                                                                                          for i in 0..std::cmp::min(3, node_count) {
-    let node_count = nodes.len();
-                                          let node = &nodes[i];
-                                                debug!(
-                                                  "Node {}/{}: id={}, pos=[{:.2},{:.2},{:.2}], vel=[{:.2},{:.2},{:.2}]",
-                                                  i+1, node_count,
-                                                  node.0,
-                                                  node.1.position[0], node.1.position[1], node.1.position[2],
-                                                  node.1.velocity[0], node.1.velocity[1], node.1.velocity[2]
-                                                );
-                                              }
+                                            // Only log occasionally to reduce log volume
+                                            if act.should_log_update() {
+                                                debug!("[WebSocket] Encoded binary data: {} bytes for {} nodes", data.len(), nodes.len());
+                                                
+                                                // Log details about a sample node to track position changes
+                                                 if !nodes.is_empty() {
+                                                    let node = &nodes[0];
+                                                    debug!(
+                                                        "Sample node: id={}, pos=[{:.2},{:.2},{:.2}], vel=[{:.2},{:.2},{:.2}]",
+                                                        node.0,
+                                                        node.1.position[0], node.1.position[1], node.1.position[2],
+                                                        node.1.velocity[0], node.1.velocity[1], node.1.velocity[2]
+                                                    );
+                                                }
+                                            }
                                             }
                                       
-                                    debug!("[WebSocket] Sending binary update of {} bytes to client", data.len());
                                         Some(data)
                                     };
 
@@ -197,7 +198,9 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
                                             
                                             // Only log if detailed debugging is enabled
                                             if let Ok(settings) = act.settings.try_read() {
-                                                if settings.system.debug.enabled && settings.system.debug.enable_websocket_debug {
+                                                if settings.system.debug.enabled && 
+                                                   settings.system.debug.enable_websocket_debug && 
+                                                   act.should_log_update() {
                                                     debug!("[WebSocket] Final binary update sent to client: {} bytes", final_data.len());
                                                 }
                                             }

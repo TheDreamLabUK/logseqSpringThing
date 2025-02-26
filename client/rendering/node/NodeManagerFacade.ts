@@ -12,6 +12,7 @@ import { NodeInteractionManager } from './interaction/NodeInteractionManager';
 import { NodeManagerInterface, NodeManagerError, NodeManagerErrorType } from './NodeManagerInterface';
 import { NodeData } from '../../core/types';
 import { XRHandWithHaptics } from '../../types/xr';
+import { debugState } from '../../core/debugState';
 import { createLogger, createErrorMetadata, createDataMetadata } from '../../core/logger';
 import { Vec3 } from '../../types/vec3';
 
@@ -120,10 +121,14 @@ export class NodeManagerFacade implements NodeManagerInterface {
     public updateNodes(nodes: { id: string, data: NodeData }[]): void {
         if (!this.isInitialized) return;
 
+        const shouldDebugLog = debugState.isEnabled() && debugState.isNodeDebugEnabled();
+        
         // Track node IDs
         nodes.forEach(node => {
             this.nodeIndices.set(node.id, node.id);
-            logger.debug('Tracking node', createDataMetadata({ nodeId: node.id }));
+            if (shouldDebugLog) {
+                logger.debug('Tracking node', createDataMetadata({ nodeId: node.id }));
+            }
         });
 
         // Update instance positions
@@ -138,7 +143,9 @@ export class NodeManagerFacade implements NodeManagerInterface {
         nodes.forEach(node => {
             if (node.data.metadata) {
                 const fileSize = node.data.metadata.fileSize || DEFAULT_FILE_SIZE;
-                logger.debug('Updating node metadata', createDataMetadata({ nodeId: node.id }));
+                if (shouldDebugLog) {
+                    logger.debug('Updating node metadata', createDataMetadata({ nodeId: node.id }));
+                }
                 this.metadataManager.updateMetadata(node.id, {
                     id: node.id,
                     name: node.data.metadata.name || '',

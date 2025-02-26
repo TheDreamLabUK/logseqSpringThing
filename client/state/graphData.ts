@@ -9,6 +9,21 @@ const logger = createLogger('GraphDataManager');
 // Constants
 const FLOATS_PER_NODE = 6;     // x, y, z, vx, vy, vz
 
+// Throttling for debug logs
+let lastDebugLogTime = 0;
+const DEBUG_LOG_THROTTLE_MS = 2000; // Only log once every 2 seconds
+
+// Helper for throttled debug logging
+function throttledDebugLog(message: string, data?: any): void {
+  if (!debugState.isDataDebugEnabled()) return;
+  
+  const now = Date.now();
+  if (now - lastDebugLogTime > DEBUG_LOG_THROTTLE_MS) {
+    lastDebugLogTime = now;
+    logger.debug(message, data);
+  }
+}
+
 // Interface for the internal WebSocket service used by this class
 type InternalWebSocketService = { send(data: ArrayBuffer): void };
 
@@ -70,19 +85,17 @@ export class GraphDataManager {
   public async fetchInitialData(): Promise<void> {
     try {
       // Start with first page
+      throttledDebugLog('Fetching initial graph data page');
       await this.fetchPaginatedData(1, 100);
-      if (debugState.isDataDebugEnabled()) {
-        logger.debug(`Initial graph data page loaded. Current nodes: ${this.nodes.size}, edges: ${this.edges.size}`);
-      }
+      
+      throttledDebugLog(`Initial graph data page loaded. Current nodes: ${this.nodes.size}, edges: ${this.edges.size}`);
       
       // Get total pages from metadata
       const totalPages = this.metadata.pagination?.totalPages || 1;
       const totalItems = this.metadata.pagination?.totalItems || 0;
       
       if (totalPages > 1) {
-        if (debugState.isDataDebugEnabled()) {
-          logger.debug(`Loading remaining ${totalPages - 1} pages in background. Total items: ${totalItems}, Current items: ${this.nodes.size}`);
-        }
+        throttledDebugLog(`Loading remaining ${totalPages - 1} pages in background. Total items: ${totalItems}, Current items: ${this.nodes.size}`);
         // Load remaining pages in background with improved error handling
         this.loadRemainingPagesWithRetry(totalPages, 100);
       }
@@ -107,9 +120,7 @@ export class GraphDataManager {
         try {
           await this.fetchPaginatedData(page, pageSize);
           success = true;
-          if (debugState.isDataDebugEnabled()) {
-            logger.debug(`Loaded page ${page}/${totalPages} successfully`);
-          }
+          throttledDebugLog(`Loaded page ${page}/${totalPages} successfully`);
         } catch (error) {
           retries++;
           const delay = Math.min(1000 * Math.pow(2, retries), 10000); // Exponential backoff with max 10s
@@ -145,9 +156,7 @@ export class GraphDataManager {
 
   public async fetchPaginatedData(page: number = 1, pageSize: number = 100): Promise<void> {
     try {
-      if (debugState.isDataDebugEnabled()) {
-        logger.debug(`Fetching page ${page} with size ${pageSize}. Current nodes: ${this.nodes.size}`);
-      }
+      throttledDebugLog(`Fetching page ${page} with size ${pageSize}. Current nodes: ${this.nodes.size}`);
       
       // Add timeout to prevent hanging requests
       const controller = new AbortController();
@@ -172,13 +181,10 @@ export class GraphDataManager {
       }
 
       const data = await response.json();
-      if (debugState.isDataDebugEnabled()) {
-        logger.debug(`Received data for page ${page}:`, { nodes: data.nodes?.length, edges: data.edges?.length, totalItems: data.totalItems });
-      }
+      throttledDebugLog(`Received data for page ${page}:`, { nodes: data.nodes?.length, edges: data.edges?.length, totalItems: data.totalItems });
+      
       this.updateGraphData(data);
-      if (debugState.isDataDebugEnabled()) {
-        logger.debug(`Paginated data loaded for page ${page}. Total nodes now: ${this.nodes.size}, edges: ${this.edges.size}`);
-      }
+      throttledDebugLog(`Paginated data loaded for page ${page}. Total nodes now: ${this.nodes.size}, edges: ${this.edges.size}`);
     } catch (error) {
       logger.error(`Failed to fetch paginated data for page ${page}:`, error);
       throw error;
@@ -256,9 +262,8 @@ export class GraphDataManager {
 
   private async loadRemainingPages(totalPages: number, pageSize: number): Promise<void> {
     try {
-      if (debugState.isDataDebugEnabled()) {
-        logger.debug(`Starting to load remaining pages. Total pages: ${totalPages}, Current nodes: ${this.nodes.size}`);
-      }
+      throttledDebugLog(`Starting to load remaining pages. Total pages: ${totalPages}, Current nodes: ${this.nodes.size}`);
+      
       // Load remaining pages in parallel with a reasonable chunk size
       const chunkSize = 5;
       for (let i = 2; i <= totalPages; i += chunkSize) {
@@ -268,9 +273,7 @@ export class GraphDataManager {
         }
         await Promise.all(pagePromises);
         // Update listeners after each chunk
-        if (debugState.isDataDebugEnabled()) {
-          logger.debug(`Loaded chunk ${i}-${Math.min(i + chunkSize - 1, totalPages)}. Current nodes: ${this.nodes.size}, edges: ${this.edges.size}`);
-        }
+        throttledDebugLog(`Loaded chunk ${i}-${Math.min(i + chunkSize - 1, totalPages)}. Current nodes: ${this.nodes.size}, edges: ${this.edges.size}`);
         this.notifyUpdateListeners();
       }
     } catch (error) {
@@ -281,9 +284,8 @@ export class GraphDataManager {
 
   private async loadPage(page: number, pageSize: number): Promise<void> {
     try {
-      if (debugState.isDataDebugEnabled()) {
-        logger.debug(`Loading page ${page}. Current nodes before load: ${this.nodes.size}`);
-      }
+      throttledDebugLog(`Loading page ${page}. Current nodes before load: ${this.nodes.size}`);
+      
       const response = await fetch(
         `${API_ENDPOINTS.GRAPH_PAGINATED}?page=${page}&pageSize=${pageSize}`,
         {
@@ -319,9 +321,7 @@ export class GraphDataManager {
         }
       });
 
-      if (debugState.isDataDebugEnabled()) {
-        logger.debug(`Loaded page ${page}: ${newNodes} new nodes, ${newEdges} new edges. Total now: ${this.nodes.size} nodes, ${this.edges.size} edges`);
-      }
+      throttledDebugLog(`Loaded page ${page}: ${newNodes} new nodes, ${newEdges} new edges. Total now: ${this.nodes.size} nodes, ${this.edges.size} edges`);
     } catch (error) {
       logger.error(`Error loading page ${page}:`, error);
       throw error;
@@ -427,9 +427,7 @@ export class GraphDataManager {
   updateGraphData(data: any): void {
     // Transform and validate incoming data
     const transformedData = transformGraphData(data);
-    if (debugState.isDataDebugEnabled()) {
-      logger.debug(`Updating graph data. Incoming: ${transformedData.nodes.length} nodes, ${transformedData.edges?.length || 0} edges`);
-    }
+    throttledDebugLog(`Updating graph data. Incoming: ${transformedData.nodes.length} nodes, ${transformedData.edges?.length || 0} edges`);
     
     // Update nodes with proper position and velocity
     transformedData.nodes.forEach((node: Node) => {
@@ -461,7 +459,7 @@ export class GraphDataManager {
 
     // Notify listeners
     this.notifyUpdateListeners();
-    logger.debug(`Updated graph data: ${this.nodes.size} nodes, ${this.edges.size} edges`);
+    throttledDebugLog(`Updated graph data: ${this.nodes.size} nodes, ${this.edges.size} edges`);
 
     // Enable binary updates after initial data is received
     if (!this.binaryUpdatesEnabled) {
@@ -548,15 +546,17 @@ export class GraphDataManager {
     if (!this.binaryUpdatesEnabled) {
       return;
     }
-    logger.debug('Received binary position update:', positions);
+    
+    // Only log binary updates occasionally to avoid flooding
+    throttledDebugLog(`Received binary position update: ${positions.length} floats (${positions.length / FLOATS_PER_NODE} nodes)`);
        
     if (positions.length % FLOATS_PER_NODE !== 0) {
       logger.error('Invalid position array length:', positions.length);
       return;
     }  
 
-        // Notify listeners of position updates
-        this.notifyPositionUpdateListeners(positions);
+    // Notify listeners of position updates
+    this.notifyPositionUpdateListeners(positions);
   }
 }
 

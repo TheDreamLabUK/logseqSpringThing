@@ -7,10 +7,18 @@ import pako from 'pako';
 
 const logger = createLogger('WebSocketService');
 
+// Throttle for debug logging to prevent excessive logs
+let lastDebugLogTime = 0;
+const DEBUG_LOG_THROTTLE_MS = 1000; // Only log once per second
+
 // Helper for conditional debug logging
 function debugLog(message: string, ...args: any[]) {
     if (debugState.isWebsocketDebugEnabled()) {
-        logger.debug(message, ...args);
+        const now = Date.now();
+        if (now - lastDebugLogTime > DEBUG_LOG_THROTTLE_MS) {
+            lastDebugLogTime = now;
+            logger.debug(message, ...args);
+        }
     }
 }
 
@@ -270,9 +278,15 @@ export class WebSocketService {
             const isCompressed = buffer.byteLength > 0 && buffer.byteLength % 28 !== 0;
 
             const decompressedBuffer = this.tryDecompress(buffer);
-            if (debugState.isWebsocketDebugEnabled()) {
-                debugLog('Binary data processed:', createDataMetadata({ rawSize: buffer.byteLength, decompressedSize: decompressedBuffer.byteLength, isCompressed }));
-            }            
+           
+            // Throttled debug logging for binary messages
+             debugLog('Binary data processed:', createDataMetadata({ 
+                rawSize: buffer.byteLength, 
+                decompressedSize: decompressedBuffer.byteLength, 
+                isCompressed,
+                nodeCount: decompressedBuffer.byteLength / 28
+            }));
+            
             if (!decompressedBuffer || decompressedBuffer.byteLength % 28 !== 0) {
                 // Enhanced error logging for production debugging
                 const errorDetails = {
@@ -289,13 +303,8 @@ export class WebSocketService {
             const dataView = new DataView(decompressedBuffer);
             const nodeCount = decompressedBuffer.byteLength / 28;
 
-            // Only log detailed information when debug is enabled
-            if (debugState.isWebsocketDebugEnabled()) {
-                debugLog('Binary update:', createDataMetadata({ nodeCount, bufferSize: decompressedBuffer.byteLength }));
-            }            
-            
-            if (debugState.isWebsocketDebugEnabled()) {
-                debugLog('Node count:', createDataMetadata({ count: nodeCount }));
+            if (nodeCount === 0) {
+                debugLog('No nodes in binary update');
             }
             let offset = 0;
             let invalidValuesFound = false;
