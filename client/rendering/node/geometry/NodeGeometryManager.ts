@@ -32,15 +32,15 @@ export class NodeGeometryManager {
     private currentLOD: LODLevel = LODLevel.HIGH;
     
     private readonly lodThresholds: LODThresholds = {
-        [LODLevel.HIGH]: 10.0,    // Show full detail when closer than 10 meters
-        [LODLevel.MEDIUM]: 30.0,  // Medium detail between 10-30 meters
-        [LODLevel.LOW]: 100.0     // Low detail between 30-100 meters
+        [LODLevel.HIGH]: 25.0,    // Show full detail when closer than 25 meters
+        [LODLevel.MEDIUM]: 50.0,  // Medium detail between 25-50 meters
+        [LODLevel.LOW]: 150.0     // Low detail beyond 50 meters
     };
 
     private readonly qualitySettings: Record<LODLevel, GeometryQuality> = {
-        [LODLevel.HIGH]: { segments: 1, radius: 0.1 },   // 10cm radius with 1 subdivision
-        [LODLevel.MEDIUM]: { segments: 0, radius: 0.1 }, // 10cm radius basic octahedron
-        [LODLevel.LOW]: { segments: 0, radius: 0.8 }     // Smaller octahedron for distance
+        [LODLevel.HIGH]: { segments: 1, radius: 0.12 },   // 12cm radius with 1 subdivision
+        [LODLevel.MEDIUM]: { segments: 0, radius: 0.12 }, // 12cm radius basic octahedron
+        [LODLevel.LOW]: { segments: 0, radius: 0.1 }      // 10cm octahedron for distance
     };
 
     private constructor() {
@@ -105,20 +105,34 @@ export class NodeGeometryManager {
     public getGeometryForDistance(distance: number): BufferGeometry {
         // Determine appropriate LOD level based on distance
         let targetLOD = LODLevel.HIGH;
-
+        
+        // Use more conservative thresholds for AR mode
+        const isAR = window.location.href.includes('ar=true') || 
+                    document.querySelector('#xr-button')?.textContent?.includes('Exit AR');
+        
+        // Apply different thresholds for AR mode
+        // Use adjusted thresholds for AR mode
+        const mediumThreshold = isAR ? this.lodThresholds[LODLevel.MEDIUM] * 1.5 : this.lodThresholds[LODLevel.MEDIUM];
+        
         if (distance >= this.lodThresholds[LODLevel.LOW]) {
             targetLOD = LODLevel.LOW;
-        } else if (distance > this.lodThresholds[LODLevel.MEDIUM]) {
+        } else if (distance > mediumThreshold) {
             targetLOD = LODLevel.MEDIUM;
         }
 
         // Only update if LOD level changed
         if (targetLOD !== this.currentLOD) {
             this.currentLOD = targetLOD;
-            logger.debug(`Switching to LOD level ${targetLOD} for distance ${distance}`);
+            logger.info(`Switching to LOD level ${targetLOD} for distance ${distance.toFixed(2)}`);
         }
 
-        return this.geometryCache.get(targetLOD) || this.geometryCache.get(LODLevel.MEDIUM)!;
+        // Always ensure we return a valid geometry
+        const geometry = this.geometryCache.get(targetLOD);
+        if (!geometry) {
+            logger.warn(`No geometry found for LOD level ${targetLOD}, falling back to MEDIUM`);
+            return this.geometryCache.get(LODLevel.MEDIUM)!;
+        }
+        return geometry;
     }
 
     public getCurrentLOD(): LODLevel {

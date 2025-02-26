@@ -3,6 +3,7 @@ import { SettingsStore } from '../state/SettingsStore';
 import { createLogger, createErrorMetadata } from '../core/logger';
 import { WebSocketService } from '../websocket/websocketService';
 import { XRSettings } from '../types/settings/xr';
+import { platformManager } from '../platform/platformManager';
 import * as THREE from 'three';
 
 const logger = createLogger('XRInteraction');
@@ -15,6 +16,7 @@ export class XRInteraction {
     private settingsUnsubscribers: Array<() => void> = [];
     private interactionEnabled: boolean = false;
     private websocketService: WebSocketService;
+    private sessionStateListener: ((state: string) => void) | null = null;
 
     private xrManager: XRSessionManager;
     private constructor(xrManager: XRSessionManager) {
@@ -22,17 +24,28 @@ export class XRInteraction {
         this.settingsStore = SettingsStore.getInstance();
         this.websocketService = WebSocketService.getInstance();
         this.initializeSettings();
-        this.initializeXRSession();
+        this.setupSessionStateListener();
+        
+        // Only auto-enter AR if explicitly enabled
+        setTimeout(() => {
+            this.initializeXRSession();
+        }, 1000);
+    }
+    
+    private setupSessionStateListener(): void {
+        // Listen for session state changes to reset interaction state
+        this.sessionStateListener = (state: string) => {
+            if (state === 'ending' || state === 'cooldown') {
+                this.clearHandState();
+            }
+        };
+        platformManager.on('xrsessionstatechange', this.sessionStateListener);
     }
 
     private async initializeXRSession(): Promise<void> {
         try {
-            const { platformManager } = require('../platform/platformManager');
             const settings = this.settingsStore.get('xr') as XRSettings;
-            
-            // Auto-enter AR for Quest devices if enabled in settings
-            if (platformManager.isQuest() && settings && settings.autoEnterAR) {
-                logger.info('Auto-entering AR mode for Quest device');
+            if (platformManager.isQuest() && settings?.autoEnterAR && platformManager.xrSessionState === 'inactive') {
                 await this.xrManager.initXRSession();
             }
         } catch (error) {
@@ -113,6 +126,11 @@ export class XRInteraction {
         // Clear subscriptions
         this.settingsUnsubscribers.forEach(unsub => unsub());
         this.settingsUnsubscribers = [];
+        
+        // Remove session state listener
+        if (this.sessionStateListener) {
+            platformManager.removeAllListeners();
+        }
 
         // Flush any pending updates
         this.flushPositionUpdates();

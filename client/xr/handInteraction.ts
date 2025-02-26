@@ -5,6 +5,7 @@ import { NodeManagerFacade } from '../rendering/node/NodeManagerFacade';
 import { NodeInteractionManager } from '../rendering/node/interaction/NodeInteractionManager';
 import { createLogger } from '../core/logger';
 import { SettingsStore } from '../state/SettingsStore';
+import { platformManager } from '../platform/platformManager';
 
 const logger = createLogger('HandInteraction');
 
@@ -17,12 +18,14 @@ export class HandInteractionManager {
     private interactionManager?: NodeInteractionManager;
     private isInitialized: boolean = false;
     private initializationTime: number = 0;
-    private readonly INITIALIZATION_DELAY_MS = 2000; // 2 second delay before enabling interactions
+    private readonly INITIALIZATION_DELAY_MS = 3000; // 3 second delay before enabling interactions
+    private sessionStateListener: ((state: string) => void) | null = null;
 
     private constructor() {
         this.websocketService = WebSocketService.getInstance();
         this.settingsStore = SettingsStore.getInstance();
         this.initializationTime = Date.now();
+        this.setupSessionStateListener();
     }
 
     public static getInstance(): HandInteractionManager {
@@ -32,6 +35,18 @@ export class HandInteractionManager {
         return HandInteractionManager.instance;
     }
 
+    private setupSessionStateListener(): void {
+        // Listen for session state changes to reset interaction state
+        this.sessionStateListener = (state: string) => {
+            if (state === 'starting') {
+                // Reset initialization time when starting a new session
+                this.initializationTime = Date.now();
+                this.isInitialized = false;
+            }
+        };
+        platformManager.on('xrsessionstatechange', this.sessionStateListener);
+    }
+
     public setNodeManager(nodeManager: NodeManagerFacade): void {
         this.nodeManager = nodeManager;
         this.interactionManager = NodeInteractionManager.getInstance(nodeManager.getInstancedMesh());
@@ -39,7 +54,7 @@ export class HandInteractionManager {
         // Mark as initialized but still respect the delay
         setTimeout(() => {
             this.isInitialized = true;
-            logger.info('Hand interaction enabled after initialization delay');
+            logger.info(`Hand interaction enabled after ${this.INITIALIZATION_DELAY_MS}ms delay`);
         }, this.INITIALIZATION_DELAY_MS);
     }
 
@@ -119,5 +134,10 @@ export class HandInteractionManager {
         this.nodeManager = undefined;
         this.isInitialized = false;
         this.interactionManager = undefined;
+        
+        // Remove session state listener
+        if (this.sessionStateListener) {
+            platformManager.removeAllListeners();
+        }
     }
 }

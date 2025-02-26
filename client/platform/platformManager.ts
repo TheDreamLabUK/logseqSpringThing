@@ -1,7 +1,7 @@
 import { Platform, PlatformCapabilities } from '../core/types';
 import { createLogger } from '../core/utils';
 import { Settings } from '../types/settings';
-import { XRSessionMode } from '../types/xr';
+import { XRSessionMode, XRSessionState } from '../types/xr';
 import { SceneManager } from '../rendering/scene';
 
 const logger = createLogger('PlatformManager');
@@ -40,6 +40,9 @@ export class PlatformManager extends BrowserEventEmitter {
   private capabilities: PlatformCapabilities;
   private initialized: boolean = false;
   private _isXRMode: boolean = false;
+  private _xrSessionState: XRSessionState = 'inactive'; 
+  private _cooldownTimer: number | null = null;
+  private _sessionCount: number = 0;
   private sceneManager: SceneManager | null = null;
 
   private constructor() {
@@ -202,6 +205,15 @@ export class PlatformManager extends BrowserEventEmitter {
     return this.capabilities.websocketSupported;
   }
 
+  get xrSessionState(): XRSessionState {
+    return this._xrSessionState;
+  }
+
+  set xrSessionState(state: XRSessionState) {
+    this._xrSessionState = state;
+    this.emit('xrsessionstatechange', state);
+  }
+
   async requestXRSession(mode: XRSessionMode = 'immersive-ar'): Promise<XRSession | null> {
     if (!this.capabilities.xrSupported || !('xr' in navigator) || !navigator.xr) {
       logger.warn('WebXR not supported');
@@ -209,6 +221,39 @@ export class PlatformManager extends BrowserEventEmitter {
     }
 
     try {
+      // Check if we're in cooldown period after a previous session
+      if (this._cooldownTimer !== null) {
+        logger.warn('AR session in cooldown period, please wait before starting a new session');
+        // Show a user-friendly message
+        const message = document.createElement('div');
+        message.style.position = 'fixed';
+        message.style.top = '50%';
+        message.style.left = '50%';
+        message.style.transform = 'translate(-50%, -50%)';
+        message.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
+        message.style.color = 'white';
+        message.style.padding = '20px';
+        message.style.borderRadius = '10px';
+        message.style.zIndex = '9999';
+        message.textContent = 'Please wait a moment before starting a new AR session...';
+        document.body.appendChild(message);
+        
+        // Remove the message after 2 seconds
+        setTimeout(() => {
+          document.body.removeChild(message);
+        }, 2000);
+        
+        return null;
+      }
+
+      // Check if we're already in an active or transitioning state
+      if (this._xrSessionState !== 'inactive') {
+        logger.warn(`Cannot start XR session while in ${this._xrSessionState} state`);
+        return null;
+      }
+
+      this.xrSessionState = 'starting';
+      this._sessionCount++;
       const requiredFeatures: string[] = ['local-floor'];
       const optionalFeatures: string[] = ['hand-tracking'];
 
@@ -217,7 +262,7 @@ export class PlatformManager extends BrowserEventEmitter {
         requiredFeatures.push('hit-test');
         optionalFeatures.push('plane-detection');
       } else if (mode === 'immersive-vr') {
-        optionalFeatures.push('bounded-floor');
+        optionalFeatures.push('bounded-floor', 'layers');
       }
 
       const features: XRSessionInit = {
@@ -225,11 +270,42 @@ export class PlatformManager extends BrowserEventEmitter {
         optionalFeatures
       };
 
+      // Log the session request
+      logger.log(`Requesting XR session with mode: ${mode}, features:`, 
+        { required: requiredFeatures, optional: optionalFeatures });
+
       const session = await navigator.xr.requestSession(mode, features);
 
+      // Set up session end event handler
       session.addEventListener('end', () => {
-        logger.log('XR session ended');
-        this.emit('xrsessionend');
+        logger.log('XR session ended, entering cooldown period');
+        this.xrSessionState = 'cooldown';
+        
+        // Determine cooldown time based on session count and platform
+        let cooldownTime = 2000; // Default 2 seconds
+        
+        // Increase cooldown time for Quest devices or after multiple sessions
+        if (this.isQuest()) {
+          cooldownTime = 3000; // 3 seconds for Quest
+        }
+        if (this._sessionCount > 1) {
+          cooldownTime += 1000; // Add 1 second for each additional session
+        }
+        
+        // Set a cooldown timer to allow the browser to fully release resources
+        this._cooldownTimer = window.setTimeout(() => {
+          logger.log('XR session cooldown complete');
+          this._cooldownTimer = null;
+          this.xrSessionState = 'inactive';
+          
+          // Force a page reload if we've had multiple sessions on Quest
+          if (this.isQuest() && this._sessionCount > 2) {
+            logger.log('Forcing page reload to clear resources after multiple AR sessions');
+            setTimeout(() => {
+              window.location.reload();
+            }, 500);
+          }
+        }, cooldownTime) as unknown as number;
       });
 
       logger.log(`XR session started in ${mode} mode`);
@@ -237,6 +313,7 @@ export class PlatformManager extends BrowserEventEmitter {
     } catch (error) {
       logger.error('Failed to start XR session:', error);
       return null;
+      this.xrSessionState = 'inactive';
     }
   }
 
@@ -266,6 +343,14 @@ export class PlatformManager extends BrowserEventEmitter {
   dispose(): void {
     this.removeAllListeners();
     this.initialized = false;
+    
+    // Clear any pending cooldown timer
+    if (this._cooldownTimer !== null) {
+      clearTimeout(this._cooldownTimer);
+      this._cooldownTimer = null;
+    }
+    this._xrSessionState = 'inactive';
+    this._sessionCount = 0;
     PlatformManager.instance = null;
   }
 

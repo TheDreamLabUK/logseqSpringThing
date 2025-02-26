@@ -1,7 +1,7 @@
 import { Settings } from '../types/settings/base';
 import { createLogger, createErrorMetadata, createMessageMetadata, createDataMetadata } from '../core/logger';
 import { defaultSettings } from './defaultSettings';
-import { buildApiUrl } from '../core/api';
+import { buildApiUrl, getAuthHeaders } from '../core/api';
 import { API_ENDPOINTS } from '../core/constants';
 import { Logger, LoggerConfig } from '../core/logger';
 import { validateSettings, validateSettingValue, ValidationError } from '../types/settings/validation';
@@ -335,11 +335,13 @@ export class SettingsStore {
                 debug: serverSettings.system?.debug
             }));
             
+            // Use the existing getAuthHeaders function to get headers with Nostr pubkey
+            const headers = getAuthHeaders();
+            this.logger.debug('Using auth headers for settings sync');
+                        
             const response = await fetch(buildApiUrl(API_ENDPOINTS.SETTINGS_ROOT), {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
+                headers,
                 body: JSON.stringify(serverSettings)
             });
             

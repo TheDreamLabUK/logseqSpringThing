@@ -55,7 +55,7 @@ visualization:
     wave_speed: 0.5
   labels:
     desktop_font_size: 14
-    enable_labels: true 
+    enable_labels: true
     text_color: '#000000'
     text_outline_color: '#ffffff'
     text_outline_width: 0.1

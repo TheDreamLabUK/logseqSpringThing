@@ -34,6 +34,7 @@ export class XRSessionManager {
     /* @ts-ignore - Used in XR session lifecycle */
     private referenceSpace: XRReferenceSpace | null = null;
     private isPresenting: boolean = false;
+    private isCleaningUp: boolean = false;
     private settingsUnsubscribe: (() => void) | null = null;
     private currentSettings: XRSettings;
     /* @ts-ignore - Used in XR session lifecycle */
@@ -112,7 +113,7 @@ export class XRSessionManager {
     private createGridHelper(): GridHelper {
         const grid = new GridHelper(0.5, 5, 0x808080, 0x808080); // 0.5 meter grid with 5x5 divisions
         grid.material.transparent = true;
-        grid.material.opacity = 0.5;
+        grid.material.opacity = 0.2; // Further reduced opacity
         grid.position.y = -0.01; // Slightly below ground to avoid z-fighting
         grid.visible = false; // Start hidden until AR session begins
         grid.layers.enable(0); // Enable default layer
@@ -123,14 +124,15 @@ export class XRSessionManager {
     private createGroundPlane(): Mesh {
         const geometry = new PlaneGeometry(0.5, 0.5); // 0.5x0.5 meter plane
         const material = new MeshPhongMaterial({
-            color: 0x999999,
+            color: 0x444444, // Darker gray color
             transparent: true,
-            opacity: 0.3,
-            side: DoubleSide
+            opacity: 0.15, // Even more transparent
+            side: DoubleSide,
+            depthWrite: false // Prevent depth writing to avoid z-fighting
         });
         const plane = new Mesh(geometry, material);
         plane.rotateX(-Math.PI / 2);
-        plane.position.y = -0.02; // Below grid
+        plane.position.y = -0.015; // Slightly below grid but not too far
         plane.visible = false; // Start hidden until AR session begins
         plane.layers.enable(0); // Enable default layer
         plane.layers.enable(1); // Enable AR layer
@@ -270,6 +272,13 @@ export class XRSessionManager {
             }
             return;
         }
+        
+        if (platformManager.xrSessionState !== 'inactive') {
+            if (debugState.isEnabled()) {
+                logger.warn('XR session already active');
+            }
+            return;
+        }
 
         if (!platformManager.getCapabilities().xrSupported || !navigator.xr) {
             throw new Error('XR not supported on this platform');
@@ -315,6 +324,7 @@ export class XRSessionManager {
             }
             
             const session = await navigator.xr.requestSession(mode, sessionInit);
+            platformManager.xrSessionState = 'active';
 
             if (!session) {
                 throw new Error('Failed to create XR session');
@@ -391,9 +401,11 @@ export class XRSessionManager {
             // Show AR visualization elements after a short delay to ensure proper placement
             setTimeout(() => {
                 this.gridHelper.visible = true;
-                this.groundPlane.visible = true;
+                // Only show ground plane in Quest mode if explicitly enabled in settings
+                this.groundPlane.visible = platformManager.isQuest() && 
+                    (this.currentSettings.showPlaneOverlay === true);
                 this.arLight.visible = true;
-            }, 1000);
+            }, 1500); // Increased delay for better stability
             
             this.isPresenting = true;
             if (debugState.isEnabled()) {
@@ -419,8 +431,24 @@ export class XRSessionManager {
     }
 
     public async endXRSession(): Promise<void> {
-        if (this.session) {
+        if (!this.session) {
+            return;
+        }
+        
+        // Prevent multiple cleanup attempts
+        if (this.isCleaningUp) {
+            logger.warn('XR session cleanup already in progress');
+            return;
+        }
+        
+        this.isCleaningUp = true;
+        platformManager.xrSessionState = 'ending';
+        try {
             await this.session.end();
+        } catch (error) {
+            logger.error('Error ending XR session:', error);
+        } finally {
+            this.isCleaningUp = false;
         }
     }
 
@@ -446,6 +474,8 @@ export class XRSessionManager {
 
     private onXRSessionEnd = (): void => {
         // Clean up hit test source
+        logger.info('XR session ending, cleaning up resources');
+        
         if (this.hitTestSource) {
             this.hitTestSource.cancel();
             this.hitTestSource = null;
@@ -456,6 +486,7 @@ export class XRSessionManager {
         this.referenceSpace = null;
         this.hitTestSourceRequested = false;
         this.isPresenting = false;
+        this.isCleaningUp = false;
 
         // Hide AR visualization elements if in Quest mode
         if (platformManager.isQuest()) {
@@ -486,6 +517,26 @@ export class XRSessionManager {
         // Reset renderer
         const renderer = this.sceneManager.getRenderer();
         renderer.xr.enabled = false;
+        renderer.setAnimationLoop(null);
+        
+        // Force a GPU resource cleanup and memory release
+        renderer.dispose();
+        
+        // Force a garbage collection hint
+        if (window.gc) {
+            try {
+                window.gc();
+            } catch (e) {
+                // Ignore if gc is not available
+            }
+        }
+        
+        // Force a final render to apply changes
+        try {
+            renderer.render(this.sceneManager.getScene(), this.sceneManager.getCamera());
+        } catch (e) {
+            logger.warn('Error during final render:', e);
+        }
 
         if (debugState.isEnabled()) {
             logger.info('XR session ended');
@@ -493,7 +544,11 @@ export class XRSessionManager {
 
         // Show control panel and notify session end (only once)
         ModularControlPanel.getInstance()?.show();
-        this.xrSessionEndCallback?.();
+        
+        // Use setTimeout to ensure the callback is called after the browser has had time to process the session end
+        setTimeout(() => {
+            this.xrSessionEndCallback?.();
+        }, 100);
     }
 
     private applyXRSettings(): void {
