@@ -55,13 +55,13 @@ export class SceneManager {
   private animationFrameId: number | null = null;
   private isRunning: boolean = false;
   private visualizationController: VisualizationController | null = null;
-  private lastFrameTime: number = 0;
+  private lastFrameTime: number = performance.now();
   private readonly FRAME_BUDGET: number = 16; // Target 60fps (1000ms/60)
   private frameCount: number = 0;
   private lastFpsUpdate: number = 0;
   private currentFps: number = 60;
   private lastLoggedFps: number = 60; // Track last logged FPS
-  private readonly FPS_LOG_THRESHOLD = 1.0; // Only log when FPS changes by this amount
+  private readonly FPS_LOG_THRESHOLD = 5.0; // Increased threshold to reduce log frequency
 
   private constructor(canvas: HTMLCanvasElement) {
     logger.log('Initializing SceneManager');
@@ -205,20 +205,39 @@ export class SceneManager {
     this.sceneGrid = gridHelper;
   }
 
+  // Debounce function to limit how often a function is called
+  private debounce(func: Function, wait: number): (...args: any[]) => void {
+    let timeout: number | null = null;
+    return (...args: any[]) => {
+      const later = () => {
+        timeout = null;
+        func(...args);
+      };
+      if (timeout !== null) {
+        window.clearTimeout(timeout);
+      }
+      timeout = window.setTimeout(later, wait);
+    };
+  }
+
   private handleResize(): void {
-    const width = window.innerWidth;
-    const height = window.innerHeight;
+    // Use requestAnimationFrame to ensure resize happens in the next frame
+    // This helps avoid layout thrashing and improves performance
+    requestAnimationFrame(() => {
+      const width = window.innerWidth;
+      const height = window.innerHeight;
 
-    this.camera.aspect = width / height;
-    this.camera.updateProjectionMatrix();
+      this.camera.aspect = width / height;
+      this.camera.updateProjectionMatrix();
 
-    this.renderer.setSize(width, height);
-    this.composer.setSize(width, height);
-    
-    // Update bloom resolution
-    if (this.bloomPass) {
-      this.bloomPass.resolution.set(width, height);
-    }
+      this.renderer.setSize(width, height);
+      this.composer.setSize(width, height);
+      
+      // Update bloom resolution
+      if (this.bloomPass) {
+        this.bloomPass.resolution.set(width, height);
+      }
+    });
   }
 
   public start(): void {
@@ -226,7 +245,11 @@ export class SceneManager {
     this.isRunning = true;
     
     // Start resource monitoring
-    resourceMonitor.startMonitoring();
+    resourceMonitor.startMonitoring(60000); // Increased monitoring interval to 60 seconds
+    
+    // Use debounced resize handler to avoid performance issues
+    window.removeEventListener('resize', this.handleResize.bind(this));
+    window.addEventListener('resize', this.debounce(this.handleResize.bind(this), 100));
     
     requestAnimationFrame(this.animate);
     logger.log('Scene rendering started');
@@ -252,20 +275,31 @@ export class SceneManager {
     logger.log('Scene rendering stopped');
   }
 
+  // Throttle function to limit execution frequency
+  private throttleFrameUpdates(timestamp: number): boolean {
+    // Skip frame if we're running too fast (trying to maintain ~60fps)
+    const elapsed = timestamp - this.lastFrameTime;
+    const minFrameTime = 16; // ~60fps
+    
+    if (elapsed < minFrameTime && this.currentFps > 60) {
+      return false; // Skip this frame
+    }
+    return true; // Process this frame
+  }
+
   private animate = (timestamp: number): void => {
     if (!this.isRunning) return;
 
     // Calculate FPS
     this.frameCount++;
     if (timestamp - this.lastFpsUpdate >= 1000) {
-      this.currentFps = (this.frameCount * 1000) / (timestamp - this.lastFpsUpdate);
+      const elapsed = timestamp - this.lastFpsUpdate;
+      this.currentFps = elapsed > 0 ? (this.frameCount * 1000) / elapsed : 60;
       this.frameCount = 0;
       this.lastFpsUpdate = timestamp;
 
       // Apply performance optimizations if FPS is low
-      if (this.currentFps < LOW_PERF_FPS_THRESHOLD) {
-        this.applyLowPerformanceOptimizations();
-      }
+      this.checkPerformance();
     }
 
     const deltaTime = timestamp - this.lastFrameTime;
@@ -284,6 +318,17 @@ export class SceneManager {
     }
   }
 
+  private checkPerformance(): void {
+    // Apply performance optimizations if FPS is low
+    if (this.currentFps < LOW_PERF_FPS_THRESHOLD) {
+      this.applyLowPerformanceOptimizations();
+    } else if (this.currentFps > 80) {
+      // If FPS is very high, we might be wasting resources
+      // Consider throttling updates to save battery/CPU
+      this.throttleFrameUpdates(performance.now());
+    }
+  }
+
   private render = (deltaTime?: number): void => {
     const startTime = performance.now();
 
@@ -298,7 +343,7 @@ export class SceneManager {
       }
 
       if (this.visualizationController) {
-        this.visualizationController.update(deltaTime || 0);
+        this.visualizationController.update(Math.min(deltaTime || 0, 33)); // Cap deltaTime to avoid large jumps
       }
 
       const preRenderTime = performance.now();
@@ -574,7 +619,7 @@ export class SceneManager {
     // Log optimization application only when FPS changes significantly
     const fpsDiff = Math.abs(this.currentFps - this.lastLoggedFps);
     if (fpsDiff >= this.FPS_LOG_THRESHOLD) {
-      logger.debug('Applied low performance optimizations', createDataMetadata({
+      logger.info('Applied low performance optimizations', createDataMetadata({
         fps: this.currentFps.toFixed(1)
       }));
       this.lastLoggedFps = this.currentFps;

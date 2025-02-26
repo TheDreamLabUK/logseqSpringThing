@@ -106,7 +106,11 @@ export class WebSocketService {
 
     public connect(): Promise<void> {
         if (this.connectionState !== ConnectionState.DISCONNECTED) {
-            logger.warn('WebSocket already connected or connecting');
+            // Only log this at debug level instead of warn to reduce log spam
+            if (debugState.isWebsocketDebugEnabled()) {
+                logger.debug('WebSocket already connected or connecting');
+            }
+            
             // If already connecting, return a promise that resolves when connected
             if (this.connectionState === ConnectionState.CONNECTING) {
                 return new Promise((resolve) => {
@@ -190,9 +194,11 @@ export class WebSocketService {
 
         this.ws.onerror = (event: Event): void => {
             logger.error('WebSocket error:', createDataMetadata(event));
-            if (this.ws?.readyState === WebSocket.CLOSED) {
-                this.handleReconnect();
-            }
+            // Don't call handleReconnect here, let onclose handle it
+            // This prevents duplicate reconnection attempts when both error and close events fire
+            // if (this.ws?.readyState === WebSocket.CLOSED) {
+            //     this.handleReconnect();
+            // }
         };
 
         this.ws.onclose = (event: CloseEvent): void => {

@@ -226,7 +226,7 @@ Directories:
 
 # Project Codebase
 
-Generated: Tue 25 Feb 14:20:12 GMT 2025
+Generated: Wed 26 Feb 11:10:40 GMT 2025
 
 ## Project Structure
 
@@ -1490,14 +1490,14 @@ system:
     retry_delay: 5
   websocket:
     binary_chunk_size: 2048
-    binary_update_rate: 60
+    binary_update_rate: 15
     binary_message_version: 1
     compression_enabled: false
     compression_threshold: 512
     heartbeat_interval: 10000
     heartbeat_timeout: 30000
     max_connections: 1000
-    max_message_size: 100485760
+    max_message_size: 10485760
     reconnect_attempts: 3
     reconnect_delay: 3000
     update_rate: 90
@@ -1514,12 +1514,12 @@ system:
     enable_request_validation: true
     session_timeout: 3600
   debug:
-    enabled: false
-    enable_data_debug: false
-    enable_websocket_debug: false
+    enabled: true
+    enable_data_debug: true
+    enable_websocket_debug: true
     log_binary_headers: false
-    log_full_json: false
-    log_level: warn
+    log_full_json: true
+    log_level: info
     log_format: json
 xr:
   mode: inline
@@ -2651,11 +2651,25 @@ fi
                 "IPv4Address": "172.19.0.6/16",
                 "IPv6Address": ""
             },
+            "0609371822f1a14904388c96eaeb318060fc70a69d9c935fd99b70c3f74a3a9e": {
+                "Name": "cloudflared-tunnel",
+                "EndpointID": "f943766402e3a7d9e819be6b49d22c419bb1ce66c70b76441d73b53b88edf7c8",
+                "MacAddress": "02:42:ac:13:00:0b",
+                "IPv4Address": "172.19.0.11/16",
+                "IPv6Address": ""
+            },
             "37236cd15a632531557445eceb52798043a3c05aeac3e621a1b44a97b325abb4": {
                 "Name": "ragflow-server",
                 "EndpointID": "14559c2ca7a236a11494c18af4efc366169efd9c6bc96cc0e7205027efe55529",
                 "MacAddress": "02:42:ac:13:00:07",
                 "IPv4Address": "172.19.0.7/16",
+                "IPv6Address": ""
+            },
+            "3aedaf025f32e094cec9172872306facd78422b40f84f74bcbcf27b0a6d357f8": {
+                "Name": "logseq-xr-webxr",
+                "EndpointID": "35fe04de1f929be39de68673ac5e6f9c4dc0cdfdd29a9b8ee93f03de929d2e96",
+                "MacAddress": "02:42:ac:13:00:0c",
+                "IPv4Address": "172.19.0.12/16",
                 "IPv6Address": ""
             },
             "3be454562b9e9cb29c8baaa366180266040b65ee6e4f49b2a2d574823ed1ce6c": {
@@ -2665,25 +2679,11 @@ fi
                 "IPv4Address": "172.19.0.2/16",
                 "IPv6Address": ""
             },
-            "47106bcd9d196c54cb3f9e46fd594f26312fd48159fccf345c87a42ace34386a": {
-                "Name": "logseq-xr-webxr",
-                "EndpointID": "9701c62479cf10fe2cb205238e2333d911cd09fa270eae820cf6d80327c487e6",
-                "MacAddress": "02:42:ac:13:00:0c",
-                "IPv4Address": "172.19.0.12/16",
-                "IPv6Address": ""
-            },
             "6f29e52e755469407f276c8296b30e93e939cd4fb971c861a6391f9f7c3b6e16": {
                 "Name": "ragflow-mysql",
                 "EndpointID": "654c07ea7d9d5fc00918d71bcf5d0df1a029fefc2587e036ffca8f4660f95961",
                 "MacAddress": "02:42:ac:13:00:05",
                 "IPv4Address": "172.19.0.5/16",
-                "IPv6Address": ""
-            },
-            "705be9c4fd07e7f2f2453e2b167632079684523232b3546d42ed5fbf4d013711": {
-                "Name": "cloudflared-tunnel",
-                "EndpointID": "64588bfc1c91cbb47718249e94ad923b152b0c11f9aa77bc902f9396f0bd66e4",
-                "MacAddress": "02:42:ac:13:00:0b",
-                "IPv4Address": "172.19.0.11/16",
                 "IPv6Address": ""
             },
             "8b7cea10b14ce843b477c50ab0f47c3c606494e101acaaf074d75481d9c65f80": {
@@ -3501,7 +3501,57 @@ pub struct GraphQuery {
 
 pub async fn get_graph_data(state: web::Data<AppState>) -> impl Responder {
     info!("Received request for graph data");
+    
+    // Make sure the GPU layout is calculated before sending data
+    if let Some(gpu_compute) = &state.graph_service.get_gpu_compute().await {
+        let mut graph = state.graph_service.get_graph_data_mut().await;
+        let mut node_map = state.graph_service.get_node_map_mut().await;
+        
+        // Get physics settings
+        let settings = state.settings.read().await;
+        let physics_settings = settings.visualization.physics.clone();
+        
+        // Create simulation parameters
+        let params = crate::models::simulation_params::SimulationParams {
+            iterations: physics_settings.iterations,
+            spring_strength: physics_settings.spring_strength,
+            repulsion: physics_settings.repulsion_strength,
+            damping: physics_settings.damping,
+            max_repulsion_distance: physics_settings.repulsion_distance,
+            viewport_bounds: physics_settings.bounds_size,
+            mass_scale: physics_settings.mass_scale,
+            boundary_damping: physics_settings.boundary_damping,
+            enable_bounds: physics_settings.enable_bounds,
+            time_step: 0.016,
+            phase: crate::models::simulation_params::SimulationPhase::Dynamic,
+            mode: crate::models::simulation_params::SimulationMode::Remote,
+        };
+        
+        // Calculate graph layout using GPU
+        info!("Processing graph layout with GPU before sending to client");
+        if let Err(e) = crate::services::graph_service::GraphService::calculate_layout(
+            gpu_compute, &mut graph, &mut node_map, &params
+        ).await {
+            warn!("Error calculating graph layout: {}", e);
+        }
+        
+        // Drop locks
+        drop(graph);
+        drop(node_map);
+    } else {
+        info!("GPU compute not available, sending graph without GPU processing");
+    }
+    
     let graph = state.graph_service.get_graph_data_mut().await;
+    
+    // Log position data to debug zero positions
+    if !graph.nodes.is_empty() {
+        // Log a few nodes for debugging
+        for (i, node) in graph.nodes.iter().take(3).enumerate() {
+            debug!("Node {}: id={}, pos=[{:.3},{:.3},{:.3}]", 
+                i, node.id, node.data.position[0], node.data.position[1], node.data.position[2]);
+        }
+    }
     
     debug!("Preparing graph response with {} nodes and {} edges",
         graph.nodes.len(),
@@ -3522,6 +3572,48 @@ pub async fn get_paginated_graph_data(
     query: web::Query<GraphQuery>,
 ) -> impl Responder {
     info!("Received request for paginated graph data with params: {:?}", query);
+    
+    // Ensure GPU layout is calculated before sending first page of data
+    if query.page.unwrap_or(1) == 1 {
+        if let Some(gpu_compute) = &state.graph_service.get_gpu_compute().await {
+            let mut graph = state.graph_service.get_graph_data_mut().await;
+            let mut node_map = state.graph_service.get_node_map_mut().await;
+            
+            // Get physics settings
+            let settings = state.settings.read().await;
+            let physics_settings = settings.visualization.physics.clone();
+            
+            // Create simulation parameters
+            let params = crate::models::simulation_params::SimulationParams {
+                iterations: physics_settings.iterations,
+                spring_strength: physics_settings.spring_strength,
+                repulsion: physics_settings.repulsion_strength,
+                damping: physics_settings.damping,
+                max_repulsion_distance: physics_settings.repulsion_distance,
+                viewport_bounds: physics_settings.bounds_size,
+                mass_scale: physics_settings.mass_scale,
+                boundary_damping: physics_settings.boundary_damping,
+                enable_bounds: physics_settings.enable_bounds,
+                time_step: 0.016,
+                phase: crate::models::simulation_params::SimulationPhase::Dynamic,
+                mode: crate::models::simulation_params::SimulationMode::Remote,
+            };
+            
+            // Calculate graph layout using GPU
+            info!("Processing paginated graph layout with GPU before sending to client");
+            if let Err(e) = crate::services::graph_service::GraphService::calculate_layout(
+                gpu_compute, &mut graph, &mut node_map, &params
+            ).await {
+                warn!("Error calculating graph layout for paginated data: {}", e);
+            }
+            
+            // Drop locks
+            drop(graph);
+            drop(node_map);
+        } else {
+            info!("GPU compute not available, sending paginated graph without GPU processing");
+        }
+    }
 
     // Convert to 0-based indexing internally
     let page = query.page.map(|p| p.saturating_sub(1)).unwrap_or(0);
@@ -4671,7 +4763,7 @@ use tokio::sync::RwLock;
 
 use crate::app_state::AppState;
 use crate::utils::binary_protocol;
-use crate::utils::socket_flow_messages::{BinaryNodeData, PingMessage, PongMessage};
+use crate::utils::socket_flow_messages::{BinaryNodeData, PingMessage, PongMessage, Message};
 
 pub struct SocketFlowServer {
     app_state: Arc<AppState>,
@@ -4731,7 +4823,7 @@ impl Actor for SocketFlowServer {
     type Context = ws::WebsocketContext<Self>;
 
     fn started(&mut self, ctx: &mut Self::Context) {
-        info!("[WebSocket] Client connected from {:?}", ctx.address());
+        info!("[WebSocket] Client connected successfully");
 
         // Send simple connection established message
         let response = serde_json::json!({
@@ -4775,77 +4867,95 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
                                 }
                             }
                             Some("requestInitialData") => {
+                                info!("Received request for position updates");
                                 let app_state = self.app_state.clone();
                                 
                                 ctx.run_interval(self.update_interval, move |act, ctx| {
                                     let app_state_clone = app_state.clone();
 
                                     let fut = async move {
+                                        debug!("[WebSocket] Interval tick - fetching node positions");
                                         let raw_nodes = app_state_clone
                                             .graph_service
                                             .get_node_positions()
                                             .await;
 
-                                        if !raw_nodes.is_empty() {
-                                            let should_debug = if let Ok(settings) = app_state_clone.settings.try_read() {
-                                                settings.system.debug.enabled && 
-                                                settings.system.debug.enable_websocket_debug
-                                            } else {
-                                                false
-                                            };
-
-                                            if should_debug {
-                                                debug!("Processing binary update for {} nodes", raw_nodes.len());
-                                            }
-
-                                            let mut nodes = Vec::with_capacity(raw_nodes.len());
-                                            for node in raw_nodes {
-                                                if let Ok(node_id) = node.id.parse::<u32>() {
-                                                    nodes.push((node_id, BinaryNodeData {
-                                                        position: node.data.position,
-                                                        velocity: node.data.velocity,
-                                                        mass: node.data.mass,
-                                                        flags: node.data.flags,
-                                                        padding: node.data.padding,
-                                                    }));
-                                                }
-                                            }
-
-                                            if should_debug {
-                                                debug!("Encoding binary update with {} nodes", nodes.len());
-                                            }
-
-                                            let data = binary_protocol::encode_node_data(&nodes);
-
-                                            if should_debug {
-                                                debug!("Binary message size: {} bytes", data.len());
-                                            }
-                                            
-                                            // Enhanced logging for production debugging
-                                            if !nodes.is_empty() {
-                                                let node_count = nodes.len();
-                                                let first_node = &nodes[0];
-                                                info!(
-                                                    "Sending binary update: {} nodes, first node: id={}, pos=[{:.2},{:.2},{:.2}], size={} bytes",
-                                                    node_count,
-                                                    first_node.0,
-                                                    first_node.1.position[0],
-                                                    first_node.1.position[1],
-                                                    first_node.1.position[2],
-                                                    data.len()
-                                                );
-                                            }
-                                            
-                                            Some(data)
-                                        } else {
-                                            None
+                                        // Always log essential position updates, regardless of debug settings
+                                        let node_count = raw_nodes.len();
+                                        if node_count == 0 {
+                                            debug!("[WebSocket] No nodes to send! Empty graph data."); return None;
                                         }
+
+                                                                if node_count > 0 {
+                    debug!("[WebSocket] Processing binary update for {} nodes", node_count);
+                                        }
+
+                                        // Check if detailed debugging should be enabled
+                                        let detailed_debug = if let Ok(settings) = app_state_clone.settings.try_read() {
+                                            settings.system.debug.enabled && 
+                                            settings.system.debug.enable_websocket_debug
+                                        } else {
+                                            false
+                                        };
+
+                                        let mut nodes = Vec::with_capacity(raw_nodes.len());
+                                        for node in raw_nodes {
+                                            if let Ok(node_id) = node.id.parse::<u32>() {
+                                                nodes.push((node_id, BinaryNodeData {
+                                                    position: node.data.position,
+                                                    velocity: node.data.velocity,
+                                                    mass: node.data.mass,
+                                                    flags: node.data.flags,
+                                                    padding: node.data.padding,
+                                                }));
+                                            }
+                                        }
+
+                                        if detailed_debug {
+                                            debug!("Encoding binary update with {} nodes", nodes.len());
+                                        }
+
+                                        // Only generate binary data if we have nodes to send
+                                        if nodes.is_empty() {
+                                            return None;
+
+                                        
+                   }                     let data = binary_protocol::encode_node_data(&nodes);
+                                        
+                                        if detailed_debug {
+                                            debug!("[WebSocket] Encoded binary data: {} bytes for {} nodes", data.len(), nodes.len());
+                                            debug!("Binary message size: {} bytes", data.len());
+                                            
+                                            // Log details about a few sample nodes to track position changes
+                                                                                          for i in 0..std::cmp::min(3, node_count) {
+    let node_count = nodes.len();
+                                          let node = &nodes[i];
+                                                debug!(
+                                                  "Node {}/{}: id={}, pos=[{:.2},{:.2},{:.2}], vel=[{:.2},{:.2},{:.2}]",
+                                                  i+1, node_count,
+                                                  node.0,
+                                                  node.1.position[0], node.1.position[1], node.1.position[2],
+                                                  node.1.velocity[0], node.1.velocity[1], node.1.velocity[2]
+                                                );
+                                              }
+                                            }
+                                      
+                                    debug!("[WebSocket] Sending binary update of {} bytes to client", data.len());
+                                        Some(data)
                                     };
 
                                     let fut = fut.into_actor(act);
                                     ctx.spawn(fut.map(|maybe_binary_data, act, ctx| {
                                         if let Some(binary_data) = maybe_binary_data {
                                             let final_data = act.maybe_compress(binary_data);
+                                            
+                                            // Only log if detailed debugging is enabled
+                                            if let Ok(settings) = act.settings.try_read() {
+                                                if settings.system.debug.enabled && settings.system.debug.enable_websocket_debug {
+                                                    debug!("[WebSocket] Final binary update sent to client: {} bytes", final_data.len());
+                                                }
+                                            }
+                                            
                                             ctx.binary(final_data);
                                         }
                                     }));
@@ -4857,6 +4967,19 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
                                 });
                                 if let Ok(msg_str) = serde_json::to_string(&response) {
                                     ctx.text(msg_str);
+                                }
+                            }
+                            Some("enableRandomization") => {
+                                if let Ok(enable_msg) = serde_json::from_value::<serde_json::Value>(msg.clone()) {
+                                    let enabled = enable_msg.get("enabled").and_then(|e| e.as_bool()).unwrap_or(false);
+                                    info!("Client requested to {} node position randomization", if enabled { "enable" } else { "disable" });
+                                    
+                                    // Set randomization enabled status in graph service
+                                    let app_state_clone = self.app_state.clone();
+                                    actix::spawn(async move {
+                                        app_state_clone.graph_service.set_randomization_enabled(enabled).await;
+                                        info!("Node position randomization is now {}", if enabled { "enabled" } else { "disabled" });
+                                    });
                                 }
                             }
                             _ => {
@@ -4901,18 +5024,33 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
                                 for (node_id, node_data) in nodes_vec {
                                     let node_id_str = node_id.to_string();
                                     if let Some(node) = node_map.get_mut(&node_id_str) {
+                                        // Explicitly preserve existing mass and flags
+                                        let original_mass = node.data.mass;
+                                        let original_flags = node.data.flags;
+                                        
                                         node.data.position = node_data.position;
                                         node.data.velocity = node_data.velocity;
+                                        // Explicitly restore mass and flags after updating position/velocity
+                                        node.data.mass = original_mass;
+                                        node.data.flags = original_flags; // Restore flags needed for GPU code
                                     // Mass, flags, and padding are not overwritten as they're only 
                                     // present on the server side and not transmitted over the wire
                                     }
                                 }
+                                
+                                // Add more detailed debug information for mass maintenance
+                                debug!("Updated node positions from binary data, preserving server-side mass values");
 
                                 // Update graph nodes with new positions/velocities from the map, preserving other properties
                                 for node in &mut graph.nodes {
                                     if let Some(updated_node) = node_map.get(&node.id) {
+                                        // Explicitly preserve mass and flags before updating
+                                        let original_mass = node.data.mass;
+                                        let original_flags = node.data.flags;
                                         node.data.position = updated_node.data.position;
                                         node.data.velocity = updated_node.data.velocity;
+                                        node.data.mass = original_mass; // Restore mass after updating
+                                        node.data.flags = original_flags; // Restore flags after updating
                                     }
                                 }
                             };
@@ -8183,6 +8321,8 @@ pub struct GraphService {
     graph_data: Arc<RwLock<GraphData>>,
     node_map: Arc<RwLock<HashMap<String, Node>>>,
     gpu_compute: Option<Arc<RwLock<GPUCompute>>>,
+    debug_randomize_timer: Arc<RwLock<Option<tokio::time::Instant>>>,
+    randomization_enabled: Arc<RwLock<bool>>,
 }
 
 impl GraphService {
@@ -8190,11 +8330,15 @@ impl GraphService {
         // Get physics settings
         let physics_settings = settings.read().await.visualization.physics.clone();
         let node_map = Arc::new(RwLock::new(HashMap::new()));
-        
+        let debug_randomize_timer = Arc::new(RwLock::new(None));
+        let randomization_enabled = Arc::new(RwLock::new(false));
+
         let graph_service = Self {
             graph_data: Arc::new(RwLock::new(GraphData::default())),
             node_map: node_map.clone(),
             gpu_compute,
+            randomization_enabled: randomization_enabled.clone(),
+            debug_randomize_timer: debug_randomize_timer.clone(),
         };
         
         // Start simulation loop
@@ -8216,6 +8360,9 @@ impl GraphService {
                 phase: SimulationPhase::Dynamic,
                 mode: SimulationMode::Remote,
             };
+            
+            let debug_randomize_timer = debug_randomize_timer.clone();
+            let randomization_enabled = randomization_enabled.clone();
 
             loop {
                 // Update positions
@@ -8230,6 +8377,30 @@ impl GraphService {
                 }
                 drop(graph); // Release locks
                 drop(node_map);
+               
+                // Periodically randomize node positions to prevent stabilization
+                // This ensures the graph keeps moving and doesn't get stuck in local minima
+                // It helps users discover new connections and relationships in the data
+                let mut timer_guard = debug_randomize_timer.write().await;
+                let now = tokio::time::Instant::now();
+                
+                // Only check for randomization if it's enabled
+                let is_randomization_enabled = *randomization_enabled.read().await;
+                let should_trigger = is_randomization_enabled && if let Some(last_time) = *timer_guard {
+                    // Check if 30 seconds have passed since the last randomization
+                    now.duration_since(last_time).as_secs() >= 30 // 5-minute interval instead of 10 seconds
+                } else {
+                    // Initialize timer on first run
+                    *timer_guard = Some(now);
+                    false
+                };
+                
+                if should_trigger {
+                    // Log the randomization event
+                    info!("Randomizing node positions for graph exploration");
+                    Self::randomize_node_positions(&graph_data).await;
+                    *timer_guard = Some(now); // Reset timer after randomization
+                }
 
                 // Sleep for ~16ms (60fps)
                 tokio::time::sleep(tokio::time::Duration::from_millis(16)).await;
@@ -8390,16 +8561,21 @@ impl GraphService {
     fn initialize_random_positions(graph: &mut GraphData) {
         let mut rng = rand::thread_rng();
         let node_count = graph.nodes.len() as f32;
-        let initial_radius = 0.5; // Half of viewport bounds
+        let initial_radius = 3.0; // Increasing radius for better visibility
         let golden_ratio = (1.0 + 5.0_f32.sqrt()) / 2.0;
+        
+        // Log the initialization process
+        info!("Initializing random positions for {} nodes with radius {}", 
+             node_count, initial_radius);
+        info!("First 5 node IDs: {}", graph.nodes.iter().take(5).map(|n| n.id.clone()).collect::<Vec<_>>().join(", "));
         
         // Use Fibonacci sphere distribution for more uniform initial positions
         for (i, node) in graph.nodes.iter_mut().enumerate() {
-            let i = i as f32;
+            let i_float: f32 = i as f32;
             
             // Calculate Fibonacci sphere coordinates
-            let theta = 2.0 * std::f32::consts::PI * i / golden_ratio;
-            let phi = (1.0 - 2.0 * (i + 0.5) / node_count).acos();
+            let theta = 2.0 * std::f32::consts::PI * i_float / golden_ratio;
+            let phi = (1.0 - 2.0 * (i_float + 0.5) / node_count).acos();
             
             // Add slight randomness to prevent exact overlaps
             let r = initial_radius * (0.9 + rng.gen_range(0.0..0.2));
@@ -8412,7 +8588,57 @@ impl GraphService {
             node.set_vx(0.0);
             node.set_vy(0.0);
             node.set_vz(0.0);
+
+            // Log first 5 nodes for debugging
+            if i < 5 {
+                info!("Initialized node {}: id={}, pos=[{:.3},{:.3},{:.3}]", 
+                     i, 
+                     node.id,
+                     node.data.position[0], 
+                     node.data.position[1], 
+                     node.data.position[2]);
+            }
         }
+    }
+    
+    /// Randomizes positions of all nodes for debugging purposes
+    pub async fn randomize_node_positions(graph_data: &Arc<RwLock<GraphData>>) -> usize {
+        let mut graph = graph_data.write().await;
+        let node_count = graph.nodes.len();
+        let mut rng = rand::thread_rng();
+        
+        // Log more information about what we're doing
+        info!("Position randomization: started for {} nodes", node_count);
+        
+        // Use a cube distribution for randomization to encourage exploration
+        // This differs from the initialization distribution (Fibonacci sphere) to ensure movement
+        for (i, node) in graph.nodes.iter_mut().enumerate() {
+            let old_pos = [node.data.position[0], node.data.position[1], node.data.position[2]];
+            
+            // Generate random position with a wider range (-2, -2, -2) to (2, 2, 2) 
+            // to make randomization more visible
+            node.set_x(rng.gen_range(-2.0..2.0)); 
+            node.set_y(rng.gen_range(-2.0..2.0));
+            node.set_z(rng.gen_range(-2.0..2.0));
+            
+            // Add a bit of initial velocity to make nodes move visibly
+            // This helps confirm the randomization is working
+            node.set_vx(rng.gen_range(-0.1..0.1));
+            node.set_vy(rng.gen_range(-0.1..0.1));
+            node.set_vz(rng.gen_range(-0.1..0.1));
+            
+            
+            // Log a sample of node movements 
+            if i < 3 || i == node_count - 1 {
+                info!("Node {}: id={}, old_pos=[{:.3},{:.3},{:.3}], new_pos=[{:.3},{:.3},{:.3}]",
+                    i, node.id, 
+                    old_pos[0], old_pos[1], old_pos[2],
+                    node.data.position[0], node.data.position[1], node.data.position[2]);
+            }
+        }
+        info!("Position randomization: completed for {} nodes", node_count);
+        
+        node_count
     }
 
     pub async fn calculate_layout(
@@ -8494,27 +8720,15 @@ impl GraphService {
     pub async fn get_node_positions(&self) -> Vec<Node> {
         let graph = self.graph_data.read().await;
         
-        // Always log this information to diagnose issues with node movement
-        log::info!("get_node_positions: returning {} nodes", graph.nodes.len());
+        // Only log node position data in debug level
+        log::debug!("get_node_positions: returning {} nodes", graph.nodes.len());
         
-        // Log first 5 nodes (or fewer if there are less)
-        let sample_size = std::cmp::min(5, graph.nodes.len());
-        if sample_size > 0 {
-            log::info!("Node position sample:");
-            
-            for (i, node) in graph.nodes.iter().take(sample_size).enumerate() {
-                log::info!(
-                    "Node {}: id={}, pos=[{:.3},{:.3},{:.3}], vel=[{:.3},{:.3},{:.3}], mass={}, flags={}",
-                    i,
-                    node.id,
-                    node.data.position[0], node.data.position[1], node.data.position[2],
-                    node.data.velocity[0], node.data.velocity[1], node.data.velocity[2],
-                    node.data.mass,
-                    node.data.flags
-                );
+        if log::log_enabled!(log::Level::Debug) {
+            // Log first 5 nodes only when debug is enabled
+            let sample_size = std::cmp::min(5, graph.nodes.len());
+            if sample_size > 0 {
+                log::debug!("Node position sample: {} samples of {} nodes", sample_size, graph.nodes.len());
             }
-            
-            log::info!("End of node position sample (showing {} of {} nodes)", sample_size, graph.nodes.len());
         }
         graph.nodes.clone()
     }
@@ -8525,6 +8739,17 @@ impl GraphService {
 
     pub async fn get_node_map_mut(&self) -> tokio::sync::RwLockWriteGuard<'_, HashMap<String, Node>> {
         self.node_map.write().await
+    }
+    
+    // Add method to get GPU compute instance
+    pub async fn get_gpu_compute(&self) -> Option<Arc<RwLock<GPUCompute>>> {
+        self.gpu_compute.clone()
+    }
+    
+    // Set randomization enabled status
+    pub async fn set_randomization_enabled(&self, enabled: bool) {
+        let mut status = self.randomization_enabled.write().await;
+        *status = enabled;
     }
 
     pub async fn update_node_positions(&self, updates: Vec<(u32, Node)>) -> Result<(), Error> {
@@ -10145,14 +10370,26 @@ use std::io::Cursor;
 use crate::utils::socket_flow_messages::BinaryNodeData;
 
 pub fn encode_node_data(nodes: &[(u32, BinaryNodeData)]) -> Vec<u8> {
-    if log::log_enabled!(log::Level::Debug) {
-        log::debug!("Encoding {} nodes", nodes.len());
+    // Only log non-empty node transmissions to reduce spam
+    if nodes.len() > 0 {
+        log::info!("Encoding {} nodes for binary transmission", nodes.len());
     }
+    
     let mut buffer = Vec::new();
     
+    // Log some samples of the encoded data
+    let sample_size = std::cmp::min(3, nodes.len());
+    if sample_size > 0 {
+        log::info!("Sample of nodes being encoded:");
+    }
+    
     for (node_id, node) in nodes {
-        if log::log_enabled!(log::Level::Debug) {
-            log::debug!("Encoding node {}: pos={:?}, vel={:?}", node_id, node.position, node.velocity);
+        // Log the first few nodes for debugging
+        if sample_size > 0 && *node_id < sample_size as u32 {
+            log::info!("Encoding node {}: pos=[{:.3},{:.3},{:.3}], vel=[{:.3},{:.3},{:.3}]", 
+                node_id, 
+                node.position[0], node.position[1], node.position[2],
+                node.velocity[0], node.velocity[1], node.velocity[2]);
         }
         // Write node ID (u32)
         buffer.write_u32::<LittleEndian>(*node_id).unwrap();
@@ -10170,20 +10407,27 @@ pub fn encode_node_data(nodes: &[(u32, BinaryNodeData)]) -> Vec<u8> {
         // Mass, flags, and padding are no longer sent to the client
         // They are still available in the BinaryNodeData struct for server-side use
     }
-    
-    if log::log_enabled!(log::Level::Debug) {
-        log::debug!("Encoded data size: {} bytes", buffer.len());
+
+    // Only log non-empty node transmissions to reduce spam
+    if nodes.len() > 0 {
+        log::info!("Encoded binary data: {} bytes for {} nodes", buffer.len(), nodes.len());
     }
     buffer
 }
 
 pub fn decode_node_data(data: &[u8]) -> Result<Vec<(u32, BinaryNodeData)>, String> {
     let mut cursor = Cursor::new(data);
-    if log::log_enabled!(log::Level::Debug) {
-        log::debug!("Decoding binary data of size: {} bytes", data.len());
-    }
+    
+    // Always log this for visibility
+    log::info!("Decoding binary data of size: {} bytes", data.len());
 
     let mut updates = Vec::new();
+    
+    // Set up sample logging
+    let max_samples = 3;
+    let mut samples_logged = 0;
+    
+    log::info!("Starting binary data decode, expecting nodes with position and velocity data");
     
     while cursor.position() < data.len() as u64 {
         // Each update is 28 bytes: 4 (nodeId) + 12 (position) + 12 (velocity)
@@ -10211,17 +10455,20 @@ pub fn decode_node_data(data: &[u8]) -> Result<Vec<(u32, BinaryNodeData)>, Strin
         let vel_z = cursor.read_f32::<LittleEndian>()
             .map_err(|e| format!("Failed to read velocity[2]: {}", e))?;
 
-        // Set default values for mass, flags, and padding
-        // These are no longer received from the client but still used server-side
+        // Default mass value - this will be replaced with the actual mass from the node_map
+        // in socket_flow_handler.rs for accurate physics calculations
         let mass = 100u8; // Default mass
         let flags = 0u8;  // Default flags
         let padding = [0u8, 0u8]; // Default padding
         
-        if log::log_enabled!(log::Level::Debug) {
-            log::debug!("Decoded node {}: pos=({},{},{}), vel=({},{},{})", 
-                node_id, pos_x, pos_y, pos_z, vel_x, vel_y, vel_z);
+        // Log the first few decoded items as samples
+        if samples_logged < max_samples {
+            log::info!(
+                "Decoded node {}: pos=[{:.3},{:.3},{:.3}], vel=[{:.3},{:.3},{:.3}]", 
+                node_id, pos_x, pos_y, pos_z, vel_x, vel_y, vel_z
+            );
+            samples_logged += 1;
         }
-        
         updates.push((node_id, BinaryNodeData {
             position: [pos_x, pos_y, pos_z],
             velocity: [vel_x, vel_y, vel_z],
@@ -10231,9 +10478,7 @@ pub fn decode_node_data(data: &[u8]) -> Result<Vec<(u32, BinaryNodeData)>, Strin
         }));
     }
     
-    if log::log_enabled!(log::Level::Debug) {
-        log::debug!("Successfully decoded {} nodes", updates.len());
-    }
+    log::info!("Successfully decoded {} nodes from binary data", updates.len());
     Ok(updates)
 }
 
@@ -11010,14 +11255,14 @@ utils/compute_forces.cu
 #include <cuda_runtime.h>
 
 extern "C" {
-    // Updated struct that matches what's transmitted over the wire
+    // This struct matches the Rust BinaryNodeData struct
     struct BinaryNodeData {
         float position[3];    // 12 bytes - matches Rust [f32; 3]
         float velocity[3];    // 12 bytes - matches Rust [f32; 3]
-        // These fields are used internally on the server but not transmitted over the wire
-        // Default values will be used in the kernel
-        unsigned char mass;   // 1 byte - matches Rust u8 (defaults to 128 - mid-range value)
-        unsigned char flags;  // 1 byte - matches Rust u8 (defaults to 3 - active + connected)
+        // These fields are used internally but not transmitted over the wire
+        // The binary_protocol.rs sets default values when decoding
+        unsigned char mass;   // 1 byte - matches Rust u8
+        unsigned char flags;  // 1 byte - matches Rust u8
         unsigned char padding[2]; // 2 bytes - matches Rust padding
     };
 
@@ -11039,14 +11284,16 @@ extern "C" {
         float3 vel = make_float3(nodes[idx].velocity[0], nodes[idx].velocity[1], nodes[idx].velocity[2]);
         
         // Convert mass from u8 to float (0-1 range)
-        // Use a default mass value if mass is 0 (not transmitted over wire)
+        // When decoding from the wire, binary_protocol.rs sets mass=100
+        // But to be safe, we still handle the case where mass=0
         float mass;
         if (nodes[idx].mass == 0) {
             mass = 0.5f; // Default mid-range mass value
         } else {
             mass = (nodes[idx].mass + 1.0f) / 256.0f; // Add 1 to avoid zero mass
         }
-        bool is_active = true; // All nodes are considered active by default
+        
+        bool is_active = true; // All nodes are active by default
         
         if (!is_active) return; // Skip inactive nodes
         
@@ -11054,10 +11301,10 @@ extern "C" {
         for (int j = 0; j < num_nodes; j++) {
             if (j == idx) continue;
             
-            // All nodes are active by default
-            // if (!(nodes[j].flags & 0x1)) continue; // Skip inactive nodes - no longer needed
-            // Use default mass if not set
+            // All nodes are considered active by default
+            // We no longer check the flags since all nodes are treated as active
             
+            // Handle other node's mass the same way
             float other_mass = (nodes[j].mass == 0) ? 0.5f : (nodes[j].mass + 1.0f) / 256.0f;
             
             float3 other_pos = make_float3(
@@ -11081,7 +11328,6 @@ extern "C" {
                 );
                 
                 // Apply spring forces to all nodes by default
-                // Previously checked for connected flag: (nodes[idx].flags & 0x2) && (nodes[j].flags & 0x2)
                 {
                     // Use natural length of 1.0 to match world units
                     float spring_force = spring_k * (dist - 1.0f);
@@ -11135,9 +11381,10 @@ extern "C" {
                 total_force.z * total_force.z
             );
             printf("Node %d: force_mag=%f, pos=(%f,%f,%f), vel=(%f,%f,%f)\n",
-                idx, force_mag,
+                idx, force_mag, 
                 pos.x, pos.y, pos.z,
                 vel.x, vel.y, vel.z);
+            printf("Node %d: mass=%f\n", idx, mass);
         }
     }
 }
@@ -11164,6 +11411,7 @@ utils/compute_forces.ptx
 )
 ;
 .global .align 1 .b8 $str[55] = {78, 111, 100, 101, 32, 37, 100, 58, 32, 102, 111, 114, 99, 101, 95, 109, 97, 103, 61, 37, 102, 44, 32, 112, 111, 115, 61, 40, 37, 102, 44, 37, 102, 44, 37, 102, 41, 44, 32, 118, 101, 108, 61, 40, 37, 102, 44, 37, 102, 44, 37, 102, 41, 10};
+.global .align 1 .b8 $str$1[18] = {78, 111, 100, 101, 32, 37, 100, 58, 32, 109, 97, 115, 115, 61, 37, 102, 10};
 
 .visible .entry compute_forces_kernel(
 	.param .u64 compute_forces_kernel_param_0,
@@ -11182,9 +11430,9 @@ utils/compute_forces.ptx
 	.reg .pred 	%p<21>;
 	.reg .b16 	%rs<5>;
 	.reg .f32 	%f<209>;
-	.reg .b32 	%r<21>;
-	.reg .f64 	%fd<8>;
-	.reg .b64 	%rd<14>;
+	.reg .b32 	%r<22>;
+	.reg .f64 	%fd<9>;
+	.reg .b64 	%rd<16>;
 
 
 	mov.u64 	%SPL, __local_depot0;
@@ -11234,19 +11482,19 @@ $L__BB0_3:
 	and.b32  	%r2, %r9, 1;
 	setp.eq.s32 	%p4, %r9, 1;
 	mov.f32 	%f195, 0f00000000;
-	mov.u32 	%r20, 0;
+	mov.u32 	%r21, 0;
 	mov.f32 	%f194, %f195;
 	mov.f32 	%f193, %f195;
 	@%p4 bra 	$L__BB0_19;
 
-	sub.s32 	%r19, %r9, %r2;
+	sub.s32 	%r20, %r9, %r2;
 	mov.f32 	%f195, 0f00000000;
-	mov.u32 	%r20, 0;
+	mov.u32 	%r21, 0;
 
 $L__BB0_6:
-	mul.wide.s32 	%rd7, %r20, 28;
+	mul.wide.s32 	%rd7, %r21, 28;
 	add.s64 	%rd3, %rd1, %rd7;
-	setp.eq.s32 	%p5, %r20, %r1;
+	setp.eq.s32 	%p5, %r21, %r1;
 	@%p5 bra 	$L__BB0_12;
 
 	ld.global.u8 	%rs2, [%rd3+24];
@@ -11299,7 +11547,7 @@ $L__BB0_9:
 	sub.ftz.f32 	%f195, %f195, %f126;
 
 $L__BB0_12:
-	add.s32 	%r15, %r20, 1;
+	add.s32 	%r15, %r21, 1;
 	setp.eq.s32 	%p9, %r15, %r1;
 	@%p9 bra 	$L__BB0_18;
 
@@ -11353,19 +11601,19 @@ $L__BB0_15:
 	sub.ftz.f32 	%f195, %f195, %f148;
 
 $L__BB0_18:
-	add.s32 	%r20, %r20, 2;
-	add.s32 	%r19, %r19, -2;
-	setp.ne.s32 	%p13, %r19, 0;
+	add.s32 	%r21, %r21, 2;
+	add.s32 	%r20, %r20, -2;
+	setp.ne.s32 	%p13, %r20, 0;
 	@%p13 bra 	$L__BB0_6;
 
 $L__BB0_19:
 	setp.eq.s32 	%p14, %r2, 0;
 	@%p14 bra 	$L__BB0_26;
 
-	setp.eq.s32 	%p15, %r20, %r1;
+	setp.eq.s32 	%p15, %r21, %r1;
 	@%p15 bra 	$L__BB0_26;
 
-	mul.wide.s32 	%rd8, %r20, 28;
+	mul.wide.s32 	%rd8, %r21, 28;
 	add.s64 	%rd9, %rd1, %rd8;
 	add.s64 	%rd4, %rd9, 24;
 	ld.global.u8 	%rs4, [%rd9+24];
@@ -11486,6 +11734,26 @@ $L__BB0_28:
 	);
 	ld.param.b32 	%r17, [retval0+0];
 	} // callseq 0
+	st.local.u32 	[%rd11], %r16;
+	cvt.ftz.f64.f32 	%fd8, %f184;
+	st.local.f64 	[%rd11+8], %fd8;
+	mov.u64 	%rd14, $str$1;
+	cvta.global.u64 	%rd15, %rd14;
+	{ // callseq 1, 0
+	.reg .b32 temp_param_reg;
+	.param .b64 param0;
+	st.param.b64 	[param0+0], %rd15;
+	.param .b64 param1;
+	st.param.b64 	[param1+0], %rd10;
+	.param .b32 retval0;
+	call.uni (retval0), 
+	vprintf, 
+	(
+	param0, 
+	param1
+	);
+	ld.param.b32 	%r18, [retval0+0];
+	} // callseq 1
 
 $L__BB0_30:
 	ret;
@@ -11939,6 +12207,9 @@ pub enum Message {
     
     #[serde(rename = "pong")]
     Pong { timestamp: u64 },
+    
+    #[serde(rename = "enableRandomization")]
+    EnableRandomization { enabled: bool },
 }
 
 ----
@@ -13966,6 +14237,8 @@ websocket-diagnostics.ts
 
 import { buildWsUrl } from './core/api';
 import pako from 'pako';
+import { debugState } from './core/debugState';
+import { logger } from './core/logger';
 
 // Configuration
 const CONFIG = {
@@ -14403,7 +14676,9 @@ export const WebSocketDiagnostics = {
 
 // Auto-run diagnostics if in development mode
 if (process.env.NODE_ENV === 'development') {
-  console.log('WebSocket diagnostics tool loaded. Call WebSocketDiagnostics.runDiagnostics() to start diagnostics.');
+  if (debugState.isWebsocketDebugEnabled()) {
+    logger.debug('WebSocket diagnostics tool loaded. Call WebSocketDiagnostics.runDiagnostics() to start diagnostics.');
+  }
 } 
 ----
 README-websocket-diagnostics.md
@@ -15507,6 +15782,9 @@ websocket-test.ts
  * 4. Check the console for detailed logs about the WebSocket connection
  */
 
+import { debugState } from './core/debugState';
+import { logger, createDataMetadata } from './core/logger';
+
 // Configuration
 const TEST_TIMEOUT_MS = 10000; // 10 seconds
 const PING_INTERVAL_MS = 2000; // 2 seconds
@@ -15514,29 +15792,32 @@ const CONNECTION_ATTEMPTS = 3;  // Number of connection attempts
 
 // Utility functions
 function log(message: string, data?: any) {
-  const timestamp = new Date().toISOString();
-  if (data) {
-    console.log(`[${timestamp}] ${message}`, data);
-  } else {
-    console.log(`[${timestamp}] ${message}`);
+  if (debugState.isWebsocketDebugEnabled()) {
+    if (data) {
+      logger.debug(`[WebsocketTest] ${message}`, createDataMetadata(data));
+    } else {
+      logger.debug(`[WebsocketTest] ${message}`);
+    }
   }
 }
 
 function error(message: string, err?: any) {
+  // Error logs are always shown regardless of debug state
   const timestamp = new Date().toISOString();
   if (err) {
-    console.error(`[${timestamp}] ERROR: ${message}`, err);
+    console.error(`[${timestamp}] ${message}`, err);
   } else {
-    console.error(`[${timestamp}] ERROR: ${message}`);
+    console.error(`[${timestamp}] ${message}`);
   }
 }
 
 function warn(message: string, data?: any) {
+  // Warning logs are always shown regardless of debug state
   const timestamp = new Date().toISOString();
   if (data) {
-    console.warn(`[${timestamp}] WARNING: ${message}`, data);
+    console.warn(`[${timestamp}] ${message}`, data);
   } else {
-    console.warn(`[${timestamp}] WARNING: ${message}`);
+    console.warn(`[${timestamp}] ${message}`);
   }
 }
 
@@ -16963,6 +17244,8 @@ import { FontLoader, Font } from 'three/examples/jsm/loaders/FontLoader.js';
 import { NodeMetadata } from '../types/metadata';
 import { Settings } from '../types/settings';
 import { platformManager } from '../platform/platformManager';
+import { debugState } from '../core/debugState';
+import { logger } from '../core/logger';
 
 type GeometryWithBoundingBox = THREE.BufferGeometry & {
     boundingBox: THREE.Box3 | null;
@@ -17050,7 +17333,9 @@ export class MetadataVisualizer {
             await new Promise(resolve => setTimeout(resolve, 1000));
             try {
                 await this.attemptFontLoad();
-                console.log('Font loaded successfully after retry');
+                if (debugState.isShaderDebugEnabled()) {
+                    logger.shader('Font loaded successfully after retry');
+                }
                 break;
             } catch (error) {
                 console.error(`Font load attempt ${this.fontLoadAttempts} failed:`, error);
@@ -19836,6 +20121,7 @@ export function transformNodeData(node: any): Node {
 core/resourceMonitor.ts
 import { createLogger } from './logger';
 import { WebGLRenderer, Texture, BufferGeometry, Material } from 'three';
+import { debugState } from './debugState';
 
 const logger = createLogger('ResourceMonitor');
 
@@ -19852,7 +20138,7 @@ export class ResourceMonitor {
   
   private monitoringEnabled: boolean = false;
   private monitorInterval: any = null;
-  private monitorFrequency: number = 10000; // 10 seconds
+  private monitorFrequency: number = 30000; // 30 seconds (increased from 10)
   
   private constructor() {
     // Private constructor for singleton
@@ -20049,16 +20335,19 @@ export class ResourceMonitor {
    * Log current resource usage
    */
   public logResourceUsage(): void {
-    logger.info('WebGL resource usage', {
-      renderers: this.renderers.size,
-      textures: this.textures.size,
-      geometries: this.geometries.size,
-      materials: this.materials.size,
-      memory: this.getMemoryUsage()
-    });
-    
-    // Check for potential issues
-    this.checkForIssues();
+    // Only log detailed resource usage if performance debugging is enabled
+    if (debugState.isPerformanceDebugEnabled()) {
+      logger.performance('WebGL resource usage', {
+        renderers: this.renderers.size,
+        textures: this.textures.size,
+        geometries: this.geometries.size,
+        materials: this.materials.size,
+        memory: this.getMemoryUsage()
+      });
+      
+      // Check for potential issues
+      this.checkForIssues();
+    }
   }
   
   /**
@@ -20298,7 +20587,6 @@ import {
     Camera,
     Group,
     Texture,
-    ShaderMaterial,
     BufferGeometry,
     NearestFilter,
     ClampToEdgeWrapping,
@@ -20307,10 +20595,10 @@ import {
     Mesh,
     Vector3,
     Color,
-    NormalBlending,
     MeshBasicMaterial,
     BufferAttribute
 } from 'three';
+import { debugState } from '../core/debugState';
 import { createLogger } from '../core/logger';
 import { LabelSettings } from '../types/settings';
 import { platformManager } from '../platform/platformManager';
@@ -20319,102 +20607,8 @@ import '../types/three-ext.d';
 
 const logger = createLogger('UnifiedTextRenderer');
 
-// Vertex shader for SDF text rendering with improved billboarding
-const vertexShader = `
-#version 300 es
-// Three.js automatically provides cameraPosition uniform
-
-in vec3 position;
-in vec2 uv;
-in vec3 instancePosition;
-in vec4 instanceColor;
-in float instanceScale;
-
-out vec2 vUv;
-out vec4 vColor;
-out float vScale;
-out float vViewDistance;
-
-void main() {
-    vUv = uv;
-    vColor = instanceColor;
-    vScale = instanceScale;
-
-    // Scale the position first
-    vec3 scale = vec3(instanceScale);
-    vec3 vertexPosition = position * scale;
-    
-    // Billboard calculation
-    vec3 up = vec3(0.0, 1.0, 0.0);
-    vec3 forward = normalize(cameraPosition - instancePosition);
-    vec3 right = normalize(cross(up, forward));
-    up = normalize(cross(forward, right));
-    
-    mat4 billboardMatrix = mat4(
-        vec4(right, 0.0),
-        vec4(up, 0.0),
-        vec4(forward, 0.0),
-        vec4(0.0, 0.0, 0.0, 1.0)
-    );
-    
-    vertexPosition = (billboardMatrix * vec4(vertexPosition, 1.0)).xyz;
-    vertexPosition += instancePosition;
-    
-    vec4 mvPosition = modelViewMatrix * vec4(vertexPosition, 1.0);
-    vViewDistance = -mvPosition.z;  // Distance from camera
-    gl_Position = projectionMatrix * mvPosition;
-}
-`;
-
-// Fragment shader for SDF text rendering with improved quality
-const fragmentShader = `
-#version 300 es
-precision highp float;
-
-uniform sampler2D fontAtlas;
-uniform float sdfThreshold;
-uniform float sdfSpread;
-uniform vec3 outlineColor;
-uniform float outlineWidth;
-uniform float fadeStart;
-uniform float fadeEnd;
-
-in vec2 vUv;
-in vec4 vColor;
-in float vScale;
-in float vViewDistance;
-out vec4 fragColor;
-
-float median(float r, float g, float b) {
-    return max(min(r, g), min(max(r, g), b));
-}
-
-void main() {
-    vec3 fontSample = texture(fontAtlas, vUv).rgb;
-    float sigDist = median(fontSample.r, fontSample.g, fontSample.b);
-    
-    // Dynamic threshold based on distance
-    float distanceScale = smoothstep(fadeEnd, fadeStart, vViewDistance);
-    float dynamicThreshold = sdfThreshold * (1.0 + (1.0 - distanceScale) * 0.1);
-    float dynamicSpread = sdfSpread * (1.0 + (1.0 - distanceScale) * 0.2);
-    
-    // Improved antialiasing
-    float alpha = smoothstep(dynamicThreshold - dynamicSpread, 
-                           dynamicThreshold + dynamicSpread, 
-                           sigDist);
-                           
-    float outline = smoothstep(dynamicThreshold - outlineWidth - dynamicSpread,
-                             dynamicThreshold - outlineWidth + dynamicSpread,
-                             sigDist);
-    
-    // Apply distance-based fade
-    alpha *= distanceScale;
-    outline *= distanceScale;
-    
-    vec4 color = mix(vec4(outlineColor, outline), vColor, alpha);
-    fragColor = color;
-}
-`;
+// Note: Using fallback basic material approach instead of custom shaders
+// to avoid WebGL shader compilation issues
 
 interface LabelInstance {
     id: string;
@@ -20429,7 +20623,7 @@ export class UnifiedTextRenderer {
     private scene: Scene;
     private camera: Camera;
     private group: Group;
-    private material: ShaderMaterial | MeshBasicMaterial;
+    private material: MeshBasicMaterial;
     private geometry: BufferGeometry;
     private mesh: Mesh;
     private fontAtlas: Texture | null;
@@ -20444,12 +20638,16 @@ export class UnifiedTextRenderer {
         this.scene = scene;
         this.camera = camera;
         this.settings = settings;
-        logger.info('UnifiedTextRenderer settings:', {
-            enableLabels: this.settings.enableLabels,
-            desktopFontSize: this.settings.desktopFontSize,
-            textColor: this.settings.textColor,
-            billboardMode: this.settings.billboardMode
-        });
+        
+        // Only log detailed settings when data debugging is enabled
+        if (debugState.isDataDebugEnabled()) {
+            logger.info('UnifiedTextRenderer settings:', {
+                enableLabels: this.settings.enableLabels,
+                desktopFontSize: this.settings.desktopFontSize,
+                textColor: this.settings.textColor,
+                billboardMode: this.settings.billboardMode
+            });
+        }
 
         this.labels = new Map();
         this.maxInstances = 2000;
@@ -20461,63 +20659,31 @@ export class UnifiedTextRenderer {
         
         this.fontAtlasGenerator = new SDFFontAtlasGenerator(2048, 8, 16);
 
-        this.logger.info('Initializing material with settings:', {
-            billboardMode: settings.billboardMode,
-            sdfThreshold: 0.45,
-            sdfSpread: 0.15,
-            outlineColor: settings.textOutlineColor,
-            outlineWidth: 0.2,
-            fadeStart: 10.0,
-            fadeEnd: 100.0,
-            depthTest: true
-        });
-        
-        // Initialize the material with error handling
-        try {
-            this.material = new ShaderMaterial({
-                vertexShader,
-                fragmentShader,
-                // Using WebGL1 compatibility by default
-                uniforms: {
-                    fontAtlas: { value: null },
-                    sdfThreshold: { value: 0.45 },
-                    sdfSpread: { value: 0.15 },
-                    cameraPosition: { value: this.camera.position },
-                    outlineColor: { value: new Color(settings.textOutlineColor) },
-                    outlineWidth: { value: 0.2 },
-                    fadeStart: { value: 10.0 },
-                    fadeEnd: { value: 100.0 }
-                },
-                transparent: true,
-                depthTest: true,
-                depthWrite: false,
-                blending: NormalBlending
-            });
-
-            // Force shader compilation
-            this.material.needsUpdate = true;
-        } catch (error) {
-            logger.error('Failed to initialize text shader:', {
-                error,
-                message: error instanceof Error ? error.message : String(error),
-                stack: error instanceof Error ? error.stack : undefined
-            });
-            // Fallback to basic material
-            this.material = new MeshBasicMaterial({ 
-                color: new Color(this.settings.textColor),
+        // Only log initialization details when debugging is enabled
+        if (debugState.isDataDebugEnabled()) {
+            this.logger.info('Initializing material with basic settings', {
+                color: this.settings.textColor,
                 transparent: true
             });
         }
         
+        // Use basic material instead of shader material to avoid WebGL issues
+        this.material = new MeshBasicMaterial({ 
+            color: new Color(this.settings.textColor),
+            transparent: true
+        });
+        
         this.geometry = this.createInstancedGeometry();
         
-        // Debug log instance buffer setup
-        this.logger.info('Created instanced geometry:', {
-            maxInstances: this.maxInstances,
-            instancePosition: this.geometry.getAttribute('instancePosition')?.count,
-            instanceColor: this.geometry.getAttribute('instanceColor')?.count,
-            instanceScale: this.geometry.getAttribute('instanceScale')?.count
-        });
+        // Only log geometry details when debugging is enabled
+        if (debugState.isDataDebugEnabled()) {
+            this.logger.info('Created instanced geometry:', {
+                maxInstances: this.maxInstances,
+                instancePosition: this.geometry.getAttribute('instancePosition')?.count,
+                instanceColor: this.geometry.getAttribute('instanceColor')?.count,
+                instanceScale: this.geometry.getAttribute('instanceScale')?.count
+            });
+        }
         
         this.mesh = new Mesh(this.geometry, this.material);
         this.group.add(this.mesh);
@@ -20533,13 +20699,16 @@ export class UnifiedTextRenderer {
     
     private async initializeFontAtlas(): Promise<void> {
         try {
-            this.logger.info('Starting font atlas generation with params:', {
-                fontFamily: 'Arial',
-                fontSize: 32,
-                textureSize: (this.fontAtlasGenerator as any)['atlasSize'],
-                padding: (this.fontAtlasGenerator as any)['padding'],
-                spread: (this.fontAtlasGenerator as any)['spread']
-            });
+            // Only log font atlas generation details when debugging is enabled
+            if (debugState.isDataDebugEnabled()) {
+                this.logger.info('Starting font atlas generation with params:', {
+                    fontFamily: 'Arial',
+                    fontSize: 32,
+                    textureSize: (this.fontAtlasGenerator as any)['atlasSize'],
+                    padding: (this.fontAtlasGenerator as any)['padding'],
+                    spread: (this.fontAtlasGenerator as any)['spread']
+                });
+            }
 
             const { texture } = await this.fontAtlasGenerator.generateAtlas(
                 'Arial',
@@ -20553,23 +20722,23 @@ export class UnifiedTextRenderer {
             texture.wrapT = ClampToEdgeWrapping;
             
             this.fontAtlas = texture;
-            if (this.material instanceof ShaderMaterial && this.material.uniforms) {
-                this.material.uniforms.fontAtlas.value = texture;
-            }
             
-            this.logger.info('Font atlas generated successfully:', {
-                textureWidth: (texture as any).image?.width,
-                textureHeight: (texture as any).image?.height,
-                format: (texture as any).format,
-                mipmaps: (texture as any).mipmaps?.length || 0
-            });
+            // Only log atlas generation completion when debugging is enabled
+            if (debugState.isDataDebugEnabled()) {
+                this.logger.info('Font atlas generated successfully:', {
+                    textureWidth: (texture as any).image?.width,
+                    textureHeight: (texture as any).image?.height,
+                    format: (texture as any).format,
+                    mipmaps: (texture as any).mipmaps?.length || 0
+                });
+            }
             
             // Update all existing labels
             this.labels.forEach((label, id) => {
                 this.updateLabel(id, label.text, label.position, label.color);
             });
         } catch (error) {
-            logger.error('Failed to initialize font atlas:', {
+            this.logger.error('Failed to initialize font atlas:', {
                 error,
                 message: error instanceof Error ? error.message : String(error),
                 stack: error instanceof Error ? error.stack : undefined
@@ -20622,13 +20791,26 @@ export class UnifiedTextRenderer {
     }
     
     public updateLabel(id: string, text: string, position: Vector3, color?: Color): void {
-        this.logger.debug('Updating label:', {
-            id,
-            text,
-            position,
-            color: color ? [(color as any).r, (color as any).g, (color as any).b] : undefined,
-            hasAtlas: !!this.fontAtlas
-        });
+        // Skip empty text (reduces debug spam)
+        if (!text || text.trim() === '') {
+            return;
+        }
+        
+        // Skip positions with all zeros (likely uninitialized nodes)
+        if (position.x === 0 && position.y === 0 && position.z === 0) {
+            return;
+        }
+        
+        // Only log when debug is enabled
+        if (debugState.isDataDebugEnabled()) {
+            this.logger.debug('Updating label:', {
+                id,
+                text,
+                position,
+                color: color ? [(color as any).r, (color as any).g, (color as any).b] : undefined,
+                hasAtlas: !!this.fontAtlas
+            });
+        }
         
         let label = this.labels.get(id);
         
@@ -20647,12 +20829,14 @@ export class UnifiedTextRenderer {
                 visible: true
             };
             
-            this.logger.debug('Created new label instance:', {
-                id,
-                instanceIndex: this.currentInstanceCount,
-                position,
-                color: color ? [(color as any).r, (color as any).g, (color as any).b] : undefined
-            });
+            if (debugState.isDataDebugEnabled()) {
+                this.logger.debug('Created new label instance:', {
+                    id,
+                    instanceIndex: this.currentInstanceCount,
+                    position,
+                    color: color ? [(color as any).r, (color as any).g, (color as any).b] : undefined
+                });
+            }
             
             this.labels.set(id, label);
             this.currentInstanceCount++;
@@ -20670,13 +20854,15 @@ export class UnifiedTextRenderer {
         const colors = (this.geometry.getAttribute('instanceColor') as InstancedBufferAttribute).array as Float32Array;
         const scales = (this.geometry.getAttribute('instanceScale') as InstancedBufferAttribute).array as Float32Array;
 
-        // Debug log instance updates
-        this.logger.debug('Updating instance attributes:', {
-            currentInstanceCount: this.currentInstanceCount,
-            labelsCount: this.labels.size,
-            positionsLength: positions.length,
-            colorsLength: colors.length
-        });
+        if (debugState.isDataDebugEnabled()) {
+            // Debug log instance updates
+            this.logger.debug('Updating instance attributes:', {
+                currentInstanceCount: this.currentInstanceCount,
+                labelsCount: this.labels.size,
+                positionsLength: positions.length,
+                colorsLength: colors.length
+            });
+        }
         
         let index = 0;
         this.labels.forEach(label => {
@@ -20697,11 +20883,13 @@ export class UnifiedTextRenderer {
         // Set instance count on the mesh
         (this.mesh as any).instanceCount = this.currentInstanceCount;
         
-        // Debug log final state
-        this.logger.debug('Instance attributes updated:', {
-            instanceCount: (this.mesh as any).instanceCount,
-            visibleLabels: index
-        });
+        if (debugState.isDataDebugEnabled()) {
+            // Debug log final state
+            this.logger.debug('Instance attributes updated:', {
+                instanceCount: (this.mesh as any).instanceCount,
+                visibleLabels: index
+            });
+        }
         
         (this.geometry.getAttribute('instancePosition') as InstancedBufferAttribute).needsUpdate = true;
         (this.geometry.getAttribute('instanceColor') as InstancedBufferAttribute).needsUpdate = true;
@@ -20734,11 +20922,6 @@ export class UnifiedTextRenderer {
                 this.updateLabel(id, label.text, label.position, label.color);
             }
         });
-        
-        // Update camera uniforms
-        if (this.material instanceof ShaderMaterial) {
-            this.material.uniforms.cameraPosition.value.copy(this.camera.position);
-        }
     }
 
     private isLabelVisible(label: LabelInstance): boolean {
@@ -20830,6 +21013,8 @@ export class SceneManager {
   private frameCount: number = 0;
   private lastFpsUpdate: number = 0;
   private currentFps: number = 60;
+  private lastLoggedFps: number = 60; // Track last logged FPS
+  private readonly FPS_LOG_THRESHOLD = 1.0; // Only log when FPS changes by this amount
 
   private constructor(canvas: HTMLCanvasElement) {
     logger.log('Initializing SceneManager');
@@ -21339,10 +21524,14 @@ export class SceneManager {
       }
     }
 
-    // Log optimization application
-    logger.debug('Applied low performance optimizations', createDataMetadata({
-      fps: this.currentFps.toFixed(1)
-    }));
+    // Log optimization application only when FPS changes significantly
+    const fpsDiff = Math.abs(this.currentFps - this.lastLoggedFps);
+    if (fpsDiff >= this.FPS_LOG_THRESHOLD) {
+      logger.debug('Applied low performance optimizations', createDataMetadata({
+        fps: this.currentFps.toFixed(1)
+      }));
+      this.lastLoggedFps = this.currentFps;
+    }
   }
 }
 
@@ -22022,16 +22211,17 @@ export class MetadataVisualizer {
                 ? `${(metadata.fileSize / 1024).toFixed(1)}KB`
                 : `${metadata.fileSize}B`;
 
-        this.logger.info(`Creating metadata label #${this.labelUpdateCount}:`, {
-            nodeId,
-            metadata: {
-                name: metadata.name,
-                fileSize: fileSizeFormatted,
-                nodeSize: metadata.nodeSize,
-                hyperlinkCount: metadata.hyperlinkCount,
-                position: metadata.position
-            }
+        // Only log detailed metadata at trace level (effectively disabling it)
+        if (debugState.isDataDebugEnabled()) {
+            this.logger.debug(`Creating metadata label #${this.labelUpdateCount}:`, {
+                nodeId,
+                metadata: {
+                    name: metadata.name,
+                    fileSize: fileSizeFormatted,
+                    nodeSize: metadata.nodeSize
+                }
         });
+        }
 
         // Create text labels using UnifiedTextRenderer
         const labelTexts = [
@@ -22053,12 +22243,12 @@ export class MetadataVisualizer {
                     position,
                     new Color(this.settings.visualization.labels.textColor)
                 );
-                
-                this.logger.debug(`Created label ${index+1}/3 for node ${nodeId}`, {
-                    labelId,
-                    text,
-                    position
-                });
+                // Only log when specific data debugging is enabled
+                if (debugState.isDataDebugEnabled()) {
+                    this.logger.debug(`Created label ${index+1}/3 for node ${nodeId}`, {
+                        labelId
+                    });
+                }
             } catch (error) {
                 this.logger.error(`Failed to create label ${index+1}/3 for node ${nodeId}`, {
                     error: error instanceof Error ? error.message : String(error),
@@ -22113,12 +22303,10 @@ export class MetadataVisualizer {
                 const labelId = `${nodeId}-label-${index}`;
                 const labelPosition = position.clone().add(new Vector3(0, yOffset, 0));
                 this.textRenderer.updateLabel(labelId, '', labelPosition); // Text content remains unchanged
-                
-                if (index === 0 && debugState.isEnabled()) {
-                    this.logger.debug('Updating label position:', {
-                        nodeId,
-                        position: labelPosition
-                    });
+                // Only log position updates when specific data debugging is enabled
+                if (index === 0 && debugState.isDataDebugEnabled()) {
+                    this.logger.debug(`Updating label position for ${nodeId}`, {
+                        labelId });
                 }
                 
                 // Only show debug helpers when debug is enabled
@@ -22176,13 +22364,17 @@ export class MetadataVisualizer {
      * Update all metadata labels - called once per frame
      */
     public update(_camera: PerspectiveCamera): void {
-        // Very occasionally log how many labels we're tracking
-        if (Math.random() < 0.01 && this.metadataGroups.size > 0) {
-            this.logger.info('Metadata update stats:', {
-                labelsCount: this.metadataGroups.size,
-                renderingEnabled: this.settings.visualization.labels.enableLabels,
-                visibilityThreshold: this.visibilityThreshold
-            });
+        // Very rarely log how many labels we're tracking
+        if (Math.random() < 0.0001 && this.metadataGroups.size > 0) {
+            // Only log if data debugging is specifically enabled
+            if (debugState.isDataDebugEnabled()) {
+                this.logger.debug('Metadata update stats:', {
+                    labelsCount: this.metadataGroups.size,
+                    enabled: this.settings.visualization.labels.enableLabels,
+                    rendererActive: this.textRenderer !== null,
+                    visibilityThreshold: this.visibilityThreshold
+                });
+            }
         }
         // The text renderer handles label positions and visibility
     }
@@ -22533,6 +22725,12 @@ export class VisualizationController {
             this.websocketService.sendMessage({ 
                 type: 'requestInitialData',
                 timestamp: Date.now()
+            });
+            
+            // Initially disable randomization until data loading is finished
+            this.websocketService.sendMessage({
+                type: 'enableRandomization',
+                enabled: false
             });
         }).catch(error => {
             logger.error('Failed to connect WebSocket:', createErrorMetadata(error));
@@ -23845,6 +24043,7 @@ export class NodeManagerFacade implements NodeManagerInterface {
     private interactionManager: NodeInteractionManager;
     private isInitialized: boolean = false;
     private frameCount: number = 0;
+    private readonly LOG_FREQUENCY = 10; // Only log every 10 frames
     private nodeIndices: Map<string, string> = new Map();
     private tempVector = new Vector3();
 
@@ -24024,7 +24223,10 @@ export class NodeManagerFacade implements NodeManagerInterface {
                         this.metadataManager.updatePosition(id, this.tempVector);
                     }
                 });
-                logger.debug('Updated metadata positions');
+                // Only log position updates every LOG_FREQUENCY frames to reduce log spam
+                if (this.frameCount % this.LOG_FREQUENCY === 0) {
+                    logger.debug('Updated metadata positions');
+                }
             }
             this.frameCount++;
         } catch (error) {
@@ -26234,14 +26436,14 @@ import { createLogger } from '../core/utils';
 import { API_ENDPOINTS } from '../core/constants';
 import { debugState } from '../core/debugState';
 
+import { WebSocketService as WebSocketServiceClass } from '../websocket/websocketService';
 const logger = createLogger('GraphDataManager');
 
 // Constants
 const FLOATS_PER_NODE = 6;     // x, y, z, vx, vy, vz
 
-interface WebSocketService {
-  send(data: ArrayBuffer): void;
-}
+// Interface for the internal WebSocket service used by this class
+type InternalWebSocketService = { send(data: ArrayBuffer): void };
 
 // Extend Edge interface to include id
 interface EdgeWithId extends Edge {
@@ -26252,7 +26454,7 @@ export class GraphDataManager {
   private static instance: GraphDataManager;
   private nodes: Map<string, Node>;
   private edges: Map<string, EdgeWithId>;
-  private wsService!: WebSocketService;  // Use definite assignment assertion
+  private wsService!: InternalWebSocketService;  // Use definite assignment assertion
   private metadata: Record<string, any>;
   private updateListeners: Set<(data: GraphData) => void>;
   private positionUpdateListeners: Set<(positions: Float32Array) => void>;
@@ -26275,7 +26477,7 @@ export class GraphDataManager {
   /**
    * Configure the WebSocket service for binary updates
    */
-  public setWebSocketService(service: WebSocketService): void {
+  public setWebSocketService(service: InternalWebSocketService): void {
     this.wsService = service;
     logger.info('WebSocket service configured');
     
@@ -26363,6 +26565,14 @@ export class GraphDataManager {
       await new Promise(resolve => setTimeout(resolve, 100));
     }
     
+    // All pages are now loaded, enable randomization
+    try {
+      const websocketService = WebSocketServiceClass.getInstance();
+      logger.info(`Finished loading all ${totalPages} pages. Enabling server-side randomization.`);
+      websocketService.enableRandomization(true);
+    } catch (error) {
+      logger.warn('Failed to enable randomization after loading all pages:', error);
+    }
     logger.info(`Finished loading all ${totalPages} pages. Total nodes: ${this.nodes.size}, edges: ${this.edges.size}`);
   }
 
@@ -26461,6 +26671,13 @@ export class GraphDataManager {
       // Load remaining pages if any
       if (data.totalPages > 1) {
         await this.loadRemainingPages(data.totalPages, data.pageSize);
+      }
+      
+      // If there's only one page, enable randomization immediately
+      if (data.totalPages <= 1) {
+        const websocketService = WebSocketServiceClass.getInstance();
+        logger.info('Single page graph data loaded. Enabling server-side randomization.');
+        websocketService.enableRandomization(true);
       }
       
       logger.info('Initial graph data loaded successfully');
@@ -28181,7 +28398,10 @@ export class WebSocketService {
 
             // Send request for position updates after connection
             debugLog('Requesting position updates');
-            this.sendMessage({ type: 'request-initial-data' }); // Using kebab-case for API consistency
+            this.sendMessage({ type: 'requestInitialData' }); // Matching the server's camelCase type
+
+            // Randomization is disabled by default until client is ready
+            logger.info('WebSocket connection established. Randomization disabled by default.');
         };
 
         this.ws.onerror = (event: Event): void => {
@@ -28207,11 +28427,6 @@ export class WebSocketService {
         this.ws.onmessage = (event: MessageEvent) => {
             try {
                 if (event.data instanceof ArrayBuffer) {
-                    const byteSize = event.data.byteLength;
-                    logger.info('Received binary position update', createDataMetadata({
-                        byteSize,
-                        expectedNodeCount: Math.floor(byteSize / 28)
-                    }));
                     
                     this.handleBinaryMessage(event.data);
                 } else if (typeof event.data === 'string') {
@@ -28219,14 +28434,10 @@ export class WebSocketService {
                         const message = JSON.parse(event.data);
                         if (message.type === 'connection_established' || message.type === 'updatesStarted') {
                             logger.info('WebSocket message received:', createDataMetadata({
-                                type: message.type,
-                                details: message
+                                type: message.type
                             }));
-                        } else {
-                            logger.info('WebSocket message received:', createDataMetadata({
-                                type: message.type,
-                                message
-                            }));
+                        } else if (debugState.isWebsocketDebugEnabled()) {
+                            logger.debug('WebSocket message received:', message);
                         }
                     } catch (error) {
                         logger.error('Failed to parse WebSocket message:', createErrorMetadata(error));
@@ -28266,17 +28477,12 @@ export class WebSocketService {
     private handleBinaryMessage(buffer: ArrayBuffer): void {
         try {
             // Log raw buffer details before processing
-            logger.info('Processing binary data', createDataMetadata({ rawSize: buffer.byteLength, isCompressed: buffer.byteLength > 0 && buffer.byteLength % 28 !== 0 }));
-            if (debugState.isWebsocketDebugEnabled()) {
-                debugLog('Processing binary message:', createDataMetadata({ size: buffer.byteLength }));
-            }
+            const isCompressed = buffer.byteLength > 0 && buffer.byteLength % 28 !== 0;
 
             const decompressedBuffer = this.tryDecompress(buffer);
             if (debugState.isWebsocketDebugEnabled()) {
-                debugLog('After decompression:', createDataMetadata({ size: decompressedBuffer.byteLength }));
-            }
-            
-            // Each node update is 28 bytes (4 for id, 12 for position, 12 for velocity)
+                debugLog('Binary data processed:', createDataMetadata({ rawSize: buffer.byteLength, decompressedSize: decompressedBuffer.byteLength, isCompressed }));
+            }            
             if (!decompressedBuffer || decompressedBuffer.byteLength % 28 !== 0) {
                 // Enhanced error logging for production debugging
                 const errorDetails = {
@@ -28292,19 +28498,11 @@ export class WebSocketService {
 
             const dataView = new DataView(decompressedBuffer);
             const nodeCount = decompressedBuffer.byteLength / 28;
-            
-            // Enhanced logging for production debugging
-            if (nodeCount > 0 && (debugState.isWebsocketDebugEnabled() || nodeCount < 5)) {
-                const firstNodeId = dataView.getUint32(0, true);
-                const firstNodeX = dataView.getFloat32(4, true);
-                const firstNodeY = dataView.getFloat32(8, true);
-                const firstNodeZ = dataView.getFloat32(12, true);
-                logger.info('Binary update received:', createDataMetadata({
-                    nodeCount: nodeCount > 0 ? nodeCount : 'empty buffer',
-                    firstNode: { id: firstNodeId, x: firstNodeX, y: firstNodeY, z: firstNodeZ },
-                    bufferSize: decompressedBuffer.byteLength
-                }));
-            }
+
+            // Only log detailed information when debug is enabled
+            if (debugState.isWebsocketDebugEnabled()) {
+                debugLog('Binary update:', createDataMetadata({ nodeCount, bufferSize: decompressedBuffer.byteLength }));
+            }            
             
             if (debugState.isWebsocketDebugEnabled()) {
                 debugLog('Node count:', createDataMetadata({ count: nodeCount }));
@@ -28361,23 +28559,8 @@ export class WebSocketService {
                 logger.warn('Some nodes had invalid position/velocity values that were clamped');
             }
 
-            // Add summary of processed nodes
-            if (nodes.length > 0) {
-                logger.info('Node position summary:', createDataMetadata({
-                    count: nodes.length,
-                    sample: nodes.slice(0, Math.min(3, nodes.length)).map(n => ({ id: n.id, pos: vector3ToObject(n.position) }))
-                }));
-            }
-
             if (nodes.length > 0 && this.binaryMessageCallback) {
                 this.binaryMessageCallback(nodes);  // Send to NodeManagerFacade
-            } else {
-                if (debugState.isWebsocketDebugEnabled()) {
-                    debugLog('No nodes to process or no callback registered', createDataMetadata({
-                        nodesLength: nodes.length,
-                        hasCallback: !!this.binaryMessageCallback
-                    }));
-                }
             }
         } catch (error) {
             logger.error('Failed to process binary message:', createErrorMetadata(error));
@@ -28441,6 +28624,22 @@ export class WebSocketService {
         }
     }
 
+    /**
+     * Enable or disable server-side node position randomization
+     * This should only be called after the initial data loading is complete
+     * @param enabled Whether randomization should be enabled
+     */
+    public enableRandomization(enabled: boolean): void {
+        if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+            logger.warn('WebSocket not connected, cannot control randomization');
+            return;
+        }
+
+        logger.info(`${enabled ? 'Enabling' : 'Disabling'} server-side position randomization`);
+        this.sendMessage({ type: 'enableRandomization', enabled });
+    }
+    
+    
     public sendNodeUpdates(updates: NodeUpdate[]): void {
         if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
             logger.warn('WebSocket not connected, cannot send node updates');

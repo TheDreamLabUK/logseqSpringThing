@@ -3,7 +3,6 @@ import {
     Camera,
     Group,
     Texture,
-    ShaderMaterial,
     BufferGeometry,
     NearestFilter,
     ClampToEdgeWrapping,
@@ -12,7 +11,6 @@ import {
     Mesh,
     Vector3,
     Color,
-    NormalBlending,
     MeshBasicMaterial,
     BufferAttribute
 } from 'three';
