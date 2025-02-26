@@ -75,6 +75,11 @@ export class WebSocketService {
     private readonly MAX_POSITION = 1000.0;
     private readonly MAX_VELOCITY = 10.0;
 
+    // Add a debounce mechanism for node updates
+    private nodeUpdateQueue: NodeUpdate[] = [];
+    private nodeUpdateTimer: number | null = null;
+    private readonly NODE_UPDATE_DEBOUNCE_MS = 50; // 50ms debounce for node updates
+
     // Added a method to validate vector3 values without clamping
     private validateVector3(vec: Vector3, max: number): boolean {
         if (!isValidVector3(vec)) {
@@ -445,11 +450,39 @@ export class WebSocketService {
             return;
         }
 
-        // Limit to 2 nodes per update as per server requirements
+        // Add updates to queue
+        this.nodeUpdateQueue.push(...updates);
+        
+        // Debounce updates to prevent flooding the server
+        if (this.nodeUpdateTimer === null) {
+            this.nodeUpdateTimer = window.setTimeout(() => {
+                this.processNodeUpdateQueue();
+                this.nodeUpdateTimer = null;
+            }, this.NODE_UPDATE_DEBOUNCE_MS);
+        }
+    }
+    
+    private processNodeUpdateQueue(): void {
+        if (!this.ws || this.ws.readyState !== WebSocket.OPEN || this.nodeUpdateQueue.length === 0) {
+            this.nodeUpdateQueue = [];
+            return;
+        }
+        
+        // Get the most recent updates for each node ID (to avoid sending outdated positions)
+        const latestUpdates = new Map<string, NodeUpdate>();
+        for (const update of this.nodeUpdateQueue) {
+            latestUpdates.set(update.id, update);
+        }
+        
+        // Convert to array and limit to 2 nodes per update as per server requirements
+        let updates = Array.from(latestUpdates.values());
         if (updates.length > 2) {
-            logger.warn('Too many nodes in update, limiting to first 2');
+            debugLog('Too many nodes in update, limiting to first 2');
             updates = updates.slice(0, 2);
         }
+        
+        // Clear the queue
+        this.nodeUpdateQueue = [];
 
         const buffer = new ArrayBuffer(updates.length * 28);
         const dataView = new DataView(buffer);
@@ -499,6 +532,12 @@ export class WebSocketService {
         if (this.reconnectTimeout !== null) {
             window.clearTimeout(this.reconnectTimeout);
             this.reconnectTimeout = null;
+        }
+        
+        if (this.nodeUpdateTimer !== null) {
+            window.clearTimeout(this.nodeUpdateTimer);
+            this.nodeUpdateTimer = null;
+            this.nodeUpdateQueue = [];
         }
         
         if (this.ws) {

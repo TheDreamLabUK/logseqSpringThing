@@ -48,6 +48,15 @@ export class SettingsStore {
         }
 
         this.initializationPromise = (async () => {
+            // Start a timeout to ensure we don't wait forever for server settings
+            const timeoutPromise = new Promise<void>((_, reject) => {
+                setTimeout(() => {
+                    if (!this.settingsInitialized) {
+                        reject(new Error('Settings initialization timed out'));
+                    }
+                }, 5000); // 5 second timeout
+            });
+
             try {
                 // Start with default settings immediately to avoid waiting for server
                 this.settings = { ...defaultSettings };
@@ -64,9 +73,8 @@ export class SettingsStore {
                 this.initialized = true;
                 logger.info('SettingsStore initialized with defaults, will update from server asynchronously');
                 
-                // Now try to fetch settings from server in the background
-                // Try to fetch settings from server first
-                try {
+                // Create a promise for fetching server settings
+                const fetchServerSettings = async () => {
                     const settingsUrl = buildApiUrl(API_ENDPOINTS.SETTINGS_ROOT);
                     logger.info('Fetching settings from:', createMessageMetadata(settingsUrl));
                     const response = await fetch(settingsUrl);
@@ -100,17 +108,20 @@ export class SettingsStore {
                         logger.error('Response text:', createMessageMetadata(errorText));
                         throw new Error(`Failed to fetch server settings: ${response.statusText}. Details: ${errorText}`);
                     }
-                } catch (error) {
-                    // If server settings fail, fall back to defaults
-                    if (error instanceof Error) {
-                        logger.error('Full error:', createErrorMetadata(error));
-                    }
-                    logger.warn('Error loading server settings, falling back to defaults:', createErrorMetadata(error));
-                    // We already initialized with defaults, so just log the error
-                    // No need to reset settings or settingsOrigin
-                    // We'll keep using the defaults we already set
-                    logger.info('Continuing with default settings');
-                }
+                };
+
+                // Try to fetch settings from server in the background, but don't block initialization
+                // Race the fetch against a timeout to ensure we don't wait forever
+                Promise.race([fetchServerSettings(), timeoutPromise])
+                    .catch(error => {
+                        // If server settings fail, fall back to defaults
+                        if (error instanceof Error) {
+                            logger.error('Full error:', createErrorMetadata(error));
+                        }
+                        logger.warn('Error loading server settings, falling back to defaults:', createErrorMetadata(error));
+                        // We already initialized with defaults, so just log the error
+                        logger.info('Continuing with default settings');
+                    });
 
                 this.initialized = true;
                 logger.info('SettingsStore initialized with origin:', createMessageMetadata(this.settingsOrigin));
