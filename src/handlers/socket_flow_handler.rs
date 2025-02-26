@@ -229,13 +229,15 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
                             Some("enableRandomization") => {
                                 if let Ok(enable_msg) = serde_json::from_value::<serde_json::Value>(msg.clone()) {
                                     let enabled = enable_msg.get("enabled").and_then(|e| e.as_bool()).unwrap_or(false);
-                                    info!("Client requested to {} node position randomization", if enabled { "enable" } else { "disable" });
+                                    info!("Client requested to {} node position randomization (server-side randomization removed)", 
+                                         if enabled { "enable" } else { "disable" });
                                     
-                                    // Set randomization enabled status in graph service
-                                    let app_state_clone = self.app_state.clone();
+                                    // Server-side randomization has been removed, but we still acknowledge the client's request
+                                    // to maintain backward compatibility with existing clients
                                     actix::spawn(async move {
-                                        app_state_clone.graph_service.set_randomization_enabled(enabled).await;
-                                        info!("Node position randomization is now {}", if enabled { "enabled" } else { "disabled" });
+                                        // Log that we received the request but server-side randomization is no longer supported
+                                        info!("Node position randomization request acknowledged, but server-side randomization is no longer supported");
+                                        info!("Client-side randomization is now used instead");
                                     });
                                 }
                             }
