@@ -23,19 +23,19 @@ visualization:
     - 0.01
     quality: high
   physics:
-    attraction_strength: 0.05     # Increased from 0.01 to create stronger pull between connected nodes
-    bounds_size: 10.0             # Reduced from 30.0 to keep nodes closer together
-    collision_radius: 0.1         # Increased from 0.05 to prevent nodes from getting too close
-    damping: 0.9                  # Reduced from 0.95 to slow down movement more quickly
+    attraction_strength: 0.08     # Increased for better balance with repulsion
+    bounds_size: 15.0             # Set to align with center gravity implementation
+    collision_radius: 0.2         # Increased to prevent nodes from getting too close
+    damping: 0.95                 # Increased to reduce oscillation and improve stability
     enable_bounds: true
     enabled: true
     iterations: 100
-    max_velocity: 0.05            # Reduced from 0.1 to prevent rapid movement
-    repulsion_strength: 0.03      # Reduced from 0.08 to decrease pushing force
-    spring_strength: 0.1          # Increased from 0.03 to make edges pull harder
-    repulsion_distance: 0.3       # Reduced from 0.5 to limit repulsion range
+    max_velocity: 0.03            # Reduced to prevent rapid movement
+    repulsion_strength: 0.05      # Balanced with attraction
+    spring_strength: 0.1          # Increased to work with progressive spring implementation
+    repulsion_distance: 1.5       # Set to appropriate distance based on node size
     mass_scale: 1.0
-    boundary_damping: 0.8         # Reduced from 0.9 to slow nodes at boundaries
+    boundary_damping: 0.9         # Increased for better containment
   rendering:
     ambient_light_intensity: 0.41
     background_color: '#1a1a2e'

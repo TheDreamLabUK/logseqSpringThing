@@ -303,7 +303,7 @@ export class ModularControlPanel extends EventEmitter<ModularControlPanelEvents>
                 
                 // Call the visualization controller to randomize nodes
                 const controller = VisualizationController.getInstance();
-                controller.randomizeNodePositions(200); // Use a radius of 200 units
+                controller.randomizeNodePositions(10); // Use a smaller radius of 10 units to prevent explosion
                 
                 setTimeout(() => {
                     randomizeBtn.disabled = false;

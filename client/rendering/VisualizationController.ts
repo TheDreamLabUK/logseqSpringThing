@@ -340,7 +340,7 @@ export class VisualizationController {
      * Randomly distributes all nodes in 3D space and triggers WebSocket updates
      * @param radius The radius of the sphere within which to distribute nodes
      */
-    public randomizeNodePositions(radius: number = 100): void {
+    public randomizeNodePositions(radius: number = 10): void {
         if (!this.nodeManager || !this.isInitialized) {
             logger.warn('Cannot randomize node positions - Node manager not initialized');
             return;
@@ -366,11 +366,11 @@ export class VisualizationController {
             const x = r * Math.sin(phi) * Math.cos(theta);
             const y = r * Math.sin(phi) * Math.sin(theta);
             const z = r * Math.cos(phi);
-            
-            // Create random velocity vector (small magnitude)
-            const vx = (Math.random() - 0.5) * 0.5;
-            const vy = (Math.random() - 0.5) * 0.5;
-            const vz = (Math.random() - 0.5) * 0.5;
+
+            // Create random velocity vector with VERY small magnitude to avoid excessive momentum
+            const vx = (Math.random() - 0.5) * 0.05; // 10x smaller
+            const vy = (Math.random() - 0.5) * 0.05; // 10x smaller
+            const vz = (Math.random() - 0.5) * 0.05; // 10x smaller
             
             return {
                 id: node.id,

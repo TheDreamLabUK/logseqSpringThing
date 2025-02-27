@@ -7,7 +7,7 @@ export const defaultSettings: Settings = {
             metalness: 0.8,
             opacity: 1.0,
             roughness: 0.2,
-            sizeRange: [0.3, 1.2],  // 30cm to 1.2m for better balance
+            sizeRange: [0.5, 2.0],  // Match server's node size range
             quality: 'medium',
             enableInstancing: true,
             enableHologram: true,
@@ -35,17 +35,17 @@ export const defaultSettings: Settings = {
         physics: {
             enabled: true,
             iterations: 100,              // Balanced for performance and stability
-            attractionStrength: 0.01,     // 1cm/s² base attraction
-            repulsionStrength: 0.08,      // Reduced repulsion for better balance
-            repulsionDistance: 0.5,       // 50cm repulsion range
-            springStrength: 0.03,         // Reduced spring strength for better balance
-            damping: 0.95,                // 95% velocity retention
-            maxVelocity: 0.1,             // 10cm/s maximum
-            collisionRadius: 0.05,        // 5cm collision radius
+            attractionStrength: 0.08,     // Increased for better balance with repulsion
+            repulsionStrength: 0.05,      // Balanced with attraction
+            repulsionDistance: 1.5,       // Set to appropriate distance based on node size
+            springStrength: 0.1,          // Increased to work with progressive spring implementation
+            damping: 0.95,                // Increased to reduce oscillation and improve stability
+            maxVelocity: 0.03,            // Reduced to prevent rapid movement
+            collisionRadius: 0.2,         // Increased to prevent nodes from getting too close
             massScale: 1.0,               // Default mass scaling
-            boundaryDamping: 0.9,         // 90% velocity retention at bounds
+            boundaryDamping: 0.9,         // Increased for better containment
             enableBounds: true,           // Enable bounds by default
-            boundsSize: 30.0              // Reduced bounds for better node distribution
+            boundsSize: 15.0              // Set to align with center gravity implementation
         },
         rendering: {
             ambientLightIntensity: 0.2,

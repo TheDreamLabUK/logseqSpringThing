@@ -25,13 +25,15 @@ extern "C" {
         int idx = blockIdx.x * blockDim.x + threadIdx.x;
         if (idx >= num_nodes) return;
 
+        const float MAX_FORCE = 5.0f; // Cap maximum force magnitude
+        const float MAX_VELOCITY = 0.05f; // Strict velocity cap to prevent momentum buildup
+        const float MIN_DISTANCE = 0.1f; // Prevent division by zero
+        
         float3 total_force = make_float3(0.0f, 0.0f, 0.0f);
         float3 pos = make_float3(nodes[idx].position[0], nodes[idx].position[1], nodes[idx].position[2]);
         float3 vel = make_float3(nodes[idx].velocity[0], nodes[idx].velocity[1], nodes[idx].velocity[2]);
         
-        // Convert mass from u8 to float (0-1 range)
-        // When decoding from the wire, binary_protocol.rs sets mass=100
-        // But to be safe, we still handle the case where mass=0
+        // Convert mass from u8 to float (approximately 0-1 range)
         float mass;
         if (nodes[idx].mass == 0) {
             mass = 0.5f; // Default mid-range mass value
@@ -66,7 +68,8 @@ extern "C" {
             );
             
             float dist = sqrtf(diff.x * diff.x + diff.y * diff.y + diff.z * diff.z);
-            if (dist > 0.0001f) {
+            // Only process if nodes are at a meaningful distance apart
+            if (dist > MIN_DISTANCE) {
                 float3 dir = make_float3(
                     diff.x / dist,
                     diff.y / dist,
@@ -76,39 +79,97 @@ extern "C" {
                 // Apply spring forces to all nodes by default
                 {
                     // Use natural length of 1.0 to match world units
-                    float spring_force = spring_k * (dist - 1.0f);
+                    float natural_length = 1.0f;
+                    
+                    // Progressive spring forces - stronger when further apart
+                    float spring_force = spring_k * (dist - natural_length);
+                    
+                    // Apply progressively stronger springs for very distant nodes
+                    if (dist > natural_length * 3.0f) {
+                        spring_force *= (1.0f + (dist - natural_length * 3.0f) * 0.1f);
+                    }
+                    
                     float spring_scale = mass * other_mass;
-                    total_force.x += dir.x * spring_force * spring_scale;
-                    total_force.y += dir.y * spring_force * spring_scale;
-                    total_force.z += dir.z * spring_force * spring_scale;
-                }
-                
-                // Repulsion forces
-                if (dist < max_repulsion_dist) {
-                    float repel_scale = repel_k * mass * other_mass;
-                    float repel_force = repel_scale / (dist * dist);
-                    total_force.x -= dir.x * repel_force;
-                    total_force.y -= dir.y * repel_force;
-                    total_force.z -= dir.z * repel_force;
+                    float force_magnitude = spring_force * spring_scale;
+                    
+                    // Repulsion forces - only apply at close distances
+                    if (dist < max_repulsion_dist) {
+                        float repel_scale = repel_k * mass * other_mass;
+                        // Limit minimum distance squared to prevent extreme forces
+                        float dist_sq = fmaxf(dist * dist, MIN_DISTANCE);
+                        // Cap maximum repulsion force to prevent explosion
+                        float repel_force = fminf(repel_scale / dist_sq, repel_scale * 2.0f);
+                        total_force.x -= dir.x * repel_force;
+                        total_force.y -= dir.y * repel_force;
+                        total_force.z -= dir.z * repel_force;
+                    } else {
+                        // Always apply spring forces
+                        total_force.x += dir.x * force_magnitude;
+                        total_force.y += dir.y * force_magnitude;
+                        total_force.z += dir.z * force_magnitude;
+                    }
                 }
             }
         }
+        
+        // Add center gravity to prevent nodes from drifting too far
+        float center_strength = 0.005f * mass; // Gentle pull toward center
+        float center_dist = sqrtf(pos.x*pos.x + pos.y*pos.y + pos.z*pos.z);
+        if (center_dist > 5.0f) { // Only apply beyond a certain distance
+            float center_factor = center_strength * (center_dist - 5.0f) / center_dist;
+            total_force.x -= pos.x * center_factor;
+            total_force.y -= pos.y * center_factor;
+            total_force.z -= pos.z * center_factor;
+        }
 
-        // Apply damping to velocity
-        vel.x = vel.x * (1.0f - damping) + total_force.x * dt;
-        vel.y = vel.y * (1.0f - damping) + total_force.y * dt;
-        vel.z = vel.z * (1.0f - damping) + total_force.z * dt;
+        // Calculate total force magnitude
+        float force_magnitude = sqrtf(
+            total_force.x*total_force.x + 
+            total_force.y*total_force.y + 
+            total_force.z*total_force.z);
+        
+        // Scale down excessive forces to prevent explosion
+        if (force_magnitude > MAX_FORCE) {
+            float scale_factor = MAX_FORCE / force_magnitude;
+            total_force.x *= scale_factor;
+            total_force.y *= scale_factor;
+            total_force.z *= scale_factor;
+        }
 
+        // Apply damping and bounded forces to velocity
+        vel.x = vel.x * (1.0f - damping) + fminf(MAX_FORCE, fmaxf(-MAX_FORCE, total_force.x)) * dt;
+        vel.y = vel.y * (1.0f - damping) + fminf(MAX_FORCE, fmaxf(-MAX_FORCE, total_force.y)) * dt;
+        vel.z = vel.z * (1.0f - damping) + fminf(MAX_FORCE, fmaxf(-MAX_FORCE, total_force.z)) * dt;
+        
+        // Apply STRICT velocity cap to prevent runaway momentum
+        float vel_magnitude = sqrtf(vel.x*vel.x + vel.y*vel.y + vel.z*vel.z);
+        if (vel_magnitude > MAX_VELOCITY) {
+            float scale_factor = MAX_VELOCITY / vel_magnitude;
+            vel.x *= scale_factor;
+            vel.y *= scale_factor;
+            vel.z *= scale_factor;
+        }
+        
         // Update position
         pos.x += vel.x * dt;
         pos.y += vel.y * dt;
         pos.z += vel.z * dt;
 
-        // Constrain to viewport bounds if enabled (bounds > 0)
+        // Progressive boundary approach - stronger the further you go
         if (viewport_bounds > 0.0f) {
-            pos.x = fmaxf(-viewport_bounds, fminf(viewport_bounds, pos.x));
-            pos.y = fmaxf(-viewport_bounds, fminf(viewport_bounds, pos.y));
-            pos.z = fmaxf(-viewport_bounds, fminf(viewport_bounds, pos.z));
+            float soft_margin = 0.2f * viewport_bounds; // 20% soft boundary
+            float bound_with_margin = viewport_bounds - soft_margin;
+            
+            // Apply progressively stronger boundary forces
+            if (fabsf(pos.x) > bound_with_margin) {
+                pos.x *= 0.95f; // Pull back by 5%
+            }
+            if (fabsf(pos.y) > bound_with_margin) {
+                pos.y *= 0.95f; // Pull back by 5%
+            }
+            if (fabsf(pos.z) > bound_with_margin) {
+                pos.z *= 0.95f; // Pull back by 5%
+            }
         }
 
         // Store results back
