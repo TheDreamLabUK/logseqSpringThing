@@ -207,8 +207,7 @@ export class NodeManagerFacade implements NodeManagerInterface {
         // Update metadata positions to match instances
         try {
             // Only update positions every few frames for performance
-            if (this.frameCount % 5 === 0) {
-                this.nodeIndices.forEach((id) => {
+            this.nodeIndices.forEach((id) => {
                     const position = this.instanceManager.getNodePosition(id);
                     if (position) {
                         this.tempVector.copy(position);
@@ -217,12 +216,11 @@ export class NodeManagerFacade implements NodeManagerInterface {
                         // Use the node's calculated size for offset
                         const nodeSize = this.calculateNodeSize();
                         
-                        this.tempVector.y += nodeSize * 2; // Dynamic offset based on node size
+                        this.tempVector.y += nodeSize * 0.5; // Reduced offset to stay closer to nodes
                         // Update individual label position
-                        this.metadataManager.updatePosition(id, this.tempVector);
+                        this.metadataManager.updatePosition(id, this.tempVector.clone());
                     }
-                });
-            }
+            });
             this.frameCount++;
         } catch (error) {
             logger.error('Error updating metadata positions:', createErrorMetadata(error));

@@ -342,7 +342,7 @@ export class VisualizationController {
      */
     public randomizeNodePositions(radius: number = 7): void {
         // Enforce maximum radius to prevent explosion
-        radius = Math.min(radius, 10);
+        radius = Math.min(radius, 5); // Reduced maximum radius to prevent explosion
 
         if (!this.nodeManager || !this.isInitialized) {
             logger.warn('Cannot randomize node positions - Node manager not initialized');
@@ -371,10 +371,9 @@ export class VisualizationController {
             const y = r * Math.sin(phi) * Math.sin(theta);
             const z = r * Math.cos(phi);
 
-            // Create velocity vector with extremely small initial values
-            // Point slightly toward center to help stabilization
-            const vx = (Math.random() - 0.5) * 0.01 - (x * 0.001);
-            const vy = (Math.random() - 0.5) * 0.01 - (y * 0.001);
+            // Use near-zero initial velocities to prevent explosion
+            const vx = 0;
+            const vy = 0;
             const vz = (Math.random() - 0.5) * 0.01 - (z * 0.001);
             
             return {
@@ -392,7 +391,8 @@ export class VisualizationController {
         // Send updates to server via WebSocket
         if (this.websocketService) {
             updates.forEach((update) => {
-                this.websocketService.sendNodeUpdates([{
+                // Send updates to server one at a time with minimal velocity
+                this.websocketService.sendNodeUpdates([{ 
                     id: update.id,
                     position: update.data.position,
                     velocity: update.data.velocity
@@ -400,12 +400,7 @@ export class VisualizationController {
             });
             
             // Enable server-side randomization to ensure physics simulation applies
-            this.websocketService.enableRandomization(true);
-            
-            // Disable server-side randomization after a short delay
-            setTimeout(() => {
-                this.websocketService.enableRandomization(false);
-            }, 1000);
+            // Removed enableRandomization toggle to prevent physics instability
         } else {
             logger.warn('WebSocket service not available, node positions only updated locally');
         }

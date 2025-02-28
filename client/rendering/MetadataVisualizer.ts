@@ -123,10 +123,10 @@ export class MetadataVisualizer {
             `${metadata.hyperlinkCount} links`
         ];
 
-        const yOffsets = [1.5, 1.0, 0.5]; // Y positions for each label
+        const yOffsets = [0.75, 0.5, 0.25]; // Reduced Y positions for each label to keep them closer to nodes
 
         labelTexts.forEach(async (text, index) => {
-            const position = new Vector3(0, yOffsets[index], 0);
+            const position = new Vector3(nodePosition.x, nodePosition.y + yOffsets[index], nodePosition.z);
             const labelId = `${nodeId}-label-${index}`;
             
             try {
@@ -195,7 +195,7 @@ export class MetadataVisualizer {
             group.position.copy(position);
             
             // Update text positions
-            const labelPositions = [1.5, 1.0, 0.5];
+            const labelPositions = [0.75, 0.5, 0.25]; // Reduced offsets to match createMetadataLabel
             labelPositions.forEach((yOffset, index) => {
                 const labelId = `${nodeId}-label-${index}`;
                 // Create relative position to the node with y-offset
