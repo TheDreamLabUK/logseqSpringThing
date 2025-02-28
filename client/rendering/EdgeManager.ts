@@ -60,11 +60,28 @@ export class EdgeManager {
 
     private createEdgeGeometry(source: Vector3, target: Vector3): BufferGeometry {
         const geometry = new BufferGeometry();
+        // Calculate distance between nodes
+        const distance = source.distanceTo(target);
+        
+        // Limit edge length to prevent explosion
+        const MAX_EDGE_LENGTH = 15.0;
+        let normalized = new Vector3().subVectors(target, source);
+        if (distance > MAX_EDGE_LENGTH) {
+            normalized.normalize().multiplyScalar(MAX_EDGE_LENGTH);
+            target = new Vector3().copy(source).add(normalized);
+        }
+
         const direction = new Vector3().subVectors(target, source).normalize();
-        const width = this.getEdgeWidth();
+        // Scale width slightly inversely with distance to maintain visual consistency
+        const width = this.getEdgeWidth() * (1.0 + 0.2 * Math.max(0, 1.0 - distance / 10.0));
 
         // Calculate perpendicular vector for width
         const up = new Vector3(0, 1, 0);
+        // Handle edge case where direction and up vector are nearly parallel
+        if (Math.abs(direction.y) > 0.99) {
+            up.set(1, 0, 0);
+        }
+        
         const right = new Vector3().crossVectors(direction, up).normalize().multiplyScalar(width / 2);
 
         // Create vertices for a thin rectangular prism along the edge
@@ -123,13 +140,21 @@ export class EdgeManager {
 
     private updateAllEdgeGeometries(): void {
         this.edgeData.forEach((edgeData, edgeId) => {
+            // Skip update if mesh doesn't exist
             const mesh = this.edges.get(edgeId);
             if (!mesh) return;
 
             const sourcePos = this.nodeManager.getNodePosition(edgeData.source);
             const targetPos = this.nodeManager.getNodePosition(edgeData.target);
 
+            // Skip update if positions not found
             if (sourcePos && targetPos) {
+                // Validate positions before updating edge
+                if (!this.validateVector3(sourcePos) || !this.validateVector3(targetPos)) {
+                    console.warn('Invalid node position detected, skipping edge update');
+                    return;
+                }
+                
                 // Update edge geometry
                 const oldGeometry = mesh.geometry;
                 mesh.geometry = this.createEdgeGeometry(sourcePos, targetPos);
@@ -141,6 +166,13 @@ export class EdgeManager {
                 }
             }
         });
+    }
+
+    private validateVector3(vec: Vector3): boolean {
+        const MAX_VALUE = 1000;
+        return isFinite(vec.x) && isFinite(vec.y) && isFinite(vec.z) &&
+               !isNaN(vec.x) && !isNaN(vec.y) && !isNaN(vec.z) &&
+               Math.abs(vec.x) < MAX_VALUE && Math.abs(vec.y) < MAX_VALUE && Math.abs(vec.z) < MAX_VALUE;
     }
 
     public updateEdges(edges: Edge[]): void {
@@ -160,16 +192,23 @@ export class EdgeManager {
             if (!edge.sourcePosition || !edge.targetPosition) return;
 
             const source = new Vector3(
-                edge.sourcePosition.x,
-                edge.sourcePosition.y,
-                edge.sourcePosition.z
+                // Clamp source position to reasonable values
+                Math.min(100, Math.max(-100, edge.sourcePosition.x)),
+                Math.min(100, Math.max(-100, edge.sourcePosition.y)),
+                Math.min(100, Math.max(-100, edge.sourcePosition.z))
             );
             const target = new Vector3(
-                edge.targetPosition.x,
-                edge.targetPosition.y,
-                edge.targetPosition.z
+                // Clamp target position to reasonable values
+                Math.min(100, Math.max(-100, edge.targetPosition.x)),
+                Math.min(100, Math.max(-100, edge.targetPosition.y)),
+                Math.min(100, Math.max(-100, edge.targetPosition.z))
             );
 
+            // Skip edge creation if source and target are too close
+            if (source.distanceTo(target) < 0.1) {
+                return;
+            }
+            
             const geometry = this.createEdgeGeometry(source, target);
             const material = this.createEdgeMaterial();
             const mesh = new Mesh(geometry, material);
@@ -223,6 +262,11 @@ export class EdgeManager {
             const targetPos = this.nodeManager.getNodePosition(edgeData.target);
 
             if (sourcePos && targetPos) {
+                // Validate positions before updating edge
+                if (!this.validateVector3(sourcePos) || !this.validateVector3(targetPos)) {
+                    return; // Skip this iteration in the forEach
+                }
+                
                 // Update edge geometry
                 const oldGeometry = mesh.geometry;
                 mesh.geometry.dispose();

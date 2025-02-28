@@ -340,7 +340,10 @@ export class VisualizationController {
      * Randomly distributes all nodes in 3D space and triggers WebSocket updates
      * @param radius The radius of the sphere within which to distribute nodes
      */
-    public randomizeNodePositions(radius: number = 10): void {
+    public randomizeNodePositions(radius: number = 7): void {
+        // Enforce maximum radius to prevent explosion
+        radius = Math.min(radius, 10);
+
         if (!this.nodeManager || !this.isInitialized) {
             logger.warn('Cannot randomize node positions - Node manager not initialized');
             return;
@@ -360,17 +363,19 @@ export class VisualizationController {
             // Generate random position within a sphere
             const theta = Math.random() * Math.PI * 2; // Random angle around Y axis
             const phi = Math.acos((Math.random() * 2) - 1); // Random angle from Y axis
-            const r = radius * Math.cbrt(Math.random()); // Random distance from center (cube root for even distribution)
+            // Use square root rather than cube root for more central clustering
+            const r = radius * Math.sqrt(Math.random()); // Random distance from center
             
             // Convert spherical to Cartesian coordinates
             const x = r * Math.sin(phi) * Math.cos(theta);
             const y = r * Math.sin(phi) * Math.sin(theta);
             const z = r * Math.cos(phi);
 
-            // Create random velocity vector with VERY small magnitude to avoid excessive momentum
-            const vx = (Math.random() - 0.5) * 0.05; // 10x smaller
-            const vy = (Math.random() - 0.5) * 0.05; // 10x smaller
-            const vz = (Math.random() - 0.5) * 0.05; // 10x smaller
+            // Create velocity vector with extremely small initial values
+            // Point slightly toward center to help stabilization
+            const vx = (Math.random() - 0.5) * 0.01 - (x * 0.001);
+            const vy = (Math.random() - 0.5) * 0.01 - (y * 0.001);
+            const vz = (Math.random() - 0.5) * 0.01 - (z * 0.001);
             
             return {
                 id: node.id,

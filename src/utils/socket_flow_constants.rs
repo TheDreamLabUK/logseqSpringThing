@@ -1,8 +1,8 @@
 // Node and graph constants
 pub const NODE_SIZE: f32 = 1.0;  // Base node size in world units
 pub const EDGE_WIDTH: f32 = 0.1; // Base edge width
-pub const MIN_DISTANCE: f32 = 1.0; // Minimum distance between nodes
-pub const MAX_DISTANCE: f32 = 15.0; // Maximum distance to match viewport bounds
+pub const MIN_DISTANCE: f32 = 0.75; // Minimum distance between nodes - reduced to prevent overcrowding
+pub const MAX_DISTANCE: f32 = 10.0; // Maximum distance - reduced to keep nodes closer to center
 
 // WebSocket constants - matching nginx configuration
 pub const HEARTBEAT_INTERVAL: u64 = 30; // seconds - matches nginx proxy_connect_timeout

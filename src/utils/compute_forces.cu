@@ -25,9 +25,9 @@ extern "C" {
         int idx = blockIdx.x * blockDim.x + threadIdx.x;
         if (idx >= num_nodes) return;
 
-        const float MAX_FORCE = 5.0f; // Cap maximum force magnitude
-        const float MAX_VELOCITY = 0.05f; // Strict velocity cap to prevent momentum buildup
-        const float MIN_DISTANCE = 0.1f; // Prevent division by zero
+        const float MAX_FORCE = 3.0f; // Reduced maximum force magnitude
+        const float MAX_VELOCITY = 0.02f; // Stricter velocity cap to prevent momentum buildup
+        const float MIN_DISTANCE = 0.15f; // Slightly increased minimum distance
         
         float3 total_force = make_float3(0.0f, 0.0f, 0.0f);
         float3 pos = make_float3(nodes[idx].position[0], nodes[idx].position[1], nodes[idx].position[2]);
@@ -112,11 +112,11 @@ extern "C" {
             }
         }
         
-        // Add center gravity to prevent nodes from drifting too far
-        float center_strength = 0.005f * mass; // Gentle pull toward center
+        // Stronger center gravity to prevent nodes from drifting too far
+        float center_strength = 0.015f * mass; // Increased pull toward center (3x stronger)
         float center_dist = sqrtf(pos.x*pos.x + pos.y*pos.y + pos.z*pos.z);
-        if (center_dist > 5.0f) { // Only apply beyond a certain distance
-            float center_factor = center_strength * (center_dist - 5.0f) / center_dist;
+        if (center_dist > 3.0f) { // Apply at shorter distances
+            float center_factor = center_strength * (center_dist - 3.0f) / center_dist;
             total_force.x -= pos.x * center_factor;
             total_force.y -= pos.y * center_factor;
             total_force.z -= pos.z * center_factor;
@@ -157,18 +157,22 @@ extern "C" {
 
         // Progressive boundary approach - stronger the further you go
         if (viewport_bounds > 0.0f) {
-            float soft_margin = 0.2f * viewport_bounds; // 20% soft boundary
+            float soft_margin = 0.3f * viewport_bounds; // 30% soft boundary
             float bound_with_margin = viewport_bounds - soft_margin;
             
             // Apply progressively stronger boundary forces
             if (fabsf(pos.x) > bound_with_margin) {
-                pos.x *= 0.95f; // Pull back by 5%
+                pos.x *= 0.92f; // Pull back by 8%
+                // Also add dampening to velocity in this direction
+                vel.x *= 0.85f;
             }
             if (fabsf(pos.y) > bound_with_margin) {
-                pos.y *= 0.95f; // Pull back by 5%
+                pos.y *= 0.92f; // Pull back by 8%
+                vel.y *= 0.85f;
             }
             if (fabsf(pos.z) > bound_with_margin) {
-                pos.z *= 0.95f; // Pull back by 5%
+                pos.z *= 0.92f; // Pull back by 8%
+                vel.z *= 0.85f;
             }
         }
 

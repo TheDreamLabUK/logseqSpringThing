@@ -23,19 +23,19 @@ visualization:
     - 0.01
     quality: high
   physics:
-    attraction_strength: 0.08     # Increased for better balance with repulsion
-    bounds_size: 15.0             # Set to align with center gravity implementation
-    collision_radius: 0.2         # Increased to prevent nodes from getting too close
-    damping: 0.95                 # Increased to reduce oscillation and improve stability
+    attraction_strength: 0.1      # Further increased for better cohesion
+    bounds_size: 10.0             # Reduced to match MAX_DISTANCE in socket_flow_constants
+    collision_radius: 0.25        # Increased to prevent nodes from getting too close
+    damping: 0.97                 # Higher damping to reduce oscillation and improve stability
     enable_bounds: true
     enabled: true
     iterations: 100
-    max_velocity: 0.03            # Reduced to prevent rapid movement
-    repulsion_strength: 0.05      # Balanced with attraction
-    spring_strength: 0.1          # Increased to work with progressive spring implementation
-    repulsion_distance: 1.5       # Set to appropriate distance based on node size
+    max_velocity: 0.02            # Further reduced to match MAX_VELOCITY in compute shader
+    repulsion_strength: 0.04      # Slightly reduced relative to attraction for better cohesion
+    spring_strength: 0.12         # Increased to improve node cohesion
+    repulsion_distance: 1.25      # Reduced to limit repulsion effects
     mass_scale: 1.0
-    boundary_damping: 0.9         # Increased for better containment
+    boundary_damping: 0.95        # Further increased for better containment
   rendering:
     ambient_light_intensity: 0.41
     background_color: '#1a1a2e'
@@ -132,7 +132,7 @@ system:
     enable_request_validation: true
     session_timeout: 3600
   debug:
-    enabled: true
+    enabled: false
     enable_data_debug: false
     enable_websocket_debug: false
     log_binary_headers: false
