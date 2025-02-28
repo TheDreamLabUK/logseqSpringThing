@@ -45,6 +45,7 @@ pub struct GPUCompute {
     pub num_nodes: u32,
     pub node_indices: HashMap<String, usize>,
     pub simulation_params: SimulationParams,
+    pub iteration_count: i32,
 }
 
 #[cfg(feature = "gpu")]
@@ -144,6 +145,7 @@ impl GPUCompute {
             num_nodes,
             node_indices,
             simulation_params: SimulationParams::default(),
+            iteration_count: 0,
         };
 
         debug!("Copying initial graph data to device memory");
@@ -167,6 +169,9 @@ impl GPUCompute {
             self.node_data = self.device.alloc_zeros::<BinaryNodeData>(graph.nodes.len())
                 .map_err(|e| Error::new(std::io::ErrorKind::Other, e.to_string()))?;
             self.num_nodes = graph.nodes.len() as u32;
+            
+            // Reset iteration counter when the graph data changes
+            self.iteration_count = 0;
         }
 
         // Prepare node data
@@ -222,7 +227,8 @@ impl GPUCompute {
                     self.simulation_params.viewport_bounds
                 } else {
                     f32::MAX // Effectively disable bounds
-                }
+                },
+                self.iteration_count,
             )).map_err(|e| {
                 error!("Kernel launch failed: {}", e);
                 Error::new(ErrorKind::Other, e.to_string())
@@ -230,6 +236,7 @@ impl GPUCompute {
         }
 
         debug!("Force computation completed");
+        self.iteration_count += 1;
         Ok(())
     }
 
@@ -250,6 +257,7 @@ impl GPUCompute {
 
     pub fn step(&mut self) -> Result<(), Error> {
         self.compute_forces()?;
+        debug!("Physics step complete, iteration count: {}", self.iteration_count);
         Ok(())
     }
 }

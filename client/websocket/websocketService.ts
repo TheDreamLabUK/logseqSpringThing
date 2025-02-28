@@ -73,22 +73,12 @@ export class WebSocketService {
     private url: string = '';
     private connectionStatusHandler: ((status: boolean) => void) | null = null;
     private readonly MAX_POSITION = 1000.0;
-    private readonly MAX_VELOCITY = 10.0;
+    private readonly MAX_VELOCITY = 0.05; // Reduced to align with server's MAX_VELOCITY (0.02)
 
     // Add a debounce mechanism for node updates
     private nodeUpdateQueue: NodeUpdate[] = [];
     private nodeUpdateTimer: number | null = null;
     private readonly NODE_UPDATE_DEBOUNCE_MS = 50; // 50ms debounce for node updates
-
-    // Added a method to validate vector3 values without clamping
-    private validateVector3(vec: Vector3, max: number): boolean {
-        if (!isValidVector3(vec)) {
-            return false;
-        }
-        return Math.abs(vec.x) <= max && 
-               Math.abs(vec.y) <= max && 
-               Math.abs(vec.z) <= max;
-    }
 
     private validateAndClampVector3(vec: Vector3, max: number): Vector3 {
         if (!isValidVector3(vec)) {
@@ -334,14 +324,8 @@ export class WebSocketService {
                 offset += 12;
                 
                 // Validate and clamp position and velocity
-                // Important: Be more lenient with position validation initially
-                // Force-directed graph positioning can have larger values at first
-                let sanitizedPosition: Vector3;
-                if (this.validateVector3(position, this.MAX_POSITION * 10)) {
-                    sanitizedPosition = position.clone(); // If within a generous range, keep original
-                } else {
-                    sanitizedPosition = this.validateAndClampVector3(position, this.MAX_POSITION);
-                }
+                // No longer being lenient with position validation to prevent node explosions
+                const sanitizedPosition = this.validateAndClampVector3(position, this.MAX_POSITION);
                 const sanitizedVelocity = this.validateAndClampVector3(velocity, this.MAX_VELOCITY);
                 
                 // Check if values were invalid using vector3Equals

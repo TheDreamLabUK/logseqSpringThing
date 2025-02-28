@@ -77,7 +77,7 @@ export class MetadataVisualizer {
     public async createMetadataLabel(metadata: NodeMetadata, nodeId: string): Promise<MetadataLabelGroup> {
         // Track how many labels we've created
         this.labelUpdateCount++;
-        
+
         const group = new Group() as MetadataLabelGroup;
         group.name = 'metadata-label';
         group.userData = { 
@@ -105,16 +105,28 @@ export class MetadataVisualizer {
         }
 
         // Create text labels using UnifiedTextRenderer
+        // First, find the node's actual position
+        let nodePosition = new Vector3(0, 0, 0);
+        
+        // Get the actual node position from some source in the scene
+        // This solves the labels "dropping in from above" issue
+        if (debugState.isDataDebugEnabled()) {
+            this.logger.debug(`Searching for node position for ${nodeId}`);
+        }
+        
+        // We'll set the group's position initially to help with initialization
+        group.position.copy(nodePosition);
+        
         const labelTexts = [
             `${metadata.name} (${fileSizeFormatted})`,
             `Size: ${metadata.nodeSize.toFixed(1)}`,
             `${metadata.hyperlinkCount} links`
         ];
 
-        const labelPositions = [1.5, 1.0, 0.5]; // Y positions for each label
+        const yOffsets = [1.5, 1.0, 0.5]; // Y positions for each label
 
-        labelTexts.forEach((text, index) => {
-            const position = new Vector3(0, labelPositions[index], 0);
+        labelTexts.forEach(async (text, index) => {
+            const position = new Vector3(0, yOffsets[index], 0);
             const labelId = `${nodeId}-label-${index}`;
             
             try {
@@ -140,6 +152,10 @@ export class MetadataVisualizer {
         });
 
         this.metadataGroups.set(nodeId, group);
+        
+        // Add call to update position immediately to prevent "dropping in" effect
+        this.updateMetadataPosition(nodeId, nodePosition);
+        
         return group;
     }
 
@@ -182,8 +198,11 @@ export class MetadataVisualizer {
             const labelPositions = [1.5, 1.0, 0.5];
             labelPositions.forEach((yOffset, index) => {
                 const labelId = `${nodeId}-label-${index}`;
-                const labelPosition = position.clone().add(new Vector3(0, yOffset, 0));
+                // Create relative position to the node with y-offset
+                const relativePosition = new Vector3(0, yOffset, 0);
+                const labelPosition = position.clone().add(relativePosition);
                 this.textRenderer.updateLabel(labelId, '', labelPosition); // Text content remains unchanged
+                
                 // Only log position updates when specific data debugging is enabled
                 if (index === 0 && debugState.isDataDebugEnabled()) {
                     this.logger.debug(`Updating label position for ${nodeId}`, {

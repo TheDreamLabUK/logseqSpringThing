@@ -62,7 +62,7 @@ export class NodeInstanceManager {
     private settingsStore: SettingsStore;
     private nodeSettings: NodeSettings;
     private readonly MAX_POSITION = 1000.0; // Reasonable limit for graph visualization
-    private readonly MAX_VELOCITY = 100.0;   // Increased maximum allowed velocity value
+    private readonly MAX_VELOCITY = 0.05;   // Reduced to align with server's MAX_VELOCITY (0.02)
     private isReady: boolean = false;
     private positionUpdateCount: number = 0;
     private lastPositionLog: number = 0;
