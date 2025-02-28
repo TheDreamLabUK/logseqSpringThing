@@ -39,10 +39,8 @@ thiserror = "1.0"
 anyhow = "1.0"
 
 # GPU/Compute
-wgpu = { version = "0.17", features = ["spirv", "webgl"] }
 bytemuck = { version = "1.21", features = ["derive"] }
 pollster = "0.3"
-naga = { version = "0.13", features = ["wgsl-in", "spv-out", "wgsl-out"] }
 cudarc = { version = "0.11", features = ["driver", "cuda-12040"] }
 
 # HTTP client and API
@@ -66,16 +64,6 @@ urlencoding = "2.1"
 
 # Math/Linear Algebra (needed for GPU compute)
 nalgebra = "0.32"
-
-# WebGL (minimal features needed for GPU compute visualization)
-web-sys = { version = "0.3", features = [
-    "WebGl2RenderingContext",
-    "WebGlBuffer",
-    "WebGlProgram",
-    "WebGlShader",
-    "WebGlUniformLocation",
-    "Window"
-]}
 
 # Added from the code block
 glam = "0.24"

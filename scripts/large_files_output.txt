@@ -1,11 +1,8 @@
 index.html
 diagnostics.ts
 websocket-diagnostics.ts
-README-websocket-diagnostics.md
-README-diagnostics.md
 shader-test.js
 shader-test.html
-README-bloom-effect.md
 index.ts
 websocket-test.ts
 websocket-diagnostics-browser.js
@@ -47,8 +44,8 @@ rendering/node/metadata/NodeMetadataManager.ts
 state/SettingsObserver.ts
 state/settings.ts
 state/SettingsStore.ts
-state/defaultSettings.ts
 state/graphData.ts
+state/defaultSettings.ts
 ui/ModularControlPanel.css
 ui/ModularControlPanel.ts
 ui/controlPanelConfig.ts

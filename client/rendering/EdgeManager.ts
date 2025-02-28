@@ -1,16 +1,17 @@
-import { 
+import {
     BufferGeometry,
     BufferAttribute,
+    LineBasicMaterial,
+    Mesh,
     Vector3,
     Scene,
     Group,
     Object3D,
     Material,
-    Mesh
+    Color
 } from 'three';
 import { Edge } from '../core/types';
 import { Settings } from '../types/settings';
-import { EdgeShaderMaterial } from './materials/EdgeShaderMaterial';
 import { NodeInstanceManager } from './node/instance/NodeInstanceManager';
 import { SettingsStore } from '../state/SettingsStore';
 
@@ -24,6 +25,7 @@ export class EdgeManager {
     private settingsStore: SettingsStore;
     private updateFrameCount = 0;
     private readonly UPDATE_FREQUENCY = 2; // Update every other frame
+    private readonly MAX_EDGE_LENGTH = 15.0; // Maximum edge length to prevent explosion
 
     constructor(scene: Scene, settings: Settings, nodeManager: NodeInstanceManager) {
         this.scene = scene;
@@ -49,125 +51,13 @@ export class EdgeManager {
                     }
                 };
                 this.handleSettingsUpdate(this.settings);
-                this.updateAllEdgeGeometries();
             }
         });
     }
 
-    private getEdgeWidth(): number {
-        return this.settings.visualization.edges.baseWidth || 0.005; // Default width in meters (5mm)
-    }
-
-    private createEdgeGeometry(source: Vector3, target: Vector3): BufferGeometry {
-        const geometry = new BufferGeometry();
-        // Calculate distance between nodes
-        const distance = source.distanceTo(target);
-        
-        // Limit edge length to prevent explosion
-        const MAX_EDGE_LENGTH = 15.0;
-        let normalized = new Vector3().subVectors(target, source);
-        if (distance > MAX_EDGE_LENGTH) {
-            normalized.normalize().multiplyScalar(MAX_EDGE_LENGTH);
-            target = new Vector3().copy(source).add(normalized);
-        }
-
-        const direction = new Vector3().subVectors(target, source).normalize();
-        // Scale width slightly inversely with distance to maintain visual consistency
-        const width = this.getEdgeWidth() * (1.0 + 0.2 * Math.max(0, 1.0 - distance / 10.0));
-
-        // Calculate perpendicular vector for width
-        const up = new Vector3(0, 1, 0);
-        // Handle edge case where direction and up vector are nearly parallel
-        if (Math.abs(direction.y) > 0.99) {
-            up.set(1, 0, 0);
-        }
-        
-        const right = new Vector3().crossVectors(direction, up).normalize().multiplyScalar(width / 2);
-
-        // Create vertices for a thin rectangular prism along the edge
-        const vertices = new Float32Array([
-            // Front face
-            source.x - right.x, source.y - right.y, source.z - right.z,
-            source.x + right.x, source.y + right.y, source.z + right.z,
-            target.x + right.x, target.y + right.y, target.z + right.z,
-            target.x - right.x, target.y - right.y, target.z - right.z,
-            
-            // Back face (slightly offset)
-            source.x - right.x, source.y - right.y, source.z - right.z + width,
-            source.x + right.x, source.y + right.y, source.z + right.z + width,
-            target.x + right.x, target.y + right.y, target.z + right.z + width,
-            target.x - right.x, target.y - right.y, target.z - right.z + width
-        ]);
-
-        // Create indices for both faces
-        const indices = new Uint16Array([
-            // Front face
-            0, 1, 2,
-            0, 2, 3,
-            // Back face
-            4, 6, 5,
-            4, 7, 6,
-            // Connect front to back
-            0, 4, 1,
-            1, 4, 5,
-            1, 5, 2,
-            2, 5, 6,
-            2, 6, 3,
-            3, 6, 7,
-            3, 7, 0,
-            0, 7, 4
-        ]);
-
-        geometry.setAttribute('position', new BufferAttribute(vertices, 3));
-        geometry.setIndex(new BufferAttribute(indices, 1));
-
-        // Calculate normals for proper lighting
-        const normals = new Float32Array(vertices.length);
-        for (let i = 0; i < vertices.length; i += 3) {
-            // Set all normals to point outward from the edge
-            normals[i] = right.x;
-            normals[i + 1] = right.y;
-            normals[i + 2] = right.z;
-        }
-        geometry.setAttribute('normal', new BufferAttribute(normals, 3));
-
-        return geometry;
-    }
-
-    private createEdgeMaterial(): Material {
-        return new EdgeShaderMaterial(this.settings);
-    }
-
-    private updateAllEdgeGeometries(): void {
-        this.edgeData.forEach((edgeData, edgeId) => {
-            // Skip update if mesh doesn't exist
-            const mesh = this.edges.get(edgeId);
-            if (!mesh) return;
-
-            const sourcePos = this.nodeManager.getNodePosition(edgeData.source);
-            const targetPos = this.nodeManager.getNodePosition(edgeData.target);
-
-            // Skip update if positions not found
-            if (sourcePos && targetPos) {
-                // Validate positions before updating edge
-                if (!this.validateVector3(sourcePos) || !this.validateVector3(targetPos)) {
-                    console.warn('Invalid node position detected, skipping edge update');
-                    return;
-                }
-                
-                // Update edge geometry
-                const oldGeometry = mesh.geometry;
-                mesh.geometry = this.createEdgeGeometry(sourcePos, targetPos);
-                oldGeometry.dispose();
-
-                // Update shader material source/target
-                if (mesh.material instanceof EdgeShaderMaterial) {
-                    mesh.material.setSourceTarget(sourcePos, targetPos);
-                }
-            }
-        });
-    }
-
+    /**
+     * Validates a Vector3 to ensure it has valid, finite values
+     */
     private validateVector3(vec: Vector3): boolean {
         const MAX_VALUE = 1000;
         return isFinite(vec.x) && isFinite(vec.y) && isFinite(vec.z) &&
@@ -175,30 +65,68 @@ export class EdgeManager {
                Math.abs(vec.x) < MAX_VALUE && Math.abs(vec.y) < MAX_VALUE && Math.abs(vec.z) < MAX_VALUE;
     }
 
+    /**
+     * Creates an optimized line geometry for an edge between two points
+     */
+    private createLineGeometry(source: Vector3, target: Vector3): BufferGeometry {
+        const geometry = new BufferGeometry();
+        
+        // Apply maximum edge length limit to prevent explosion
+        const distance = source.distanceTo(target);
+        const finalTarget = new Vector3().copy(target);
+        
+        if (distance > this.MAX_EDGE_LENGTH) {
+            // Create limited-length vector in same direction
+            const direction = new Vector3().subVectors(target, source).normalize();
+            finalTarget.copy(source).add(direction.multiplyScalar(this.MAX_EDGE_LENGTH));
+        }
+        
+        // Line geometry only needs the start and end positions
+        const positions = new Float32Array([
+            source.x, source.y, source.z,
+            finalTarget.x, finalTarget.y, finalTarget.z
+        ]);
+
+        geometry.setAttribute('position', new BufferAttribute(positions, 3));
+        return geometry;
+    }
+
+    /**
+     * Creates an optimized material for edge rendering
+     */
+    private createEdgeMaterial(): Material {
+        const color = new Color(this.settings.visualization.edges.color || 0x4080ff);
+        const opacity = this.settings.visualization.edges.opacity || 0.7;
+        
+        return new LineBasicMaterial({
+            color: color,
+            transparent: true,
+            opacity: opacity, 
+            depthWrite: false
+        });
+    }
+
+    /**
+     * Updates all edges with new data from the graph
+     */
     public updateEdges(edges: Edge[]): void {
         // Clear existing edges
+        this.clearEdges();
         this.edgeData.clear();
-        this.edges.forEach(edge => {
-            this.edgeGroup.remove(edge);
-            edge.geometry.dispose();
-            if (edge.material instanceof Material) {
-                edge.material.dispose();
-            }
-        });
         this.edges.clear();
 
         // Create new edges
         edges.forEach(edge => {
             if (!edge.sourcePosition || !edge.targetPosition) return;
 
+            // Clamp positions to reasonable values
             const source = new Vector3(
-                // Clamp source position to reasonable values
                 Math.min(100, Math.max(-100, edge.sourcePosition.x)),
                 Math.min(100, Math.max(-100, edge.sourcePosition.y)),
                 Math.min(100, Math.max(-100, edge.sourcePosition.z))
             );
+            
             const target = new Vector3(
-                // Clamp target position to reasonable values
                 Math.min(100, Math.max(-100, edge.targetPosition.x)),
                 Math.min(100, Math.max(-100, edge.targetPosition.y)),
                 Math.min(100, Math.max(-100, edge.targetPosition.z))
@@ -208,88 +136,95 @@ export class EdgeManager {
             if (source.distanceTo(target) < 0.1) {
                 return;
             }
-            
-            const geometry = this.createEdgeGeometry(source, target);
+
+            const geometry = this.createLineGeometry(source, target);
             const material = this.createEdgeMaterial();
-            const mesh = new Mesh(geometry, material);
+            const line = new Mesh(geometry, material);
 
             // Enable both layers for the edge
-            mesh.layers.enable(0);
-            mesh.layers.enable(1);
+            line.layers.enable(0);
+            line.layers.enable(1);
             
-            this.edgeGroup.add(mesh);
-            
-            // Set source and target positions for the shader
-            if (material instanceof EdgeShaderMaterial) {
-                material.setSourceTarget(source, target);
-            }
-            this.edges.set(edge.id, mesh);
+            this.edgeGroup.add(line);
+            this.edges.set(edge.id, line);
             this.edgeData.set(edge.id, edge);
         });
     }
 
+    /**
+     * Handle settings updates for all edges
+     */
     public handleSettingsUpdate(settings: Settings): void {
         this.settings = settings;
+        
+        // Update all edge materials
         this.edges.forEach((edge) => {
-            if (edge.material instanceof EdgeShaderMaterial) {
-                // Update the material properties directly
+            if (edge.material instanceof LineBasicMaterial) {
                 edge.material.opacity = settings.visualization.edges.opacity;
-                
-                // Try to update color
                 try {
-                  // Use the color property directly since we're now extending MeshBasicMaterial
-                  edge.material.color.set(settings.visualization.edges.color);
+                    edge.material.color.set(settings.visualization.edges.color);
                 } catch (error) {
-                  console.warn('Could not update edge material color');
+                    console.warn('Could not update edge material color');
                 }
-                
-                // Mark material as needing update
                 edge.material.needsUpdate = true;
             }
         });
     }
     
-    public update(deltaTime: number): void {
+    /**
+     * Update edge positions based on node movements
+     */
+    public update(_deltaTime: number): void {
         this.updateFrameCount++;
         if (this.updateFrameCount % this.UPDATE_FREQUENCY !== 0) return;
         
         // Update edge positions based on current node positions
         this.edgeData.forEach((edgeData, edgeId) => {
-            const mesh = this.edges.get(edgeId);
-            if (!mesh) return;
+            const edge = this.edges.get(edgeId);
+            if (!edge) return;
 
             const sourcePos = this.nodeManager.getNodePosition(edgeData.source);
             const targetPos = this.nodeManager.getNodePosition(edgeData.target);
 
             if (sourcePos && targetPos) {
-                // Validate positions before updating edge
+                // Validate positions
                 if (!this.validateVector3(sourcePos) || !this.validateVector3(targetPos)) {
-                    return; // Skip this iteration in the forEach
+                    return; 
                 }
                 
-                // Update edge geometry
-                const oldGeometry = mesh.geometry;
-                mesh.geometry.dispose();
+                // Limit edge length
+                const distance = sourcePos.distanceTo(targetPos);
+                let finalTargetPos = targetPos.clone();
                 
-                // Create new geometry and update mesh
-                mesh.geometry = this.createEdgeGeometry(sourcePos, targetPos);
-                
-                // Clean up old resources after successful update
-                oldGeometry.dispose();
+                if (distance > this.MAX_EDGE_LENGTH) {
+                    const direction = new Vector3().subVectors(targetPos, sourcePos).normalize();
+                    finalTargetPos = sourcePos.clone().add(direction.multiplyScalar(this.MAX_EDGE_LENGTH));
+                }
 
-                // Update shader material source/target
-                if (mesh.material instanceof EdgeShaderMaterial) {
-                    mesh.material.setSourceTarget(sourcePos, targetPos);
-                    mesh.material.update(deltaTime * this.UPDATE_FREQUENCY);
+                // Update the existing geometry's positions directly
+                const posAttr = edge.geometry.getAttribute('position');
+                if (posAttr) {
+                    // Update each vertex position directly
+                    // Create a new geometry instead of updating the existing one
+                    const newGeometry = this.createLineGeometry(sourcePos, finalTargetPos);
+                    edge.geometry.dispose();
+                    edge.geometry = newGeometry;
                 }
-            }
-            // If positions not found, edge will remain at last known position
-            else if (mesh.material instanceof EdgeShaderMaterial) {
-                mesh.material.update(deltaTime * this.UPDATE_FREQUENCY);
+                
+                // Apply subtle pulsing animation if desired
+                if (edge.material instanceof LineBasicMaterial) {
+                    const baseOpacity = this.settings.visualization.edges.opacity || 0.7;
+                    const pulse = Math.sin(Date.now() * 0.001) * 0.1 + 0.9;
+                    edge.material.opacity = baseOpacity * pulse;
+                    edge.material.needsUpdate = true;
+                }
             }
         });
     }
 
+    /**
+     * Set XR mode for edge rendering
+     */
     public setXRMode(enabled: boolean): void {
         if (enabled) {
             // In XR mode, only show on layer 1
@@ -310,11 +245,17 @@ export class EdgeManager {
         }
     }
 
+    /**
+     * Clean up resources
+     */
     public dispose(): void {
         this.clearEdges();
         this.scene.remove(this.edgeGroup);
     }
 
+    /**
+     * Clear all edges and clean up resources
+     */
     private clearEdges(): void {
         this.edges.forEach(edge => {
             if (edge) {

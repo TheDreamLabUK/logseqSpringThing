@@ -116,10 +116,10 @@ Both systems support:
 
 ### **6. GPU Acceleration:**
 
-- **WebGPU Compute Shaders for Layout Calculation:** LogseqXR leverages the power of the GPU (Graphics Processing Unit) to perform complex calculations for the force-directed layout algorithm. WebGPU compute shaders, written in WGSL (WebGPU Shading Language), enable parallel processing of node positions and velocities, resulting in significantly faster layout calculations compared to CPU-based approaches.
+- **CUDA Acceleration for Layout Calculation:** LogseqXR leverages the power of NVIDIA GPUs to perform complex calculations for the force-directed layout algorithm. CUDA kernels enable parallel processing of node positions and velocities, resulting in significantly faster layout calculations compared to CPU-based approaches.
 - **Efficient Force-Directed Algorithms:** The force-directed layout algorithm is optimized for GPU execution, taking advantage of parallel processing to handle large graphs with thousands of nodes and edges.
 - **Fallback to CPU Computation:** If a compatible GPU is not available, LogseqXR gracefully falls back to CPU-based computation, ensuring that the visualization remains functional on a wide range of devices.
-- **Custom WGSL Shaders for Visual Effects:** In addition to layout calculations, WebGPU is used to power advanced visual effects like the holographic display and fisheye distortion, enhancing the overall visual appeal and immersiveness of the visualization.
+- **GPU-Accelerated Visual Effects:** In addition to layout calculations, CUDA is used to power advanced visual effects like the holographic display and fisheye distortion, enhancing the overall visual appeal and immersiveness of the visualization.
 
 For more detailed information about specific features and components, please refer to the following documentation sections:
 

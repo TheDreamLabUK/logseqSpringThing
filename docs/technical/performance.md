@@ -34,7 +34,7 @@ LogseqXR incorporates several performance optimizations to ensure a smooth and r
 ## GPU Acceleration
 
 ### Force-Directed Layout
-- **WebGPU Compute Shaders**
+- **CUDA Acceleration**
   - Parallel processing of node positions
   - Efficient force calculations
   - Real-time layout updates
@@ -163,7 +163,7 @@ system:
 
   gpu:
     workgroup_size: 256
-    max_nodes_per_dispatch: 10000
+    cuda_block_size: 256
     enable_instancing: true
 
   rendering:
@@ -204,6 +204,5 @@ class PerformanceMonitor {
 ```
 
 ## Related Documentation
-- [WebGPU Pipeline](./webgpu.md)
 - [Binary Protocol](./binary-protocol.md)
 - [Development Setup](../development/setup.md)

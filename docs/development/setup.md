@@ -13,7 +13,7 @@ This guide will help you set up your development environment for LogseqXR.
 - CUDA Toolkit 12.2+ (optional, for GPU acceleration)
 
 ### Hardware Requirements
-- Modern GPU with WebGPU support (recommended)
+- NVIDIA GPU with CUDA support (recommended)
 - At least 8GB RAM (16GB recommended)
 - 4GB+ GPU memory for optimal performance
 
@@ -133,7 +133,6 @@ system:
     compression_threshold: 1024
   gpu:
     enable: true
-    compute_shader: auto
     workgroup_size: 256
   debug:
     enabled: false

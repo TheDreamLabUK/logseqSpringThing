@@ -101,7 +101,7 @@ graph TB
 - **UI (User Interface Layer)**: Handles user interactions, displays information, and manages UI elements.
 - **VR (WebXR Controller)**: Manages WebXR sessions, input, and rendering for VR/AR devices.
 - **WS (WebSocket Client)**: Establishes and maintains a WebSocket connection with the backend server.
-- **GPU (GPU Compute Layer)**: Performs GPU-accelerated computations using WebGPU.
+- **GPU (GPU Compute Layer)**: Performs GPU-accelerated computations using CUDA.
 - **ThreeJS (Three.js Renderer)**: Renders the 3D graph visualization using WebGL.
 - **ChatUI**: Handles the chat interface for interacting with the AI.
 - **GraphUI**: Manages the graph visualization, including nodes, edges, and layout.
@@ -143,6 +143,5 @@ graph TB
 
 For more detailed technical information, please refer to:
 - [Binary Protocol](../technical/binary-protocol.md)
-- [WebGPU Pipeline](../technical/webgpu.md)
 - [Performance Optimizations](../technical/performance.md)
 - [Class Diagrams](../technical/class-diagrams.md)
