@@ -55,10 +55,14 @@ export function buildWsUrl(): string {
     const host = window.location.hostname;
     // Check if we're in production (any visionflow.info domain)
     const isProduction = host.endsWith('visionflow.info');
-    const port = isProduction ? '' : ':4000';
-    const base = `${protocol}//${host}${port}`;
-    const wsPath = '/wss';
-    return `${base}${wsPath}`;
+    
+    if (isProduction) {
+        // For production, use relative path to ensure proper proxy handling
+        return `${protocol}//${host}/wss`;
+    } else {
+        // For development, use the actual server port (3001 instead of 4000)
+        return `${protocol}//${host}:3001/wss`;
+    }
 }
 
 // Helper function to build visualization settings URL

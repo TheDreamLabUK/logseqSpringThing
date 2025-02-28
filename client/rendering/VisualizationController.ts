@@ -46,6 +46,10 @@ export class VisualizationController {
     private pendingUpdates: Map<string, PendingUpdate> = new Map();
     private lastUpdateTime: number = performance.now();
     private websocketService: WebSocketService;
+    private isRandomizationInProgress: boolean = false;
+    private randomizationStartTime: number = 0;
+    private randomizationAcknowledged: boolean = false;
+    private randomizedNodeIds: Set<string> = new Set();
 
     private constructor() {
         // Initialize with complete default settings
@@ -71,13 +75,36 @@ export class VisualizationController {
         this.websocketService.onBinaryMessage((nodes) => {
             if (this.nodeManager && this.isInitialized) {
                 // Convert binary node data to the format expected by updateNodePositions
-                const updates = nodes.map(node => ({
+                let updates = nodes.map(node => ({
                     id: node.id.toString(),
                     data: {
                         position: node.position,
                         velocity: node.velocity
                     }
                 }));
+                
+                // Filter out nodes that we've just randomized if randomization is in progress
+                // This prevents the server from sending back old positions during randomization
+                if (this.isRandomizationInProgress) {
+                    const now = performance.now();
+                    // Only apply this filter for a few seconds after randomization starts
+                    if (now - this.randomizationStartTime < 5000) {
+                        updates = updates.filter(update => !this.randomizedNodeIds.has(update.id));
+                        
+                        // If we're filtering out updates, it means the server has acknowledged our data
+                        if (updates.length < nodes.length) {
+                            this.randomizationAcknowledged = true;
+                            logger.info('Randomization acknowledged by server - filtered out ' + 
+                                        (nodes.length - updates.length) + ' outdated positions');
+                        }
+                    } else {
+                        // Time's up - end randomization mode
+                        this.isRandomizationInProgress = false;
+                        this.randomizedNodeIds.clear();
+                        logger.info('Randomization sync period ended');
+                    }
+                }
+                
                 this.nodeManager.updateNodePositions(updates);
             }
         });
@@ -340,7 +367,33 @@ export class VisualizationController {
      * Randomly distributes all nodes in 3D space and triggers WebSocket updates
      * @param radius The radius of the sphere within which to distribute nodes
      */
-    public randomizeNodePositions(radius: number = 7): void {
+    public async randomizeNodePositions(radius: number = 7): Promise<void> {
+        // First, ensure WebSocket is connected
+        const connectionState = this.websocketService.getConnectionStatus();
+        if (connectionState !== 'connected') {
+            logger.warn(`WebSocket not connected (state: ${connectionState}), attempting to reconnect...`);
+            
+            try {
+                // Try to reconnect
+                await this.websocketService.connect();
+                
+                // Wait a bit to ensure connection is stable
+                await new Promise(resolve => setTimeout(resolve, 1000));
+                
+                // Check again
+                const newState = this.websocketService.getConnectionStatus();
+                if (newState !== 'connected') {
+                    logger.error(`Failed to establish WebSocket connection (state: ${newState})`);
+                    // Proceed with local randomization only
+                    logger.warn('Will perform randomization locally only without server sync');
+                }
+            } catch (error) {
+                logger.error('Error reconnecting WebSocket:', createErrorMetadata(error));
+                // Proceed with local randomization only
+                logger.warn('Will perform randomization locally only without server sync');
+            }
+        }
+
         // Enforce maximum radius to prevent explosion
         radius = Math.min(radius, 5); // Reduced maximum radius to prevent explosion
 
@@ -349,7 +402,15 @@ export class VisualizationController {
             return;
         }
 
-        logger.info('Randomizing node positions with radius:', createDataMetadata({ radius }));
+        // Don't start another randomization if one is in progress
+        if (this.isRandomizationInProgress) {
+            logger.warn('Randomization already in progress, please wait...');
+            return;
+        }
+        
+        // Start tracking randomization
+        this.isRandomizationInProgress = true;
+        this.randomizationStartTime = performance.now();
         
         // Get node data from the graph manager
         const graphData = GraphDataManager.getInstance().getGraphData();
@@ -357,13 +418,22 @@ export class VisualizationController {
             logger.warn('No nodes found to randomize');
             return;
         }
+
+        logger.info('Randomizing node positions with radius:', createDataMetadata({ 
+            radius,
+            nodeCount: graphData.nodes.length
+        }));
+        this.randomizedNodeIds.clear();
         
-        // Create node updates with random positions
+        // Create node updates with random positions - using original node IDs
+        // WebSocketService will handle converting metadata names to numeric IDs
         const updates = graphData.nodes.map((node: Node) => {
+            const nodeId = node.id; // Keep original ID - WebSocketService handles mapping to numeric
+
             // Generate random position within a sphere
             const theta = Math.random() * Math.PI * 2; // Random angle around Y axis
             const phi = Math.acos((Math.random() * 2) - 1); // Random angle from Y axis
-            // Use square root rather than cube root for more central clustering
+            // Use square root for more central clustering
             const r = radius * Math.sqrt(Math.random()); // Random distance from center
             
             // Convert spherical to Cartesian coordinates
@@ -372,12 +442,17 @@ export class VisualizationController {
             const z = r * Math.cos(phi);
 
             // Use near-zero initial velocities to prevent explosion
-            const vx = 0;
-            const vy = 0;
-            const vz = (Math.random() - 0.5) * 0.01 - (z * 0.001);
+            // Set zero velocity for all axes - completely remove any initial bias
+            const vx = 0.0;
+            const vy = 0.0;
+            const vz = 0.0; // Removed bias that could cause z-axis drift
+            
+
+            // Track which nodes we've randomized
+            this.randomizedNodeIds.add(nodeId);
             
             return {
-                id: node.id,
+                id: nodeId,
                 data: {
                     position: new Vector3(x, y, z),
                     velocity: new Vector3(vx, vy, vz)
@@ -390,6 +465,39 @@ export class VisualizationController {
         
         // Send updates to server via WebSocket
         if (this.websocketService) {
+            // First, ensure we signal server to stop any current physics simulation
+            this.websocketService.sendMessage({ 
+                type: 'pauseSimulation',
+                enabled: true
+            });
+            
+            // Wait for a short delay to ensure the server has processed the pause
+            await new Promise(resolve => setTimeout(resolve, 300));
+            
+            this.randomizationAcknowledged = false;
+            
+            logger.info('Sending node positions to server in batch...');
+            
+            // Send positions in batches to avoid overwhelming the server
+            const batchSize = 5;
+            const connectionState = this.websocketService.getConnectionStatus();
+            
+            // Only send updates if websocket is connected
+            if (connectionState === 'connected') {
+            for (let i = 0; i < updates.length; i += batchSize) {
+                const batch = updates.slice(i, i + batchSize);
+                const wsUpdates = batch.map(update => ({ 
+                    id: update.id,
+                    position: update.data.position,
+                    velocity: update.data.velocity
+                }));
+                
+                this.websocketService.sendNodeUpdates(wsUpdates);
+            }
+            }
+            
+            // Old approach that sent one at a time - keeping as fallback
+            /*
             updates.forEach((update) => {
                 // Send updates to server one at a time with minimal velocity
                 this.websocketService.sendNodeUpdates([{ 
@@ -398,10 +506,46 @@ export class VisualizationController {
                     velocity: update.data.velocity
                 }]);
             });
+            */
             
-            // Enable server-side randomization to ensure physics simulation applies
-            // Removed enableRandomization toggle to prevent physics instability
+            // Signal server to resume physics simulation with new positions
+            setTimeout(async () => {
+                logger.info('Resuming physics simulation after position updates');
+                
+                // Only send message if connected
+                if (this.websocketService.getConnectionStatus() === 'connected') {
+                this.websocketService.sendMessage({ 
+                    type: 'pauseSimulation',
+                    enabled: false
+                });
+
+                // Also explicitly request force calculation to begin
+                this.websocketService.sendMessage({
+                    type: 'applyForces',
+                    timestamp: Date.now()
+                });
+                }
+                
+                // Wait up to 5 seconds for acknowledgment
+                const waitForAcknowledgment = async () => {
+                    for (let i = 0; i < 10; i++) { // 10 * 500ms = 5 seconds
+                        if (this.randomizationAcknowledged) return true;
+                        await new Promise(resolve => setTimeout(resolve, 500));
+                    }
+                    return false;
+                };
+                
+                const acknowledged = await waitForAcknowledgment();
+                logger.info(`Randomization ${acknowledged ? 'confirmed' : 'timed out waiting for confirmation'}`);
+                
+                // Mark randomization as complete even if no acknowledgment received
+                this.isRandomizationInProgress = false;
+                
+            }, 500); // Short delay to ensure all positions are processed
         } else {
+            // No WebSocket service or not connected
+            this.isRandomizationInProgress = false;
+            this.randomizedNodeIds.clear();
             logger.warn('WebSocket service not available, node positions only updated locally');
         }
     }
@@ -454,29 +598,69 @@ export class VisualizationController {
     private updateMetadataVisualization(): void {
         if (!this.isInitialized || !this.metadataVisualizer || !this.nodeManager) return;
         
+        // Properly clear existing labels using our new method
+        this.metadataVisualizer.clearAllLabels();
+        
+        // Store information on the nodes we'll process for logging
         const currentData = graphDataManager.getGraphData();
-        currentData.nodes.forEach(node => {
-            if (node.data?.metadata) {
-                const metadata: NodeMetadata = {
-                    id: node.id,
-                    name: node.data.metadata.name || 'Unnamed',
-                    commitAge: Math.floor((Date.now() - (node.data.metadata.lastModified || Date.now())) / (1000 * 60 * 60 * 24)),
-                    hyperlinkCount: node.data.metadata.hyperlinkCount || 0,
-                    fileSize: node.data.metadata.fileSize || 0,
-                    nodeSize: Math.min(50, Math.max(1, Math.log10((node.data.metadata.fileSize || 1024) / 1024) * 10)), // Scale based on file size (1-50)
-                    importance: 1.0, // Default importance
-                    position: {
-                        x: node.data.position.x || 0,
-                        y: node.data.position.y || 0,
-                        z: node.data.position.z || 0
-                    }
-                };
-                this.metadataVisualizer?.createMetadataLabel(metadata, node.id);
-                const position = this.nodeManager?.getNodeInstanceManager().getNodePosition(node.id);
-                if (position) {
-                    this.metadataVisualizer?.updateMetadataPosition(node.id, position);
+        logger.info('Updating metadata visualization for nodes:', createDataMetadata({
+            nodeCount: currentData.nodes.length
+        }));
+        
+        // Keep track of processed node ids to avoid duplicates
+        const processedNodeIds = new Set<string>();
+        
+        // Create metadata for all nodes
+        currentData.nodes.forEach((node, index) => {
+            // Skip if already processed or no metadata available
+            if (processedNodeIds.has(node.id)) {
+                return;
+            }
+            
+            // Mark as processed
+            processedNodeIds.add(node.id);
+            
+            // Create metadata even if node.data.metadata is missing
+            // Use node ID as a fallback for the name
+            const nodeMetadata = node.data?.metadata || {};
+            
+            // Log the actual data we're working with for debugging
+            if (index < 5) {
+                logger.info(`Processing node #${index}: ${node.id}`, createDataMetadata({
+                    name: nodeMetadata.name || node.id,
+                    fileSize: nodeMetadata.fileSize,
+                    position: node.data.position
+                }));
+            }
+                
+            const metadata: NodeMetadata = {
+                id: node.id,
+                // Use explicit || chaining to handle all possible undefined cases
+                name: (nodeMetadata.name || node.id || `Node ${index}`).toString(),
+                commitAge: Math.floor((Date.now() - (nodeMetadata.lastModified || Date.now())) / (1000 * 60 * 60 * 24)),
+                hyperlinkCount: nodeMetadata.hyperlinkCount || 0,
+                fileSize: nodeMetadata.fileSize || 1024,
+                nodeSize: Math.min(50, Math.max(1, Math.log10((nodeMetadata.fileSize || 1024) / 1024) * 10)), // Scale based on file size (1-50)
+                importance: 1.0, // Default importance
+                position: {
+                    x: node.data.position.x || 0,
+                    y: node.data.position.y || 0,
+                    z: node.data.position.z || 0
                 }
+            };
+                
+            // Create the label with proper unique metadata
+            this.metadataVisualizer?.createMetadataLabel(metadata, node.id);
+                
+            // Update position immediately to avoid the "dropping in" effect
+            const position = this.nodeManager?.getNodeInstanceManager().getNodePosition(node.id);
+            if (position) {
+                this.metadataVisualizer?.updateMetadataPosition(node.id, position);
             }
         });
+        
+        logger.info(`Metadata visualization updated: ${processedNodeIds.size} nodes with unique labels. Sample labels: ${
+            currentData.nodes.slice(0, 3).map(n => n.data?.metadata?.name || n.id).join(", ")
+        }`);
     }
 }

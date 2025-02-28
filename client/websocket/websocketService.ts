@@ -35,7 +35,7 @@ enum ConnectionState {
 
 // Interface for node updates from user interaction
 interface NodeUpdate {
-    id: string;          // Node ID (converted to u32 for binary protocol)
+    id: string;          // Node ID (string in metadata, but must be converted to u32 index for binary protocol)
     position: Vector3;   // Current position (Three.js Vector3)
     velocity?: Vector3;  // Optional velocity (Three.js Vector3)
     metadata?: {
@@ -68,7 +68,10 @@ export class WebSocketService {
     private connectionState: ConnectionState = ConnectionState.DISCONNECTED;
     private reconnectAttempts: number = 0;
     private readonly _maxReconnectAttempts: number = 5;
-    private readonly initialReconnectDelay: number = 5000; // 5 seconds
+    // Keep track of node ID to numeric index mapping for binary protocol
+    private nodeNameToIndexMap: Map<string, number> = new Map();
+    private nextNodeIndex: number = 0;
+    private readonly initialReconnectDelay: number = 1000; // 1 second (reduced from 5000)
     private readonly maxReconnectDelay: number = 60000; // 60 seconds
     private url: string = '';
     private connectionStatusHandler: ((status: boolean) => void) | null = null;
@@ -98,6 +101,16 @@ export class WebSocketService {
 
     private constructor() {
         // Don't automatically connect - wait for explicit connect() call
+        
+        // Listen for reset events (when graph data is cleared)
+        window.addEventListener('graph-data-reset', () => {
+            this.resetNodeIndices();
+        });
+    }
+    
+    private resetNodeIndices(): void {
+        this.nodeNameToIndexMap.clear();
+        this.nextNodeIndex = 0;
     }
 
     public static getInstance(): WebSocketService {
@@ -110,8 +123,18 @@ export class WebSocketService {
     public connect(): Promise<void> {
         if (this.connectionState !== ConnectionState.DISCONNECTED) {
             // Only log this at debug level instead of warn to reduce log spam
-            if (debugState.isWebsocketDebugEnabled()) {
-                logger.debug('WebSocket already connected or connecting');
+            if (this.connectionState === ConnectionState.CONNECTED) {
+                logger.info('WebSocket already connected');
+                return Promise.resolve();
+            }
+            
+            logger.info(`WebSocket in ${this.connectionState} state, attempting to reconnect...`);
+            
+            // If in FAILED state, reset and try again
+            if (this.connectionState === ConnectionState.FAILED) {
+                this.connectionState = ConnectionState.DISCONNECTED;
+                this.reconnectAttempts = 0;
+                return this.initializeWebSocket();
             }
             
             // If already connecting, return a promise that resolves when connected
@@ -419,7 +442,21 @@ export class WebSocketService {
      */
     public enableRandomization(enabled: boolean): void {
         if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-            logger.warn('WebSocket not connected, cannot control randomization');
+            if (enabled) {
+                logger.warn('WebSocket not connected, attempting to reconnect before enabling randomization');
+                // Try to reconnect
+                this.connect().then(() => {
+                    // If connection succeeded, try again
+                    if (this.ws?.readyState === WebSocket.OPEN) {
+                        logger.info(`${enabled ? 'Enabling' : 'Disabling'} server-side position randomization after reconnection`);
+                        this.sendMessage({ type: 'enableRandomization', enabled });
+                    }
+                }).catch(e => {
+                    logger.error('Failed to reconnect for randomization:', createErrorMetadata(e));
+                });
+            } else {
+                logger.warn('WebSocket not connected, cannot disable randomization');
+            }
             return;
         }
 
@@ -430,12 +467,70 @@ export class WebSocketService {
     
     public sendNodeUpdates(updates: NodeUpdate[]): void {
         if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-            logger.warn('WebSocket not connected, cannot send node updates');
+            logger.warn('WebSocket not connected, attempting to reconnect before sending updates');
+            // Try to reconnect and then send updates 
+            this.connect().then(() => {
+                // Check if connection succeeded
+                if (this.ws?.readyState === WebSocket.OPEN) {
+                    logger.info('Reconnected successfully, now sending queued node updates');
+                    this.nodeUpdateQueue.push(...updates);
+                    this.processNodeUpdateQueue();
+                }
+            }).catch(e => {
+                logger.error('Failed to reconnect for node updates:', createErrorMetadata(e));
+            });
             return;
         }
 
-        // Add updates to queue
-        this.nodeUpdateQueue.push(...updates);
+        // Pre-validate node IDs before adding to queue
+        const validatedUpdates = updates.filter(update => {
+            const id = parseInt(update.id, 10);
+            
+            // Check for NaN or non-numeric IDs
+            if (isNaN(id) || id < 0 || !Number.isInteger(id)) {
+                // This is likely a metadata name being incorrectly used as a node ID
+                logger.warn('Invalid node ID:', createDataMetadata({
+                    message: update.id,
+                    valueType: typeof update.id,
+                    invalidReason: isNaN(id) ? 'Not a numeric ID' : 
+                                  id < 0 ? 'Negative ID not allowed' :
+                                  'Non-integer ID not allowed',
+                    attemptedParse: id
+                }));
+                
+                // Log additional context to help diagnose the issue
+                if (typeof update.id === 'string' && update.id.length > 10) {
+                    logger.warn('Possible metadata name detected as ID', createDataMetadata({ id: update.id }));
+                }
+                return false;
+            }
+            return true;
+        });
+
+        if (validatedUpdates.length === 0 && updates.length > 0) {
+            // If we have non-numeric node IDs (metadata names), convert them to numeric indices
+            const indexedUpdates = updates.map(update => {
+                // Get or create index for this metadata name
+                if (!this.nodeNameToIndexMap.has(update.id)) {
+                    // Assign a new numeric index to this metadata name
+                    this.nodeNameToIndexMap.set(update.id, this.nextNodeIndex++);
+                    logger.info(`Mapped metadata name "${update.id}" to numeric index ${this.nextNodeIndex-1} for binary protocol`);
+                }
+                
+                // Use the numeric index for the binary protocol
+                const numericId = this.nodeNameToIndexMap.get(update.id)!;
+                return { ...update, id: numericId.toString() };
+            });
+            
+            // Add the indexed updates to the queue
+            this.nodeUpdateQueue.push(...indexedUpdates);
+        } else if (validatedUpdates.length > 0) {
+            // Add already-numeric updates to the queue
+            this.nodeUpdateQueue.push(...validatedUpdates);
+        } else {
+            return; // No updates to process
+        }
+        
         
         // Debounce updates to prevent flooding the server
         if (this.nodeUpdateTimer === null) {
@@ -473,10 +568,16 @@ export class WebSocketService {
         let offset = 0;
 
         updates.forEach(update => {
-            const id = parseInt(update.id, 10);
+            const id = parseInt(update.id, 10); 
             if (isNaN(id)) {
-                logger.warn('Invalid node ID:', createMessageMetadata(update.id));
-                return;
+                logger.warn('Invalid node ID in queue:', createDataMetadata({ 
+                    nodeId: update.id,
+                    type: typeof update.id,
+                    length: typeof update.id === 'string' ? update.id.length : 0,
+                    isPossibleMetadataName: typeof update.id === 'string' && 
+                                          update.id.length > 10 && !/^\d+$/.test(update.id)
+                }));
+                return; // Skip this update
             }
             dataView.setUint32(offset, id, true);
             offset += 4;

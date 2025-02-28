@@ -216,7 +216,7 @@ export class NodeManagerFacade implements NodeManagerInterface {
                         // Use the node's calculated size for offset
                         const nodeSize = this.calculateNodeSize();
                         
-                        this.tempVector.y += nodeSize * 0.5; // Reduced offset to stay closer to nodes
+                        this.tempVector.y += nodeSize * 0.03; // Drastically reduced offset for much closer label positioning
                         // Update individual label position
                         this.metadataManager.updatePosition(id, this.tempVector.clone());
                     }

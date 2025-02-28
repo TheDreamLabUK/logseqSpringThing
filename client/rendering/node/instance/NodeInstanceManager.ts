@@ -531,6 +531,17 @@ export class NodeInstanceManager {
                 // Apply velocity
                 velocity.copy(nodeVelocity).multiplyScalar(deltaTime);
                 position.add(velocity);
+
+                // Special Z-axis stabilization to prevent depth drift
+                // Apply extra damping to z-component
+                if (Math.abs(position.z) > 3.0) {
+                    position.z *= 0.98; // Gentle pull toward origin on z-axis
+                    
+                    // Also dampen z velocity to prevent oscillation
+                    if (nodeVelocity.z !== 0) {
+                        nodeVelocity.z *= 0.9; // Stronger damping on z velocity
+                    }
+                }
                 
                 // Debug logging for position after velocity update for first node
                 if (index === 0 && debugState.isPhysicsDebugEnabled()) {

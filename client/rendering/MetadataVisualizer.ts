@@ -123,7 +123,7 @@ export class MetadataVisualizer {
             `${metadata.hyperlinkCount} links`
         ];
 
-        const yOffsets = [0.75, 0.5, 0.25]; // Reduced Y positions for each label to keep them closer to nodes
+        const yOffsets = [0.05, 0.03, 0.01]; // Drastically reduced Y positions to keep labels almost at node position
 
         labelTexts.forEach(async (text, index) => {
             const position = new Vector3(nodePosition.x, nodePosition.y + yOffsets[index], nodePosition.z);
@@ -195,7 +195,7 @@ export class MetadataVisualizer {
             group.position.copy(position);
             
             // Update text positions
-            const labelPositions = [0.75, 0.5, 0.25]; // Reduced offsets to match createMetadataLabel
+            const labelPositions = [0.05, 0.03, 0.01]; // Drastically reduced offsets to match createMetadataLabel
             labelPositions.forEach((yOffset, index) => {
                 const labelId = `${nodeId}-label-${index}`;
                 // Create relative position to the node with y-offset
@@ -282,19 +282,46 @@ export class MetadataVisualizer {
     public dispose(): void {
         this.metadataGroups.forEach(group => {
             if (group.userData.nodeId) {
-                this.removeMetadata(group.userData.nodeId);
+                try {
+                    this.removeMetadata(group.userData.nodeId);
+                } catch (e) {
+                    this.logger.error(`Error removing metadata for node ${group.userData.nodeId}`, {
+                        error: e instanceof Error ? e.message : String(e)
+                    });
+                }
             }
         });
         this.metadataGroups.clear();
-        this.textRenderer.dispose();
+        // Don't dispose the text renderer itself, as we'll reuse it
+        // this.textRenderer.dispose();
         if (this.labelGroup.parent) {
             // Clean up debug helpers
             this.debugHelpers.forEach(helper => {
                 this.labelGroup.remove(helper);
             });
             this.debugHelpers.clear();
-            
-            this.labelGroup.parent.remove(this.labelGroup);
+            // Don't remove the label group from the scene, just clear it
+            // this.labelGroup.parent.remove(this.labelGroup);
         }
+        
+        this.logger.info('Cleared all metadata visualizations');
+    }
+    
+    /**
+     * Clear all label content without fully disposing
+     */
+    public clearAllLabels(): void {
+        // Store node IDs before clearing
+        const nodeIds = Array.from(this.metadataGroups.keys());
+        
+        // Remove all labels
+        nodeIds.forEach(nodeId => {
+            this.removeMetadata(nodeId);
+        });
+        
+        this.metadataGroups.clear();
+        this.debugHelpers.clear();
+        
+        this.logger.info(`Cleared ${nodeIds.length} metadata labels`);
     }
 }
