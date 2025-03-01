@@ -21,6 +21,7 @@ export class EdgeManager {
     private edgeGroup: Group;
     private nodeManager: NodeInstanceManager;
     private edgeData: Map<string, Edge> = new Map();
+    private sourceTargetCache: Map<string, string> = new Map();
     private settings: Settings;
     private settingsStore: SettingsStore;
     private updateFrameCount = 0;
@@ -112,11 +113,17 @@ export class EdgeManager {
     public updateEdges(edges: Edge[]): void {
         // Clear existing edges
         this.clearEdges();
+        
+        // Clear maps
         this.edgeData.clear();
         this.edges.clear();
+        this.sourceTargetCache.clear();
 
         // Create new edges
         edges.forEach(edge => {
+            // Cache mapping between source and target IDs
+            this.sourceTargetCache.set(edge.id || `${edge.source}_${edge.target}`, `${edge.source}:${edge.target}`);
+            
             if (!edge.sourcePosition || !edge.targetPosition) return;
 
             // Clamp positions to reasonable values
@@ -177,19 +184,88 @@ export class EdgeManager {
     public update(_deltaTime: number): void {
         this.updateFrameCount++;
         if (this.updateFrameCount % this.UPDATE_FREQUENCY !== 0) return;
+
+        // Add debug logging to check edge count
+        if (import.meta.env.DEV && this.updateFrameCount % 60 === 0) {
+            console.log(`[EdgeManager] Currently tracking ${this.edges.size} edges, ${this.edgeData.size} edge data entries`);
+        }
         
         // Update edge positions based on current node positions
         this.edgeData.forEach((edgeData, edgeId) => {
             const edge = this.edges.get(edgeId);
-            if (!edge) return;
+            if (!edge) {
+                if (import.meta.env.DEV) {
+                    console.warn(`[EdgeManager] Edge ${edgeId} not found in edges map`);
+                }
+                return;
+            }
 
             const sourcePos = this.nodeManager.getNodePosition(edgeData.source);
             const targetPos = this.nodeManager.getNodePosition(edgeData.target);
 
-            if (sourcePos && targetPos) {
+            // Log positions for debugging
+            if (import.meta.env.DEV && this.updateFrameCount % 120 === 0) {
+                console.log(`[EdgeManager] Edge ${edgeId} positions - sourcePos: ${sourcePos ? 'found' : 'missing'}, targetPos: ${targetPos ? 'found' : 'missing'}`);
+            }
+
+            if (!sourcePos || !targetPos) {
+                return;
+            }
+            
+            // Validate positions
+            if (!this.validateVector3(sourcePos) || !this.validateVector3(targetPos)) {
+                return; 
+            }
+                
+            // Limit edge length
+            const distance = sourcePos.distanceTo(targetPos);
+            let finalTargetPos = targetPos.clone();
+            
+            if (distance > this.MAX_EDGE_LENGTH) {
+                const direction = new Vector3().subVectors(targetPos, sourcePos).normalize();
+                finalTargetPos = sourcePos.clone().add(direction.multiplyScalar(this.MAX_EDGE_LENGTH));
+            }
+
+            // Update the existing geometry's positions directly
+            const posAttr = edge.geometry.getAttribute('position');
+            if (posAttr) {
+                // Create a new geometry instead of updating the existing one
+                const newGeometry = this.createLineGeometry(sourcePos, finalTargetPos);
+                edge.geometry.dispose();
+                edge.geometry = newGeometry;
+            }
+            
+            // Apply subtle pulsing animation if desired
+            if (edge.material instanceof LineBasicMaterial) {
+                const baseOpacity = this.settings.visualization.edges.opacity || 0.7;
+                const pulse = Math.sin(Date.now() * 0.001) * 0.1 + 0.9;
+                edge.material.opacity = baseOpacity * pulse;
+                edge.material.needsUpdate = true;
+            }
+        });
+    }
+
+    // Updated version of update method that doesn't use forEach to avoid potential iterator issues
+    /*
+    public update(_deltaTime: number): void {
+        this.updateFrameCount++;
+        if (this.updateFrameCount % this.UPDATE_FREQUENCY !== 0) return;
+        
+        // Update edge positions based on current node positions
+        const edgeDataEntries = Array.from(this.edgeData.entries());
+        
+        for (const [edgeId, edgeData] of edgeDataEntries) {
+            const edge = this.edges.get(edgeId);
+            if (!edge) continue;
+
+            const sourcePos = this.nodeManager.getNodePosition(edgeData.source);
+            const targetPos = this.nodeManager.getNodePosition(edgeData.target);
+
+            if (!sourcePos || !targetPos) continue;
+
                 // Validate positions
                 if (!this.validateVector3(sourcePos) || !this.validateVector3(targetPos)) {
-                    return; 
+                    continue; 
                 }
                 
                 // Limit edge length
@@ -220,8 +296,7 @@ export class EdgeManager {
                 }
             }
         });
-    }
-
+    }*/
     /**
      * Set XR mode for edge rendering
      */

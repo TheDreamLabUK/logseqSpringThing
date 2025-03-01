@@ -63,6 +63,11 @@ export class NodeMetadataManager {
         // Clear canvas
         this.labelContext.clearRect(0, 0, this.labelCanvas.width, this.labelCanvas.height);
 
+        // Debug the metadata content for nodes - only in development mode
+        if (import.meta.env.DEV) {
+            logger.debug(`Creating label texture for ${metadata.id} with name: ${metadata.name}`);
+        }
+
         // Draw background
         this.labelContext.fillStyle = 'rgba(0, 0, 0, 0.5)';
         this.labelContext.fillRect(0, 0, this.labelCanvas.width, this.labelCanvas.height);
@@ -70,7 +75,7 @@ export class NodeMetadataManager {
         // Draw text
         this.labelContext.fillStyle = 'white';
         this.labelContext.fillText(
-            metadata.name || 'Unknown',
+            metadata.name || metadata.id || 'Unknown',
             this.labelCanvas.width / 2,
             this.labelCanvas.height / 2
         );

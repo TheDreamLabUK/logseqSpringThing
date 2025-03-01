@@ -30,6 +30,7 @@ export class MetadataVisualizer {
     private scene: Scene;
     private labelGroup: Group;
     private settings: Settings;
+    private debugEnabled: boolean = false;
     private textRenderer: UnifiedTextRenderer;
     private metadataGroups: Map<string, MetadataLabelGroup>;
     private logger: Logger;
@@ -42,9 +43,20 @@ export class MetadataVisualizer {
         this.settings = settings;
         this.metadataGroups = new Map();
         this.logger = createLogger('MetadataVisualizer');
+        this.debugEnabled = debugState.isEnabled();
         
         this.debugHelpers = new Map();
         this.visibilityThreshold = settings.visualization.labels.visibilityThreshold || 50;
+        
+        // On initialization, log our settings
+        if (this.debugEnabled) {
+            console.log('[MetadataVisualizer] Initialized with settings:', {
+                enableLabels: settings.visualization.labels.enableLabels,
+                textColor: settings.visualization.labels.textColor,
+                desktopFontSize: settings.visualization.labels.desktopFontSize,
+                visibilityThreshold: this.visibilityThreshold
+            });
+        }
         
         this.logger.info('Initializing MetadataVisualizer with settings:', {
             enableLabels: settings.visualization.labels.enableLabels,
@@ -77,6 +89,15 @@ export class MetadataVisualizer {
     public async createMetadataLabel(metadata: NodeMetadata, nodeId: string): Promise<MetadataLabelGroup> {
         // Track how many labels we've created
         this.labelUpdateCount++;
+        
+        // Log detailed metadata info to help debug node label issues
+        if (this.debugEnabled) {
+            console.log(`[MetadataVisualizer] Creating label for node ${nodeId}:`, {
+                name: metadata.name,
+                fileSize: metadata.fileSize,
+                hyperlinkCount: metadata.hyperlinkCount
+            });
+        }
 
         const group = new Group() as MetadataLabelGroup;
         group.name = 'metadata-label';
@@ -86,7 +107,7 @@ export class MetadataVisualizer {
         };
 
         // Format file size
-        const fileSizeFormatted = metadata.fileSize > 1024 * 1024 
+        const fileSizeFormatted = !metadata.fileSize ? '0B' : metadata.fileSize > 1024 * 1024 
             ? `${(metadata.fileSize / (1024 * 1024)).toFixed(1)}MB`
             : metadata.fileSize > 1024
                 ? `${(metadata.fileSize / 1024).toFixed(1)}KB`
@@ -101,9 +122,13 @@ export class MetadataVisualizer {
                     fileSize: fileSizeFormatted,
                     nodeSize: metadata.nodeSize
                 }
-        });
+            });
         }
 
+        // Use the filename from metadata name (which should come from metadata_id)
+        // and fallback to nodeId if not available
+        const displayName = metadata.name || nodeId;
+        
         // Create text labels using UnifiedTextRenderer
         // First, find the node's actual position
         let nodePosition = new Vector3(0, 0, 0);
@@ -117,10 +142,11 @@ export class MetadataVisualizer {
         // We'll set the group's position initially to help with initialization
         group.position.copy(nodePosition);
         
+        // Enhanced label text that displays the filename prominently
         const labelTexts = [
-            `${metadata.name} (${fileSizeFormatted})`,
-            `Size: ${metadata.nodeSize.toFixed(1)}`,
-            `${metadata.hyperlinkCount} links`
+            `${displayName}`,  // Main label (filename)
+            `${fileSizeFormatted}`,  // File size
+            `${metadata.hyperlinkCount || 0} links`  // Link count
         ];
 
         const yOffsets = [0.05, 0.03, 0.01]; // Drastically reduced Y positions to keep labels almost at node position

@@ -372,6 +372,7 @@ export interface Logger {
 // Helper functions
 interface RawNode {
   id: string;
+  metadata_id?: string;  // Added to match the server's data structure
   data: {
     position: Vector3;
     metadata?: NodeMetadata;
@@ -382,6 +383,7 @@ interface RawNode {
 interface RawEdge {
   source: string;
   target: string;
+  weight?: number;
   id?: string;
 }
 
@@ -399,14 +401,29 @@ export function transformGraphData(data: RawGraphData): GraphData {
   const nodes = data.nodes.map((node: RawNode) => transformNodeData(node));
   const nodePositions = new Map(nodes.map((node: Node) => [
     node.id,
-    node.data.position
+    node.data.position 
   ]));
 
-  const edges = data.edges.map((edge: any) => ({
-    ...edge,
-    sourcePosition: nodePositions.get(edge.source),
-    targetPosition: nodePositions.get(edge.target)
-  }));
+  // Enhanced edge processing with logging for troubleshooting
+  const edges = data.edges.map((edge: RawEdge) => {
+    // Check if node positions exist for the source and target
+    const sourcePos = nodePositions.get(edge.source);
+    const targetPos = nodePositions.get(edge.target);
+    
+    // For debugging missing edges - only in development mode
+    if (!sourcePos || !targetPos) {
+      if (import.meta.env.DEV) {
+        console.log(`Edge processing: Missing position for ${!sourcePos ? 'source' : 'target'} node ID ${!sourcePos ? edge.source : edge.target}`);
+      }
+    }
+    
+    return {
+      ...edge,
+      sourcePosition: sourcePos,
+      targetPosition: targetPos,
+      id: edge.id || `${edge.source}_${edge.target}`
+    };
+  });
 
   return {
     nodes,
@@ -426,7 +443,7 @@ export function transformNodeData(node: any): Node {
       ),
       velocity: node.data.velocity instanceof ThreeVector3 ? node.data.velocity : new ThreeVector3(0, 0, 0),
       metadata: {
-        name: node.data.metadata?.name || node.id,
+        name: node.data.metadata?.name || node.metadata_id || node.id,
         lastModified: parseInt(node.data.metadata?.lastModified) || Date.now(),
         links: node.data.metadata?.links || [],
         references: node.data.metadata?.references || [],

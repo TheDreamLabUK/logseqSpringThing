@@ -427,7 +427,12 @@ export class GraphDataManager {
   updateGraphData(data: any): void {
     // Transform and validate incoming data
     const transformedData = transformGraphData(data);
-    throttledDebugLog(`Updating graph data. Incoming: ${transformedData.nodes.length} nodes, ${transformedData.edges?.length || 0} edges`);
+    throttledDebugLog(`Updating graph data. Incoming: ${transformedData.nodes.length} nodes, ${transformedData.edges?.length || 0} edges. First 3 node IDs: ${transformedData.nodes.slice(0, 3).map(n => n.id).join(', ')}`);
+    
+    // Debug edge source/target IDs
+    if (transformedData.edges && transformedData.edges.length > 0) {
+      throttledDebugLog(`First 3 edge source/target IDs: ${transformedData.edges.slice(0, 3).map(e => `${e.source}->${e.target}`).join(', ')}`);
+    }
     
     // Update nodes with proper position and velocity
     transformedData.nodes.forEach((node: Node) => {
@@ -438,6 +443,13 @@ export class GraphDataManager {
     if (Array.isArray(transformedData.edges)) {
       transformedData.edges.forEach((edge: Edge) => {
         const edgeId = this.createEdgeId(edge.source, edge.target);
+        
+        // Check if source and target nodes exist
+        if (!this.nodes.has(edge.source) || !this.nodes.has(edge.target)) {
+          throttledDebugLog(`Skipping edge ${edge.source}->${edge.target} due to missing node(s)`);
+          return;
+        }
+        
         const edgeWithId: EdgeWithId = {
           ...edge,
           id: edgeId
