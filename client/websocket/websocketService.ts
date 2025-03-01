@@ -389,7 +389,30 @@ export class WebSocketService {
 
                 nodes.push({ id, position: sanitizedPosition, velocity: sanitizedVelocity });
             }
-
+            
+            // Enhanced logging for node ID tracking - log every 100th update
+            const shouldLogExtras = debugState.isNodeDebugEnabled() && 
+                                   Math.random() < 0.01; // ~1% chance to log per update
+                
+            if (shouldLogExtras) {
+                // Sample a few nodes for debugging
+                const sampleNodes = nodes.slice(0, Math.min(3, nodes.length));
+                if (sampleNodes.length > 0) {
+                    logger.debug('Node binary update sample:', createDataMetadata({
+                        sampleSize: sampleNodes.length,
+                        totalNodes: nodes.length,
+                        nodeInfo: sampleNodes.map(n => ({
+                            id: n.id,
+                            position: { 
+                                x: n.position.x.toFixed(2), 
+                                y: n.position.y.toFixed(2), 
+                                z: n.position.z.toFixed(2) 
+                            }
+                        }))
+                    }));
+                }
+            }
+            
             if (invalidValuesFound) {
                 logger.warn('Some nodes had invalid position/velocity values that were clamped');
             }

@@ -436,7 +436,27 @@ export class GraphDataManager {
     
     // Update nodes with proper position and velocity
     transformedData.nodes.forEach((node: Node) => {
-      this.nodes.set(node.id, node);
+      // Check if we already have this node
+      const existingNode = this.nodes.get(node.id);
+      if (existingNode) {
+        // Update position and velocity
+        existingNode.data.position.copy(node.data.position);
+        if (node.data.velocity) {
+          existingNode.data.velocity.copy(node.data.velocity);
+        }
+        
+        // Only update metadata if the new node has valid metadata that's better than what we have
+        if (node.data.metadata?.name && 
+            node.data.metadata.name !== node.id && 
+            node.data.metadata.name.length > 0) {
+          existingNode.data.metadata = {
+            ...existingNode.data.metadata,
+            ...node.data.metadata
+          };
+        }
+      } else {
+        this.nodes.set(node.id, node);
+      }
     });
 
     // Store edges in Map with generated IDs

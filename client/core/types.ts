@@ -440,9 +440,35 @@ export function transformGraphData(data: RawGraphData): GraphData {
 }
 
 export function transformNodeData(node: any): Node {
+  // Make sure we have appropriate metadata
+  const metadata = {
+    // Use multiple fallbacks for name with preference order:
+    // 1. Existing metadata name
+    // 2. Label (from server)
+    // 3. metadata_id (filename)
+    // 4. Numeric ID as last resort
+    name: node.data.metadata?.name || 
+          node.label || 
+          node.metadata_id || 
+          node.id,
+    lastModified: parseInt(node.data.metadata?.lastModified) || Date.now(),
+    links: node.data.metadata?.links || [],
+    references: node.data.metadata?.references || [],
+    fileSize: node.metadata?.fileSize || 
+              parseInt(node.data.metadata?.fileSize) || 
+              1000, // Default file size of 1KB
+    hyperlinkCount: node.metadata?.hyperlinkCount || 
+                    parseInt(node.data.metadata?.hyperlinkCount) || 0
+  };
+  
+  // For debugging
+  if (debugState.isNodeDebugEnabled() && node.metadata_id) {
+    logger.debug(`Transforming node with metadata_id: ${node.metadata_id}, label: ${node.label}, id: ${node.id}`);
+  }
+  
   return {
     id: node.id,
-    label: node.label, // Add label property to preserve the server-side label
+    label: node.label || node.metadata_id, // Preserve server-side label, fallback to metadata_id
     data: {
       position: node.data.position instanceof ThreeVector3 ? node.data.position : new ThreeVector3(
         node.data.position.x,
@@ -450,15 +476,7 @@ export function transformNodeData(node: any): Node {
         node.data.position.z
       ),
       velocity: node.data.velocity instanceof ThreeVector3 ? node.data.velocity : new ThreeVector3(0, 0, 0),
-      metadata: {
-        // Use label first, then fall back to other identifiers
-        name: node.data.metadata?.name || node.label || node.metadata_id || node.id,
-        lastModified: parseInt(node.data.metadata?.lastModified) || Date.now(),
-        links: node.data.metadata?.links || [],
-        references: node.data.metadata?.references || [],
-        fileSize: parseInt(node.data.metadata?.fileSize) || 0,
-        hyperlinkCount: parseInt(node.data.metadata?.hyperlinkCount) || 0
-      }
+      metadata
     },
     color: node.color
   };
