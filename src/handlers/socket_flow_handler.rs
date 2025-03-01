@@ -18,7 +18,6 @@ pub struct SocketFlowServer {
     app_state: Arc<AppState>,
     settings: Arc<RwLock<crate::config::Settings>>,
     last_ping: Option<u64>,
-    initial_data_sent: bool, // Track if initial data has been sent
     update_counter: usize, // Counter for throttling debug logs
     update_interval: std::time::Duration,
 }
@@ -38,7 +37,6 @@ impl SocketFlowServer {
             app_state,
             settings,
             last_ping: None,
-            initial_data_sent: false,
             update_counter: 0,
             update_interval,
         }
@@ -93,6 +91,13 @@ impl Actor for SocketFlowServer {
         if let Ok(msg_str) = serde_json::to_string(&response) {
             ctx.text(msg_str);
         }
+
+        // Send a "loading" message to indicate the client should display a loading indicator
+        let loading_msg = serde_json::json!({
+            "type": "loading",
+            "message": "Calculating initial layout..."
+        });
+        ctx.text(serde_json::to_string(&loading_msg).unwrap_or_default());
     }
 
     fn stopped(&mut self, _: &mut Self::Context) {
@@ -127,13 +132,8 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
                             }
                             Some("requestInitialData") => {
                                 info!("Received request for position updates");
-                                
-                                // Check if initial data has already been sent to prevent duplicate intervals
-                                if self.initial_data_sent {
-                                    debug!("Initial data already sent, ignoring duplicate request");
-                                    return;
-                                }
-                                self.initial_data_sent = true;
+
+                                // No need to check for initial_data_sent, just handle the request
                                 let app_state = self.app_state.clone();
                                 
                                 ctx.run_interval(self.update_interval, move |act: &mut SocketFlowServer, ctx| {

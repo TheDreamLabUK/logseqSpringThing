@@ -50,6 +50,7 @@ export class VisualizationController {
     private randomizationStartTime: number = 0;
     private randomizationAcknowledged: boolean = false;
     private randomizedNodeIds: Set<string> = new Set();
+    private loadingIndicator: HTMLElement | null = null;
 
     private constructor() {
         // Initialize with complete default settings
@@ -108,6 +109,15 @@ export class VisualizationController {
                 this.nodeManager.updateNodePositions(updates);
             }
         });
+
+        // Handle loading status from WebSocket
+        this.websocketService.onLoadingStatusChange((isLoading, message) => {
+            if (isLoading) {
+                this.showLoadingIndicator(message);
+            } else {
+                this.hideLoadingIndicator();
+            }
+        });
     }
 
     public initializeScene(scene: Scene, camera: PerspectiveCamera): void {
@@ -131,6 +141,9 @@ export class VisualizationController {
                 type: 'requestInitialData',
                 timestamp: Date.now()
             });
+
+            // Show loading indicator until data arrives
+            this.showLoadingIndicator("Waiting for initial graph data...");
             
             // Initially disable randomization until data loading is finished
             this.websocketService.sendMessage({
@@ -173,6 +186,9 @@ export class VisualizationController {
     }
 
     public updateSetting(path: string, value: any): void {
+        // Hide loading indicator when any settings are changed
+        this.hideLoadingIndicator();
+
         const parts = path.split('.');
         const category = parts[0] as VisualizationCategory;
         
@@ -197,6 +213,76 @@ export class VisualizationController {
 
         current[parts[parts.length - 1]] = value;
         this.applySettingUpdate(category);
+    }
+
+    /**
+     * Show a loading indicator while waiting for data
+     * @param message Optional message to display
+     */
+    private showLoadingIndicator(message?: string): void {
+        // Hide any existing indicator first
+        this.hideLoadingIndicator();
+        
+        // Create loading indicator if it doesn't exist
+        this.loadingIndicator = document.createElement('div');
+        this.loadingIndicator.id = 'graph-loading-indicator';
+        this.loadingIndicator.style.position = 'fixed';
+        this.loadingIndicator.style.top = '50%';
+        this.loadingIndicator.style.left = '50%';
+        this.loadingIndicator.style.transform = 'translate(-50%, -50%)';
+        this.loadingIndicator.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
+        this.loadingIndicator.style.color = 'white';
+        this.loadingIndicator.style.padding = '20px';
+        this.loadingIndicator.style.borderRadius = '10px';
+        this.loadingIndicator.style.zIndex = '1000';
+        this.loadingIndicator.style.textAlign = 'center';
+        this.loadingIndicator.style.fontFamily = 'Arial, sans-serif';
+        this.loadingIndicator.style.boxShadow = '0 0 20px rgba(0, 0, 255, 0.5)';
+        this.loadingIndicator.style.border = '1px solid #3a3a3a';
+        
+        // Add loading spinner
+        const spinner = document.createElement('div');
+        spinner.style.display = 'inline-block';
+        spinner.style.width = '30px';
+        spinner.style.height = '30px';
+        spinner.style.marginBottom = '10px';
+        spinner.style.border = '4px solid rgba(255, 255, 255, 0.3)';
+        spinner.style.borderRadius = '50%';
+        spinner.style.borderTop = '4px solid #ffffff';
+        spinner.style.animation = 'spin 1s linear infinite';
+        
+        // Add animation
+        const style = document.createElement('style');
+        style.textContent = `
+            @keyframes spin {
+                0% { transform: rotate(0deg); }
+                100% { transform: rotate(360deg); }
+            }
+        `;
+        document.head.appendChild(style);
+        
+        this.loadingIndicator.appendChild(spinner);
+        
+        // Create a line break
+        this.loadingIndicator.appendChild(document.createElement('br'));
+        
+        // Add message text
+        const messageText = document.createElement('div');
+        messageText.textContent = message || 'Loading graph data...';
+        this.loadingIndicator.appendChild(messageText);
+        
+        // Add to DOM
+        document.body.appendChild(this.loadingIndicator);
+    }
+    
+    /**
+     * Hide the loading indicator
+     */
+    private hideLoadingIndicator(): void {
+        if (this.loadingIndicator && document.body.contains(this.loadingIndicator)) {
+            document.body.removeChild(this.loadingIndicator);
+        }
+        this.loadingIndicator = null;
     }
 
     public updateSettings(category: VisualizationCategory, settings: Partial<Settings>): void {
@@ -589,6 +675,7 @@ export class VisualizationController {
             this.metadataVisualizer = null;
         }
         this.nodeManager?.dispose();
+        this.hideLoadingIndicator();
         this.edgeManager?.dispose();
         this.websocketService.dispose();
         this.isInitialized = false;

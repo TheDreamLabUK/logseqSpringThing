@@ -20,6 +20,7 @@ use actix_cors::Cors;
 use actix_files::Files;
 use std::sync::Arc;
 use tokio::sync::RwLock;
+use tokio::time::Duration;
 use dotenvy::dotenv;
 use log::{error, info, debug};
 use webxr::utils::logging::{init_logging_with_config, LogConfig};
@@ -149,6 +150,11 @@ async fn main() -> std::io::Result<()> {
             return Err(std::io::Error::new(std::io::ErrorKind::Other, format!("Failed to build initial graph: {}", e)));
         }
     }
+
+    // Add a delay to allow GPU computation to run before accepting client connections
+    info!("Waiting for initial GPU layout calculation...");
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    info!("Initial delay complete. Starting HTTP server...");
 
     // Create web::Data after all initialization is complete
     let app_state_data = web::Data::new(app_state);

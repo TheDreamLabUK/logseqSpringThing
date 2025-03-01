@@ -79,6 +79,8 @@ export class WebSocketService {
     private readonly MAX_VELOCITY = 0.05; // Reduced to align with server's MAX_VELOCITY (0.02)
 
     // Add a debounce mechanism for node updates
+    private loadingStatusHandler: ((isLoading: boolean, message?: string) => void) | null = null;
+    private isLoading: boolean = false;
     private nodeUpdateQueue: NodeUpdate[] = [];
     private nodeUpdateTimer: number | null = null;
     private readonly NODE_UPDATE_DEBOUNCE_MS = 50; // 50ms debounce for node updates
@@ -248,9 +250,31 @@ export class WebSocketService {
                 } else if (typeof event.data === 'string') {
                     try {
                         const message = JSON.parse(event.data);
-                        if (message.type === 'connection_established' || message.type === 'updatesStarted') {
+                        
+                        // Handle loading state messages
+                        if (message.type === 'loading') {
+                            this.isLoading = true;
+                            logger.info('WebSocket loading state:', createDataMetadata({
+                                message: message.message
+                            }));
+                            // Notify loading handler if registered
+                            if (this.loadingStatusHandler) {
+                                this.loadingStatusHandler(true, message.message);
+                            }
+                        } else if (message.type === 'updatesStarted') {
+                            // Clear loading state when updates start
+                            this.isLoading = false;
+                            logger.info('WebSocket updates started:', createDataMetadata({
+                                timestamp: message.timestamp
+                            }));
+                            // Notify loading handler if registered
+                            if (this.loadingStatusHandler) {
+                                this.loadingStatusHandler(false);
+                            }
+                        } else if (message.type === 'connection_established') {
                             logger.info('WebSocket message received:', createDataMetadata({
-                                type: message.type
+                                type: message.type,
+                                timestamp: message.timestamp || Date.now()
                             }));
                         } else if (debugState.isWebsocketDebugEnabled()) {
                             logger.debug('WebSocket message received:', message);
@@ -609,6 +633,19 @@ export class WebSocketService {
     public onConnectionStatusChange(handler: (status: boolean) => void): void {
         this.connectionStatusHandler = handler;
         if (this.connectionState === ConnectionState.CONNECTED && handler) {
+            handler(true);
+        }
+    }
+
+    /**
+     * Register a handler for loading status changes
+     * @param handler Callback function that receives loading state and optional message
+     */
+    public onLoadingStatusChange(handler: (isLoading: boolean, message?: string) => void): void {
+        this.loadingStatusHandler = handler;
+        
+        // Immediately notify with current state if already loading
+        if (this.isLoading && handler) {
             handler(true);
         }
     }
