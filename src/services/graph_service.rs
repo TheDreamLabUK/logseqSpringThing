@@ -115,12 +115,14 @@ impl GraphService {
         // Create nodes for all valid node IDs
         for node_id in &valid_nodes {
             let mut node = Node::new(node_id.clone());
+            // Store the mapping from numeric ID to metadata_id
+            graph.id_to_metadata.insert(node.id.clone(), node_id.clone());
             
             // Get metadata for this node
             if let Some(metadata) = metadata.get(&format!("{}.md", node_id)) {
                 node.set_file_size(metadata.file_size as u64);  // This will update both file_size and mass
                 node.size = Some(metadata.node_size as f32);
-                node.label = node_id.clone(); // Set label to node ID (filename without .md)
+                // Label is already set to the metadata_id (filename without .md) in Node::new
                 
                 // Add metadata fields to node's metadata map
                 node.metadata.insert("fileSize".to_string(), metadata.file_size.to_string());
@@ -130,7 +132,8 @@ impl GraphService {
             
             let node_clone = node.clone();
             graph.nodes.push(node_clone);
-            node_map.insert(node_id.clone(), node);
+            // Store nodes in map by numeric ID for efficient lookups
+            node_map.insert(node.id.clone(), node);
         }
 
         // Store metadata in graph
@@ -139,16 +142,28 @@ impl GraphService {
         // Second pass: Create edges from topic counts
         for (source_file, metadata) in metadata.iter() {
             let source_id = source_file.trim_end_matches(".md").to_string();
+            // Find the node with this metadata_id to get its numeric ID
+            let source_node = graph.nodes.iter().find(|n| n.metadata_id == source_id);
+            if source_node.is_none() {
+                continue; // Skip if node not found
+            }
+            let source_numeric_id = source_node.unwrap().id.clone();
             
             for (target_file, count) in &metadata.topic_counts {
                 let target_id = target_file.trim_end_matches(".md").to_string();
+                // Find the node with this metadata_id to get its numeric ID
+                let target_node = graph.nodes.iter().find(|n| n.metadata_id == target_id);
+                if target_node.is_none() {
+                    continue; // Skip if node not found
+                }
+                let target_numeric_id = target_node.unwrap().id.clone();
                 
                 // Only create edge if both nodes exist and they're different
-                if source_id != target_id && valid_nodes.contains(&target_id) {
-                    let edge_key = if source_id < target_id {
-                        (source_id.clone(), target_id.clone())
+                if source_numeric_id != target_numeric_id {
+                    let edge_key = if source_numeric_id < target_numeric_id {
+                        (source_numeric_id.clone(), target_numeric_id.clone())
                     } else {
-                        (target_id.clone(), source_id.clone())
+                        (target_numeric_id.clone(), source_numeric_id.clone())
                     };
 
                     edge_map.entry(edge_key)
@@ -208,12 +223,14 @@ impl GraphService {
         // Create nodes for all valid node IDs
         for node_id in &valid_nodes {
             let mut node = Node::new(node_id.clone());
+            // Store the mapping from numeric ID to metadata_id
+            graph.id_to_metadata.insert(node.id.clone(), node_id.clone());
             
             // Get metadata for this node
             if let Some(metadata) = graph.metadata.get(&format!("{}.md", node_id)) {
                 node.set_file_size(metadata.file_size as u64);  // This will update both file_size and mass
                 node.size = Some(metadata.node_size as f32);
-                node.label = node_id.clone(); // Set label to node ID (filename without .md)
+                // Label is already set to the metadata_id (filename without .md) in Node::new
                 
                 // Add metadata fields to node's metadata map
                 node.metadata.insert("fileSize".to_string(), metadata.file_size.to_string());
@@ -223,23 +240,36 @@ impl GraphService {
             
             let node_clone = node.clone();
             graph.nodes.push(node_clone);
-            node_map.insert(node_id.clone(), node);
+            // Store nodes in map by numeric ID for efficient lookups
+            node_map.insert(node.id.clone(), node);
         }
 
         // Create edges from metadata topic counts
         for (source_file, metadata) in graph.metadata.iter() {
             let source_id = source_file.trim_end_matches(".md").to_string();
+            // Find the node with this metadata_id to get its numeric ID
+            let source_node = graph.nodes.iter().find(|n| n.metadata_id == source_id);
+            if source_node.is_none() {
+                continue; // Skip if node not found
+            }
+            let source_numeric_id = source_node.unwrap().id.clone();
             
             // Process outbound links from this file to other topics
             for (target_file, count) in &metadata.topic_counts {
                 let target_id = target_file.trim_end_matches(".md").to_string();
+                // Find the node with this metadata_id to get its numeric ID
+                let target_node = graph.nodes.iter().find(|n| n.metadata_id == target_id);
+                if target_node.is_none() {
+                    continue; // Skip if node not found
+                }
+                let target_numeric_id = target_node.unwrap().id.clone();
                 
                 // Only create edge if both nodes exist and they're different
-                if source_id != target_id && valid_nodes.contains(&target_id) {
-                    let edge_key = if source_id < target_id {
-                        (source_id.clone(), target_id.clone())
+                if source_numeric_id != target_numeric_id {
+                    let edge_key = if source_numeric_id < target_numeric_id {
+                        (source_numeric_id.clone(), target_numeric_id.clone())
                     } else {
-                        (target_id.clone(), source_id.clone())
+                        (target_numeric_id.clone(), source_numeric_id.clone())
                     };
 
                     // Sum the weights for bi-directional references
@@ -273,7 +303,8 @@ impl GraphService {
         // Log the initialization process
         info!("Initializing random positions for {} nodes with radius {}", 
              node_count, initial_radius);
-        info!("First 5 node IDs: {}", graph.nodes.iter().take(5).map(|n| n.id.clone()).collect::<Vec<_>>().join(", "));
+        info!("First 5 node numeric IDs: {}", graph.nodes.iter().take(5).map(|n| n.id.clone()).collect::<Vec<_>>().join(", "));
+        info!("First 5 node metadata IDs: {}", graph.nodes.iter().take(5).map(|n| n.metadata_id.clone()).collect::<Vec<_>>().join(", "));
         
         // Use Fibonacci sphere distribution for more uniform initial positions
         for (i, node) in graph.nodes.iter_mut().enumerate() {
@@ -298,7 +329,7 @@ impl GraphService {
             // Log first 5 nodes for debugging
             if i < 5 {
                 info!("Initialized node {}: id={}, pos=[{:.3},{:.3},{:.3}]", 
-                     i, 
+                     i,
                      node.id,
                      node.data.position[0], 
                      node.data.position[1], 

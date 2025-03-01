@@ -1,7 +1,11 @@
 use serde::{Deserialize, Serialize};
 use bytemuck::{Pod, Zeroable};
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicU32, Ordering};
 use cudarc::driver::{DeviceRepr, ValidAsZeroBits};
+
+// Static counter for generating unique numeric IDs
+static NEXT_NODE_ID: AtomicU32 = AtomicU32::new(1);  // Start from 1 (0 could be reserved)
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Pod, Zeroable, Serialize, Deserialize)]
@@ -52,6 +56,7 @@ fn default_timestamp() -> u64 {
 pub struct Node {
     // Core data
     pub id: String,
+    pub metadata_id: String,  // Store the original filename for lookup
     pub label: String,
     pub data: BinaryNodeData,
 
@@ -78,10 +83,14 @@ pub struct Node {
 }
 
 impl Node {
-    pub fn new(id: String) -> Self {
+    pub fn new(metadata_id: String) -> Self {
+        // Generate a unique numeric ID for binary protocol compatibility
+        let id = NEXT_NODE_ID.fetch_add(1, Ordering::SeqCst).to_string();
+        
         Self {
-            id: id.clone(),
-            label: id,
+            id,
+            metadata_id: metadata_id.clone(),
+            label: metadata_id,
             data: BinaryNodeData {
                 position: [0.0, 0.0, 0.0],
                 velocity: [0.0, 0.0, 0.0],

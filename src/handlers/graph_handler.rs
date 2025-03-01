@@ -239,15 +239,17 @@ pub async fn refresh_graph(state: web::Data<AppState>) -> impl Responder {
             let mut node_map = state.graph_service.get_node_map_mut().await;
             
             // Preserve existing node positions
-            let old_positions: HashMap<String, (f32, f32, f32)> = graph.nodes.iter()
-                .map(|node| (node.id.clone(), (node.x(), node.y(), node.z())))
+            // Use metadata_id (filename) to match nodes between old and new graphs
+            let old_positions: HashMap<String, (f32, f32, f32)> = graph.nodes.iter() 
+                .map(|node| (node.metadata_id.clone(), (node.x(), node.y(), node.z())))
                 .collect();
             
-            debug!("Preserved positions for {} existing nodes", old_positions.len());
+            debug!("Preserved positions for {} existing nodes by metadata_id", old_positions.len());
             
             // Update positions in new graph
             for node in &mut new_graph.nodes {
-                if let Some(&(x, y, z)) = old_positions.get(&node.id) {
+                // Look up by metadata_id (filename) instead of numeric ID
+                if let Some(&(x, y, z)) = old_positions.get(&node.metadata_id) {
                     node.set_x(x);
                     node.set_y(y);
                     node.set_z(z);
@@ -318,13 +320,17 @@ pub async fn update_graph(state: web::Data<AppState>) -> impl Responder {
                     let mut node_map = state.graph_service.get_node_map_mut().await;
                     
                     // Preserve existing node positions
-                    let old_positions: HashMap<String, (f32, f32, f32)> = graph.nodes.iter()
-                        .map(|node| (node.id.clone(), (node.x(), node.y(), node.z())))
+                    // Use metadata_id (filename) to match nodes between old and new graphs
+                    let old_positions: HashMap<String, (f32, f32, f32)> = graph.nodes.iter() 
+                        .map(|node| (node.metadata_id.clone(), (node.x(), node.y(), node.z())))
                         .collect();
+                    
+                    debug!("Preserved positions for {} existing nodes by metadata_id", old_positions.len());
                     
                     // Update positions in new graph
                     for node in &mut new_graph.nodes {
-                        if let Some(&(x, y, z)) = old_positions.get(&node.id) {
+                        // Look up by metadata_id (filename) instead of numeric ID
+                        if let Some(&(x, y, z)) = old_positions.get(&node.metadata_id) {
                             node.set_x(x);
                             node.set_y(y);
                             node.set_z(z);

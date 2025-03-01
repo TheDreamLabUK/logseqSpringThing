@@ -159,9 +159,18 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
                                             false
                                         };
 
+                                        if detailed_debug {
+                                            debug!("Raw nodes count: {}, showing first 5 nodes IDs:", raw_nodes.len());
+                                            for (i, node) in raw_nodes.iter().take(5).enumerate() {
+                                                debug!("  Node {}: id={} (numeric), metadata_id={} (filename)", 
+                                                    i, node.id, node.metadata_id);
+                                            }
+                                        }
+
                                         let mut nodes = Vec::with_capacity(raw_nodes.len());
                                         for node in raw_nodes {
                                             if let Ok(node_id) = node.id.parse::<u32>() {
+                                                // The node.id should now be numeric, so parsing should always succeed
                                                 nodes.push((node_id, BinaryNodeData {
                                                     position: node.data.position,
                                                     velocity: node.data.velocity,
@@ -169,6 +178,9 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
                                                     flags: node.data.flags,
                                                     padding: node.data.padding,
                                                 }));
+                                            } else {
+                                                warn!("[WebSocket] Failed to parse node ID as u32: '{}', metadata_id: '{}'", 
+                                                    node.id, node.metadata_id);
                                             }
                                         }
 
@@ -283,6 +295,7 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
                                 for (node_id, node_data) in nodes_vec {
                                     let node_id_str = node_id.to_string();
                                     if let Some(node) = node_map.get_mut(&node_id_str) {
+                                        // Node exists with this numeric ID
                                         // Explicitly preserve existing mass and flags
                                         let original_mass = node.data.mass;
                                         let original_flags = node.data.flags;
@@ -294,11 +307,13 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
                                         node.data.flags = original_flags; // Restore flags needed for GPU code
                                     // Mass, flags, and padding are not overwritten as they're only 
                                     // present on the server side and not transmitted over the wire
+                                    } else {
+                                        debug!("Received update for unknown node ID: {}", node_id_str);
                                     }
                                 }
                                 
                                 // Add more detailed debug information for mass maintenance
-                                debug!("Updated node positions from binary data, preserving server-side mass values");
+                                debug!("Updated node positions from binary data (preserving server-side properties)");
 
                                 // Update graph nodes with new positions/velocities from the map, preserving other properties
                                 for node in &mut graph.nodes {

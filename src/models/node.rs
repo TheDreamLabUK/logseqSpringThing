@@ -1,12 +1,17 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicU32, Ordering};
 use crate::utils::socket_flow_messages::BinaryNodeData;
+
+// Static counter for generating unique numeric IDs
+static NEXT_NODE_ID: AtomicU32 = AtomicU32::new(1);  // Start from 1 (0 could be reserved)
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct Node {
     // Core data
     pub id: String,
+    pub metadata_id: String,  // Store the original filename for lookup
     pub label: String,
     pub data: BinaryNodeData,
 
@@ -33,10 +38,14 @@ pub struct Node {
 }
 
 impl Node {
-    pub fn new(id: String) -> Self {
+    pub fn new(metadata_id: String) -> Self {
+        // Generate a unique numeric ID for binary protocol compatibility
+        let id = NEXT_NODE_ID.fetch_add(1, Ordering::SeqCst).to_string();
+        
         Self {
-            id: id.clone(),
-            label: id,
+            id,
+            metadata_id: metadata_id.clone(),
+            label: metadata_id,
             data: BinaryNodeData {
                 position: [0.0, 0.0, 0.0],
                 velocity: [0.0, 0.0, 0.0],
@@ -126,21 +135,50 @@ impl Node {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::atomic::Ordering;
     use super::*;
+
+    #[test]
+    fn test_numeric_id_generation() {
+        // Read the current value of the counter (it might have been incremented elsewhere)
+        let start_value = NEXT_NODE_ID.load(Ordering::SeqCst);
+        
+        // Create two nodes with different metadata IDs
+        let node1 = Node::new("test-file-1.md".to_string());
+        let node2 = Node::new("test-file-2.md".to_string());
+        
+        // Verify each node has a unique numeric ID
+        assert_ne!(node1.id, node2.id);
+        
+        // Verify metadata_id is stored correctly
+        assert_eq!(node1.metadata_id, "test-file-1.md");
+        assert_eq!(node2.metadata_id, "test-file-2.md");
+        
+        // Verify IDs are consecutive numbers (as strings)
+        let id1: u32 = node1.id.parse().unwrap();
+        let id2: u32 = node2.id.parse().unwrap();
+        assert_eq!(id1 + 1, id2);
+        
+        // Verify final counter value
+        let end_value = NEXT_NODE_ID.load(Ordering::SeqCst);
+        assert_eq!(end_value, start_value + 2);
+    }
 
     #[test]
     fn test_node_creation() {
         let node = Node::new("test".to_string())
+            .with_label("Test Node".to_string())
             .with_position(1.0, 2.0, 3.0)
             .with_velocity(0.1, 0.2, 0.3)
-            .with_label("Test Node".to_string())
             .with_type("test_type".to_string())
             .with_size(1.5)
             .with_color("#FF0000".to_string())
             .with_weight(2.0)
             .with_group("group1".to_string());
 
-        assert_eq!(node.id, "test");
+        // ID should be a numeric string now, not "test"
+        assert!(node.id.parse::<u32>().is_ok(), "ID should be numeric, got: {}", node.id);
+        assert_eq!(node.metadata_id, "test");
         assert_eq!(node.label, "Test Node");
         assert_eq!(node.data.position, [1.0, 2.0, 3.0]);
         assert_eq!(node.data.velocity, [0.1, 0.2, 0.3]);
