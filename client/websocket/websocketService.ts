@@ -74,12 +74,14 @@ export class WebSocketService {
     private readonly initialReconnectDelay: number = 1000; // 1 second (reduced from 5000)
     private readonly maxReconnectDelay: number = 60000; // 60 seconds
     private url: string = '';
+    private initialDataReceived: boolean = false;
     private connectionStatusHandler: ((status: boolean) => void) | null = null;
     private readonly MAX_POSITION = 1000.0;
     private readonly MAX_VELOCITY = 0.05; // Reduced to align with server's MAX_VELOCITY (0.02)
 
     // Add a debounce mechanism for node updates
     private loadingStatusHandler: ((isLoading: boolean, message?: string) => void) | null = null;
+    private heartbeatInterval: number | null = null;
     private isLoading: boolean = false;
     private nodeUpdateQueue: NodeUpdate[] = [];
     private nodeUpdateTimer: number | null = null;
@@ -142,11 +144,15 @@ export class WebSocketService {
             // If already connecting, return a promise that resolves when connected
             if (this.connectionState === ConnectionState.CONNECTING) {
                 return new Promise((resolve) => {
+                    let timeoutCounter = 0;
                     const checkConnection = () => {
                         if (this.connectionState === ConnectionState.CONNECTED) {
                             resolve();
-                        } else {
+                        } else if (timeoutCounter++ < 100) { // Limit to 10 seconds (100 * 100ms)
                             setTimeout(checkConnection, 100);
+                        } else {
+                            logger.error('Timed out waiting for connection to establish');
+                            resolve(); // Resolve anyway to prevent hanging
                         }
                     };
                     checkConnection();
@@ -210,14 +216,23 @@ export class WebSocketService {
                 this.connectionStatusHandler(true);
                 debugLog('Connection status handler notified: connected');
             }
-            logger.info('WebSocket connected successfully, requesting initial position data');
+            
+            // Set up a heartbeat to keep the connection alive
+            this.setupHeartbeat();
+            
+            // Add delay before sending first message to ensure connection is stable
+            setTimeout(() => {
+                logger.info('WebSocket connected successfully, requesting initial position data');
 
-            // Send request for position updates after connection
-            debugLog('Requesting position updates');
-            this.sendMessage({ type: 'requestInitialData' }); // Matching the server's camelCase type
+                // Send request for position updates after connection
+                this.initialDataReceived = false;
+                logger.info('Requesting initial data from server...');
+                
+                this.sendMessage({ type: 'requestInitialData' }); // Matching the server's camelCase type
 
-            // Randomization is disabled by default until client is ready
-            logger.info('WebSocket connection established. Randomization disabled by default.');
+                // Randomization is disabled by default until client is ready
+                logger.info('WebSocket connection established. Randomization disabled by default.');
+            }, 500); // 500ms delay to ensure connection is stable
         };
 
         this.ws.onerror = (event: Event): void => {
@@ -232,8 +247,12 @@ export class WebSocketService {
         this.ws.onclose = (event: CloseEvent): void => {
             logger.warn('WebSocket closed', createDataMetadata({
                 code: event.code,
-                reason: event.reason
+                reason: event.reason,
+                initialDataReceived: this.initialDataReceived
             }));
+            
+            // Clear heartbeat on connection close
+            this.clearHeartbeat();
             
             if (this.connectionStatusHandler) {
                 this.connectionStatusHandler(false);
@@ -259,11 +278,13 @@ export class WebSocketService {
                             }));
                             // Notify loading handler if registered
                             if (this.loadingStatusHandler) {
+                                logger.info('Showing loading indicator: ' + message.message);
                                 this.loadingStatusHandler(true, message.message);
                             }
                         } else if (message.type === 'updatesStarted') {
                             // Clear loading state when updates start
                             this.isLoading = false;
+                            this.initialDataReceived = true;
                             logger.info('WebSocket updates started:', createDataMetadata({
                                 timestamp: message.timestamp
                             }));
@@ -287,6 +308,25 @@ export class WebSocketService {
                 logger.error('Critical error in message handler:', createErrorMetadata(error));
             }
         };
+    }
+
+    // Setup a heartbeat to keep the WebSocket connection alive
+    private setupHeartbeat(): void {
+        this.clearHeartbeat(); // Clear any existing heartbeat
+        this.heartbeatInterval = window.setInterval(() => {
+            // Send a simple ping message to keep the connection alive
+            if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+                this.sendMessage({ type: 'ping', timestamp: Date.now() });
+            }
+        }, 15000); // Send ping every 15 seconds
+    }
+    
+    // Clear heartbeat interval
+    private clearHeartbeat(): void {
+        if (this.heartbeatInterval !== null) {
+            window.clearInterval(this.heartbeatInterval);
+            this.heartbeatInterval = null;
+        }
     }
 
     private tryDecompress(buffer: ArrayBuffer): ArrayBuffer {
@@ -324,6 +364,7 @@ export class WebSocketService {
             // Throttled debug logging for binary messages
              debugLog('Binary data processed:', createDataMetadata({ 
                 rawSize: buffer.byteLength, 
+                initialDataReceived: this.initialDataReceived,
                 decompressedSize: decompressedBuffer.byteLength, 
                 isCompressed,
                 nodeCount: decompressedBuffer.byteLength / 28
@@ -346,7 +387,8 @@ export class WebSocketService {
             const nodeCount = decompressedBuffer.byteLength / 28;
 
             if (nodeCount === 0) {
-                debugLog('No nodes in binary update');
+                logger.warn('No nodes in binary update - empty message received');
+                return;
             }
             let offset = 0;
             let invalidValuesFound = false;
@@ -683,6 +725,11 @@ export class WebSocketService {
             window.clearTimeout(this.nodeUpdateTimer);
             this.nodeUpdateTimer = null;
             this.nodeUpdateQueue = [];
+        }
+        
+        if (this.heartbeatInterval !== null) {
+            window.clearInterval(this.heartbeatInterval);
+            this.heartbeatInterval = null;
         }
         
         if (this.ws) {

@@ -36,6 +36,7 @@ export class MetadataVisualizer {
     private logger: Logger;
     private debugHelpers: Map<string, Object3D>;
     private labelUpdateCount: number = 0;
+    private lastClearTime: number = 0;
     private visibilityThreshold: number = 50; // Default visibility threshold
 
     constructor(camera: PerspectiveCamera, scene: Scene, settings: Settings) {
@@ -339,6 +340,15 @@ export class MetadataVisualizer {
     public clearAllLabels(): void {
         // Store node IDs before clearing
         const nodeIds = Array.from(this.metadataGroups.keys());
+        
+        // Debounce clear operations to prevent excessive clearing
+        const now = performance.now();
+        if (now - this.lastClearTime < 1000) {
+            // If a clear was performed in the last second, just log and return
+            this.logger.debug(`Skipping redundant label clear operation (too soon after last clear)`);
+            return;
+        }
+        this.lastClearTime = now;
         
         // Remove all labels
         nodeIds.forEach(nodeId => {

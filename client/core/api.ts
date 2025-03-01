@@ -60,8 +60,8 @@ export function buildWsUrl(): string {
         // For production, use relative path to ensure proper proxy handling
         return `${protocol}//${host}/wss`;
     } else {
-        // For development, use the actual server port (3001 instead of 4000)
-        return `${protocol}//${host}:3001/wss`;
+        // For development, use port 4000 as specified in the documentation
+        return `${protocol}//${host}:4000/wss`;
     }
 }
 

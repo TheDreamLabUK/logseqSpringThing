@@ -46,7 +46,10 @@ export class VisualizationController {
     private pendingUpdates: Map<string, PendingUpdate> = new Map();
     private lastUpdateTime: number = performance.now();
     private websocketService: WebSocketService;
+    private metadataVisualizationInitialized: boolean = false; 
+    private lastMetadataUpdateTime: number = 0;
     private isRandomizationInProgress: boolean = false;
+    private hasReceivedBinaryUpdate: boolean = false;
     private randomizationStartTime: number = 0;
     private randomizationAcknowledged: boolean = false;
     private randomizedNodeIds: Set<string> = new Set();
@@ -73,9 +76,11 @@ export class VisualizationController {
         });
 
         // Subscribe to websocket binary updates
-        this.websocketService.onBinaryMessage((nodes) => {
+        this.websocketService.onBinaryMessage((nodes) => {            
             if (this.nodeManager && this.isInitialized) {
                 // Convert binary node data to the format expected by updateNodePositions
+                this.hasReceivedBinaryUpdate = true;
+                
                 let updates = nodes.map(node => ({
                     id: node.id.toString(),
                     data: {
@@ -106,6 +111,13 @@ export class VisualizationController {
                     }
                 }
                 
+                // Check if we haven't created metadata labels yet, and have received binary data
+                // This ensures we have proper positions before creating labels
+                if (this.hasReceivedBinaryUpdate && !this.metadataVisualizationInitialized && this.metadataVisualizer) {
+                    logger.info('Received binary position updates. Initializing metadata visualization.');
+                    this.initializeMetadataVisualization();
+                }
+                
                 this.nodeManager.updateNodePositions(updates);
             }
         });
@@ -134,6 +146,7 @@ export class VisualizationController {
         // Connect to websocket first
         this.websocketService.connect().then(() => {
             logger.info('WebSocket connected, enabling binary updates');
+            this.metadataVisualizationInitialized = false; // Reset flag when reconnecting
             graphDataManager.enableBinaryUpdates();
             
             // Send initial request for data
@@ -155,6 +168,8 @@ export class VisualizationController {
         });
         
         const materialFactory = MaterialFactory.getInstance();
+        // Add debug logging
+        logger.debug('Creating NodeManagerFacade');
         this.nodeManager = NodeManagerFacade.getInstance(
             scene,
             camera,
@@ -175,6 +190,7 @@ export class VisualizationController {
         // Start animation loop
         this.animate();
 
+        // We'll initialize metadata visualization once we receive binary position updates
         logger.info('Scene initialization complete');
     }
 
@@ -406,9 +422,13 @@ export class VisualizationController {
         this.updateNodeAppearance();
         this.updateEdgeAppearance();
         // Update metadata visualization
-        if (this.metadataVisualizer) {
-            this.updateMetadataVisualization();
+        if (this.metadataVisualizer && this.metadataVisualizationInitialized) {
+            // Only update positions of existing metadata, don't recreate everything
+            this.updateMetadataPositions();
         }
+        // Intentionally not initializing metadata visualization here anymore
+        // We'll wait for binary data with positions first
+        
     }
 
     private updateNodeAppearance(): void {
@@ -661,9 +681,9 @@ export class VisualizationController {
                 this.edgeManager.update(deltaTime);
             }
             
-            // Update metadata visualization
-            if (this.metadataVisualizer) {
-                this.updateMetadataVisualization();
+            // Update ONLY metadata positions - do not recreate labels every frame
+            if (this.metadataVisualizer && this.nodeManager && this.metadataVisualizationInitialized) {
+                this.updateMetadataPositions(); 
             }
         }
     }
@@ -682,11 +702,69 @@ export class VisualizationController {
         VisualizationController.instance = null;
     }
 
-    private updateMetadataVisualization(): void {
+    /**
+     * Update only the positions of metadata labels without recreating them
+     * This is called every frame for efficiency
+     */
+    private updateMetadataPositions(): void {
         if (!this.isInitialized || !this.metadataVisualizer || !this.nodeManager) return;
         
-        // Properly clear existing labels using our new method
-        this.metadataVisualizer.clearAllLabels();
+        const currentData = graphDataManager.getGraphData();
+        // Only occasionally log updates
+        if (Math.random() < 0.001) {
+            logger.debug('Updating metadata positions for nodes:', createDataMetadata({
+                nodeCount: currentData.nodes.length
+            }));
+        }
+        
+        // Update positions for existing metadata labels
+        currentData.nodes.forEach(node => {
+            const position = this.nodeManager?.getNodeInstanceManager().getNodePosition(node.id);
+            if (position) {
+                this.metadataVisualizer?.updateMetadataPosition(node.id, position);
+            }
+        });
+    }
+
+    /**
+     * Initialize the metadata visualization once - called only after binary updates
+     * are available so positions are correct
+     */
+    private initializeMetadataVisualization(): void {
+        if (!this.isInitialized || !this.metadataVisualizer || !this.nodeManager) return;
+        if (this.metadataVisualizationInitialized) {
+            logger.debug('Metadata visualization already initialized, skipping initialization');
+            return;
+        }
+        
+        // Set flag first to prevent repeated initialization
+        this.metadataVisualizationInitialized = true;
+        this.lastMetadataUpdateTime = performance.now();
+        
+        logger.info('Initializing metadata visualization for the first time');
+        
+        // Perform the full visualization update (create labels)
+        this.updateMetadataVisualization(true);
+    }
+
+    /**
+     * Update metadata visualization, optionally clearing existing labels
+     * @param clearExisting Whether to clear existing labels
+     */
+    private updateMetadataVisualization(clearExisting: boolean = false): void {
+        if (!this.isInitialized || !this.metadataVisualizer || !this.nodeManager) return;
+        
+        // Debounce frequently repeated calls
+        const now = performance.now();
+        if (now - this.lastMetadataUpdateTime < 1000) return; // Prevent updates more than once per second
+        this.lastMetadataUpdateTime = now;
+        
+        // Only clear existing labels if specified
+        if (clearExisting) {
+            logger.debug('Clearing existing metadata labels before creating new ones');
+            this.metadataVisualizer.clearAllLabels();
+        }
+        
         
         // Store information on the nodes we'll process for logging
         const currentData = graphDataManager.getGraphData();
@@ -717,7 +795,7 @@ export class VisualizationController {
                     name: nodeMetadata.name || node.id,
                     fileSize: nodeMetadata.fileSize,
                     position: node.data.position
-                }));
+                })); 
             }
                 
             const metadata: NodeMetadata = {

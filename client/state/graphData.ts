@@ -1,5 +1,6 @@
 import { transformGraphData, Node, Edge, GraphData } from '../core/types';
 import { createLogger } from '../core/utils';
+import { Vec3 } from '../types/vec3';
 import { API_ENDPOINTS } from '../core/constants';
 import { debugState } from '../core/debugState';
 
@@ -32,6 +33,9 @@ interface EdgeWithId extends Edge {
   id: string;
 }
 
+// Define NodePosition type using Vec3 interface
+type NodePosition = Vec3;
+
 export class GraphDataManager {
   private static instance: GraphDataManager;
   private nodes: Map<string, Node>;
@@ -41,6 +45,9 @@ export class GraphDataManager {
   private updateListeners: Set<(data: GraphData) => void>;
   private positionUpdateListeners: Set<(positions: Float32Array) => void>;
   private binaryUpdatesEnabled: boolean = false;
+  private positionUpdateBuffer: Map<string, NodePosition> = new Map();
+  private updateBufferTimeout: number | null = null;
+  private static readonly BUFFER_FLUSH_INTERVAL = 16; // ~60fps
 
   private constructor() {
     this.nodes = new Map();
@@ -575,20 +582,60 @@ export class GraphDataManager {
   }
 
   public updateNodePositions(positions: Float32Array): void {
-    if (!this.binaryUpdatesEnabled) {
-      return;
-    }
+    if (!this.binaryUpdatesEnabled) return;
     
-    // Only log binary updates occasionally to avoid flooding
-    throttledDebugLog(`Received binary position update: ${positions.length} floats (${positions.length / FLOATS_PER_NODE} nodes)`);
-       
+    const nodeCount = positions.length / FLOATS_PER_NODE;
     if (positions.length % FLOATS_PER_NODE !== 0) {
       logger.error('Invalid position array length:', positions.length);
       return;
-    }  
+    }
 
-    // Notify listeners of position updates
-    this.notifyPositionUpdateListeners(positions);
+    // Buffer the updates
+    for (let i = 0; i < nodeCount; i++) {
+      const offset = i * FLOATS_PER_NODE;
+      const nodeId = this.nodes.get(offset.toString())?.id;
+      if (!nodeId) continue;
+
+      this.positionUpdateBuffer.set(nodeId, {
+        x: positions[offset],
+        y: positions[offset + 1],
+        z: positions[offset + 2]
+      });
+    }
+
+    // Schedule buffer flush if not already scheduled
+    if (!this.updateBufferTimeout) {
+      this.updateBufferTimeout = window.setTimeout(() => {
+        this.flushPositionUpdates();
+        this.updateBufferTimeout = null;
+      }, GraphDataManager.BUFFER_FLUSH_INTERVAL);
+    }
+  }
+
+  private flushPositionUpdates(): void {
+    if (this.positionUpdateBuffer.size === 0) return;
+
+    const updates = Array.from(this.positionUpdateBuffer.entries())
+      .map(([id, position]) => ({
+        id,
+        data: { position, velocity: undefined }
+      }));
+
+    // Convert node updates to Float32Array for binary protocol
+    const nodesCount = updates.length;
+    const positionsArray = new Float32Array(nodesCount * FLOATS_PER_NODE);
+    
+    updates.forEach((node, index) => {
+      const baseIndex = index * FLOATS_PER_NODE;
+      // Position (x, y, z)
+      positionsArray[baseIndex] = node.data.position.x;
+      positionsArray[baseIndex + 1] = node.data.position.y;
+      positionsArray[baseIndex + 2] = node.data.position.z;
+      // Velocity (set to 0 since undefined)
+      positionsArray[baseIndex + 3] = positionsArray[baseIndex + 4] = positionsArray[baseIndex + 5] = 0;
+    });
+    this.notifyPositionUpdateListeners(positionsArray);
+    this.positionUpdateBuffer.clear();
   }
 }
 
