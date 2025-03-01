@@ -145,3 +145,5 @@ For more detailed technical information, please refer to:
 - [Binary Protocol](../technical/binary-protocol.md)
 - [Performance Optimizations](../technical/performance.md)
 - [Class Diagrams](../technical/class-diagrams.md)
+- [WebSockets Implementation](../technical/websockets.md)
+- [Graph Node Stacking Fix](../technical/graph-node-stacking-fix.md)

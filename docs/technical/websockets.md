@@ -32,7 +32,7 @@ This document describes the WebSocket connection and communication process in th
 *   **Client-Side (`client/websocket/websocketService.ts`):**
     *   **`onopen`:** Sends a `requestInitialData` message (JSON) to the server.
     *   **`onmessage`:**
-        *   **Text Messages:** Parses JSON messages. Handles `connection_established` and `updatesStarted`.
+        *   **Text Messages:** Parses JSON messages. Handles `connection_established`, `loading`, and `updatesStarted`.
         *   **Binary Messages:**
             *   Decompresses using `pako.inflate()` (zlib) if necessary.
             *   Decodes the binary data according to the custom protocol (see "Binary Protocol").
@@ -40,15 +40,15 @@ This document describes the WebSocket connection and communication process in th
     *   **`sendMessage()`:** Sends text messages (JSON).
     *   **`sendNodeUpdates()`:** Sends binary messages for node updates (limited to 2 nodes per update). Compresses if needed.
 *   **Server-Side (`src/handlers/socket_flow_handler.rs`):**
-    *   **`started`:** Sends a `connection_established` message (JSON).
+    *   **`started`:** Sends a `connection_established` message (JSON) followed by a `loading` message.
     *   **`handle`:**
         *   **`Ping`:** Responds with a `Pong` message (JSON).
         *   **`Text`:**
             *   Parses JSON.
             *   Handles `ping` messages (responds with `pong`).
             *   Handles `requestInitialData`:
-                *   Starts a timer to send binary position updates periodically (interval based on settings, default 30 Hz).
-                *   Sends an `updatesStarted` message (JSON).
+                *   Immediately starts a timer to send binary position updates periodically (interval based on settings, default 30 Hz).
+                *   Sends an `updatesStarted` message (JSON) to signal that updates have begun.
         *   **`Binary`:**
             *   Decodes using `binary_protocol::decode_node_data()`.
             *   Handles `MessageType::PositionVelocityUpdate` (for up to 2 nodes): Updates node positions and velocities in the graph data.
@@ -109,18 +109,31 @@ This document describes the WebSocket connection and communication process in th
 
 *   **Server:** Sends position updates at a rate determined by the `binary_update_rate` setting (defaulting to 30 Hz), controlled by a timer in `socket_flow_handler.rs`. The constant `POSITION_UPDATE_RATE` in `socket_flow_constants.rs` is 5 Hz, but the actual update rate is controlled by the settings.
 *   **Client:**  The client receives updates as they are sent by the server. There's no explicit throttling on the client side, other than limiting user-initiated updates to 2 nodes per message.
+*   **Initial Delay:** To ensure GPU computations have time to run, the server now has a 500ms delay before starting to accept client connections.
 
 ## 8. Order of Operations
 
 1.  Client initiates a WebSocket connection to `/wss`.
 2.  In development, Vite proxies the connection to `ws://localhost:4000`.
 3.  In Docker, the connection goes to port 4000 on the host, which is mapped to port 4000 of the `webxr` container.
-4.  `nginx` (inside the container) receives the connection on port 4000.
-5.  `nginx` proxies the WebSocket connection to the Rust backend on `127.0.0.1:3001`.
-6.  The `socket_flow_handler` in the Rust backend handles the connection.
-7.  The server sends a `connection_established` message (JSON).
-8.  The client sends a `requestInitialData` message (JSON).
-9.  The server starts sending binary position updates at the configured interval.
-10. The client receives and processes the binary data, updating the visualization.
-11. The server and client exchange `ping` and `pong` messages for connection health (although the client-side pinging is primarily handled by the `docker-compose` healthcheck and potentially Cloudflared).
-12. User interactions on the client can trigger sending binary node updates (limited to 2 nodes) to the server.
+4.  Before accepting connections, the server has a brief delay (500ms) to allow the GPU to compute initial node positions.
+5.  `nginx` (inside the container) receives the connection on port 4000.
+6.  `nginx` proxies the WebSocket connection to the Rust backend on `127.0.0.1:3001`.
+7.  The `socket_flow_handler` in the Rust backend handles the connection.
+8.  The server sends a `connection_established` message (JSON).
+9.  The server sends a `loading` message to signal that the client should display a loading indicator.
+10. The client displays a loading indicator and sends a `requestInitialData` message (JSON).
+11. The server starts sending binary position updates at the configured interval.
+12. The server sends an `updatesStarted` message to signal that updates have begun.
+13. The client hides the loading indicator upon receiving the `updatesStarted` message.
+14. The client receives and processes the binary data, updating the visualization.
+15. The server and client exchange `ping` and `pong` messages for connection health (although the client-side pinging is primarily handled by the `docker-compose` healthcheck and potentially Cloudflared).
+16. User interactions on the client can trigger sending binary node updates (limited to 2 nodes) to the server.
+
+## 9. Loading State and User Feedback
+
+*   **Server-Side Loading Message:** After the connection is established, the server sends a `loading` message to indicate data is being prepared.
+*   **Client-Side Loading Indicator:** Upon receiving the `loading` message, the client displays a loading indicator (in `VisualizationController.ts`).
+*   **Updates Started Signal:** Once the server is ready to send position updates, it sends an `updatesStarted` message.
+*   **Loading Complete:** Upon receiving the `updatesStarted` message, the client hides the loading indicator and begins displaying the graph.
+*   This provides visual feedback during the initialization process and ensures users don't see poorly-distributed node layouts.
