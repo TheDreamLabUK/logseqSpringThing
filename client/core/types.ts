@@ -1,5 +1,9 @@
 // Core types for the application
 import { Vector3 as ThreeVector3 } from 'three';
+import { debugState } from './debugState';
+import { createLogger } from './logger';
+
+const logger = createLogger('CoreTypes');
 
 export interface Vector3 extends ThreeVector3 {
 }
@@ -21,6 +25,7 @@ export interface NodeData {
 
 export interface Node {
   id: string;
+  label?: string;
   data: {
     position: Vector3;
     velocity: Vector3;
@@ -410,17 +415,19 @@ export function transformGraphData(data: RawGraphData): GraphData {
     const sourcePos = nodePositions.get(edge.source);
     const targetPos = nodePositions.get(edge.target);
     
-    // For debugging missing edges - only in development mode
+    // For debugging missing edges
     if (!sourcePos || !targetPos) {
-      if (import.meta.env.DEV) {
-        console.log(`Edge processing: Missing position for ${!sourcePos ? 'source' : 'target'} node ID ${!sourcePos ? edge.source : edge.target}`);
+      if (debugState.isNodeDebugEnabled()) {
+        logger.warn(`Edge processing: Missing position for ${!sourcePos ? 'source' : 'target'} node ID ${!sourcePos ? edge.source : edge.target}`);
       }
     }
     
     return {
       ...edge,
-      sourcePosition: sourcePos,
-      targetPosition: targetPos,
+      // Create temporary zero vector if position is missing to ensure edges are created
+      // These will be updated later with actual node positions
+      sourcePosition: sourcePos || new ThreeVector3(0, 0, 0),
+      targetPosition: targetPos || new ThreeVector3(0, 0, 0),
       id: edge.id || `${edge.source}_${edge.target}`
     };
   });
@@ -435,6 +442,7 @@ export function transformGraphData(data: RawGraphData): GraphData {
 export function transformNodeData(node: any): Node {
   return {
     id: node.id,
+    label: node.label, // Add label property to preserve the server-side label
     data: {
       position: node.data.position instanceof ThreeVector3 ? node.data.position : new ThreeVector3(
         node.data.position.x,
@@ -443,7 +451,8 @@ export function transformNodeData(node: any): Node {
       ),
       velocity: node.data.velocity instanceof ThreeVector3 ? node.data.velocity : new ThreeVector3(0, 0, 0),
       metadata: {
-        name: node.data.metadata?.name || node.metadata_id || node.id,
+        // Use label first, then fall back to other identifiers
+        name: node.data.metadata?.name || node.label || node.metadata_id || node.id,
         lastModified: parseInt(node.data.metadata?.lastModified) || Date.now(),
         links: node.data.metadata?.links || [],
         references: node.data.metadata?.references || [],

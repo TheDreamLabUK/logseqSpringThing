@@ -20,8 +20,8 @@ core/logger.ts
 core/api.ts
 core/constants.ts
 core/physicsConstants.ts
-core/resourceMonitor.ts
 core/types.ts
+core/resourceMonitor.ts
 public/fonts/Roboto-Regular.woff2
 public/fonts/helvetiker_regular.typeface.json
 rendering/UnifiedTextRenderer.ts

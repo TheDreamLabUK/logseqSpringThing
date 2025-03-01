@@ -87,13 +87,21 @@ pub async fn get_graph_data(state: web::Data<AppState>) -> impl Responder {
     // Log position data to debug zero positions
     if !graph.nodes.is_empty() {
         // Log a few nodes for debugging
-        for (i, node) in graph.nodes.iter().take(3).enumerate() {
-            debug!("Node {}: id={}, pos=[{:.3},{:.3},{:.3}]", 
-                i, node.id, node.data.position[0], node.data.position[1], node.data.position[2]);
+        for (i, node) in graph.nodes.iter().take(5).enumerate() {
+            debug!("Node {}: id={}, label={}, pos=[{:.3},{:.3},{:.3}]", 
+                i, node.id, node.label, node.data.position[0], node.data.position[1], node.data.position[2]);
         }
     }
     
-    debug!("Preparing graph response with {} nodes and {} edges",
+    // Log edge data
+    if !graph.edges.is_empty() {
+        for (i, edge) in graph.edges.iter().take(5).enumerate() {
+            debug!("Edge {}: source={}, target={}, weight={:.3}", 
+                i, edge.source, edge.target, edge.weight);
+        }
+    }
+    
+    info!("Preparing graph response with {} nodes and {} edges",
         graph.nodes.len(),
         graph.edges.len()
     );

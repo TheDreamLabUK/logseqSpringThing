@@ -624,24 +624,19 @@ export class VisualizationController {
             // Use node ID as a fallback for the name
             const nodeMetadata = node.data?.metadata || {};
             
-            // Log more detailed node information for debugging
+            // Log the actual data we're working with for debugging
             if (index < 5) {
-                logger.info(`Processing node #${index}:`, createDataMetadata({
-                    id: node.id,
-                    name: nodeMetadata.name,
+                logger.info(`Processing node #${index}: ${node.id}`, createDataMetadata({
+                    name: nodeMetadata.name || node.id,
                     fileSize: nodeMetadata.fileSize,
                     position: node.data.position
                 }));
             }
-            
-            // Log the actual data we're working with for debugging
-            // Extract the readable name - prioritize metadata name (from metadata_id/filename)
-            const displayName = nodeMetadata.name || node.id;
                 
             const metadata: NodeMetadata = {
                 id: node.id,
                 // Use explicit || chaining to handle all possible undefined cases
-                name: displayName.toString(),
+                name: (nodeMetadata.name || node.id || `Node ${index}`).toString(),
                 commitAge: Math.floor((Date.now() - (nodeMetadata.lastModified || Date.now())) / (1000 * 60 * 60 * 24)),
                 hyperlinkCount: nodeMetadata.hyperlinkCount || 0,
                 fileSize: nodeMetadata.fileSize || 1024,
@@ -665,11 +660,7 @@ export class VisualizationController {
         });
         
         logger.info(`Metadata visualization updated: ${processedNodeIds.size} nodes with unique labels. Sample labels: ${
-            Array.from(processedNodeIds).slice(0, 3).map(id => {
-                const node = currentData.nodes.find(n => n.id === id);
-                // Show both filename and numeric ID to confirm mapping
-                return `${node?.data?.metadata?.name || id}`;
-            }).join(", ")
+            currentData.nodes.slice(0, 3).map(n => n.data?.metadata?.name || n.id).join(", ")
         }`);
     }
 }

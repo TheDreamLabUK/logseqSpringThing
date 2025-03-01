@@ -141,6 +141,7 @@ Directories:
     └── xrTypes.ts
 ../src
 ├── app_state.rs
+├── compute
 ├── config
 │   ├── feature_access.rs
 │   ├── feature_access_test.rs
@@ -214,12 +215,12 @@ Directories:
     └── tests
         └── socket_flow_tests.rs
 
-12 directories, 61 files
+13 directories, 61 files
 ```
 
 # Project Codebase
 
-Generated: Sat  1 Mar 13:10:58 GMT 2025
+Generated: Sat  1 Mar 10:31:09 GMT 2025
 
 ## Project Structure
 
@@ -2632,16 +2633,9 @@ fi
                 "IPv4Address": "172.19.0.6/16",
                 "IPv6Address": ""
             },
-            "248d3406dc630d4c0e26bb32cd5561559ea9524ea16face215024f46ef52c38e": {
-                "Name": "logseq-xr-webxr",
-                "EndpointID": "4c6578fa56cb344de2c54db88d24f8bfcb926e625d4964ed2599e434781bbb54",
-                "MacAddress": "02:42:ac:13:00:0c",
-                "IPv4Address": "172.19.0.12/16",
-                "IPv6Address": ""
-            },
-            "34cdf6d854dc9451c4ac4f67788adbcffb2fe834fac26c21dc5f73b06b57ffe6": {
+            "3442c4475b7b0eb4e44d56b92ca43d5372d807b4eec60a06275ba8c5b3db7bd4": {
                 "Name": "cloudflared-tunnel",
-                "EndpointID": "de1566b90865d066b6954ceaa2082b9d9d5345c0a3af6d9ce7b8e9ebe181ea90",
+                "EndpointID": "1107d86359e32f631e1016e154881fa1fa07f55d3916d26083d34a570fde83ad",
                 "MacAddress": "02:42:ac:13:00:0b",
                 "IPv4Address": "172.19.0.11/16",
                 "IPv6Address": ""
@@ -2700,6 +2694,13 @@ fi
                 "EndpointID": "9ef7557ae8cb9b03a1e62d9cf76356e0873475b0962ac963e4f30607754d242f",
                 "MacAddress": "02:42:ac:13:00:08",
                 "IPv4Address": "172.19.0.8/16",
+                "IPv6Address": ""
+            },
+            "fbff73f650124d7e0baa3673f3acaf67761552e0dcdca6136a2e6ea34113c515": {
+                "Name": "logseq-xr-webxr",
+                "EndpointID": "a081c94f9c31be5bae2cc4237274c6ac921de5cdea85d731ee38c7886ba001bb",
+                "MacAddress": "02:42:ac:13:00:0c",
+                "IPv4Address": "172.19.0.12/16",
                 "IPv6Address": ""
             }
         },
@@ -3680,17 +3681,15 @@ pub async fn refresh_graph(state: web::Data<AppState>) -> impl Responder {
             let mut node_map = state.graph_service.get_node_map_mut().await;
             
             // Preserve existing node positions
-            // Use metadata_id (filename) to match nodes between old and new graphs
-            let old_positions: HashMap<String, (f32, f32, f32)> = graph.nodes.iter() 
-                .map(|node| (node.metadata_id.clone(), (node.x(), node.y(), node.z())))
+            let old_positions: HashMap<String, (f32, f32, f32)> = graph.nodes.iter()
+                .map(|node| (node.id.clone(), (node.x(), node.y(), node.z())))
                 .collect();
             
-            debug!("Preserved positions for {} existing nodes by metadata_id", old_positions.len());
+            debug!("Preserved positions for {} existing nodes", old_positions.len());
             
             // Update positions in new graph
             for node in &mut new_graph.nodes {
-                // Look up by metadata_id (filename) instead of numeric ID
-                if let Some(&(x, y, z)) = old_positions.get(&node.metadata_id) {
+                if let Some(&(x, y, z)) = old_positions.get(&node.id) {
                     node.set_x(x);
                     node.set_y(y);
                     node.set_z(z);
@@ -3761,17 +3760,13 @@ pub async fn update_graph(state: web::Data<AppState>) -> impl Responder {
                     let mut node_map = state.graph_service.get_node_map_mut().await;
                     
                     // Preserve existing node positions
-                    // Use metadata_id (filename) to match nodes between old and new graphs
-                    let old_positions: HashMap<String, (f32, f32, f32)> = graph.nodes.iter() 
-                        .map(|node| (node.metadata_id.clone(), (node.x(), node.y(), node.z())))
+                    let old_positions: HashMap<String, (f32, f32, f32)> = graph.nodes.iter()
+                        .map(|node| (node.id.clone(), (node.x(), node.y(), node.z())))
                         .collect();
-                    
-                    debug!("Preserved positions for {} existing nodes by metadata_id", old_positions.len());
                     
                     // Update positions in new graph
                     for node in &mut new_graph.nodes {
-                        // Look up by metadata_id (filename) instead of numeric ID
-                        if let Some(&(x, y, z)) = old_positions.get(&node.metadata_id) {
+                        if let Some(&(x, y, z)) = old_positions.get(&node.id) {
                             node.set_x(x);
                             node.set_y(y);
                             node.set_z(z);
@@ -4900,18 +4895,9 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
                                             false
                                         };
 
-                                        if detailed_debug {
-                                            debug!("Raw nodes count: {}, showing first 5 nodes IDs:", raw_nodes.len());
-                                            for (i, node) in raw_nodes.iter().take(5).enumerate() {
-                                                debug!("  Node {}: id={} (numeric), metadata_id={} (filename)", 
-                                                    i, node.id, node.metadata_id);
-                                            }
-                                        }
-
                                         let mut nodes = Vec::with_capacity(raw_nodes.len());
                                         for node in raw_nodes {
                                             if let Ok(node_id) = node.id.parse::<u32>() {
-                                                // The node.id should now be numeric, so parsing should always succeed
                                                 nodes.push((node_id, BinaryNodeData {
                                                     position: node.data.position,
                                                     velocity: node.data.velocity,
@@ -4919,9 +4905,6 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
                                                     flags: node.data.flags,
                                                     padding: node.data.padding,
                                                 }));
-                                            } else {
-                                                warn!("[WebSocket] Failed to parse node ID as u32: '{}', metadata_id: '{}'", 
-                                                    node.id, node.metadata_id);
                                             }
                                         }
 
@@ -5036,7 +5019,6 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
                                 for (node_id, node_data) in nodes_vec {
                                     let node_id_str = node_id.to_string();
                                     if let Some(node) = node_map.get_mut(&node_id_str) {
-                                        // Node exists with this numeric ID
                                         // Explicitly preserve existing mass and flags
                                         let original_mass = node.data.mass;
                                         let original_flags = node.data.flags;
@@ -5048,13 +5030,11 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
                                         node.data.flags = original_flags; // Restore flags needed for GPU code
                                     // Mass, flags, and padding are not overwritten as they're only 
                                     // present on the server side and not transmitted over the wire
-                                    } else {
-                                        debug!("Received update for unknown node ID: {}", node_id_str);
                                     }
                                 }
                                 
                                 // Add more detailed debug information for mass maintenance
-                                debug!("Updated node positions from binary data (preserving server-side properties)");
+                                debug!("Updated node positions from binary data, preserving server-side mass values");
 
                                 // Update graph nodes with new positions/velocities from the map, preserving other properties
                                 for node in &mut graph.nodes {
@@ -6709,7 +6689,6 @@ use crate::utils::socket_flow_messages::Node;
 use super::edge::Edge;
 use super::metadata::MetadataStore;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 
 /// Represents the graph data structure containing nodes, edges, and metadata.
 /// All fields use camelCase serialization for client compatibility.
@@ -6722,9 +6701,6 @@ pub struct GraphData {
     pub edges: Vec<Edge>,
     /// Metadata associated with the graph, using camelCase keys.
     pub metadata: MetadataStore,
-    /// Mapping from numeric ID to metadata ID (filename) for lookup
-    #[serde(skip)]
-    pub id_to_metadata: HashMap<String, String>,
 }
 
 impl GraphData {
@@ -6733,7 +6709,6 @@ impl GraphData {
             nodes: Vec::new(),
             edges: Vec::new(),
             metadata: MetadataStore::new(),
-            id_to_metadata: HashMap::new(),
         }
     }
 }
@@ -6799,18 +6774,13 @@ impl MetadataOps for MetadataStore {
 models/node.rs
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicU32, Ordering};
 use crate::utils::socket_flow_messages::BinaryNodeData;
-
-// Static counter for generating unique numeric IDs
-static NEXT_NODE_ID: AtomicU32 = AtomicU32::new(1);  // Start from 1 (0 could be reserved)
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct Node {
     // Core data
     pub id: String,
-    pub metadata_id: String,  // Store the original filename for lookup
     pub label: String,
     pub data: BinaryNodeData,
 
@@ -6837,14 +6807,10 @@ pub struct Node {
 }
 
 impl Node {
-    pub fn new(metadata_id: String) -> Self {
-        // Generate a unique numeric ID for binary protocol compatibility
-        let id = NEXT_NODE_ID.fetch_add(1, Ordering::SeqCst).to_string();
-        
+    pub fn new(id: String) -> Self {
         Self {
-            id,
-            metadata_id: metadata_id.clone(),
-            label: metadata_id,
+            id: id.clone(),
+            label: id,
             data: BinaryNodeData {
                 position: [0.0, 0.0, 0.0],
                 velocity: [0.0, 0.0, 0.0],
@@ -6934,50 +6900,21 @@ impl Node {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::atomic::Ordering;
     use super::*;
-
-    #[test]
-    fn test_numeric_id_generation() {
-        // Read the current value of the counter (it might have been incremented elsewhere)
-        let start_value = NEXT_NODE_ID.load(Ordering::SeqCst);
-        
-        // Create two nodes with different metadata IDs
-        let node1 = Node::new("test-file-1.md".to_string());
-        let node2 = Node::new("test-file-2.md".to_string());
-        
-        // Verify each node has a unique numeric ID
-        assert_ne!(node1.id, node2.id);
-        
-        // Verify metadata_id is stored correctly
-        assert_eq!(node1.metadata_id, "test-file-1.md");
-        assert_eq!(node2.metadata_id, "test-file-2.md");
-        
-        // Verify IDs are consecutive numbers (as strings)
-        let id1: u32 = node1.id.parse().unwrap();
-        let id2: u32 = node2.id.parse().unwrap();
-        assert_eq!(id1 + 1, id2);
-        
-        // Verify final counter value
-        let end_value = NEXT_NODE_ID.load(Ordering::SeqCst);
-        assert_eq!(end_value, start_value + 2);
-    }
 
     #[test]
     fn test_node_creation() {
         let node = Node::new("test".to_string())
-            .with_label("Test Node".to_string())
             .with_position(1.0, 2.0, 3.0)
             .with_velocity(0.1, 0.2, 0.3)
+            .with_label("Test Node".to_string())
             .with_type("test_type".to_string())
             .with_size(1.5)
             .with_color("#FF0000".to_string())
             .with_weight(2.0)
             .with_group("group1".to_string());
 
-        // ID should be a numeric string now, not "test"
-        assert!(node.id.parse::<u32>().is_ok(), "ID should be numeric, got: {}", node.id);
-        assert_eq!(node.metadata_id, "test");
+        assert_eq!(node.id, "test");
         assert_eq!(node.label, "Test Node");
         assert_eq!(node.data.position, [1.0, 2.0, 3.0]);
         assert_eq!(node.data.velocity, [0.1, 0.2, 0.3]);
@@ -8470,14 +8407,12 @@ impl GraphService {
         // Create nodes for all valid node IDs
         for node_id in &valid_nodes {
             let mut node = Node::new(node_id.clone());
-            // Store the mapping from numeric ID to metadata_id
-            graph.id_to_metadata.insert(node.id.clone(), node_id.clone());
             
             // Get metadata for this node
             if let Some(metadata) = metadata.get(&format!("{}.md", node_id)) {
                 node.set_file_size(metadata.file_size as u64);  // This will update both file_size and mass
                 node.size = Some(metadata.node_size as f32);
-                // Label is already set to the metadata_id (filename without .md) in Node::new
+                node.label = node_id.clone(); // Set label to node ID (filename without .md)
                 
                 // Add metadata fields to node's metadata map
                 node.metadata.insert("fileSize".to_string(), metadata.file_size.to_string());
@@ -8487,8 +8422,7 @@ impl GraphService {
             
             let node_clone = node.clone();
             graph.nodes.push(node_clone);
-            // Store nodes in map by numeric ID for efficient lookups
-            node_map.insert(node.id.clone(), node);
+            node_map.insert(node_id.clone(), node);
         }
 
         // Store metadata in graph
@@ -8497,28 +8431,16 @@ impl GraphService {
         // Second pass: Create edges from topic counts
         for (source_file, metadata) in metadata.iter() {
             let source_id = source_file.trim_end_matches(".md").to_string();
-            // Find the node with this metadata_id to get its numeric ID
-            let source_node = graph.nodes.iter().find(|n| n.metadata_id == source_id);
-            if source_node.is_none() {
-                continue; // Skip if node not found
-            }
-            let source_numeric_id = source_node.unwrap().id.clone();
             
             for (target_file, count) in &metadata.topic_counts {
                 let target_id = target_file.trim_end_matches(".md").to_string();
-                // Find the node with this metadata_id to get its numeric ID
-                let target_node = graph.nodes.iter().find(|n| n.metadata_id == target_id);
-                if target_node.is_none() {
-                    continue; // Skip if node not found
-                }
-                let target_numeric_id = target_node.unwrap().id.clone();
                 
                 // Only create edge if both nodes exist and they're different
-                if source_numeric_id != target_numeric_id {
-                    let edge_key = if source_numeric_id < target_numeric_id {
-                        (source_numeric_id.clone(), target_numeric_id.clone())
+                if source_id != target_id && valid_nodes.contains(&target_id) {
+                    let edge_key = if source_id < target_id {
+                        (source_id.clone(), target_id.clone())
                     } else {
-                        (target_numeric_id.clone(), source_numeric_id.clone())
+                        (target_id.clone(), source_id.clone())
                     };
 
                     edge_map.entry(edge_key)
@@ -8578,14 +8500,12 @@ impl GraphService {
         // Create nodes for all valid node IDs
         for node_id in &valid_nodes {
             let mut node = Node::new(node_id.clone());
-            // Store the mapping from numeric ID to metadata_id
-            graph.id_to_metadata.insert(node.id.clone(), node_id.clone());
             
             // Get metadata for this node
             if let Some(metadata) = graph.metadata.get(&format!("{}.md", node_id)) {
                 node.set_file_size(metadata.file_size as u64);  // This will update both file_size and mass
                 node.size = Some(metadata.node_size as f32);
-                // Label is already set to the metadata_id (filename without .md) in Node::new
+                node.label = node_id.clone(); // Set label to node ID (filename without .md)
                 
                 // Add metadata fields to node's metadata map
                 node.metadata.insert("fileSize".to_string(), metadata.file_size.to_string());
@@ -8595,36 +8515,23 @@ impl GraphService {
             
             let node_clone = node.clone();
             graph.nodes.push(node_clone);
-            // Store nodes in map by numeric ID for efficient lookups
-            node_map.insert(node.id.clone(), node);
+            node_map.insert(node_id.clone(), node);
         }
 
         // Create edges from metadata topic counts
         for (source_file, metadata) in graph.metadata.iter() {
             let source_id = source_file.trim_end_matches(".md").to_string();
-            // Find the node with this metadata_id to get its numeric ID
-            let source_node = graph.nodes.iter().find(|n| n.metadata_id == source_id);
-            if source_node.is_none() {
-                continue; // Skip if node not found
-            }
-            let source_numeric_id = source_node.unwrap().id.clone();
             
             // Process outbound links from this file to other topics
             for (target_file, count) in &metadata.topic_counts {
                 let target_id = target_file.trim_end_matches(".md").to_string();
-                // Find the node with this metadata_id to get its numeric ID
-                let target_node = graph.nodes.iter().find(|n| n.metadata_id == target_id);
-                if target_node.is_none() {
-                    continue; // Skip if node not found
-                }
-                let target_numeric_id = target_node.unwrap().id.clone();
                 
                 // Only create edge if both nodes exist and they're different
-                if source_numeric_id != target_numeric_id {
-                    let edge_key = if source_numeric_id < target_numeric_id {
-                        (source_numeric_id.clone(), target_numeric_id.clone())
+                if source_id != target_id && valid_nodes.contains(&target_id) {
+                    let edge_key = if source_id < target_id {
+                        (source_id.clone(), target_id.clone())
                     } else {
-                        (target_numeric_id.clone(), source_numeric_id.clone())
+                        (target_id.clone(), source_id.clone())
                     };
 
                     // Sum the weights for bi-directional references
@@ -8658,8 +8565,7 @@ impl GraphService {
         // Log the initialization process
         info!("Initializing random positions for {} nodes with radius {}", 
              node_count, initial_radius);
-        info!("First 5 node numeric IDs: {}", graph.nodes.iter().take(5).map(|n| n.id.clone()).collect::<Vec<_>>().join(", "));
-        info!("First 5 node metadata IDs: {}", graph.nodes.iter().take(5).map(|n| n.metadata_id.clone()).collect::<Vec<_>>().join(", "));
+        info!("First 5 node IDs: {}", graph.nodes.iter().take(5).map(|n| n.id.clone()).collect::<Vec<_>>().join(", "));
         
         // Use Fibonacci sphere distribution for more uniform initial positions
         for (i, node) in graph.nodes.iter_mut().enumerate() {
@@ -8684,7 +8590,7 @@ impl GraphService {
             // Log first 5 nodes for debugging
             if i < 5 {
                 info!("Initialized node {}: id={}, pos=[{:.3},{:.3},{:.3}]", 
-                     i,
+                     i, 
                      node.id,
                      node.data.position[0], 
                      node.data.position[1], 
@@ -11271,6 +11177,155 @@ pub mod socket_flow_constants;
 pub mod socket_flow_messages;
 
 ----
+utils/socket_flow_messages.rs
+use serde::{Deserialize, Serialize};
+use bytemuck::{Pod, Zeroable};
+use std::collections::HashMap;
+use cudarc::driver::{DeviceRepr, ValidAsZeroBits};
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy, Pod, Zeroable, Serialize, Deserialize)]
+/// Binary node data structure for efficient transmission and GPU processing
+/// 
+/// Wire format (28 bytes per node):
+/// - position: [f32; 3] (12 bytes)
+/// - velocity: [f32; 3] (12 bytes)
+/// - id: u32 (4 bytes)
+///
+/// Note: mass, flags, and padding are server-side only and not transmitted over the wire
+/// to optimize bandwidth. They are still available for GPU processing and physics calculations.
+pub struct BinaryNodeData {
+    pub position: [f32; 3],
+    pub velocity: [f32; 3],
+    pub mass: u8,      // Server-side only, not transmitted
+    pub flags: u8,     // Server-side only, not transmitted
+    pub padding: [u8; 2], // Server-side only, not transmitted
+}
+
+// Implement DeviceRepr for BinaryNodeData
+unsafe impl DeviceRepr for BinaryNodeData {}
+
+// Implement ValidAsZeroBits for BinaryNodeData
+unsafe impl ValidAsZeroBits for BinaryNodeData {}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct PingMessage {
+    #[serde(rename = "type")]
+    pub type_: String,
+    #[serde(default = "default_timestamp")]
+    pub timestamp: u64,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct PongMessage {
+    #[serde(rename = "type")]
+    pub type_: String,
+    pub timestamp: u64,
+}
+
+fn default_timestamp() -> u64 {
+    chrono::Utc::now().timestamp_millis() as u64
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct Node {
+    // Core data
+    pub id: String,
+    pub label: String,
+    pub data: BinaryNodeData,
+
+    // Metadata
+    #[serde(skip_serializing_if = "HashMap::is_empty")]
+    pub metadata: HashMap<String, String>,
+    #[serde(skip)]
+    pub file_size: u64,
+
+    // Rendering properties
+    #[serde(rename = "type")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub node_type: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub size: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub color: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub weight: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub group: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub user_data: Option<HashMap<String, String>>,
+}
+
+impl Node {
+    pub fn new(id: String) -> Self {
+        Self {
+            id: id.clone(),
+            label: id,
+            data: BinaryNodeData {
+                position: [0.0, 0.0, 0.0],
+                velocity: [0.0, 0.0, 0.0],
+                mass: 0, // default mass, will be updated based on file size
+                flags: 0,
+                padding: [0, 0],
+            },
+            metadata: HashMap::new(),
+            file_size: 0,
+            node_type: None,
+            size: None,
+            color: None,
+            weight: None,
+            group: None,
+            user_data: None,
+        }
+    }
+
+    pub fn calculate_mass(file_size: u64) -> u8 {
+        // Use log scale to prevent extremely large masses
+        // Add 1 to file_size to handle empty files (log(0) is undefined)
+        // Scale down by 10000 to keep masses in a reasonable range
+        let base_mass = ((file_size + 1) as f32).log10() / 4.0;
+        // Ensure minimum mass of 0.1 and maximum of 10.0
+        let mass = base_mass.max(0.1).min(10.0);
+        (mass * 255.0 / 10.0) as u8
+    }
+
+    pub fn set_file_size(&mut self, size: u64) {
+        self.file_size = size;
+        // Update mass based on new file size
+        self.data.mass = Self::calculate_mass(size);
+    }
+
+    // Convenience getters/setters for x, y, z coordinates
+    pub fn x(&self) -> f32 { self.data.position[0] }
+    pub fn y(&self) -> f32 { self.data.position[1] }
+    pub fn z(&self) -> f32 { self.data.position[2] }
+    pub fn vx(&self) -> f32 { self.data.velocity[0] }
+    pub fn vy(&self) -> f32 { self.data.velocity[1] }
+    pub fn vz(&self) -> f32 { self.data.velocity[2] }
+    
+    pub fn set_x(&mut self, val: f32) { self.data.position[0] = val; }
+    pub fn set_y(&mut self, val: f32) { self.data.position[1] = val; }
+    pub fn set_z(&mut self, val: f32) { self.data.position[2] = val; }
+    pub fn set_vx(&mut self, val: f32) { self.data.velocity[0] = val; }
+    pub fn set_vy(&mut self, val: f32) { self.data.velocity[1] = val; }
+    pub fn set_vz(&mut self, val: f32) { self.data.velocity[2] = val; }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(tag = "type")]
+pub enum Message {
+    #[serde(rename = "ping")]
+    Ping { timestamp: u64 },
+    
+    #[serde(rename = "pong")]
+    Pong { timestamp: u64 },
+    
+    #[serde(rename = "enableRandomization")]
+    EnableRandomization { enabled: bool },
+}
+
+----
 utils/auth.rs
 use actix_web::{HttpRequest, HttpResponse};
 use log::{warn, error};
@@ -11591,33 +11646,6 @@ extern "C" {
         }
     }
 }
-
-----
-utils/socket_flow_constants.rs
-// Node and graph constants
-pub const NODE_SIZE: f32 = 1.0;  // Base node size in world units
-pub const EDGE_WIDTH: f32 = 0.1; // Base edge width
-pub const MIN_DISTANCE: f32 = 0.75; // Minimum distance between nodes - reduced to prevent overcrowding
-pub const MAX_DISTANCE: f32 = 10.0; // Maximum distance - reduced to keep nodes closer to center
-
-// WebSocket constants - matching nginx configuration
-pub const HEARTBEAT_INTERVAL: u64 = 30; // seconds - matches nginx proxy_connect_timeout
-pub const CLIENT_TIMEOUT: u64 = 60; // seconds - double heartbeat interval for safety
-pub const MAX_CLIENT_TIMEOUT: u64 = 3600; // seconds - matches nginx proxy_read_timeout
-pub const MAX_MESSAGE_SIZE: usize = 100 * 1024 * 1024; // 100MB
-pub const BINARY_CHUNK_SIZE: usize = 64 * 1024; // 64KB
-
-// Update rate constants
-pub const POSITION_UPDATE_RATE: u32 = 5; // Hz (matching client's MAX_UPDATES_PER_SECOND)
-pub const METADATA_UPDATE_RATE: u32 = 1; // Hz
-
-// Binary message constants
-pub const NODE_POSITION_SIZE: usize = 24; // 6 f32s (x,y,z,vx,vy,vz) * 4 bytes
-pub const BINARY_HEADER_SIZE: usize = 4; // 1 f32 for header
-
-// Compression constants
-pub const COMPRESSION_THRESHOLD: usize = 1024; // 1KB
-pub const ENABLE_COMPRESSION: bool = true;
 
 ----
 utils/compute_forces.ptx
@@ -12159,162 +12187,31 @@ $L__BB0_45:
 
 
 ----
-utils/socket_flow_messages.rs
-use serde::{Deserialize, Serialize};
-use bytemuck::{Pod, Zeroable};
-use std::collections::HashMap;
-use std::sync::atomic::{AtomicU32, Ordering};
-use cudarc::driver::{DeviceRepr, ValidAsZeroBits};
+utils/socket_flow_constants.rs
+// Node and graph constants
+pub const NODE_SIZE: f32 = 1.0;  // Base node size in world units
+pub const EDGE_WIDTH: f32 = 0.1; // Base edge width
+pub const MIN_DISTANCE: f32 = 0.75; // Minimum distance between nodes - reduced to prevent overcrowding
+pub const MAX_DISTANCE: f32 = 10.0; // Maximum distance - reduced to keep nodes closer to center
 
-// Static counter for generating unique numeric IDs
-static NEXT_NODE_ID: AtomicU32 = AtomicU32::new(1);  // Start from 1 (0 could be reserved)
+// WebSocket constants - matching nginx configuration
+pub const HEARTBEAT_INTERVAL: u64 = 30; // seconds - matches nginx proxy_connect_timeout
+pub const CLIENT_TIMEOUT: u64 = 60; // seconds - double heartbeat interval for safety
+pub const MAX_CLIENT_TIMEOUT: u64 = 3600; // seconds - matches nginx proxy_read_timeout
+pub const MAX_MESSAGE_SIZE: usize = 100 * 1024 * 1024; // 100MB
+pub const BINARY_CHUNK_SIZE: usize = 64 * 1024; // 64KB
 
-#[repr(C)]
-#[derive(Debug, Clone, Copy, Pod, Zeroable, Serialize, Deserialize)]
-/// Binary node data structure for efficient transmission and GPU processing
-/// 
-/// Wire format (28 bytes per node):
-/// - position: [f32; 3] (12 bytes)
-/// - velocity: [f32; 3] (12 bytes)
-/// - id: u32 (4 bytes)
-///
-/// Note: mass, flags, and padding are server-side only and not transmitted over the wire
-/// to optimize bandwidth. They are still available for GPU processing and physics calculations.
-pub struct BinaryNodeData {
-    pub position: [f32; 3],
-    pub velocity: [f32; 3],
-    pub mass: u8,      // Server-side only, not transmitted
-    pub flags: u8,     // Server-side only, not transmitted
-    pub padding: [u8; 2], // Server-side only, not transmitted
-}
+// Update rate constants
+pub const POSITION_UPDATE_RATE: u32 = 5; // Hz (matching client's MAX_UPDATES_PER_SECOND)
+pub const METADATA_UPDATE_RATE: u32 = 1; // Hz
 
-// Implement DeviceRepr for BinaryNodeData
-unsafe impl DeviceRepr for BinaryNodeData {}
+// Binary message constants
+pub const NODE_POSITION_SIZE: usize = 24; // 6 f32s (x,y,z,vx,vy,vz) * 4 bytes
+pub const BINARY_HEADER_SIZE: usize = 4; // 1 f32 for header
 
-// Implement ValidAsZeroBits for BinaryNodeData
-unsafe impl ValidAsZeroBits for BinaryNodeData {}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct PingMessage {
-    #[serde(rename = "type")]
-    pub type_: String,
-    #[serde(default = "default_timestamp")]
-    pub timestamp: u64,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct PongMessage {
-    #[serde(rename = "type")]
-    pub type_: String,
-    pub timestamp: u64,
-}
-
-fn default_timestamp() -> u64 {
-    chrono::Utc::now().timestamp_millis() as u64
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(rename_all = "camelCase")]
-pub struct Node {
-    // Core data
-    pub id: String,
-    pub metadata_id: String,  // Store the original filename for lookup
-    pub label: String,
-    pub data: BinaryNodeData,
-
-    // Metadata
-    #[serde(skip_serializing_if = "HashMap::is_empty")]
-    pub metadata: HashMap<String, String>,
-    #[serde(skip)]
-    pub file_size: u64,
-
-    // Rendering properties
-    #[serde(rename = "type")]
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub node_type: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub size: Option<f32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub color: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub weight: Option<f32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub group: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub user_data: Option<HashMap<String, String>>,
-}
-
-impl Node {
-    pub fn new(metadata_id: String) -> Self {
-        // Generate a unique numeric ID for binary protocol compatibility
-        let id = NEXT_NODE_ID.fetch_add(1, Ordering::SeqCst).to_string();
-        
-        Self {
-            id,
-            metadata_id: metadata_id.clone(),
-            label: metadata_id,
-            data: BinaryNodeData {
-                position: [0.0, 0.0, 0.0],
-                velocity: [0.0, 0.0, 0.0],
-                mass: 0, // default mass, will be updated based on file size
-                flags: 0,
-                padding: [0, 0],
-            },
-            metadata: HashMap::new(),
-            file_size: 0,
-            node_type: None,
-            size: None,
-            color: None,
-            weight: None,
-            group: None,
-            user_data: None,
-        }
-    }
-
-    pub fn calculate_mass(file_size: u64) -> u8 {
-        // Use log scale to prevent extremely large masses
-        // Add 1 to file_size to handle empty files (log(0) is undefined)
-        // Scale down by 10000 to keep masses in a reasonable range
-        let base_mass = ((file_size + 1) as f32).log10() / 4.0;
-        // Ensure minimum mass of 0.1 and maximum of 10.0
-        let mass = base_mass.max(0.1).min(10.0);
-        (mass * 255.0 / 10.0) as u8
-    }
-
-    pub fn set_file_size(&mut self, size: u64) {
-        self.file_size = size;
-        // Update mass based on new file size
-        self.data.mass = Self::calculate_mass(size);
-    }
-
-    // Convenience getters/setters for x, y, z coordinates
-    pub fn x(&self) -> f32 { self.data.position[0] }
-    pub fn y(&self) -> f32 { self.data.position[1] }
-    pub fn z(&self) -> f32 { self.data.position[2] }
-    pub fn vx(&self) -> f32 { self.data.velocity[0] }
-    pub fn vy(&self) -> f32 { self.data.velocity[1] }
-    pub fn vz(&self) -> f32 { self.data.velocity[2] }
-    
-    pub fn set_x(&mut self, val: f32) { self.data.position[0] = val; }
-    pub fn set_y(&mut self, val: f32) { self.data.position[1] = val; }
-    pub fn set_z(&mut self, val: f32) { self.data.position[2] = val; }
-    pub fn set_vx(&mut self, val: f32) { self.data.velocity[0] = val; }
-    pub fn set_vy(&mut self, val: f32) { self.data.velocity[1] = val; }
-    pub fn set_vz(&mut self, val: f32) { self.data.velocity[2] = val; }
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(tag = "type")]
-pub enum Message {
-    #[serde(rename = "ping")]
-    Ping { timestamp: u64 },
-    
-    #[serde(rename = "pong")]
-    Pong { timestamp: u64 },
-    
-    #[serde(rename = "enableRandomization")]
-    EnableRandomization { enabled: bool },
-}
+// Compression constants
+pub const COMPRESSION_THRESHOLD: usize = 1024; // 1KB
+pub const ENABLE_COMPRESSION: bool = true;
 
 ----
 utils/tests/socket_flow_tests.rs
@@ -19384,335 +19281,6 @@ export const getDefaultPhysicsValue = (param: PhysicsParameter): number => {
     return PHYSICS_CONSTANTS[param].DEFAULT;
 };
 ----
-core/resourceMonitor.ts
-import { createLogger } from './logger';
-import { WebGLRenderer, Texture, BufferGeometry, Material } from 'three';
-import { debugState } from './debugState';
-
-const logger = createLogger('ResourceMonitor');
-
-/**
- * ResourceMonitor - Tracks WebGL resources to help identify leaks and performance issues
- */
-export class ResourceMonitor {
-  private static instance: ResourceMonitor;
-  
-  private renderers: Set<WebGLRenderer> = new Set();
-  private textures: Set<Texture> = new Set();
-  private geometries: Set<BufferGeometry> = new Set();
-  private materials: Set<Material> = new Set();
-  
-  private monitoringEnabled: boolean = false;
-  private monitorInterval: any = null;
-  private monitorFrequency: number = 30000; // 30 seconds (increased from 10)
-  
-  private constructor() {
-    // Private constructor for singleton
-  }
-  
-  public static getInstance(): ResourceMonitor {
-    if (!ResourceMonitor.instance) {
-      ResourceMonitor.instance = new ResourceMonitor();
-    }
-    return ResourceMonitor.instance;
-  }
-  
-  /**
-   * Start monitoring resources
-   * @param frequency Monitoring frequency in milliseconds
-   */
-  public startMonitoring(frequency: number = 10000): void {
-    this.monitoringEnabled = true;
-    this.monitorFrequency = frequency;
-    
-    // Clear any existing interval
-    if (this.monitorInterval) {
-      clearInterval(this.monitorInterval);
-    }
-    
-    // Set up monitoring interval
-    this.monitorInterval = setInterval(() => {
-      this.logResourceUsage();
-    }, this.monitorFrequency);
-    
-    logger.info('Resource monitoring started', {
-      frequency: this.monitorFrequency
-    });
-    
-    // Log initial state
-    this.logResourceUsage();
-  }
-  
-  /**
-   * Stop monitoring resources
-   */
-  public stopMonitoring(): void {
-    this.monitoringEnabled = false;
-    
-    if (this.monitorInterval) {
-      clearInterval(this.monitorInterval);
-      this.monitorInterval = null;
-    }
-    
-    logger.info('Resource monitoring stopped');
-  }
-  
-  /**
-   * Track a WebGL renderer
-   */
-  public trackRenderer(renderer: WebGLRenderer): void {
-    this.renderers.add(renderer);
-    logger.debug('Tracking new WebGL renderer', {
-      rendererId: this.getObjectId(renderer),
-      totalRenderers: this.renderers.size
-    });
-  }
-  
-  /**
-   * Stop tracking a WebGL renderer
-   */
-  public untrackRenderer(renderer: WebGLRenderer): void {
-    this.renderers.delete(renderer);
-    logger.debug('Untracking WebGL renderer', {
-      rendererId: this.getObjectId(renderer),
-      totalRenderers: this.renderers.size
-    });
-  }
-  
-  /**
-   * Track a texture
-   */
-  public trackTexture(texture: Texture): void {
-    this.textures.add(texture);
-    
-    if (this.monitoringEnabled && this.textures.size % 10 === 0) {
-      logger.debug('Tracking new texture', {
-        textureId: this.getObjectId(texture),
-        totalTextures: this.textures.size
-      });
-    }
-  }
-  
-  /**
-   * Stop tracking a texture
-   */
-  public untrackTexture(texture: Texture): void {
-    this.textures.delete(texture);
-    
-    if (this.monitoringEnabled && this.textures.size % 10 === 0) {
-      logger.debug('Untracking texture', {
-        textureId: this.getObjectId(texture),
-        totalTextures: this.textures.size
-      });
-    }
-  }
-  
-  /**
-   * Track a geometry
-   */
-  public trackGeometry(geometry: BufferGeometry): void {
-    this.geometries.add(geometry);
-    
-    if (this.monitoringEnabled && this.geometries.size % 10 === 0) {
-      logger.debug('Tracking new geometry', {
-        geometryId: this.getObjectId(geometry),
-        totalGeometries: this.geometries.size
-      });
-    }
-  }
-  
-  /**
-   * Stop tracking a geometry
-   */
-  public untrackGeometry(geometry: BufferGeometry): void {
-    this.geometries.delete(geometry);
-    
-    if (this.monitoringEnabled && this.geometries.size % 10 === 0) {
-      logger.debug('Untracking geometry', {
-        geometryId: this.getObjectId(geometry),
-        totalGeometries: this.geometries.size
-      });
-    }
-  }
-  
-  /**
-   * Track a material
-   */
-  public trackMaterial(material: Material): void {
-    this.materials.add(material);
-    
-    if (this.monitoringEnabled && this.materials.size % 10 === 0) {
-      logger.debug('Tracking new material', {
-        materialId: this.getObjectId(material),
-        materialType: this.getObjectType(material),
-        totalMaterials: this.materials.size
-      });
-    }
-  }
-  
-  /**
-   * Stop tracking a material
-   */
-  public untrackMaterial(material: Material): void {
-    this.materials.delete(material);
-    
-    if (this.monitoringEnabled && this.materials.size % 10 === 0) {
-      logger.debug('Untracking material', {
-        materialId: this.getObjectId(material),
-        materialType: this.getObjectType(material),
-        totalMaterials: this.materials.size
-      });
-    }
-  }
-  
-  /**
-   * Get a unique identifier for an object
-   */
-  private getObjectId(obj: any): string {
-    // Try to get uuid if available
-    if (obj && typeof obj === 'object') {
-      if (obj.uuid) {
-        return obj.uuid;
-      }
-      
-      // Fall back to object's toString or a random ID
-      return obj.toString() || Math.random().toString(36).substring(2, 10);
-    }
-    
-    return 'unknown';
-  }
-  
-  /**
-   * Get the type of an object
-   */
-  private getObjectType(obj: any): string {
-    if (obj && typeof obj === 'object') {
-      if (obj.type) {
-        return obj.type;
-      }
-      
-      return obj.constructor?.name || typeof obj;
-    }
-    
-    return typeof obj;
-  }
-  
-  /**
-   * Log current resource usage
-   */
-  public logResourceUsage(): void {
-    // Only log detailed resource usage if performance debugging is enabled
-    if (debugState.isPerformanceDebugEnabled()) {
-      logger.performance('WebGL resource usage', {
-        renderers: this.renderers.size,
-        textures: this.textures.size,
-        geometries: this.geometries.size,
-        materials: this.materials.size,
-        memory: this.getMemoryUsage()
-      });
-      
-      // Check for potential issues
-      this.checkForIssues();
-    }
-  }
-  
-  /**
-   * Get memory usage information
-   */
-  private getMemoryUsage(): any {
-    const memory: any = {};
-    
-    // Get browser memory info if available
-    if ((performance as any).memory) {
-      memory.totalJSHeapSize = (performance as any).memory.totalJSHeapSize;
-      memory.usedJSHeapSize = (performance as any).memory.usedJSHeapSize;
-      memory.jsHeapSizeLimit = (performance as any).memory.jsHeapSizeLimit;
-    }
-    
-    return memory;
-  }
-  
-  /**
-   * Check for potential resource issues
-   */
-  private checkForIssues(): void {
-    // Check for too many renderers
-    if (this.renderers.size > 1) {
-      logger.warn('Multiple WebGL renderers detected', {
-        count: this.renderers.size,
-        recommendation: 'Consider using a shared renderer to avoid WebGL context limits'
-      });
-    }
-    
-    // Check for high texture count
-    if (this.textures.size > 100) {
-      logger.warn('High texture count detected', {
-        count: this.textures.size,
-        recommendation: 'Consider using texture atlases or disposing unused textures'
-      });
-    }
-    
-    // Check for high geometry count
-    if (this.geometries.size > 1000) {
-      logger.warn('High geometry count detected', {
-        count: this.geometries.size,
-        recommendation: 'Consider using instanced geometries or merging geometries'
-      });
-    }
-    
-    // Check for high material count
-    if (this.materials.size > 100) {
-      logger.warn('High material count detected', {
-        count: this.materials.size,
-        recommendation: 'Consider sharing materials between objects'
-      });
-    }
-    
-    // Check for memory usage
-    if ((performance as any).memory && (performance as any).memory.usedJSHeapSize > 0.8 * (performance as any).memory.jsHeapSizeLimit) {
-      logger.warn('High memory usage detected', {
-        usedJSHeapSize: (performance as any).memory.usedJSHeapSize,
-        jsHeapSizeLimit: (performance as any).memory.jsHeapSizeLimit,
-        recommendation: 'Consider disposing unused resources or implementing level-of-detail'
-      });
-    }
-  }
-  
-  /**
-   * Dispose all tracked resources
-   */
-  public disposeAll(): void {
-    // Dispose textures
-    this.textures.forEach(texture => {
-      texture.dispose();
-    });
-    this.textures.clear();
-    
-    // Dispose geometries
-    this.geometries.forEach(geometry => {
-      geometry.dispose();
-    });
-    this.geometries.clear();
-    
-    // Dispose materials
-    this.materials.forEach(material => {
-      material.dispose();
-    });
-    this.materials.clear();
-    
-    // Dispose renderers
-    this.renderers.forEach(renderer => {
-      renderer.dispose();
-    });
-    this.renderers.clear();
-    
-    logger.info('All tracked resources disposed');
-  }
-}
-
-// Export singleton instance
-export const resourceMonitor = ResourceMonitor.getInstance(); 
-----
 core/types.ts
 // Core types for the application
 import { Vector3 as ThreeVector3 } from 'three';
@@ -20088,7 +19656,6 @@ export interface Logger {
 // Helper functions
 interface RawNode {
   id: string;
-  metadata_id?: string;  // Added to match the server's data structure
   data: {
     position: Vector3;
     metadata?: NodeMetadata;
@@ -20099,7 +19666,6 @@ interface RawNode {
 interface RawEdge {
   source: string;
   target: string;
-  weight?: number;
   id?: string;
 }
 
@@ -20117,29 +19683,14 @@ export function transformGraphData(data: RawGraphData): GraphData {
   const nodes = data.nodes.map((node: RawNode) => transformNodeData(node));
   const nodePositions = new Map(nodes.map((node: Node) => [
     node.id,
-    node.data.position 
+    node.data.position
   ]));
 
-  // Enhanced edge processing with logging for troubleshooting
-  const edges = data.edges.map((edge: RawEdge) => {
-    // Check if node positions exist for the source and target
-    const sourcePos = nodePositions.get(edge.source);
-    const targetPos = nodePositions.get(edge.target);
-    
-    // For debugging missing edges - only in development mode
-    if (!sourcePos || !targetPos) {
-      if (import.meta.env.DEV) {
-        console.log(`Edge processing: Missing position for ${!sourcePos ? 'source' : 'target'} node ID ${!sourcePos ? edge.source : edge.target}`);
-      }
-    }
-    
-    return {
-      ...edge,
-      sourcePosition: sourcePos,
-      targetPosition: targetPos,
-      id: edge.id || `${edge.source}_${edge.target}`
-    };
-  });
+  const edges = data.edges.map((edge: any) => ({
+    ...edge,
+    sourcePosition: nodePositions.get(edge.source),
+    targetPosition: nodePositions.get(edge.target)
+  }));
 
   return {
     nodes,
@@ -20159,7 +19710,7 @@ export function transformNodeData(node: any): Node {
       ),
       velocity: node.data.velocity instanceof ThreeVector3 ? node.data.velocity : new ThreeVector3(0, 0, 0),
       metadata: {
-        name: node.data.metadata?.name || node.metadata_id || node.id,
+        name: node.data.metadata?.name || node.id,
         lastModified: parseInt(node.data.metadata?.lastModified) || Date.now(),
         links: node.data.metadata?.links || [],
         references: node.data.metadata?.references || [],
@@ -20171,6 +19722,335 @@ export function transformNodeData(node: any): Node {
   };
 }
 
+----
+core/resourceMonitor.ts
+import { createLogger } from './logger';
+import { WebGLRenderer, Texture, BufferGeometry, Material } from 'three';
+import { debugState } from './debugState';
+
+const logger = createLogger('ResourceMonitor');
+
+/**
+ * ResourceMonitor - Tracks WebGL resources to help identify leaks and performance issues
+ */
+export class ResourceMonitor {
+  private static instance: ResourceMonitor;
+  
+  private renderers: Set<WebGLRenderer> = new Set();
+  private textures: Set<Texture> = new Set();
+  private geometries: Set<BufferGeometry> = new Set();
+  private materials: Set<Material> = new Set();
+  
+  private monitoringEnabled: boolean = false;
+  private monitorInterval: any = null;
+  private monitorFrequency: number = 30000; // 30 seconds (increased from 10)
+  
+  private constructor() {
+    // Private constructor for singleton
+  }
+  
+  public static getInstance(): ResourceMonitor {
+    if (!ResourceMonitor.instance) {
+      ResourceMonitor.instance = new ResourceMonitor();
+    }
+    return ResourceMonitor.instance;
+  }
+  
+  /**
+   * Start monitoring resources
+   * @param frequency Monitoring frequency in milliseconds
+   */
+  public startMonitoring(frequency: number = 10000): void {
+    this.monitoringEnabled = true;
+    this.monitorFrequency = frequency;
+    
+    // Clear any existing interval
+    if (this.monitorInterval) {
+      clearInterval(this.monitorInterval);
+    }
+    
+    // Set up monitoring interval
+    this.monitorInterval = setInterval(() => {
+      this.logResourceUsage();
+    }, this.monitorFrequency);
+    
+    logger.info('Resource monitoring started', {
+      frequency: this.monitorFrequency
+    });
+    
+    // Log initial state
+    this.logResourceUsage();
+  }
+  
+  /**
+   * Stop monitoring resources
+   */
+  public stopMonitoring(): void {
+    this.monitoringEnabled = false;
+    
+    if (this.monitorInterval) {
+      clearInterval(this.monitorInterval);
+      this.monitorInterval = null;
+    }
+    
+    logger.info('Resource monitoring stopped');
+  }
+  
+  /**
+   * Track a WebGL renderer
+   */
+  public trackRenderer(renderer: WebGLRenderer): void {
+    this.renderers.add(renderer);
+    logger.debug('Tracking new WebGL renderer', {
+      rendererId: this.getObjectId(renderer),
+      totalRenderers: this.renderers.size
+    });
+  }
+  
+  /**
+   * Stop tracking a WebGL renderer
+   */
+  public untrackRenderer(renderer: WebGLRenderer): void {
+    this.renderers.delete(renderer);
+    logger.debug('Untracking WebGL renderer', {
+      rendererId: this.getObjectId(renderer),
+      totalRenderers: this.renderers.size
+    });
+  }
+  
+  /**
+   * Track a texture
+   */
+  public trackTexture(texture: Texture): void {
+    this.textures.add(texture);
+    
+    if (this.monitoringEnabled && this.textures.size % 10 === 0) {
+      logger.debug('Tracking new texture', {
+        textureId: this.getObjectId(texture),
+        totalTextures: this.textures.size
+      });
+    }
+  }
+  
+  /**
+   * Stop tracking a texture
+   */
+  public untrackTexture(texture: Texture): void {
+    this.textures.delete(texture);
+    
+    if (this.monitoringEnabled && this.textures.size % 10 === 0) {
+      logger.debug('Untracking texture', {
+        textureId: this.getObjectId(texture),
+        totalTextures: this.textures.size
+      });
+    }
+  }
+  
+  /**
+   * Track a geometry
+   */
+  public trackGeometry(geometry: BufferGeometry): void {
+    this.geometries.add(geometry);
+    
+    if (this.monitoringEnabled && this.geometries.size % 10 === 0) {
+      logger.debug('Tracking new geometry', {
+        geometryId: this.getObjectId(geometry),
+        totalGeometries: this.geometries.size
+      });
+    }
+  }
+  
+  /**
+   * Stop tracking a geometry
+   */
+  public untrackGeometry(geometry: BufferGeometry): void {
+    this.geometries.delete(geometry);
+    
+    if (this.monitoringEnabled && this.geometries.size % 10 === 0) {
+      logger.debug('Untracking geometry', {
+        geometryId: this.getObjectId(geometry),
+        totalGeometries: this.geometries.size
+      });
+    }
+  }
+  
+  /**
+   * Track a material
+   */
+  public trackMaterial(material: Material): void {
+    this.materials.add(material);
+    
+    if (this.monitoringEnabled && this.materials.size % 10 === 0) {
+      logger.debug('Tracking new material', {
+        materialId: this.getObjectId(material),
+        materialType: this.getObjectType(material),
+        totalMaterials: this.materials.size
+      });
+    }
+  }
+  
+  /**
+   * Stop tracking a material
+   */
+  public untrackMaterial(material: Material): void {
+    this.materials.delete(material);
+    
+    if (this.monitoringEnabled && this.materials.size % 10 === 0) {
+      logger.debug('Untracking material', {
+        materialId: this.getObjectId(material),
+        materialType: this.getObjectType(material),
+        totalMaterials: this.materials.size
+      });
+    }
+  }
+  
+  /**
+   * Get a unique identifier for an object
+   */
+  private getObjectId(obj: any): string {
+    // Try to get uuid if available
+    if (obj && typeof obj === 'object') {
+      if (obj.uuid) {
+        return obj.uuid;
+      }
+      
+      // Fall back to object's toString or a random ID
+      return obj.toString() || Math.random().toString(36).substring(2, 10);
+    }
+    
+    return 'unknown';
+  }
+  
+  /**
+   * Get the type of an object
+   */
+  private getObjectType(obj: any): string {
+    if (obj && typeof obj === 'object') {
+      if (obj.type) {
+        return obj.type;
+      }
+      
+      return obj.constructor?.name || typeof obj;
+    }
+    
+    return typeof obj;
+  }
+  
+  /**
+   * Log current resource usage
+   */
+  public logResourceUsage(): void {
+    // Only log detailed resource usage if performance debugging is enabled
+    if (debugState.isPerformanceDebugEnabled()) {
+      logger.performance('WebGL resource usage', {
+        renderers: this.renderers.size,
+        textures: this.textures.size,
+        geometries: this.geometries.size,
+        materials: this.materials.size,
+        memory: this.getMemoryUsage()
+      });
+      
+      // Check for potential issues
+      this.checkForIssues();
+    }
+  }
+  
+  /**
+   * Get memory usage information
+   */
+  private getMemoryUsage(): any {
+    const memory: any = {};
+    
+    // Get browser memory info if available
+    if ((performance as any).memory) {
+      memory.totalJSHeapSize = (performance as any).memory.totalJSHeapSize;
+      memory.usedJSHeapSize = (performance as any).memory.usedJSHeapSize;
+      memory.jsHeapSizeLimit = (performance as any).memory.jsHeapSizeLimit;
+    }
+    
+    return memory;
+  }
+  
+  /**
+   * Check for potential resource issues
+   */
+  private checkForIssues(): void {
+    // Check for too many renderers
+    if (this.renderers.size > 1) {
+      logger.warn('Multiple WebGL renderers detected', {
+        count: this.renderers.size,
+        recommendation: 'Consider using a shared renderer to avoid WebGL context limits'
+      });
+    }
+    
+    // Check for high texture count
+    if (this.textures.size > 100) {
+      logger.warn('High texture count detected', {
+        count: this.textures.size,
+        recommendation: 'Consider using texture atlases or disposing unused textures'
+      });
+    }
+    
+    // Check for high geometry count
+    if (this.geometries.size > 1000) {
+      logger.warn('High geometry count detected', {
+        count: this.geometries.size,
+        recommendation: 'Consider using instanced geometries or merging geometries'
+      });
+    }
+    
+    // Check for high material count
+    if (this.materials.size > 100) {
+      logger.warn('High material count detected', {
+        count: this.materials.size,
+        recommendation: 'Consider sharing materials between objects'
+      });
+    }
+    
+    // Check for memory usage
+    if ((performance as any).memory && (performance as any).memory.usedJSHeapSize > 0.8 * (performance as any).memory.jsHeapSizeLimit) {
+      logger.warn('High memory usage detected', {
+        usedJSHeapSize: (performance as any).memory.usedJSHeapSize,
+        jsHeapSizeLimit: (performance as any).memory.jsHeapSizeLimit,
+        recommendation: 'Consider disposing unused resources or implementing level-of-detail'
+      });
+    }
+  }
+  
+  /**
+   * Dispose all tracked resources
+   */
+  public disposeAll(): void {
+    // Dispose textures
+    this.textures.forEach(texture => {
+      texture.dispose();
+    });
+    this.textures.clear();
+    
+    // Dispose geometries
+    this.geometries.forEach(geometry => {
+      geometry.dispose();
+    });
+    this.geometries.clear();
+    
+    // Dispose materials
+    this.materials.forEach(material => {
+      material.dispose();
+    });
+    this.materials.clear();
+    
+    // Dispose renderers
+    this.renderers.forEach(renderer => {
+      renderer.dispose();
+    });
+    this.renderers.clear();
+    
+    logger.info('All tracked resources disposed');
+  }
+}
+
+// Export singleton instance
+export const resourceMonitor = ResourceMonitor.getInstance(); 
 ----
 public/fonts/Roboto-Regular.woff2
 wOF2     =     t  =                       dd^`  T	<
@@ -21614,7 +21494,6 @@ export class EdgeManager {
     private edgeGroup: Group;
     private nodeManager: NodeInstanceManager;
     private edgeData: Map<string, Edge> = new Map();
-    private sourceTargetCache: Map<string, string> = new Map();
     private settings: Settings;
     private settingsStore: SettingsStore;
     private updateFrameCount = 0;
@@ -21706,17 +21585,11 @@ export class EdgeManager {
     public updateEdges(edges: Edge[]): void {
         // Clear existing edges
         this.clearEdges();
-        
-        // Clear maps
         this.edgeData.clear();
         this.edges.clear();
-        this.sourceTargetCache.clear();
 
         // Create new edges
         edges.forEach(edge => {
-            // Cache mapping between source and target IDs
-            this.sourceTargetCache.set(edge.id || `${edge.source}_${edge.target}`, `${edge.source}:${edge.target}`);
-            
             if (!edge.sourcePosition || !edge.targetPosition) return;
 
             // Clamp positions to reasonable values
@@ -21777,88 +21650,19 @@ export class EdgeManager {
     public update(_deltaTime: number): void {
         this.updateFrameCount++;
         if (this.updateFrameCount % this.UPDATE_FREQUENCY !== 0) return;
-
-        // Add debug logging to check edge count
-        if (import.meta.env.DEV && this.updateFrameCount % 60 === 0) {
-            console.log(`[EdgeManager] Currently tracking ${this.edges.size} edges, ${this.edgeData.size} edge data entries`);
-        }
         
         // Update edge positions based on current node positions
         this.edgeData.forEach((edgeData, edgeId) => {
             const edge = this.edges.get(edgeId);
-            if (!edge) {
-                if (import.meta.env.DEV) {
-                    console.warn(`[EdgeManager] Edge ${edgeId} not found in edges map`);
-                }
-                return;
-            }
+            if (!edge) return;
 
             const sourcePos = this.nodeManager.getNodePosition(edgeData.source);
             const targetPos = this.nodeManager.getNodePosition(edgeData.target);
 
-            // Log positions for debugging
-            if (import.meta.env.DEV && this.updateFrameCount % 120 === 0) {
-                console.log(`[EdgeManager] Edge ${edgeId} positions - sourcePos: ${sourcePos ? 'found' : 'missing'}, targetPos: ${targetPos ? 'found' : 'missing'}`);
-            }
-
-            if (!sourcePos || !targetPos) {
-                return;
-            }
-            
-            // Validate positions
-            if (!this.validateVector3(sourcePos) || !this.validateVector3(targetPos)) {
-                return; 
-            }
-                
-            // Limit edge length
-            const distance = sourcePos.distanceTo(targetPos);
-            let finalTargetPos = targetPos.clone();
-            
-            if (distance > this.MAX_EDGE_LENGTH) {
-                const direction = new Vector3().subVectors(targetPos, sourcePos).normalize();
-                finalTargetPos = sourcePos.clone().add(direction.multiplyScalar(this.MAX_EDGE_LENGTH));
-            }
-
-            // Update the existing geometry's positions directly
-            const posAttr = edge.geometry.getAttribute('position');
-            if (posAttr) {
-                // Create a new geometry instead of updating the existing one
-                const newGeometry = this.createLineGeometry(sourcePos, finalTargetPos);
-                edge.geometry.dispose();
-                edge.geometry = newGeometry;
-            }
-            
-            // Apply subtle pulsing animation if desired
-            if (edge.material instanceof LineBasicMaterial) {
-                const baseOpacity = this.settings.visualization.edges.opacity || 0.7;
-                const pulse = Math.sin(Date.now() * 0.001) * 0.1 + 0.9;
-                edge.material.opacity = baseOpacity * pulse;
-                edge.material.needsUpdate = true;
-            }
-        });
-    }
-
-    // Updated version of update method that doesn't use forEach to avoid potential iterator issues
-    /*
-    public update(_deltaTime: number): void {
-        this.updateFrameCount++;
-        if (this.updateFrameCount % this.UPDATE_FREQUENCY !== 0) return;
-        
-        // Update edge positions based on current node positions
-        const edgeDataEntries = Array.from(this.edgeData.entries());
-        
-        for (const [edgeId, edgeData] of edgeDataEntries) {
-            const edge = this.edges.get(edgeId);
-            if (!edge) continue;
-
-            const sourcePos = this.nodeManager.getNodePosition(edgeData.source);
-            const targetPos = this.nodeManager.getNodePosition(edgeData.target);
-
-            if (!sourcePos || !targetPos) continue;
-
+            if (sourcePos && targetPos) {
                 // Validate positions
                 if (!this.validateVector3(sourcePos) || !this.validateVector3(targetPos)) {
-                    continue; 
+                    return; 
                 }
                 
                 // Limit edge length
@@ -21889,7 +21693,8 @@ export class EdgeManager {
                 }
             }
         });
-    }*/
+    }
+
     /**
      * Set XR mode for edge rendering
      */
@@ -21979,7 +21784,6 @@ export class MetadataVisualizer {
     private scene: Scene;
     private labelGroup: Group;
     private settings: Settings;
-    private debugEnabled: boolean = false;
     private textRenderer: UnifiedTextRenderer;
     private metadataGroups: Map<string, MetadataLabelGroup>;
     private logger: Logger;
@@ -21992,20 +21796,9 @@ export class MetadataVisualizer {
         this.settings = settings;
         this.metadataGroups = new Map();
         this.logger = createLogger('MetadataVisualizer');
-        this.debugEnabled = debugState.isEnabled();
         
         this.debugHelpers = new Map();
         this.visibilityThreshold = settings.visualization.labels.visibilityThreshold || 50;
-        
-        // On initialization, log our settings
-        if (this.debugEnabled) {
-            console.log('[MetadataVisualizer] Initialized with settings:', {
-                enableLabels: settings.visualization.labels.enableLabels,
-                textColor: settings.visualization.labels.textColor,
-                desktopFontSize: settings.visualization.labels.desktopFontSize,
-                visibilityThreshold: this.visibilityThreshold
-            });
-        }
         
         this.logger.info('Initializing MetadataVisualizer with settings:', {
             enableLabels: settings.visualization.labels.enableLabels,
@@ -22038,15 +21831,6 @@ export class MetadataVisualizer {
     public async createMetadataLabel(metadata: NodeMetadata, nodeId: string): Promise<MetadataLabelGroup> {
         // Track how many labels we've created
         this.labelUpdateCount++;
-        
-        // Log detailed metadata info to help debug node label issues
-        if (this.debugEnabled) {
-            console.log(`[MetadataVisualizer] Creating label for node ${nodeId}:`, {
-                name: metadata.name,
-                fileSize: metadata.fileSize,
-                hyperlinkCount: metadata.hyperlinkCount
-            });
-        }
 
         const group = new Group() as MetadataLabelGroup;
         group.name = 'metadata-label';
@@ -22056,7 +21840,7 @@ export class MetadataVisualizer {
         };
 
         // Format file size
-        const fileSizeFormatted = !metadata.fileSize ? '0B' : metadata.fileSize > 1024 * 1024 
+        const fileSizeFormatted = metadata.fileSize > 1024 * 1024 
             ? `${(metadata.fileSize / (1024 * 1024)).toFixed(1)}MB`
             : metadata.fileSize > 1024
                 ? `${(metadata.fileSize / 1024).toFixed(1)}KB`
@@ -22071,13 +21855,9 @@ export class MetadataVisualizer {
                     fileSize: fileSizeFormatted,
                     nodeSize: metadata.nodeSize
                 }
-            });
+        });
         }
 
-        // Use the filename from metadata name (which should come from metadata_id)
-        // and fallback to nodeId if not available
-        const displayName = metadata.name || nodeId;
-        
         // Create text labels using UnifiedTextRenderer
         // First, find the node's actual position
         let nodePosition = new Vector3(0, 0, 0);
@@ -22091,11 +21871,10 @@ export class MetadataVisualizer {
         // We'll set the group's position initially to help with initialization
         group.position.copy(nodePosition);
         
-        // Enhanced label text that displays the filename prominently
         const labelTexts = [
-            `${displayName}`,  // Main label (filename)
-            `${fileSizeFormatted}`,  // File size
-            `${metadata.hyperlinkCount || 0} links`  // Link count
+            `${metadata.name} (${fileSizeFormatted})`,
+            `Size: ${metadata.nodeSize.toFixed(1)}`,
+            `${metadata.hyperlinkCount} links`
         ];
 
         const yOffsets = [0.05, 0.03, 0.01]; // Drastically reduced Y positions to keep labels almost at node position
@@ -23167,24 +22946,19 @@ export class VisualizationController {
             // Use node ID as a fallback for the name
             const nodeMetadata = node.data?.metadata || {};
             
-            // Log more detailed node information for debugging
+            // Log the actual data we're working with for debugging
             if (index < 5) {
-                logger.info(`Processing node #${index}:`, createDataMetadata({
-                    id: node.id,
-                    name: nodeMetadata.name,
+                logger.info(`Processing node #${index}: ${node.id}`, createDataMetadata({
+                    name: nodeMetadata.name || node.id,
                     fileSize: nodeMetadata.fileSize,
                     position: node.data.position
                 }));
             }
-            
-            // Log the actual data we're working with for debugging
-            // Extract the readable name - prioritize metadata name (from metadata_id/filename)
-            const displayName = nodeMetadata.name || node.id;
                 
             const metadata: NodeMetadata = {
                 id: node.id,
                 // Use explicit || chaining to handle all possible undefined cases
-                name: displayName.toString(),
+                name: (nodeMetadata.name || node.id || `Node ${index}`).toString(),
                 commitAge: Math.floor((Date.now() - (nodeMetadata.lastModified || Date.now())) / (1000 * 60 * 60 * 24)),
                 hyperlinkCount: nodeMetadata.hyperlinkCount || 0,
                 fileSize: nodeMetadata.fileSize || 1024,
@@ -23208,11 +22982,7 @@ export class VisualizationController {
         });
         
         logger.info(`Metadata visualization updated: ${processedNodeIds.size} nodes with unique labels. Sample labels: ${
-            Array.from(processedNodeIds).slice(0, 3).map(id => {
-                const node = currentData.nodes.find(n => n.id === id);
-                // Show both filename and numeric ID to confirm mapping
-                return `${node?.data?.metadata?.name || id}`;
-            }).join(", ")
+            currentData.nodes.slice(0, 3).map(n => n.data?.metadata?.name || n.id).join(", ")
         }`);
     }
 }
@@ -24203,6 +23973,7 @@ import { NodeInteractionManager } from './interaction/NodeInteractionManager';
 import { NodeManagerInterface, NodeManagerError, NodeManagerErrorType } from './NodeManagerInterface';
 import { NodeData } from '../../core/types';
 import { XRHandWithHaptics } from '../../types/xr';
+import { debugState } from '../../core/debugState';
 import { createLogger, createErrorMetadata, createDataMetadata } from '../../core/logger';
 import { Vec3 } from '../../types/vec3';
 
@@ -24310,12 +24081,13 @@ export class NodeManagerFacade implements NodeManagerInterface {
      */
     public updateNodes(nodes: { id: string, data: NodeData }[]): void {
         if (!this.isInitialized) return;
+
+        const shouldDebugLog = debugState.isEnabled() && debugState.isNodeDebugEnabled();
         
         // Track node IDs
         nodes.forEach(node => {
             this.nodeIndices.set(node.id, node.id);
-            // Optional debug logging can be added with import.meta.env.DEV check
-            if (import.meta.env.DEV) {
+            if (shouldDebugLog) {
                 logger.debug('Tracking node', createDataMetadata({ nodeId: node.id }));
             }
         });
@@ -24332,15 +24104,9 @@ export class NodeManagerFacade implements NodeManagerInterface {
         nodes.forEach(node => {
             if (node.data.metadata) {
                 const fileSize = node.data.metadata.fileSize || DEFAULT_FILE_SIZE;
-                
-                // Optional detailed logging for development
-                if (import.meta.env.DEV) {
-                    logger.debug('Updating node metadata', createDataMetadata({ 
-                        nodeId: node.id,
-                        name: node.data.metadata.name
-                    }));
+                if (shouldDebugLog) {
+                    logger.debug('Updating node metadata', createDataMetadata({ nodeId: node.id }));
                 }
-                
                 this.metadataManager.updateMetadata(node.id, {
                     id: node.id,
                     name: node.data.metadata.name || '',
@@ -25472,11 +25238,6 @@ export class NodeMetadataManager {
         // Clear canvas
         this.labelContext.clearRect(0, 0, this.labelCanvas.width, this.labelCanvas.height);
 
-        // Debug the metadata content for nodes - only in development mode
-        if (import.meta.env.DEV) {
-            logger.debug(`Creating label texture for ${metadata.id} with name: ${metadata.name}`);
-        }
-
         // Draw background
         this.labelContext.fillStyle = 'rgba(0, 0, 0, 0.5)';
         this.labelContext.fillRect(0, 0, this.labelCanvas.width, this.labelCanvas.height);
@@ -25484,7 +25245,7 @@ export class NodeMetadataManager {
         // Draw text
         this.labelContext.fillStyle = 'white';
         this.labelContext.fillText(
-            metadata.name || metadata.id || 'Unknown',
+            metadata.name || 'Unknown',
             this.labelCanvas.width / 2,
             this.labelCanvas.height / 2
         );
@@ -26927,12 +26688,7 @@ export class GraphDataManager {
   updateGraphData(data: any): void {
     // Transform and validate incoming data
     const transformedData = transformGraphData(data);
-    throttledDebugLog(`Updating graph data. Incoming: ${transformedData.nodes.length} nodes, ${transformedData.edges?.length || 0} edges. First 3 node IDs: ${transformedData.nodes.slice(0, 3).map(n => n.id).join(', ')}`);
-    
-    // Debug edge source/target IDs
-    if (transformedData.edges && transformedData.edges.length > 0) {
-      throttledDebugLog(`First 3 edge source/target IDs: ${transformedData.edges.slice(0, 3).map(e => `${e.source}->${e.target}`).join(', ')}`);
-    }
+    throttledDebugLog(`Updating graph data. Incoming: ${transformedData.nodes.length} nodes, ${transformedData.edges?.length || 0} edges`);
     
     // Update nodes with proper position and velocity
     transformedData.nodes.forEach((node: Node) => {
@@ -26943,13 +26699,6 @@ export class GraphDataManager {
     if (Array.isArray(transformedData.edges)) {
       transformedData.edges.forEach((edge: Edge) => {
         const edgeId = this.createEdgeId(edge.source, edge.target);
-        
-        // Check if source and target nodes exist
-        if (!this.nodes.has(edge.source) || !this.nodes.has(edge.target)) {
-          throttledDebugLog(`Skipping edge ${edge.source}->${edge.target} due to missing node(s)`);
-          return;
-        }
-        
         const edgeWithId: EdgeWithId = {
           ...edge,
           id: edgeId

@@ -9,6 +9,7 @@ import {
 } from 'three';
 import { NodeMetadata } from '../../../types/metadata';
 import { createLogger } from '../../../core/logger';
+import { debugState } from '../../../core/debugState';
 
 const logger = createLogger('NodeMetadataManager');
 
@@ -62,28 +63,51 @@ export class NodeMetadataManager {
     private createLabelTexture(metadata: NodeMetadata): Texture {
         // Clear canvas
         this.labelContext.clearRect(0, 0, this.labelCanvas.width, this.labelCanvas.height);
-
-        // Debug the metadata content for nodes - only in development mode
-        if (import.meta.env.DEV) {
+        
+        // Log metadata only if node debug is enabled
+        if (debugState.isNodeDebugEnabled()) {
             logger.debug(`Creating label texture for ${metadata.id} with name: ${metadata.name}`);
         }
 
-        // Draw background
+        // Draw a slightly larger background to accommodate multiple lines
         this.labelContext.fillStyle = 'rgba(0, 0, 0, 0.5)';
         this.labelContext.fillRect(0, 0, this.labelCanvas.width, this.labelCanvas.height);
 
-        // Draw text
+        // Draw main label (filename)
         this.labelContext.fillStyle = 'white';
-        this.labelContext.fillText(
-            metadata.name || metadata.id || 'Unknown',
-            this.labelCanvas.width / 2,
-            this.labelCanvas.height / 2
-        );
+        this.labelContext.font = 'bold 20px Arial';
+        const mainLabel = metadata.name || metadata.id || 'Unknown';
+        this.labelContext.fillText(mainLabel, this.labelCanvas.width / 2, 30);
+        
+        // Draw subtext lines
+        this.labelContext.font = '14px Arial';
+        this.labelContext.fillStyle = '#cccccc';
+        
+        // Add file size if available
+        if (metadata.fileSize) {
+            const fileSizeText = this.formatFileSize(metadata.fileSize);
+            this.labelContext.fillText(`Size: ${fileSizeText}`, this.labelCanvas.width / 2, 55);
+        }
+        
+        // Add hyperlink count if available
+        if (metadata.hyperlinkCount !== undefined) {
+            this.labelContext.fillText(`Links: ${metadata.hyperlinkCount}`, this.labelCanvas.width / 2, 75);
+        }
 
         // Create texture
         const texture = new Texture(this.labelCanvas);
         texture.needsUpdate = true;
         return texture;
+    }
+    
+    /**
+     * Format file size into human-readable format
+     */
+    private formatFileSize(bytes: number): string {
+        if (bytes < 1024) return bytes + ' B';
+        if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+        if (bytes < 1024 * 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+        return (bytes / (1024 * 1024 * 1024)).toFixed(1) + ' GB';
     }
 
     public async createMetadataLabel(metadata: NodeMetadata): Promise<Object3D> {
@@ -182,7 +206,9 @@ export class NodeMetadataManager {
     public updatePosition(id: string, position: Vector3): void {
         const label = this.labels.get(id);
         if (!label) {
-            logger.debug(`No label found for node ${id}`);
+            if (debugState.isNodeDebugEnabled()) {
+                logger.debug(`No label found for node ${id}`);
+            }
             return;
         }
 
@@ -195,7 +221,9 @@ export class NodeMetadataManager {
     public updateVisibilityThreshold(threshold: number): void {
         if (threshold > 0) {
             this.VISIBILITY_THRESHOLD = threshold;
-            logger.debug(`Updated visibility threshold to ${threshold}`);
+            if (debugState.isNodeDebugEnabled()) {
+                logger.debug(`Updated visibility threshold to ${threshold}`);
+            }
         }
     }
 

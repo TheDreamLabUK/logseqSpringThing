@@ -10,10 +10,14 @@ import {
     Material,
     Color
 } from 'three';
+import { createLogger } from '../core/logger';
 import { Edge } from '../core/types';
 import { Settings } from '../types/settings';
 import { NodeInstanceManager } from './node/instance/NodeInstanceManager';
 import { SettingsStore } from '../state/SettingsStore';
+import { debugState } from '../core/debugState';
+
+const logger = createLogger('EdgeManager');
 
 export class EdgeManager {
     private scene: Scene;
@@ -26,7 +30,7 @@ export class EdgeManager {
     private settingsStore: SettingsStore;
     private updateFrameCount = 0;
     private readonly UPDATE_FREQUENCY = 2; // Update every other frame
-    private readonly MAX_EDGE_LENGTH = 15.0; // Maximum edge length to prevent explosion
+    private readonly MAX_EDGE_LENGTH = 20.0; // Increased maximum edge length
 
     constructor(scene: Scene, settings: Settings, nodeManager: NodeInstanceManager) {
         this.scene = scene;
@@ -79,6 +83,8 @@ export class EdgeManager {
         if (distance > this.MAX_EDGE_LENGTH) {
             // Create limited-length vector in same direction
             const direction = new Vector3().subVectors(target, source).normalize();
+            // Direction check to prevent issues with zero vectors
+            if (isNaN(direction.x) || isNaN(direction.y) || isNaN(direction.z)) return geometry;
             finalTarget.copy(source).add(direction.multiplyScalar(this.MAX_EDGE_LENGTH));
         }
         
@@ -111,6 +117,11 @@ export class EdgeManager {
      * Updates all edges with new data from the graph
      */
     public updateEdges(edges: Edge[]): void {
+        // Debug logging - only if node debug is enabled
+        if (debugState.isNodeDebugEnabled()) {
+            logger.debug(`Updating ${edges.length} edges`);
+        }
+        
         // Clear existing edges
         this.clearEdges();
         
@@ -118,13 +129,17 @@ export class EdgeManager {
         this.edgeData.clear();
         this.edges.clear();
         this.sourceTargetCache.clear();
+        
+        // Track counts for debugging
+        let edgesCreated = 0;
+        let edgesSkipped = 0;
 
         // Create new edges
         edges.forEach(edge => {
             // Cache mapping between source and target IDs
             this.sourceTargetCache.set(edge.id || `${edge.source}_${edge.target}`, `${edge.source}:${edge.target}`);
             
-            if (!edge.sourcePosition || !edge.targetPosition) return;
+            if (!edge.sourcePosition || !edge.targetPosition) { edgesSkipped++; return; }
 
             // Clamp positions to reasonable values
             const source = new Vector3(
@@ -140,8 +155,17 @@ export class EdgeManager {
             );
 
             // Skip edge creation if source and target are too close
-            if (source.distanceTo(target) < 0.1) {
+            const distance = source.distanceTo(target);
+            if (distance < 0.001) {
+                if (debugState.isNodeDebugEnabled()) {
+                    logger.debug(`Skipping edge ${edge.id} - nodes too close: distance=${distance.toFixed(6)}`);
+                }
+                edgesSkipped++;
                 return;
+            } else if (distance < 0.1) {
+                if (debugState.isNodeDebugEnabled()) {
+                    logger.debug(`Edge ${edge.id} has very small distance: ${distance.toFixed(6)}`);
+                }
             }
 
             const geometry = this.createLineGeometry(source, target);
@@ -155,7 +179,15 @@ export class EdgeManager {
             this.edgeGroup.add(line);
             this.edges.set(edge.id, line);
             this.edgeData.set(edge.id, edge);
+            edgesCreated++;
         });
+        
+        // Log summary
+        if (debugState.isNodeDebugEnabled()) {
+            logger.debug(`Edge update complete: ${edgesCreated} edges created, ${edgesSkipped} edges skipped`);
+            // Log first few edge positions for debugging
+            if (this.edgeData.size > 0) this.logEdgePositions(3);
+        }
     }
 
     /**
@@ -177,6 +209,33 @@ export class EdgeManager {
             }
         });
     }
+
+    /**
+     * Log positions of edges for debugging
+     */
+    private logEdgePositions(count: number): void {
+        if (!debugState.isNodeDebugEnabled()) return;
+        
+        let logged = 0;
+        
+        for (const [edgeId, edge] of this.edges.entries()) {
+            if (logged >= count) break;
+            
+            const edgeData = this.edgeData.get(edgeId);
+            if (!edgeData) continue;
+            
+            const sourcePos = this.nodeManager.getNodePosition(edgeData.source);
+            const targetPos = this.nodeManager.getNodePosition(edgeData.target);
+            
+            logger.debug(`Edge ${edgeId} (${edgeData.source}->${edgeData.target}):`, {
+                source: sourcePos ? [sourcePos.x.toFixed(2), sourcePos.y.toFixed(2), sourcePos.z.toFixed(2)] : 'unknown',
+                target: targetPos ? [targetPos.x.toFixed(2), targetPos.y.toFixed(2), targetPos.z.toFixed(2)] : 'unknown',
+                meshExists: edge ? 'yes' : 'no'
+            });
+            
+            logged++;
+        }
+    }
     
     /**
      * Update edge positions based on node movements
@@ -186,7 +245,7 @@ export class EdgeManager {
         if (this.updateFrameCount % this.UPDATE_FREQUENCY !== 0) return;
 
         // Add debug logging to check edge count
-        if (import.meta.env.DEV && this.updateFrameCount % 60 === 0) {
+        if (this.updateFrameCount % 60 === 0) {
             console.log(`[EdgeManager] Currently tracking ${this.edges.size} edges, ${this.edgeData.size} edge data entries`);
         }
         
@@ -194,9 +253,7 @@ export class EdgeManager {
         this.edgeData.forEach((edgeData, edgeId) => {
             const edge = this.edges.get(edgeId);
             if (!edge) {
-                if (import.meta.env.DEV) {
-                    console.warn(`[EdgeManager] Edge ${edgeId} not found in edges map`);
-                }
+                console.warn(`[EdgeManager] Edge ${edgeId} not found in edges map`);
                 return;
             }
 
@@ -204,7 +261,7 @@ export class EdgeManager {
             const targetPos = this.nodeManager.getNodePosition(edgeData.target);
 
             // Log positions for debugging
-            if (import.meta.env.DEV && this.updateFrameCount % 120 === 0) {
+            if (this.updateFrameCount % 120 === 0) {
                 console.log(`[EdgeManager] Edge ${edgeId} positions - sourcePos: ${sourcePos ? 'found' : 'missing'}, targetPos: ${targetPos ? 'found' : 'missing'}`);
             }
 
@@ -214,6 +271,10 @@ export class EdgeManager {
             
             // Validate positions
             if (!this.validateVector3(sourcePos) || !this.validateVector3(targetPos)) {
+                if (this.updateFrameCount % 120 === 0)
+                    if (debugState.isNodeDebugEnabled()) {
+                        logger.warn(`Invalid vector in edge ${edgeId}: source=${JSON.stringify(sourcePos)}, target=${JSON.stringify(targetPos)}`);
+                    }
                 return; 
             }
                 
