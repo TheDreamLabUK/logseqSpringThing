@@ -55,7 +55,7 @@ If a binary message has an invalid size (not a multiple of 28 bytes), the client
 
 To enable WebSocket debugging:
 
-1. Set `system.debug.enabled = true` in settings.toml
-2. Set `system.debug.enable_websocket_debug = true` in settings.toml
+1. Set `system.debug.enabled = true` in settings.yaml
+2. Set `system.debug.enable_websocket_debug = true` in settings.yaml
 
 This will enable detailed logging of WebSocket messages on both client and server.

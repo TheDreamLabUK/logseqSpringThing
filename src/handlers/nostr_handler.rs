@@ -17,7 +17,7 @@ pub struct AuthResponse {
 #[derive(Debug, Serialize)]
 pub struct VerifyResponse {
     pub valid: bool,
-    pub is_power_user: bool,
+    pub user: Option<NostrUser>,
     pub features: Vec<String>,
 }
 
@@ -174,10 +174,10 @@ async fn verify(
     feature_access: web::Data<FeatureAccess>,
 ) -> Result<HttpResponse, Error> {
     let is_valid = nostr_service.validate_session(&req.pubkey, &req.token).await;
-    let is_power_user = if is_valid {
-        nostr_service.is_power_user(&req.pubkey).await
+    let user = if is_valid {
+        nostr_service.get_user(&req.pubkey).await
     } else {
-        false
+        None
     };
 
     // Get available features if session is valid
@@ -189,7 +189,7 @@ async fn verify(
 
     Ok(HttpResponse::Ok().json(VerifyResponse {
         valid: is_valid,
-        is_power_user,
+        user,
         features,
     }))
 }

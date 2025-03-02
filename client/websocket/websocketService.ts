@@ -72,8 +72,8 @@ export class WebSocketService {
     private nodeNameToIndexMap: Map<string, number> = new Map();
     private nextNodeIndex: number = 0;
     private readonly initialReconnectDelay: number = 1000; // 1 second (reduced from 5000)
-    private readonly maxReconnectDelay: number = 60000; // 60 seconds
-    private url: string = '';
+    private readonly maxReconnectDelay: number = 30000; // 30 seconds (reduced from 60s)
+    private url: string = buildWsUrl(); // Initialize URL immediately
     private initialDataReceived: boolean = false;
     private connectionStatusHandler: ((status: boolean) => void) | null = null;
     private readonly MAX_POSITION = 1000.0;
@@ -169,7 +169,6 @@ export class WebSocketService {
         }
 
         try {
-            this.url = buildWsUrl();
             
             if (!this.url) {
                 throw new Error('No WebSocket URL available');
@@ -199,7 +198,7 @@ export class WebSocketService {
             this.maxReconnectDelay
         );
         // Add some jitter
-        return delay + (Math.random() * 1000);
+        return delay + (Math.random() * 500); // Reduced jitter from 1000ms to 500ms
     }
 
     private setupWebSocketHandlers(): void {
@@ -247,8 +246,10 @@ export class WebSocketService {
         this.ws.onclose = (event: CloseEvent): void => {
             logger.warn('WebSocket closed', createDataMetadata({
                 code: event.code,
-                reason: event.reason,
-                initialDataReceived: this.initialDataReceived
+                reason: event.reason || "No reason provided",
+                initialDataReceived: this.initialDataReceived,
+                wasConnected: this.connectionState === ConnectionState.CONNECTED,
+                url: this.url
             }));
             
             // Clear heartbeat on connection close
@@ -316,9 +317,20 @@ export class WebSocketService {
         this.heartbeatInterval = window.setInterval(() => {
             // Send a simple ping message to keep the connection alive
             if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-                this.sendMessage({ type: 'ping', timestamp: Date.now() });
+                try {
+                    this.sendMessage({ type: 'ping', timestamp: Date.now() });
+                    if (debugState.isWebsocketDebugEnabled()) {
+                        logger.debug('Heartbeat ping sent');
+                    }
+                } catch (err) {
+                    logger.error('Failed to send heartbeat ping:', createErrorMetadata(err));
+                }
+            } else if (this.ws && this.ws.readyState === WebSocket.CLOSED) {
+                // If socket is closed but heartbeat still running, attempt reconnect
+                logger.warn('Heartbeat detected closed socket, attempting reconnect');
+                this.handleReconnect();
             }
-        }, 15000); // Send ping every 15 seconds
+        }, 10000); // Send ping every 10 seconds (changed from 15s to match server)
     }
     
     // Clear heartbeat interval
@@ -357,6 +369,11 @@ export class WebSocketService {
     private handleBinaryMessage(buffer: ArrayBuffer): void {
         try {
             // Log raw buffer details before processing
+            if (buffer.byteLength === 0) {
+                logger.warn('Received empty binary message, ignoring');
+                return;
+            }
+            
             const isCompressed = buffer.byteLength > 0 && buffer.byteLength % 28 !== 0;
 
             const decompressedBuffer = this.tryDecompress(buffer);
@@ -470,8 +487,12 @@ export class WebSocketService {
     private handleReconnect(): void {
         const wasConnected = this.connectionState === ConnectionState.CONNECTED;
         
-        this.connectionState = ConnectionState.DISCONNECTED;
+        // Store current state for logging
+        const prevState = this.connectionState;
         this.binaryMessageCallback = null;
+        this.connectionState = ConnectionState.DISCONNECTED;
+        
+        logger.info(`WebSocket reconnect triggered (previous state: ${prevState})`);
         
         if (this.reconnectTimeout !== null) {
             window.clearTimeout(this.reconnectTimeout);
@@ -485,7 +506,9 @@ export class WebSocketService {
             const delay = this.getReconnectDelay();
             
             this.connectionState = ConnectionState.RECONNECTING;
+            logger.info(`WebSocket reconnecting in ${Math.round(delay/1000)}s (attempt ${this.reconnectAttempts} of ${this._maxReconnectAttempts})`);
             
+            // Use setTimeout instead of window.setTimeout for more consistent behavior
             this.reconnectTimeout = window.setTimeout(async () => {
                 this.reconnectTimeout = null;
                 try {
@@ -501,6 +524,11 @@ export class WebSocketService {
 
     private handleReconnectFailure(): void {
         this.connectionState = ConnectionState.FAILED;
+        logger.error('WebSocket reconnection failed after maximum attempts', createDataMetadata({
+            attempts: this.reconnectAttempts,
+            maxAttempts: this._maxReconnectAttempts,
+            url: this.url
+        }));
         if (this.connectionStatusHandler) {
             this.connectionStatusHandler(false);
         }
@@ -514,12 +542,24 @@ export class WebSocketService {
         return this.connectionState;
     }
 
+    // Enhanced message sending with better error handling
     public sendMessage(message: any): void {
         if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+            const serializedMessage = JSON.stringify(message);
             try {
-                this.ws.send(JSON.stringify(message));
+                this.ws.send(serializedMessage);
+                
+                // Only log ping messages in debug mode to avoid excessive logging
+                if (message.type !== 'ping' || debugState.isWebsocketDebugEnabled()) {
+                    debugLog(`Sent message type: ${message.type}`);
+                }
             } catch (error) {
-                logger.error('Error sending message:', createErrorMetadata(error));
+                logger.error('Error sending message:', createErrorMetadata({
+                    error: error instanceof Error ? error.message : String(error),
+                    messageType: message.type,
+                    connectionState: this.connectionState,
+                    wsReadyState: this.ws.readyState
+                }));
             }
         }
     }
@@ -719,23 +759,29 @@ export class WebSocketService {
         if (this.reconnectTimeout !== null) {
             window.clearTimeout(this.reconnectTimeout);
             this.reconnectTimeout = null;
+            logger.debug('Cleared reconnect timeout during disposal');
         }
         
         if (this.nodeUpdateTimer !== null) {
             window.clearTimeout(this.nodeUpdateTimer);
             this.nodeUpdateTimer = null;
             this.nodeUpdateQueue = [];
+            logger.debug('Cleared node update timer during disposal');
         }
         
         if (this.heartbeatInterval !== null) {
             window.clearInterval(this.heartbeatInterval);
             this.heartbeatInterval = null;
+            logger.debug('Cleared heartbeat interval during disposal');
         }
         
         if (this.ws) {
+            logger.info('Closing WebSocket connection during disposal');
             this.ws.close();
             this.ws = null;
         }
+
+        logger.info('WebSocket service disposal complete');
         
         this.binaryMessageCallback = null;
         this.connectionStatusHandler = null;

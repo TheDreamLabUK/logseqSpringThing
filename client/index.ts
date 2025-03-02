@@ -5,7 +5,7 @@ import { HologramManager } from './visualization/HologramManager';
 import { TextRenderer } from './rendering/textRenderer';
 import { WebSocketService } from './websocket/websocketService';
 import { SettingsStore } from './state/SettingsStore';
-import { LoggerConfig, createLogger, createErrorMetadata } from './core/logger';
+import { LoggerConfig, createLogger, createErrorMetadata, createDataMetadata } from './core/logger';
 import { platformManager } from './platform/platformManager';
 
 import { XRSessionManager } from './xr/xrSessionManager';
@@ -18,6 +18,7 @@ import { defaultSettings } from './state/defaultSettings';
 import { MaterialFactory } from './rendering/factories/MaterialFactory';
 import './ui'; // Import UI initialization
 
+import { Vector3 } from 'three';
 const logger = createLogger('GraphVisualization');
 
 export function checkWebGLSupport(): boolean {
@@ -32,6 +33,18 @@ export function checkWebGLSupport(): boolean {
     return true;
 }
 
+/**
+ * Helper to validate and sanitize Vector3 positions
+ * Returns true if fixed, false if already valid
+ */
+function validateAndFixVector3(vec: Vector3): boolean {
+    if (isNaN(vec.x) || isNaN(vec.y) || isNaN(vec.z) || !isFinite(vec.x) || !isFinite(vec.y) || !isFinite(vec.z)) {
+        vec.set(isNaN(vec.x) || !isFinite(vec.x) ? 0 : vec.x, isNaN(vec.y) || !isFinite(vec.y) ? 0 : vec.y, isNaN(vec.z) || !isFinite(vec.z) ? 0 : vec.z);
+        return true;
+    }
+    return false;
+}
+
 export class GraphVisualization {
     private sceneManager: SceneManager;
     private nodeManager: NodeManagerFacade;
@@ -42,6 +55,26 @@ export class GraphVisualization {
     private initialized: boolean = false;
     private websocketInitialized: boolean = false;
     private componentsReady: boolean = false;
+    private loadingTimeout: number | null = null;
+
+    // Start a timeout to detect endless loading states
+    private startLoadingTimeout(): void {
+        if (this.loadingTimeout) {
+            window.clearTimeout(this.loadingTimeout);
+        }
+        this.loadingTimeout = window.setTimeout(() => {
+            logger.error('Loading timeout: Initial graph data loading took too long');
+            // Try to make the app usable even with timeout
+            document.getElementById('loading-message')?.remove();
+        }, 30000); // 30 second timeout
+    }
+    
+    private clearLoadingTimeout(): void {
+        if (this.loadingTimeout) {
+            window.clearTimeout(this.loadingTimeout);
+            this.loadingTimeout = null;
+        }
+    }
 
     public async initializeWebSocket(): Promise<void> {
         if (!this.componentsReady) {
@@ -63,10 +96,53 @@ export class GraphVisualization {
             logger.debug('Loading initial graph data via REST');
         }
         
+        // Set a timeout for the initial data loading to avoid hanging in the loading state
+        const LOADING_TIMEOUT = 30000; // 30 seconds
+        if (this.loadingTimeout) {
+            window.clearTimeout(this.loadingTimeout);
+        }
+        
+        this.loadingTimeout = window.setTimeout(() => {
+            logger.error('Timeout while loading initial graph data. The server may be unresponsive.');
+            document.getElementById('loading-message')?.setAttribute('data-error', 'true');
+            const loadingEl = document.getElementById('loading-message');
+            if (loadingEl) {
+                loadingEl.textContent = 'Error: Timeout while loading graph data. Please refresh the page to try again.';
+                loadingEl.classList.add('error');
+            }
+        }, LOADING_TIMEOUT);
+        
+        // Start loading timeout
+        this.startLoadingTimeout();
+        
         try {
             // First load graph data via REST
             await graphDataManager.fetchInitialData();
             const graphData = graphDataManager.getGraphData();
+            
+            // Clear the loading timeout since we have data
+            this.clearLoadingTimeout();
+            
+            // Check for empty or invalid graph data
+            if (!graphData || !graphData.nodes || graphData.nodes.length === 0) {
+                logger.error('Initial graph data is empty or invalid', createDataMetadata({ 
+                    hasGraphData: !!graphData,
+                    hasNodes: !!(graphData && graphData.nodes),
+                    nodeCount: graphData?.nodes?.length || 0
+                }));
+            }
+            
+            // Clear the loading timeout since data was loaded successfully
+            if (this.loadingTimeout) {
+                window.clearTimeout(this.loadingTimeout);
+                this.loadingTimeout = null;
+            }
+            
+            // Validate the received data
+            if (!graphData || !graphData.nodes || graphData.nodes.length === 0) {
+                logger.error('Initial graph data is empty or invalid', createDataMetadata(graphData));
+                throw new Error('Initial graph data is empty or invalid');
+            }
             
             // Update visualization with initial data
             this.nodeManager.updateNodes(graphData.nodes);
@@ -88,6 +164,16 @@ export class GraphVisualization {
                     if (debugState.isDataDebugEnabled()) {
                         logger.debug('Received binary node update', { nodeCount: nodes.length });
                     }
+                    
+                    // Check each node for NaN values and fix if needed
+                    nodes.forEach(node => {
+                        if (validateAndFixVector3(node.position)) {
+                            logger.warn(`Fixed invalid position for node ${node.id}`);
+                        }
+                        if (node.velocity && validateAndFixVector3(node.velocity)) {
+                            logger.warn(`Fixed invalid velocity for node ${node.id}`);
+                        }
+                    });
                     this.nodeManager.updateNodePositions(nodes.map(node => ({
                         id: node.id.toString(),
                         data: {
@@ -124,6 +210,15 @@ export class GraphVisualization {
             }
         } catch (error) {
             logger.error('Failed to initialize data and WebSocket:', createErrorMetadata(error));
+            
+            // Clear the loading timeout
+            if (this.loadingTimeout) {
+                window.clearTimeout(this.loadingTimeout);
+                this.loadingTimeout = null;
+            }
+            
+            // Show error to user
+            this.showLoadingError('Failed to load graph data. Please check your connection and try again.');
             throw error;
         }
     }
@@ -186,6 +281,17 @@ export class GraphVisualization {
         this.sceneManager.handleSettingsUpdate(settings);
     }
 
+    private showLoadingError(message: string): void {
+        const loadingEl = document.getElementById('loading-message');
+        if (loadingEl) {
+            loadingEl.textContent = `Error: ${message}`;
+            loadingEl.classList.add('error');
+        } else {
+            // Create error message if loading element doesn't exist
+            logger.error('Loading error:', createDataMetadata({ message }));
+        }
+    }
+
     public dispose() {
         if (debugState.isDataDebugEnabled()) {
             logger.debug('Disposing GraphVisualization');
@@ -205,6 +311,11 @@ export class GraphVisualization {
         }
         
         SceneManager.cleanup();
+        // Clear any pending timeouts
+        if (this.loadingTimeout) {
+            window.clearTimeout(this.loadingTimeout);
+            this.loadingTimeout = null;
+        }
         this.initialized = false;
         this.componentsReady = false;
         if (debugState.isDataDebugEnabled()) {

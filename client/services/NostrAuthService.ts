@@ -319,13 +319,17 @@ export class NostrAuthService {
             }
 
             const verifyData = await response.json() as Partial<AuthResponse>;
+
+            // Log the verification response for debugging
+            logger.debug('Auth verification response:', createDataMetadata(verifyData));
             
             // Validate verify response data
-            if (!verifyData || !verifyData.user || typeof verifyData.user.is_power_user !== 'boolean') {
+            if (!verifyData || typeof verifyData.valid !== 'boolean') {
                 throw new Error('Invalid verification response from server');
             }
 
             if (!verifyData.valid) {
+                logger.error('Invalid session from server:', createDataMetadata(verifyData));
                 throw new Error('Invalid session');
             }
 
@@ -333,6 +337,13 @@ export class NostrAuthService {
                 pubkey,
                 isPowerUser: verifyData.user?.is_power_user
             }));
+
+            // If user data is missing, log warning and logout
+            if (!verifyData.user) {
+                logger.warn('Valid verification but no user data provided');
+                await this.logout();
+                return;
+            }
 
             // Set currentUser before emitting event
             this.currentUser = {

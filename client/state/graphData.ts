@@ -593,7 +593,10 @@ export class GraphDataManager {
     // Buffer the updates
     for (let i = 0; i < nodeCount; i++) {
       const offset = i * FLOATS_PER_NODE;
-      const nodeId = this.nodes.get(offset.toString())?.id;
+      // Need to extract the node ID correctly - first 4 bytes in the array represent node ID
+      // But in our current binary format, we need to get it from a numeric index
+      const nodeId = i.toString(); // Convert numeric index to string ID
+      
       if (!nodeId) continue;
 
       this.positionUpdateBuffer.set(nodeId, {

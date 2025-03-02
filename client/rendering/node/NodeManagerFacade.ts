@@ -14,6 +14,7 @@ import { NodeData } from '../../core/types';
 import { XRHandWithHaptics } from '../../types/xr';
 import { debugState } from '../../core/debugState';
 import { createLogger, createErrorMetadata, createDataMetadata } from '../../core/logger';
+import { UpdateThrottler } from '../../core/utils';
 import { Vec3 } from '../../types/vec3';
 
 const logger = createLogger('NodeManagerFacade');
@@ -39,6 +40,8 @@ export class NodeManagerFacade implements NodeManagerInterface {
     private frameCount: number = 0;
     private nodeIndices: Map<string, string> = new Map();
     private tempVector = new Vector3();
+    private metadataUpdateThrottler = new UpdateThrottler(100); // Update at most every 100ms
+    private readonly MAX_POSITION = 1000.0; // Reasonable limit for safe positions
 
     private toThreeVec3(vec: Vec3): Vector3 {
         return new Vector3(vec.x, vec.y, vec.z);
@@ -138,44 +141,84 @@ export class NodeManagerFacade implements NodeManagerInterface {
             position: this.toThreeVec3(node.data.position),
             velocity: node.data.velocity ? this.toThreeVec3(node.data.velocity) : undefined
         })));
-
-        // Update metadata for each node
-        nodes.forEach(node => {
-            if (node.data.metadata) {
-                const fileSize = node.data.metadata.fileSize || DEFAULT_FILE_SIZE;
-                if (shouldDebugLog) {
-                    logger.debug('Updating node metadata', createDataMetadata({ nodeId: node.id }));
+       
+        // Only update metadata if the throttler allows it
+        if (this.metadataUpdateThrottler.shouldUpdate()) {
+            // Update metadata for each node
+            nodes.forEach(node => {
+                if (node.data.metadata) {
+                    const fileSize = node.data.metadata.fileSize || DEFAULT_FILE_SIZE;
+                    if (shouldDebugLog) {
+                        logger.debug('Updating node metadata', createDataMetadata({ nodeId: node.id }));
+                    }
+                    this.metadataManager.updateMetadata(node.id, {
+                        id: node.id,
+                        name: node.data.metadata.name || '',
+                        position: node.data.position,
+                        commitAge: 0,
+                        hyperlinkCount: node.data.metadata.links?.length || 0,
+                        importance: 0,
+                        fileSize: fileSize,
+                        nodeSize: this.calculateNodeSize(fileSize)
+                    });
                 }
-                this.metadataManager.updateMetadata(node.id, {
-                    id: node.id,
-                    name: node.data.metadata.name || '',
-                    position: node.data.position,
-                    commitAge: 0,
-                    hyperlinkCount: node.data.metadata.links?.length || 0,
-                    importance: 0,
-                    fileSize: fileSize,
-                    nodeSize: this.calculateNodeSize(fileSize)
-                });
-            }
-        });
+            });
+        }
+    }
+ 
+    /**
+     * Validates and fixes a Vector3 if it contains NaN or infinite values
+     * Returns true if the vector was valid, false if it needed correction
+     */
+    private validateAndFixVector3(vec: Vector3, label: string, nodeId: string): boolean {
+        const isValid = !isNaN(vec.x) && !isNaN(vec.y) && !isNaN(vec.z) &&
+                       isFinite(vec.x) && isFinite(vec.y) && isFinite(vec.z);
+        
+        if (!isValid) {
+            // Log warning with details of the invalid values
+            logger.warn(`Invalid ${label} values for node ${nodeId}`, createDataMetadata({
+                x: vec.x,
+                y: vec.y,
+                z: vec.z,
+                isNaNX: isNaN(vec.x),
+                isNaNY: isNaN(vec.y),
+                isNaNZ: isNaN(vec.z),
+                isFiniteX: isFinite(vec.x),
+                isFiniteY: isFinite(vec.y),
+                isFiniteZ: isFinite(vec.z)
+            }));
+            
+            // Fix the vector - replace NaN or infinite values with 0
+            vec.x = isNaN(vec.x) || !isFinite(vec.x) ? 0 : vec.x;
+            vec.y = isNaN(vec.y) || !isFinite(vec.y) ? 0 : vec.y;
+            vec.z = isNaN(vec.z) || !isFinite(vec.z) ? 0 : vec.z;
+            
+            // Also clamp to reasonable bounds
+            vec.x = Math.max(-this.MAX_POSITION, Math.min(this.MAX_POSITION, vec.x));
+            vec.y = Math.max(-this.MAX_POSITION, Math.min(this.MAX_POSITION, vec.y));
+            vec.z = Math.max(-this.MAX_POSITION, Math.min(this.MAX_POSITION, vec.z));
+        }
+        return isValid;
     }
 
     public updateNodePositions(nodes: { 
         id: string, 
         data: { 
             position: Vector3,
-            velocity?: Vector3
+            velocity: Vector3
         } 
     }[]): void {
         if (!this.isInitialized) return;
 
         try {
-            // Update instance positions
-            this.instanceManager.updateNodePositions(nodes.map(node => ({
-                id: node.id,
-                position: node.data.position,
-                velocity: node.data.velocity
-            })));
+            // Handle NaN values and validate positions before passing to instance manager
+            const validatedNodes = nodes.map(node => {
+                this.validateAndFixVector3(node.data.position, 'position', node.id);
+                if (node.data.velocity) this.validateAndFixVector3(node.data.velocity, 'velocity', node.id);
+                return { id: node.id, position: node.data.position, velocity: node.data.velocity };
+            });
+            
+            this.instanceManager.updateNodePositions(validatedNodes);
         } catch (error) {
             throw new NodeManagerError(
                 NodeManagerErrorType.UPDATE_FAILED,
