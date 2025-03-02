@@ -113,11 +113,11 @@ system:
     compression_enabled: false
     compression_threshold: 512
     heartbeat_interval: 10000
-    heartbeat_timeout: 30000
-    max_connections: 1000
+    heartbeat_timeout: 600000
+    max_connections: 100
     max_message_size: 10485760
-    reconnect_attempts: 3
-    reconnect_delay: 3000
+    reconnect_attempts: 5
+    reconnect_delay: 1000
     update_rate: 60
   security:
     allowed_origins:
@@ -132,12 +132,12 @@ system:
     enable_request_validation: true
     session_timeout: 3600
   debug:
-    enabled: true
-    enable_data_debug: true
-    enable_websocket_debug: true
-    log_binary_headers: true
-    log_full_json: true
-    log_level: trace
+    enabled: false
+    enable_data_debug: false
+    enable_websocket_debug: false
+    log_binary_headers: false
+    log_full_json: false
+    log_level: warn
     log_format: json
 xr:
   mode: inline

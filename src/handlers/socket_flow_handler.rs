@@ -19,6 +19,8 @@ pub struct SocketFlowServer {
     settings: Arc<RwLock<crate::config::Settings>>,
     last_ping: Option<u64>,
     update_counter: usize, // Counter for throttling debug logs
+    last_activity: std::time::Instant, // Track last activity time
+    heartbeat_timer_set: bool, // Flag to track if heartbeat timer is set
     update_interval: std::time::Duration,
 }
 
@@ -38,6 +40,8 @@ impl SocketFlowServer {
             settings,
             last_ping: None,
             update_counter: 0,
+            last_activity: std::time::Instant::now(),
+            heartbeat_timer_set: false,
             update_interval,
         }
     }
@@ -81,6 +85,19 @@ impl Actor for SocketFlowServer {
 
     fn started(&mut self, ctx: &mut Self::Context) {
         info!("[WebSocket] Client connected successfully");
+        self.last_activity = std::time::Instant::now();
+        
+        // Set up server-side heartbeat ping to keep connection alive
+        if !self.heartbeat_timer_set {
+            ctx.run_interval(std::time::Duration::from_secs(5), |act, ctx| {
+                // Send a heartbeat ping every 5 seconds
+                debug!("[WebSocket] Sending server heartbeat ping");
+                ctx.ping(b"");
+                
+                // Update last activity timestamp to prevent client-side timeout
+                act.last_activity = std::time::Instant::now();
+            });
+        }
 
         // Send simple connection established message
         let response = serde_json::json!({
@@ -90,6 +107,7 @@ impl Actor for SocketFlowServer {
 
         if let Ok(msg_str) = serde_json::to_string(&response) {
             ctx.text(msg_str);
+            self.last_activity = std::time::Instant::now();
         }
 
         // Send a "loading" message to indicate the client should display a loading indicator
@@ -98,6 +116,7 @@ impl Actor for SocketFlowServer {
             "message": "Calculating initial layout..."
         });
         ctx.text(serde_json::to_string(&loading_msg).unwrap_or_default());
+        self.last_activity = std::time::Instant::now();
     }
 
     fn stopped(&mut self, _: &mut Self::Context) {
@@ -111,12 +130,18 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
             Ok(ws::Message::Ping(msg)) => {
                 debug!("[WebSocket] Received ping");
                 ctx.pong(&msg);
+                self.last_activity = std::time::Instant::now();
             }
             Ok(ws::Message::Pong(_)) => {
-                debug!("[WebSocket] Received pong");
+                // Logging every pong creates too much noise, only log in detailed debug mode
+                if self.settings.try_read().map(|s| s.system.debug.enable_websocket_debug).unwrap_or(false) {
+                    debug!("[WebSocket] Received pong");
+                }
+                self.last_activity = std::time::Instant::now();
             }
             Ok(ws::Message::Text(text)) => {
                 info!("Received text message: {}", text);
+                self.last_activity = std::time::Instant::now();
                 match serde_json::from_str::<serde_json::Value>(&text) {
                     Ok(msg) => {
                         match msg.get("type").and_then(|t| t.as_str()) {
@@ -125,6 +150,7 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
                                     serde_json::from_value::<PingMessage>(msg.clone())
                                 {
                                     let pong = self.handle_ping(ping_msg);
+                                    self.last_activity = std::time::Instant::now();
                                     if let Ok(response) = serde_json::to_string(&pong) {
                                         ctx.text(response);
                                     }
@@ -235,6 +261,7 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
                                     "timestamp": chrono::Utc::now().timestamp_millis()
                                 });
                                 if let Ok(msg_str) = serde_json::to_string(&response) {
+                                    self.last_activity = std::time::Instant::now();
                                     ctx.text(msg_str);
                                 }
                             }
@@ -272,6 +299,7 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
             }
             Ok(ws::Message::Binary(data)) => {
                 info!("Received binary message, length: {}", data.len());
+                self.last_activity = std::time::Instant::now();
                 
                 // Enhanced logging for binary messages
                 if data.len() % 28 != 0 {
@@ -356,7 +384,7 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
             }
             Ok(ws::Message::Close(reason)) => {
                 info!("[WebSocket] Client initiated close: {:?}", reason);
-                ctx.close(reason);
+                ctx.close(reason); // Use client's reason for closing
                 ctx.stop();
             }
             Ok(ws::Message::Continuation(_)) => {
@@ -367,7 +395,8 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
             }
             Err(e) => {
                 error!("[WebSocket] Error in WebSocket connection: {}", e);
-                ctx.stop();
+                // Close with protocol error status code before stopping
+                ctx.close(Some(ws::CloseReason::from(ws::CloseCode::Protocol)));
             }
         }
     }
