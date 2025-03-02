@@ -6,8 +6,10 @@ ingress:
     originRequest:
       noTLSVerify: true
       connectTimeout: 30s
-      tcpKeepAlive: 30s
-      keepAliveTimeout: 2m
+      tcpKeepAlive: 10s
+      keepAliveTimeout: 10m
+      idleTimeout: 10m
+      websocketIdleTimeout: 10m
       keepAliveConnections: 100
       httpHostHeader: www.visionflow.info
       proxyProtocol: false
@@ -17,7 +19,7 @@ ingress:
   - service: http_status:404
 
 # Connection settings
-protocol: quic
+protocol: http2
 no-autoupdate: true
 
 # Logging settings
