@@ -2,7 +2,7 @@
 
 ## Overview
 
-This document describes the unified Vec3 representation implemented across the full stack, from CUDA computation to client-side rendering.
+This document describes the unified Vec3 representation implemented across the full stack, from CUDA computation to client-side rendering. The system has been fully refactored to use Three.js Vector3 objects throughout the client codebase, eliminating any custom Vec3 implementations in TypeScript.
 
 ## Components
 
@@ -34,12 +34,12 @@ Located in `src/utils/socket_flow_messages.rs`:
 - Maintains CUDA compatibility
 - Efficient binary transmission
 
-### 5. Client Implementation
-Located in `client/types/vec3.ts`:
-- TypeScript Vec3 interface mirrors Vec3Data
-- Conversion utilities for Three.js Vector3
-- Array format support for compatibility
-- Direct mapping to THREE.Vector3 objects
+### 5. Client Implementation (Updated)
+Directly uses THREE.Vector3 throughout:
+- Eliminated custom Vec3 implementation in TypeScript
+- Direct usage of Three.js Vector3 objects for all vector operations
+- Streamlined vector arithmetic using native Three.js methods
+- Improved performance by removing conversion steps
 
 ## Memory Layout
 
@@ -86,11 +86,11 @@ struct NodeData {
 };
 ```
 
-### TypeScript Client
+### TypeScript Client (Updated)
 ```typescript
-import { Vec3 } from '../types/vec3';
+import { Vector3 } from 'three';
 
-const vec = Vec3.new(x, y, z);
+const vec = new Vector3(x, y, z);
 ```
 
 ## Future Improvements
@@ -98,19 +98,36 @@ const vec = Vec3.new(x, y, z);
 1. Optimized Binary Protocol:
    - Reduced node size from 28 to 26 bytes per node
    - Changed node ID from u32 to u16
-   - Removed header metadata (version, sequence, timestamp)
-   - Direct Vector3/Vec3Data representation throughout pipeline
-   - Helper functions for GPU array compatibility
-   - Improved type safety and code clarity
+   - ✅ Direct Vector3/Vec3Data representation throughout pipeline
+   - ✅ Helper functions for GPU array compatibility
+   - ✅ Improved type safety and code clarity
+   - ✅ Eliminated custom Vec3 TypeScript implementation
 
 1. SIMD Operations:
    - Add SIMD-optimized operations to Vec3Data
    - Leverage CPU vector instructions
 
-2. Zero-Copy:
+2. Client-side Benefits (Achieved):
+   - ✅ Eliminated unnecessary conversions between custom Vec3 and THREE.Vector3
+   - ✅ Reduced memory footprint by removing duplicate vector representations
+   - ✅ Improved performance of vector operations using Three.js optimized methods
+   - ✅ Simplified codebase by standardizing on a single vector implementation
+
+3. Zero-Copy:
    - Implement zero-copy transmission where possible
    - Reduce serialization overhead
 
-3. GPU Direct:
+4. GPU Direct:
    - Investigate direct GPU memory access
    - Reduce CPU-GPU transfers
+
+## Edge Handling Optimization
+
+The edge handling system has been significantly improved by the Vector3 refactoring:
+
+1. Edges now directly use Vector3 objects for source and target positions
+2. Edge geometries are updated in-place rather than recreated
+3. Position calculations use native Three.js vector methods for better performance
+4. Temporary vector objects are reused to minimize garbage collection
+
+For detailed information on edge handling improvements, see [Edge Handling Optimization](./edge-handling-optimization.md).

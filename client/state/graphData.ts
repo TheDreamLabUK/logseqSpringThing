@@ -13,6 +13,8 @@ const FLOATS_PER_NODE = 6;     // x, y, z, vx, vy, vz
 // Throttling for debug logs
 let lastDebugLogTime = 0;
 const DEBUG_LOG_THROTTLE_MS = 2000; // Only log once every 2 seconds
+const POSITION_UPDATE_THROTTLE_MS = 100; // Throttle position updates to 10 times per second
+let lastPositionUpdateTime = 0;
 
 // Helper for throttled debug logging
 function throttledDebugLog(message: string, data?: any): void {
@@ -41,6 +43,7 @@ export class GraphDataManager {
   private nodes: Map<string, Node>;
   private edges: Map<string, EdgeWithId>;
   private wsService!: InternalWebSocketService;  // Use definite assignment assertion
+  private nodeIdToMetadataId: Map<string, string> = new Map();
   private metadata: Record<string, any>;
   private updateListeners: Set<(data: GraphData) => void>;
   private positionUpdateListeners: Set<(positions: Float32Array) => void>;
@@ -48,7 +51,6 @@ export class GraphDataManager {
   private positionUpdateBuffer: Map<string, NodePosition> = new Map();
   private updateBufferTimeout: number | null = null;
   private static readonly BUFFER_FLUSH_INTERVAL = 16; // ~60fps
-
   private constructor() {
     this.nodes = new Map();
     this.edges = new Map();
@@ -93,9 +95,14 @@ export class GraphDataManager {
     try {
       // Start with first page
       throttledDebugLog('Fetching initial graph data page');
-      await this.fetchPaginatedData(1, 100);
+      const pageSize = 100; // Consistent page size
+      await this.fetchPaginatedData(1, pageSize);
       
       throttledDebugLog(`Initial graph data page loaded. Current nodes: ${this.nodes.size}, edges: ${this.edges.size}`);
+      
+      // Force a notification to the UI after first page is loaded
+      // This ensures we show something to the user quickly
+      this.notifyUpdateListeners();
       
       // Get total pages from metadata
       const totalPages = this.metadata.pagination?.totalPages || 1;
@@ -145,9 +152,12 @@ export class GraphDataManager {
       
       // Notify listeners after each page, even if it failed
       this.notifyUpdateListeners();
-      
+
+          
       // Small delay between pages to avoid overwhelming the server
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise(resolve => setTimeout(resolve, 200));
+      
+      throttledDebugLog(`Page ${page} loaded. Total nodes now: ${this.nodes.size}`);
     }
     
     // All pages are now loaded, enable randomization
@@ -168,11 +178,14 @@ export class GraphDataManager {
       // Add timeout to prevent hanging requests
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+
+      const url = `${API_ENDPOINTS.GRAPH_PAGINATED}?page=${page}&pageSize=${pageSize}`;
+      throttledDebugLog(`Fetching paginated URL: ${url}`);
       
       const response = await fetch(
-        `${API_ENDPOINTS.GRAPH_PAGINATED}?page=${page}&pageSize=${pageSize}`,
+        url,
         {
-          method: 'GET',
+          method: 'GET', 
           headers: {
             'Content-Type': 'application/json',
           },
@@ -193,6 +206,13 @@ export class GraphDataManager {
       this.updateGraphData(data);
       throttledDebugLog(`Paginated data loaded for page ${page}. Total nodes now: ${this.nodes.size}, edges: ${this.edges.size}`);
     } catch (error) {
+      // If we got a 404, it might mean we've reached the end of the pagination
+      const errorMessage = error instanceof Error ? error.message : 
+                          (typeof error === 'string' ? error : 'Unknown error');
+      if (errorMessage.includes('404')) {
+        logger.warn(`Reached end of pagination at page ${page}, got 404. This might be expected.`);
+        return;
+      }
       logger.error(`Failed to fetch paginated data for page ${page}:`, error);
       throw error;
     }
@@ -281,7 +301,7 @@ export class GraphDataManager {
         await Promise.all(pagePromises);
         // Update listeners after each chunk
         throttledDebugLog(`Loaded chunk ${i}-${Math.min(i + chunkSize - 1, totalPages)}. Current nodes: ${this.nodes.size}, edges: ${this.edges.size}`);
-        this.notifyUpdateListeners();
+        this.notifyUpdateListeners(); 
       }
     } catch (error) {
       logger.error('Error loading remaining pages:', error);
@@ -315,7 +335,7 @@ export class GraphDataManager {
         if (!this.nodes.has(node.id)) {
           this.nodes.set(node.id, node);
           newNodes++;
-        }
+        } 
       });
       
       // Add new edges
@@ -323,7 +343,10 @@ export class GraphDataManager {
       transformedData.edges.forEach((edge: Edge) => {
         const edgeId = this.createEdgeId(edge.source, edge.target);
         if (!this.edges.has(edgeId)) {
-          this.edges.set(edgeId, { ...edge, id: edgeId });
+          // Make sure both source and target nodes exist before adding the edge
+          if (this.nodes.has(edge.source) && this.nodes.has(edge.target)) {
+            this.edges.set(edgeId, { ...edge, id: edgeId });
+          }
           newEdges++;
         }
       });
@@ -453,17 +476,39 @@ export class GraphDataManager {
         if (node.data.velocity) {
           existingNode.data.velocity.copy(node.data.velocity);
         }
+
+        // Track relationship between node ID and metadata ID (filename)
+        if (node.data.metadata?.name && 
+            node.data.metadata.name !== node.id && 
+            node.data.metadata.name.length > 0) {
+          // Store mapping from numeric ID to metadata ID (filename)
+          this.nodeIdToMetadataId.set(node.id, node.data.metadata.name);
+
+          if (debugState.isNodeDebugEnabled()) {
+            throttledDebugLog(`Updated metadata mapping: ${node.id} -> ${node.data.metadata.name}`);
+          }
+        }
         
         // Only update metadata if the new node has valid metadata that's better than what we have
         if (node.data.metadata?.name && 
             node.data.metadata.name !== node.id && 
             node.data.metadata.name.length > 0) {
+          // Update existing node with new metadata
           existingNode.data.metadata = {
             ...existingNode.data.metadata,
             ...node.data.metadata
           };
         }
       } else {
+        // Store mapping from numeric ID to metadata ID (filename) for new nodes
+        if (node.data.metadata?.name && 
+            node.data.metadata.name !== node.id && 
+            node.data.metadata.name.length > 0) {
+          this.nodeIdToMetadataId.set(node.id, node.data.metadata.name);
+          if (debugState.isNodeDebugEnabled()) {
+            throttledDebugLog(`New metadata mapping: ${node.id} -> ${node.data.metadata.name}`);
+          }
+        }
         this.nodes.set(node.id, node);
       }
     });
@@ -475,6 +520,14 @@ export class GraphDataManager {
         
         // Check if source and target nodes exist
         if (!this.nodes.has(edge.source) || !this.nodes.has(edge.target)) {
+          // It's possible we're seeing edges before their nodes due to pagination
+          // Let's try to get node IDs from node-to-metadata mapping
+          const sourceMeta = edge.source;
+          const targetMeta = edge.target;
+          
+          // We'll log this condition to help debug pagination issues
+          if (this.nodes.size > 0 && debugState.isNodeDebugEnabled()) {
+          }
           throttledDebugLog(`Skipping edge ${edge.source}->${edge.target} due to missing node(s)`);
           return;
         }
@@ -524,6 +577,13 @@ export class GraphDataManager {
    */
   getNode(id: string): Node | undefined {
     return this.nodes.get(id);
+  }
+
+  /**
+   * Get the metadata ID (filename) for a node
+   */
+  getNodeMetadataId(id: string): string | undefined {
+    return this.nodeIdToMetadataId.get(id);
   }
 
   /**
@@ -584,29 +644,57 @@ export class GraphDataManager {
   }
 
   public updateNodePositions(positions: Float32Array): void {
-    if (!this.binaryUpdatesEnabled) return;
+    if (!this.binaryUpdatesEnabled) {
+      return;
+    }
+
+    // Throttle position updates to prevent overwhelming the system
+    const now = Date.now();
+    if (now - lastPositionUpdateTime < POSITION_UPDATE_THROTTLE_MS) {
+      // Too soon for another update, just mark we have pending updates
+      return;
+    }
+    
+    lastPositionUpdateTime = now;
     
     const nodeCount = positions.length / FLOATS_PER_NODE;
     if (positions.length % FLOATS_PER_NODE !== 0) {
-      logger.error('Invalid position array length:', positions.length);
+      logger.warn('Invalid position array length:', positions.length);
       return;
     }
 
     // Buffer the updates
     for (let i = 0; i < nodeCount; i++) {
       const offset = i * FLOATS_PER_NODE;
-      // Need to extract the node ID correctly - first 4 bytes in the array represent node ID
-      // But in our current binary format, we need to get it from a numeric index
-      const nodeId = i.toString(); // Convert numeric index to string ID
       
-      if (!nodeId) continue;
+      try {
+        // In our binary format, the node ID is just the index
+        // We'll convert it to a string since our node map uses string keys
+        const nodeId = i.toString();
+        
+        // Skip if we don't have this node
+        if (!this.nodes.has(nodeId)) {
+          continue;
+        }
 
-      // Create proper THREE.Vector3 object instead of a plain object
-      this.positionUpdateBuffer.set(nodeId, new Vector3(
-        positions[offset],
-        positions[offset + 1],
-        positions[offset + 2]
-      ));
+        // Create proper THREE.Vector3 object for the position
+        const nodePosition = new Vector3(
+          positions[offset],
+          positions[offset + 1],
+          positions[offset + 2]
+        );
+
+        // Only update if the position changed significantly
+        const existingNode = this.nodes.get(nodeId);
+        const distance = existingNode ? nodePosition.distanceTo(existingNode.data.position) : 0;
+        if (existingNode && distance * distance > 0.001) { // Square the distance manually
+          // Buffer this update
+          this.positionUpdateBuffer.set(nodeId, nodePosition);
+        }
+      } catch (error) {
+        logger.warn(`Error processing position for node index ${i}:`, error);
+      }
+
     }
 
     // Schedule buffer flush if not already scheduled

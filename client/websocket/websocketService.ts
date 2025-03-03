@@ -11,6 +11,10 @@ const logger = createLogger('WebSocketService');
 let lastDebugLogTime = 0;
 const DEBUG_LOG_THROTTLE_MS = 1000; // Only log once per second
 
+// Position update deadband threshold (only update if position changes by this amount)
+const POSITION_DEADBAND = 0.05; // Units in world space (0.05 = 5cm)
+const VELOCITY_DEADBAND = 0.01; // Units in world space/second
+
 // Helper for conditional debug logging
 function debugLog(message: string, ...args: any[]) {
     if (debugState.isWebsocketDebugEnabled()) {
@@ -89,7 +93,8 @@ export class WebSocketService {
     private readonly NODE_UPDATE_DEBOUNCE_MS = 50; // 50ms debounce for node updates
     
     // New fields for improved throttling
-    private updateThrottler = new UpdateThrottler(16.67); // ~60fps (1000ms / 60)
+    private updateThrottler = new UpdateThrottler(50); // ~20fps (was: 16.67 = ~60fps)
+    private lastNodePositions: Map<number, Vector3> = new Map(); // Keep track of last sent positions
     private pendingNodeUpdates: BinaryNodeData[] = [];
 
 
@@ -429,7 +434,32 @@ export class WebSocketService {
                 );
                 offset += 12;
                 
-                nodes.push({ id, position, velocity });
+                // Apply deadband filtering - only include if position has changed significantly
+                const lastPosition = this.lastNodePositions.get(id);
+                let positionChanged = true;
+                
+                if (lastPosition) {
+                    // Calculate squared distance to avoid unnecessary sqrt
+                    const dx = position.x - lastPosition.x;
+                    const dy = position.y - lastPosition.y;
+                    const dz = position.z - lastPosition.z;
+                    const distanceSquared = dx*dx + dy*dy + dz*dz;
+                    
+                    // Only consider position changed if it exceeds our threshold
+                    positionChanged = distanceSquared > (POSITION_DEADBAND * POSITION_DEADBAND);
+                    
+                    if (!positionChanged && Math.random() < 0.001) { // Log occasionally (0.1% chance)
+                        logger.debug(`Filtering node ${id} - position change too small: ${Math.sqrt(distanceSquared).toFixed(5)}`);
+                    }
+                }
+                
+                // Store this position for future comparisons
+                this.lastNodePositions.set(id, position.clone());
+                
+                // Only include the node if position changed or we don't have a previous position
+                if (positionChanged) {
+                    nodes.push({ id, position, velocity });
+                }
             }
 
             // Enhanced logging for node ID tracking - log every 100th update
@@ -655,7 +685,7 @@ export class WebSocketService {
 
         if (validatedUpdates.length === 0 && updates.length > 0) {
             // If we have non-numeric node IDs (metadata names), convert them to numeric indices
-            const indexedUpdates = updates.map(update => {
+            const indexedUpdates = updates.filter(update => {
                 // Get or create index for this metadata name
                 if (!this.nodeNameToIndexMap.has(update.id)) {
                     // Assign a new numeric index to this metadata name
@@ -663,11 +693,31 @@ export class WebSocketService {
                     logger.info(`Mapped metadata name "${update.id}" to numeric index ${this.nextNodeIndex-1} for binary protocol`);
                 }
                 
+                // Apply deadband filtering for client-initiated updates too
+                const nodeId = this.nodeNameToIndexMap.get(update.id)!;
+                const lastPosition = this.lastNodePositions.get(nodeId);
+                if (lastPosition) {
+                    // Calculate squared distance manually
+                    const dx = update.position.x - lastPosition.x;
+                    const dy = update.position.y - lastPosition.y;
+                    const dz = update.position.z - lastPosition.z;
+                    const distanceSquared = dx*dx + dy*dy + dz*dz;
+                    
+                    if (distanceSquared < (POSITION_DEADBAND * POSITION_DEADBAND)) {
+                        if (Math.random() < 0.01) logger.debug(`Filtered client update for node ${update.id} - position change too small`);
+                        return false; // Filter out this update
+                    }
+                }
+                
                 // Use the numeric index for the binary protocol
                 const numericId = this.nodeNameToIndexMap.get(update.id)!;
-                return { ...update, id: numericId.toString() };
+                // Keep this update and transform it
+                return true;
+            }).map(update => {
+                const numericId = this.nodeNameToIndexMap.get(update.id)!;
+                return { ...update, id: numericId.toString() }; 
             });
-            
+                
             // Add the indexed updates to the queue
             this.nodeUpdateQueue.push(...indexedUpdates);
         } else if (validatedUpdates.length > 0) {
@@ -795,7 +845,10 @@ export class WebSocketService {
             this.heartbeatInterval = null;
             logger.debug('Cleared heartbeat interval during disposal');
         }
-        
+
+        // Clear position tracking data to prevent memory leaks
+        this.lastNodePositions.clear();
+        this.pendingNodeUpdates = [];
         if (this.ws) {
             logger.info('Closing WebSocket connection during disposal');
             this.ws.close();

@@ -29,14 +29,15 @@ export class EdgeManager {
     private settings: Settings;
     private settingsStore: SettingsStore;
     private updateFrameCount = 0;
-    private readonly UPDATE_FREQUENCY = 2; // Update every other frame
+    private readonly UPDATE_FREQUENCY = 1; // Update every frame (changed from 2)
     private readonly MAX_EDGE_LENGTH = 20.0; // Increased maximum edge length
     private lastEdgeUpdateTime = 0;
     private edgeUpdateCount = 0;
 
     // Reusable objects to avoid allocation during updates
     private tempDirection = new Vector3();
-    private tempSourceVec = new Vector3();
+    private tempSourceVec = new Vector3(); 
+    private tempPositionCache = new Map<string, Vector3>();
     private tempTargetVec = new Vector3();
 
     constructor(scene: Scene, settings: Settings, nodeManager: NodeInstanceManager) {
@@ -125,22 +126,28 @@ export class EdgeManager {
     /**
      * Updates all edges with new data from the graph
      */
-    public updateEdges(newEdges: Edge[]): void {
+    public updateEdges(newEdges: Edge[]): void { 
         // Record update time for debugging
         this.lastEdgeUpdateTime = performance.now();
         this.edgeUpdateCount++;
         
         logger.info(`Updating ${newEdges.length} edges (update #${this.edgeUpdateCount})`);
+
+        // Pre-compute a unique ID for each edge
+        const processedEdges = newEdges.map(edge => {
+            const edgeId = edge.id || `${edge.source}-${edge.target}`;
+            return { ...edge, id: edgeId };
+        });
         
         // Track current edge IDs to detect removals
         const currentEdgeIds = new Set(this.edges.keys());
-        const updatedEdgeIds = new Set<string>();
+        const updatedEdgeIds = new Set<string>(); 
         
         // Only clear source-target cache, we'll rebuild it while keeping active edges
         this.sourceTargetCache.clear();
         
         // Track counts for debugging
-        let edgesCreated = 0;
+        let edgesCreated = 0; 
         let edgesUpdated = 0;
         let edgesSkipped = 0;
         let edgesRemoved = 0;
@@ -149,7 +156,7 @@ export class EdgeManager {
         // Log more detailed information about the edges
         if (debugState.isNodeDebugEnabled()) {
             const edgesWithPositions = newEdges.filter(e => e.sourcePosition && e.targetPosition);
-            logger.debug(`Edge update details:`, createDataMetadata({
+            logger.debug(`Edge update details:`, createDataMetadata({ 
                 totalEdges: newEdges.length,
                 edgesWithPositions: edgesWithPositions.length,
                 firstFewEdges: newEdges.slice(0, 3).map(e => ({
@@ -163,14 +170,23 @@ export class EdgeManager {
         }
 
         // Process new edges
-        newEdges.forEach(edge => {
-            // Cache mapping between source and target IDs
+        processedEdges.forEach(edge => {
+            // Save edge positions in our position cache for future updates
+            if (!this.tempPositionCache.has(edge.source)) {
+                this.tempPositionCache.set(edge.source, new Vector3());
+            }
             const edgeId = edge.id || `${edge.source}_${edge.target}`;
+            
             updatedEdgeIds.add(edgeId);
             this.sourceTargetCache.set(edgeId, `${edge.source}:${edge.target}`);
             
+            // Add debug logging to track edge processing
+            if (debugState.isNodeDebugEnabled()) {
+                logger.debug(`Processing edge ${edgeId} (${edge.source}->${edge.target})`);
+            }
+            
             let sourcePosition = edge.sourcePosition;
-            let targetPosition = edge.targetPosition;
+            let targetPosition = edge.targetPosition; 
             
             // Try to get positions from node manager if not provided
             if (!sourcePosition || !targetPosition) {
@@ -183,8 +199,9 @@ export class EdgeManager {
                     targetPosition = targetPos;
                     positionsFound++;
                     
-                    if (debugState.isNodeDebugEnabled() && edgesCreated < 3) {
-                        logger.debug(`Found positions for edge ${edgeId} from node manager`);
+                    // Log detailed information about the found positions
+                    if (debugState.isNodeDebugEnabled() && positionsFound <= 3) {
+                        logger.debug(`Found positions for edge ${edgeId} from node manager: ${sourcePos.x.toFixed(2)},${sourcePos.y.toFixed(2)},${sourcePos.z.toFixed(2)} -> ${targetPos.x.toFixed(2)},${targetPos.y.toFixed(2)},${targetPos.z.toFixed(2)}`);
                     }
                 } else {
                     // Still missing positions, skip this edge
@@ -198,7 +215,7 @@ export class EdgeManager {
 
             // Clamp positions to reasonable values
             this.tempSourceVec.set(
-                Math.min(100, Math.max(-100, sourcePosition.x)),
+                Math.min(100, Math.max(-100, sourcePosition.x)), 
                 Math.min(100, Math.max(-100, sourcePosition.y)),
                 Math.min(100, Math.max(-100, sourcePosition.z))
             );
@@ -217,7 +234,7 @@ export class EdgeManager {
             const distance = this.tempSourceVec.distanceTo(this.tempTargetVec);
             if (distance < 0.001) {
                 if (debugState.isNodeDebugEnabled() && edgesSkipped < 5) {
-                    logger.debug(`Skipping edge ${edgeId} - nodes too close: distance=${distance.toFixed(6)}`);
+                    logger.debug(`Skipping edge ${edgeId} - nodes too close: distance=${distance.toFixed(6)}`); 
                 }
                 edgesSkipped++;
                 return;
@@ -339,6 +356,8 @@ export class EdgeManager {
             logger.debug(`Edge ${edgeId} (${edgeData.source}->${edgeData.target}):`, createDataMetadata({
                 source: sourcePos ? [sourcePos.x.toFixed(2), sourcePos.y.toFixed(2), sourcePos.z.toFixed(2)] : 'unknown',
                 target: targetPos ? [targetPos.x.toFixed(2), targetPos.y.toFixed(2), targetPos.z.toFixed(2)] : 'unknown',
+                storedSource: edgeData.sourcePosition ? [edgeData.sourcePosition.x.toFixed(2), edgeData.sourcePosition.y.toFixed(2), edgeData.sourcePosition.z.toFixed(2)] : 'none',
+                storedTarget: edgeData.targetPosition ? [edgeData.targetPosition.x.toFixed(2), edgeData.targetPosition.y.toFixed(2), edgeData.targetPosition.z.toFixed(2)] : 'none',
                 meshExists: edge ? 'yes' : 'no'
             }));
             
@@ -347,19 +366,62 @@ export class EdgeManager {
     }
     
     /**
+     * Update edge geometry with new source and target positions
+     */
+    private updateEdgeGeometry(edge: Mesh, sourcePos: Vector3, targetPos: Vector3): void { 
+        // Limit edge length
+        const distance = sourcePos.distanceTo(targetPos);
+        
+        // Reuse vectors to reduce allocations
+        this.tempTargetVec.copy(targetPos);
+        
+        if (distance > this.MAX_EDGE_LENGTH) {
+            this.tempDirection.subVectors(targetPos, sourcePos).normalize();
+            this.tempTargetVec.copy(sourcePos).add(
+                this.tempDirection.multiplyScalar(this.MAX_EDGE_LENGTH)
+            );
+        }
+
+        // Update the existing geometry's positions directly
+        const posAttr = edge.geometry.getAttribute('position');
+        if (posAttr) {
+            // Update the existing BufferAttribute instead of recreating the geometry
+            posAttr.setXYZ(0, sourcePos.x, sourcePos.y, sourcePos.z);
+            posAttr.setXYZ(1, this.tempTargetVec.x, this.tempTargetVec.y, this.tempTargetVec.z);
+            posAttr.needsUpdate = true;
+        }
+        
+        // Apply subtle pulsing animation if desired
+        if (edge.material instanceof LineBasicMaterial) {
+            const baseOpacity = this.settings.visualization.edges.opacity || 0.7;
+           
+            // Apply subtle pulsing animation
+            const pulse = Math.sin(Date.now() * 0.001) * 0.1 + 0.9;
+            edge.material.opacity = baseOpacity * pulse;
+            
+            edge.material.needsUpdate = true;
+        }
+    }
+    
+    /**
      * Update edge positions based on node movements
      */
-    public update(_deltaTime: number): void {
+    public update(_deltaTime: number): void { 
         this.updateFrameCount++;
         if (this.updateFrameCount % this.UPDATE_FREQUENCY !== 0) return;
 
         // Add debug logging to check edge count
         if (this.updateFrameCount % 60 === 0) {
-            logger.info(`Currently tracking ${this.edges.size} edges, ${this.edgeData.size} edge data entries, last update: ${Math.round((performance.now() - this.lastEdgeUpdateTime)/1000)}s ago`);
+            logger.info(`Currently tracking ${this.edges.size} edges, ${this.edgeData.size} edge data entries, last update: ${Math.round((performance.now() - this.lastEdgeUpdateTime)/1000)}s ago`); 
+            
+            // Log positions for a few edges to help with debugging
+            if (this.edges.size > 0) {
+                this.logEdgePositions(3);
+            }
         }
         
         // Update edge positions based on current node positions
-        this.edgeData.forEach((edgeData, edgeId) => {
+        this.edgeData.forEach((edgeData, edgeId) => { 
             const edge = this.edges.get(edgeId);
             if (!edge) {
                 if (this.updateFrameCount % 120 === 0) {
@@ -367,11 +429,38 @@ export class EdgeManager {
                 }
                 return;
             }
-
+            
+            // Get positions from the node manager
             const sourcePos = this.nodeManager.getNodePosition(edgeData.source);
             const targetPos = this.nodeManager.getNodePosition(edgeData.target);
 
-            // Log positions for debugging
+            // If we don't have positions but we do have stored positions, use those
+            if ((!sourcePos || !targetPos) && edgeData.sourcePosition && edgeData.targetPosition) {
+                // Use the stored positions as fallback
+                // Convert Position objects to Vector3 objects
+                const storedSourceVec = new Vector3(
+                    edgeData.sourcePosition.x,
+                    edgeData.sourcePosition.y,
+                    edgeData.sourcePosition.z
+                ); 
+                const storedTargetVec = new Vector3(
+                    edgeData.targetPosition.x,
+                    edgeData.targetPosition.y,
+                    edgeData.targetPosition.z
+                );
+                
+                if (this.validateVector3(storedSourceVec) && this.validateVector3(storedTargetVec)) {
+                    if (this.updateFrameCount % 120 === 0 && debugState.isNodeDebugEnabled()) { 
+                        logger.debug(`Edge ${edgeId} using stored positions as fallback`);
+                    }
+                    
+                    // Update edge with converted Vector3 positions
+                    this.updateEdgeGeometry(edge, storedSourceVec, storedTargetVec);
+                    return;
+                }
+            }
+
+            // Log position availability for debugging
             if (this.updateFrameCount % 120 === 0 && debugState.isNodeDebugEnabled()) {
                 logger.debug(`Edge ${edgeId} positions - sourcePos: ${sourcePos ? 'found' : 'missing'}, targetPos: ${targetPos ? 'found' : 'missing'}`);
             }
@@ -390,36 +479,9 @@ export class EdgeManager {
                 }
                 return; 
             }
-                
-            // Limit edge length
-            const distance = sourcePos.distanceTo(targetPos);
             
-            // Reuse vectors to reduce allocations
-            this.tempTargetVec.copy(targetPos);
-            
-            if (distance > this.MAX_EDGE_LENGTH) {
-                this.tempDirection.subVectors(targetPos, sourcePos).normalize();
-                this.tempTargetVec.copy(sourcePos).add(
-                    this.tempDirection.multiplyScalar(this.MAX_EDGE_LENGTH)
-                );
-            }
-
-            // Update the existing geometry's positions directly
-            const posAttr = edge.geometry.getAttribute('position');
-            if (posAttr) {
-                // Update the existing BufferAttribute instead of recreating the geometry
-                posAttr.setXYZ(0, sourcePos.x, sourcePos.y, sourcePos.z);
-                posAttr.setXYZ(1, this.tempTargetVec.x, this.tempTargetVec.y, this.tempTargetVec.z);
-                posAttr.needsUpdate = true;
-            }
-            
-            // Apply subtle pulsing animation if desired
-            if (edge.material instanceof LineBasicMaterial) {
-                const baseOpacity = this.settings.visualization.edges.opacity || 0.7;
-                const pulse = Math.sin(Date.now() * 0.001) * 0.1 + 0.9;
-                edge.material.opacity = baseOpacity * pulse;
-                edge.material.needsUpdate = true;
-            }
+            // Update edge with new positions
+            this.updateEdgeGeometry(edge, sourcePos, targetPos);
         });
     }
 
@@ -472,8 +534,10 @@ export class EdgeManager {
                 if (edge.material instanceof Material) {
                     edge.material.dispose();
                 }
-            }
+            } 
         });
         this.edges.clear();
+        this.edgeData.clear();
+        this.sourceTargetCache.clear();
     }
 }

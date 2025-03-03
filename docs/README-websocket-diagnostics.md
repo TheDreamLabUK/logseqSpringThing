@@ -59,14 +59,14 @@ A browser-compatible version that can be loaded directly in the browser console:
 
 ## Binary Protocol
 
-The WebSocket binary protocol uses a specific format:
+The WebSocket binary protocol uses a specific format based on Three.js Vector3:
 
 - Node data: 26 bytes per node
   - Node ID (uint16): 2 bytes
-  - Position (3 x float32): 12 bytes (stored as Vec3Data/THREE.Vector3)
-  - Velocity (3 x float32): 12 bytes (stored as Vec3Data/THREE.Vector3)
+  - Position (3 x float32): 12 bytes (THREE.Vector3)
+  - Velocity (3 x float32): 12 bytes (THREE.Vector3)
 
-The protocol is a simple "firehose" of node updates without additional header metadata.
+The client code now uses THREE.Vector3 objects throughout for consistency and performance. The protocol is a simple "firehose" of node updates without additional header metadata.
 
 The diagnostics tools validate that binary messages conform to this format.
 
@@ -81,7 +81,9 @@ The diagnostics tools validate that binary messages conform to this format.
 ### Binary Protocol Issues
 
 - **Message Size Mismatch**: Ensure client and server agree on the binary format (26 bytes per node)
-- **Compression Issues**: Large messages are compressed with zlib; ensure decompression works correctly
+- **Compression Issues**: Large messages are compressed with zlib (pako.js); ensure decompression works correctly
+- **Vector3 Integrity**: Verify Vector3 objects contain valid, non-NaN values for reliable rendering
+- **Edge Updates**: Edge positions are derived from node positions and not directly included in the binary protocol
 
 ### Performance Issues
 
@@ -109,15 +111,18 @@ For production debugging:
 ## Troubleshooting Steps
 
 1. Verify API connectivity with `WebSocketDiagnostics.testApiConnectivity()`
-2. Check DNS resolution with `WebSocketDiagnostics.checkDnsResolution()`
-3. Run full diagnostics with `WebSocketDiagnostics.runDiagnostics()`
-4. Review the diagnostics report for specific issues
-5. Apply recommended fixes based on the diagnostics results
+2. Run full diagnostics with `WebSocketDiagnostics.runDiagnostics()`
+3. Review the diagnostics report for specific issues
+4. Verify Vector3 data integrity with `WebSocketDiagnostics.validateVectorData()`
+5. Check edge rendering efficiency with the Edge Manager diagnostics
+6. Apply recommended fixes based on the diagnostics results
 
 ## Contributing
 
 When modifying the WebSocket implementation:
 
 1. Update the diagnostics tools to match any protocol changes
-2. Test with both the TypeScript and browser versions
-3. Document any changes to the binary protocol format 
+2. Maintain the use of THREE.Vector3 throughout the codebase
+3. Test with both the TypeScript and browser versions
+4. Document any changes to the binary protocol format
+5. Ensure edge handling is properly tested since it depends on node position updates

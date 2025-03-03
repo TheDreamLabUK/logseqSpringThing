@@ -65,6 +65,7 @@ export class NodeInstanceManager {
     private nodeInstances: InstancedMesh;
     private geometryManager: NodeGeometryManager;
     private nodeIndices: Map<string, number> = new Map();
+    private nodeIdToInstanceId: Map<string, number> = new Map();
     private pendingUpdates: Set<number> = new Set();
     private frameCount: number = 0;
     private velocities: Map<number, Vector3> = new Map();
@@ -180,6 +181,13 @@ export class NodeInstanceManager {
         // Mark as ready after initialization
         this.isReady = true;
     }
+    
+    /**
+     * Check if the NodeInstanceManager is fully initialized
+     */
+    public isInitialized(): boolean {
+        return this.isReady;
+    }
 
     public static getInstance(scene: Scene, material: Material): NodeInstanceManager {
         // Check if we already have an instance
@@ -225,10 +233,6 @@ export class NodeInstanceManager {
             };
         }
         return NodeInstanceManager.instance;
-    }
-
-    public isInitialized(): boolean {
-        return this.isReady;
     }
 
     private getNodeScale(node: Node): number {
@@ -404,6 +408,7 @@ export class NodeInstanceManager {
                 const newIndex = this.nodeInstances.count;
                 if (newIndex < MAX_INSTANCES) {
                     this.nodeIndices.set(update.id, newIndex);
+                    this.nodeIdToInstanceId.set(update.id, newIndex);
                     this.nodeInstances.count++;
 
                     // Calculate scale based on node properties
@@ -691,6 +696,7 @@ export class NodeInstanceManager {
         }
         this.nodeIndices.clear();
         this.pendingUpdates.clear();
+        this.nodeIdToInstanceId.clear();
         this.velocities.clear();
         this.isReady = false;
         
@@ -718,10 +724,14 @@ export class NodeInstanceManager {
         const index = this.nodeIndices.get(nodeId);
         if (index !== undefined) {
             this.nodeInstances.getMatrixAt(index, matrix);
-            const position = new Vector3();
-            position.setFromMatrixPosition(matrix);
-            return position;
+            const positionVec = new Vector3();
+            positionVec.setFromMatrixPosition(matrix);
+            return positionVec;
         }
         return undefined;
+    }
+    
+    public getInstanceId(nodeId: string): number | undefined {
+        return this.nodeIdToInstanceId.get(nodeId);
     }
 }

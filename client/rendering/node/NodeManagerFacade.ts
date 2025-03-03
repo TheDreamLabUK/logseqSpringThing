@@ -6,10 +6,10 @@ import {
     Vector3
 } from 'three';
 import { NodeGeometryManager } from './geometry/NodeGeometryManager';
-import { NodeInstanceManager } from './instance/NodeInstanceManager';
+import { NodeInstanceManager } from './instance/NodeInstanceManager'; 
 import { NodeMetadataManager } from './metadata/NodeMetadataManager';
 import { NodeInteractionManager } from './interaction/NodeInteractionManager';
-import { NodeManagerInterface, NodeManagerError, NodeManagerErrorType } from './NodeManagerInterface';
+import { NodeManagerInterface, NodeManagerError, NodeManagerErrorType } from './NodeManagerInterface'; 
 import { NodeData } from '../../core/types';
 import { XRHandWithHaptics } from '../../types/xr';
 import { debugState } from '../../core/debugState';
@@ -38,6 +38,7 @@ export class NodeManagerFacade implements NodeManagerInterface {
     private isInitialized: boolean = false;
     private frameCount: number = 0;
     private nodeIndices: Map<string, string> = new Map();
+    private nodeIdToMetadataId: Map<string, string> = new Map();
     private tempVector = new Vector3();
     private metadataUpdateThrottler = new UpdateThrottler(100); // Update at most every 100ms
     private readonly MAX_POSITION = 1000.0; // Reasonable limit for safe positions
@@ -121,9 +122,32 @@ export class NodeManagerFacade implements NodeManagerInterface {
 
         const shouldDebugLog = debugState.isEnabled() && debugState.isNodeDebugEnabled();
         
-        // Track node IDs
+        // Track node IDs and handle metadata mapping
         nodes.forEach(node => {
+            // Store the node ID in our index map
             this.nodeIndices.set(node.id, node.id);
+            
+            if (node.data.metadata) {
+                // Extract the proper metadata name/ID from the node
+                // This could be the file name without the .md extension
+                let metadataId: string = '';
+                
+                // First, try using any server-provided label
+                if ('label' in node && typeof node['label'] === 'string') {
+                    metadataId = node['label'] as string;
+                } else if ('metadata_id' in node && typeof node['metadata_id'] === 'string') {
+                    // Next, check for a specific metadata_id property if it exists
+                    metadataId = node['metadata_id'] as string;
+                } else if (node.data.metadata.name) {
+                    // Finally, fallback to metadata name
+                    metadataId = node.data.metadata.name;
+                }
+                
+                if (metadataId && metadataId !== node.id) {
+                    this.nodeIdToMetadataId.set(node.id, metadataId);
+                    this.metadataManager.mapNodeIdToMetadataId(node.id, metadataId);
+                } 
+            }
             if (shouldDebugLog) {
                 logger.debug('Tracking node', createDataMetadata({ nodeId: node.id }));
             }
@@ -131,7 +155,7 @@ export class NodeManagerFacade implements NodeManagerInterface {
 
         // Update instance positions
         this.instanceManager.updateNodePositions(nodes.map(node => ({
-            id: node.id,
+            id: node.id, 
             metadata: node.data.metadata,
             position: node.data.position,
             velocity: node.data.velocity
@@ -143,18 +167,35 @@ export class NodeManagerFacade implements NodeManagerInterface {
             nodes.forEach(node => {
                 if (node.data.metadata) {
                     const fileSize = node.data.metadata.fileSize || DEFAULT_FILE_SIZE;
+                    // Use the metadata ID from our mapping, or fall back to node.id
+                    const metadataId = this.nodeIdToMetadataId.get(node.id) || node.id;
+                    
                     if (shouldDebugLog) {
-                        logger.debug('Updating node metadata', createDataMetadata({ nodeId: node.id }));
+                        logger.debug('Updating node metadata', createDataMetadata({ nodeId: node.id, metadataId }));
                     }
+                    
+                    // Check if node has a label (from server)
+                    let displayName: string = metadataId;
+                    if ('label' in node && typeof node['label'] === 'string') {
+                        displayName = node['label'] as string;
+                    } else if ('metadata_id' in node && typeof node['metadata_id'] === 'string') {
+                        displayName = node['metadata_id'] as string;
+                    } 
+                    
+                    // Make sure to map the node ID to the proper metadata ID for labels
+                    if (displayName && displayName !== node.id) {
+                        this.metadataManager.mapNodeIdToMetadataId(node.id, displayName);
+                    }
+                    
                     this.metadataManager.updateMetadata(node.id, {
                         id: node.id,
-                        name: node.data.metadata.name || '',
+                        name: displayName || metadataId, // Use the best name available
                         position: node.data.position,
                         commitAge: 0,
                         hyperlinkCount: node.data.metadata.links?.length || 0,
                         importance: 0,
                         fileSize: fileSize,
-                        nodeSize: this.calculateNodeSize(fileSize)
+                        nodeSize: this.calculateNodeSize(fileSize),
                     });
                 }
             });
@@ -279,6 +320,7 @@ export class NodeManagerFacade implements NodeManagerInterface {
             this.instanceManager.dispose();
             this.metadataManager.dispose();
             this.interactionManager.dispose();
+            this.nodeIdToMetadataId.clear();
             this.nodeIndices.clear();
 
             NodeManagerFacade.instance = null!;
@@ -316,5 +358,15 @@ export class NodeManagerFacade implements NodeManagerInterface {
      */
     public getNodeInstanceManager(): NodeInstanceManager {
         return this.instanceManager;
+    }
+
+    /**
+     * Get the metadata ID for a given node ID
+     * This is useful for retrieving the human-readable name (file name)
+     * @param nodeId Node ID to look up
+     * @returns Metadata ID (filename) or undefined if not found
+     */
+    public getMetadataId(nodeId: string): string | undefined {
+        return this.nodeIdToMetadataId.get(nodeId);
     }
 }

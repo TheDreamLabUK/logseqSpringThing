@@ -17,12 +17,15 @@ interface MetadataLabel {
     sprite: Sprite;
     metadata: NodeMetadata;
     lastUpdateDistance: number;
-    lastVisible?: boolean;
+    lastVisible: boolean;
 }
 
 export class NodeMetadataManager {
     private static instance: NodeMetadataManager;
     private labels: Map<string, MetadataLabel> = new Map();
+    // Add a map to store relationships between node IDs and metadata IDs (filenames)
+    private nodeIdToMetadataId: Map<string, string> = new Map();
+    private metadataIdToNodeId: Map<string, string> = new Map();
     private VISIBILITY_THRESHOLD = 100;  // Increased maximum distance for label visibility
     private readonly UPDATE_INTERVAL = 2;        // More frequent updates
     private readonly LABEL_SCALE = 0.5;         // Base scale for labels
@@ -63,6 +66,14 @@ export class NodeMetadataManager {
     private createLabelTexture(metadata: NodeMetadata): Texture {
         // Clear canvas
         this.labelContext.clearRect(0, 0, this.labelCanvas.width, this.labelCanvas.height);
+
+        // Use metadata relationships to get the proper name/label
+        let displayName = metadata.name || metadata.id || 'Unknown';
+        // If the ID looks like a numeric ID, try to find a better name from our mapping
+        if (/^\d+$/.test(metadata.id) && this.nodeIdToMetadataId.has(metadata.id)) {
+            displayName = this.nodeIdToMetadataId.get(metadata.id) || displayName;
+            if (debugState.isNodeDebugEnabled()) logger.debug(`Using mapped name: ${displayName} for node ID: ${metadata.id}`);
+        }
         
         // Log metadata only if node debug is enabled
         if (debugState.isNodeDebugEnabled()) {
@@ -76,12 +87,11 @@ export class NodeMetadataManager {
         // Draw main label (filename)
         this.labelContext.fillStyle = 'white';
         this.labelContext.font = 'bold 20px Arial';
-        const mainLabel = metadata.name || metadata.id || 'Unknown';
-        this.labelContext.fillText(mainLabel, this.labelCanvas.width / 2, 30);
+        this.labelContext.fillText(displayName, this.labelCanvas.width / 2, 30);
         
         // Draw subtext lines
         this.labelContext.font = '14px Arial';
-        this.labelContext.fillStyle = '#cccccc';
+        this.labelContext.fillStyle = '#dddddd';
         
         // Add file size if available
         if (metadata.fileSize) {
@@ -130,7 +140,8 @@ export class NodeMetadataManager {
         const label: MetadataLabel = {
             sprite,
             metadata,
-            lastUpdateDistance: Infinity
+            lastUpdateDistance: Infinity,
+            lastVisible: false
         };
 
         // Add to scene
@@ -195,12 +206,39 @@ export class NodeMetadataManager {
         }
 
         // Update metadata
+        const oldMetadata = { ...label.metadata };
         label.metadata = metadata;
-
+        
+        // Check if we need to update the node-to-metadata mapping
+        if (metadata.name && metadata.name !== oldMetadata.name) {
+            this.mapNodeIdToMetadataId(metadata.id, metadata.name);
+            if (debugState.isNodeDebugEnabled()) {
+                logger.debug(`Updated metadata mapping: ${metadata.id} -> ${metadata.name}`);
+            }
+        }
+        
         // Update texture
-        const texture = this.createLabelTexture(metadata);
-        (label.sprite.material as SpriteMaterial).map?.dispose();
+        const texture = this.createLabelTexture(metadata); 
+        
+        // Dispose of old texture to avoid memory leaks
+        if ((label.sprite.material as SpriteMaterial).map) {
+            (label.sprite.material as SpriteMaterial).map?.dispose();
+        }
+        // Update material with new texture
         (label.sprite.material as SpriteMaterial).map = texture;
+        (label.sprite.material as SpriteMaterial).needsUpdate = true;
+    }
+    
+    /**
+     * Map a node ID to a metadata ID (filename) for proper labeling
+     * This is crucial for connecting numeric IDs with human-readable names
+     */
+    public mapNodeIdToMetadataId(nodeId: string, metadataId: string): void {
+        this.nodeIdToMetadataId.set(nodeId, metadataId);
+        this.metadataIdToNodeId.set(metadataId, nodeId);
+        if (debugState.isNodeDebugEnabled()) {
+            logger.debug(`Mapped node ID ${nodeId} to metadata ID ${metadataId}`);
+        }
     }
 
     public updatePosition(id: string, position: Vector3): void {
@@ -242,6 +280,27 @@ export class NodeMetadataManager {
         });
     }
 
+    /**
+     * Get the metadata ID (filename) for a given node ID
+     */
+    public getMetadataId(nodeId: string): string | undefined {
+        return this.nodeIdToMetadataId.get(nodeId);
+    }
+
+    /**
+     * Get the node ID for a given metadata ID (filename)
+     */
+    public getNodeId(metadataId: string): string | undefined {
+        return this.metadataIdToNodeId.get(metadataId);
+    }
+
+    /**
+     * Get the label for a node - uses the mapped metadata name if available
+     */
+    public getLabel(nodeId: string): string {
+        return this.nodeIdToMetadataId.get(nodeId) || nodeId;
+    }
+
     public removeLabel(id: string): void {
         const label = this.labels.get(id);
         if (!label) return;
@@ -267,6 +326,10 @@ export class NodeMetadataManager {
             this.scene.remove(label.sprite);
         });
         this.labels.clear();
+        
+        // Clear mappings
+        this.nodeIdToMetadataId.clear();
+        this.metadataIdToNodeId.clear();
 
         // Reset singleton
         NodeMetadataManager.instance = null!;
