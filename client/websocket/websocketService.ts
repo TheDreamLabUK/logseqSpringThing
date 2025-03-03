@@ -4,6 +4,7 @@ import { debugState } from '../core/debugState';
 import { Vector3 } from 'three';
 import { createVector3, zeroVector3, vector3ToObject, isValidVector3, clampVector3, vector3Equals } from '../utils/vectorUtils';
 import pako from 'pako';
+import { UpdateThrottler } from '../core/utils';
 
 const logger = createLogger('WebSocketService');
 
@@ -24,6 +25,10 @@ function debugLog(message: string, ...args: any[]) {
 
 // Compression settings
 const COMPRESSION_THRESHOLD = 1024; // Only compress messages larger than 1KB
+
+// Protocol constants
+const PROTOCOL_VERSION = 1;
+const HEADER_SIZE = 13; // 1 byte version + 4 bytes sequence + 8 bytes timestamp
 
 enum ConnectionState {
     DISCONNECTED = 'disconnected',
@@ -58,6 +63,13 @@ interface BinaryNodeData {
     velocity: Vector3;   // Three.js Vector3
 }
 
+// New interface for binary message header
+interface BinaryMessageHeader {
+    version: number;
+    sequence: number;
+    timestamp: number;
+}
+
 type BinaryMessageCallback = (nodes: BinaryNodeData[]) => void;
 
 export class WebSocketService {
@@ -86,6 +98,11 @@ export class WebSocketService {
     private nodeUpdateQueue: NodeUpdate[] = [];
     private nodeUpdateTimer: number | null = null;
     private readonly NODE_UPDATE_DEBOUNCE_MS = 50; // 50ms debounce for node updates
+    
+    // New fields for improved throttling
+    private updateThrottler = new UpdateThrottler(16.67); // ~60fps (1000ms / 60)
+    private lastSequenceNumber: number = 0;
+    private pendingNodeUpdates: BinaryNodeData[] = [];
 
     private validateAndClampVector3(vec: Vector3, max: number): Vector3 {
         if (!isValidVector3(vec)) {
@@ -374,7 +391,7 @@ export class WebSocketService {
                 return;
             }
             
-            const isCompressed = buffer.byteLength > 0 && buffer.byteLength % 28 !== 0;
+            const isCompressed = buffer.byteLength > 0 && (buffer.byteLength - HEADER_SIZE) % 28 !== 0;
 
             const decompressedBuffer = this.tryDecompress(buffer);
            
@@ -384,30 +401,61 @@ export class WebSocketService {
                 initialDataReceived: this.initialDataReceived,
                 decompressedSize: decompressedBuffer.byteLength, 
                 isCompressed,
-                nodeCount: decompressedBuffer.byteLength / 28
+                nodeCount: (decompressedBuffer.byteLength - HEADER_SIZE) / 28
             }));
             
-            if (!decompressedBuffer || decompressedBuffer.byteLength % 28 !== 0) {
+            // Check if buffer is too small to contain header
+            if (!decompressedBuffer || decompressedBuffer.byteLength < HEADER_SIZE) {
+                logger.error('Binary message too small to contain header');
+                return;
+            }
+            
+            const dataView = new DataView(decompressedBuffer);
+            
+            // Read header
+            const header: BinaryMessageHeader = {
+                version: dataView.getUint8(0),
+                sequence: dataView.getUint32(1, true),
+                timestamp: Number(dataView.getBigUint64(5, true))
+            };
+            
+            // Log header information
+            debugLog('Binary message header:', createDataMetadata({
+                version: header.version,
+                sequence: header.sequence,
+                timestamp: header.timestamp,
+                timeDiff: Date.now() - header.timestamp
+            }));
+            
+            // Check for missed messages
+            if (this.lastSequenceNumber > 0 && header.sequence > this.lastSequenceNumber + 1) {
+                logger.warn(`Missed ${header.sequence - this.lastSequenceNumber - 1} binary updates`);
+            }
+            this.lastSequenceNumber = header.sequence;
+            
+            // Validate message size (must be header + multiple of 28 bytes)
+            if ((decompressedBuffer.byteLength - HEADER_SIZE) % 28 !== 0) {
                 // Enhanced error logging for production debugging
                 const errorDetails = {
                     bufferSize: buffer.byteLength,
                     decompressedSize: decompressedBuffer?.byteLength ?? 0,
-                    remainder: (decompressedBuffer?.byteLength ?? 0) % 28,
-                    expectedNodeCount: Math.floor((decompressedBuffer?.byteLength ?? 0) / 28),
+                    remainder: (decompressedBuffer?.byteLength - HEADER_SIZE) % 28,
+                    expectedNodeCount: Math.floor((decompressedBuffer?.byteLength - HEADER_SIZE) / 28),
                     url: this.url
                 };
                 logger.error('Invalid binary message size:', createDataMetadata(errorDetails));
-                throw new Error(`Invalid buffer size: ${decompressedBuffer?.byteLength ?? 0} bytes (not a multiple of 28)`);
+                return;
             }
 
-            const dataView = new DataView(decompressedBuffer);
-            const nodeCount = decompressedBuffer.byteLength / 28;
+            const nodeCount = (decompressedBuffer.byteLength - HEADER_SIZE) / 28;
 
             if (nodeCount === 0) {
                 logger.warn('No nodes in binary update - empty message received');
                 return;
             }
-            let offset = 0;
+            
+            // Start reading nodes after the header
+            let offset = HEADER_SIZE;
             let invalidValuesFound = false;
             const nodes: BinaryNodeData[] = [];
             
@@ -476,11 +524,50 @@ export class WebSocketService {
                 logger.warn('Some nodes had invalid position/velocity values that were clamped');
             }
 
-            if (nodes.length > 0 && this.binaryMessageCallback) {
-                this.binaryMessageCallback(nodes);  // Send to NodeManagerFacade
+            // Add nodes to pending updates
+            if (nodes.length > 0) {
+                this.pendingNodeUpdates.push(...nodes);
+                
+                // Process updates with throttling
+                if (this.updateThrottler.shouldUpdate()) {
+                    this.processPendingNodeUpdates();
+                } else {
+                    // Schedule processing if not already scheduled
+                    if (this.nodeUpdateTimer === null) {
+                        this.nodeUpdateTimer = window.setTimeout(() => {
+                            this.processPendingNodeUpdates();
+                            this.nodeUpdateTimer = null;
+                        }, this.updateThrottler.getTimeUntilNextUpdate());
+                    }
+                }
             }
         } catch (error) {
             logger.error('Failed to process binary message:', createErrorMetadata(error));
+        }
+    }
+    
+    /**
+     * Process all pending node updates at the throttled rate
+     */
+    private processPendingNodeUpdates(): void {
+        if (this.pendingNodeUpdates.length > 0 && this.binaryMessageCallback) {
+            // Process all pending updates at once
+            try {
+                this.binaryMessageCallback(this.pendingNodeUpdates);
+                
+                // Log processing stats
+                if (debugState.isWebsocketDebugEnabled()) {
+                    logger.debug('Processed node updates:', createDataMetadata({
+                        count: this.pendingNodeUpdates.length,
+                        throttleRate: this.updateThrottler.getRate()
+                    }));
+                }
+                
+                // Clear pending updates
+                this.pendingNodeUpdates = [];
+            } catch (error) {
+                logger.error('Error processing node updates:', createErrorMetadata(error));
+            }
         }
     }
 
@@ -692,9 +779,18 @@ export class WebSocketService {
         // Clear the queue
         this.nodeUpdateQueue = [];
 
-        const buffer = new ArrayBuffer(updates.length * 28);
+        // Calculate buffer size: header + node data
+        const bufferSize = HEADER_SIZE + (updates.length * 28);
+        const buffer = new ArrayBuffer(bufferSize);
         const dataView = new DataView(buffer);
-        let offset = 0;
+        
+        // Write header: version, sequence number, timestamp
+        dataView.setUint8(0, PROTOCOL_VERSION);
+        dataView.setUint32(1, this.lastSequenceNumber + 1, true);
+        dataView.setBigUint64(5, BigInt(Date.now()), true);
+        
+        // Start writing node data after header
+        let offset = HEADER_SIZE;
 
         updates.forEach(update => {
             const id = parseInt(update.id, 10); 

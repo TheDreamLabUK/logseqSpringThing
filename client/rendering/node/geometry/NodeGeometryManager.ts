@@ -4,7 +4,7 @@ import {
     OctahedronGeometry
 } from 'three';
 import { GeometryFactory } from '../../factories/GeometryFactory';
-import { createLogger } from '../../../core/logger';
+import { createLogger, createDataMetadata } from '../../../core/logger';
 
 const logger = createLogger('NodeGeometryManager');
 
@@ -15,11 +15,19 @@ export enum LODLevel {
     LOW = 2      // > 50 meters: Low detail
 } 
 
-interface LODThresholds {
-    [LODLevel.HIGH]: number;   // Distance threshold for high detail
-    [LODLevel.MEDIUM]: number; // Distance threshold for medium detail
-    [LODLevel.LOW]: number;    // Distance threshold for low detail
-}
+// Interface for LOD thresholds with hysteresis
+interface LODHysteresisThresholds {
+    // Thresholds for switching to a higher detail level (moving closer)
+    upscale: {
+        [LODLevel.HIGH]: number;   // Switch to HIGH when closer than this
+        [LODLevel.MEDIUM]: number; // Switch to MEDIUM when closer than this
+    };
+    // Thresholds for switching to a lower detail level (moving away)
+    downscale: {
+        [LODLevel.MEDIUM]: number; // Switch to MEDIUM when further than this
+        [LODLevel.LOW]: number;    // Switch to LOW when further than this
+    };
+} 
 
 interface GeometryQuality {
     segments: number;  // Number of segments/detail level
@@ -30,11 +38,21 @@ export class NodeGeometryManager {
     private static instance: NodeGeometryManager;
     private geometryCache: Map<LODLevel, BufferGeometry>;
     private currentLOD: LODLevel = LODLevel.HIGH;
+    private lastDistance: number = 0;
+    private switchCount: number = 0;
     
-    private readonly lodThresholds: LODThresholds = {
-        [LODLevel.HIGH]: 10.0,    // Show full detail when closer than 10 meters
-        [LODLevel.MEDIUM]: 50.0,  // Medium detail between 10-50 meters
-        [LODLevel.LOW]: 150.0     // Low detail beyond 50 meters
+    // Implement hysteresis with different thresholds for upscaling vs downscaling
+    private readonly lodThresholds: LODHysteresisThresholds = {
+        // Thresholds for increasing detail (moving closer)
+        upscale: {
+            [LODLevel.HIGH]: 8.0,     // Switch to HIGH when closer than 8m (was 10m)
+            [LODLevel.MEDIUM]: 40.0,  // Switch to MEDIUM when closer than 40m (was 50m)
+        },
+        // Thresholds for decreasing detail (moving away)
+        downscale: {
+            [LODLevel.MEDIUM]: 12.0,  // Switch to MEDIUM when further than 12m (was 10m)
+            [LODLevel.LOW]: 60.0,     // Switch to LOW when further than 60m (was 50m)
+        }
     };
 
     private readonly qualitySettings: Record<LODLevel, GeometryQuality> = {
@@ -102,35 +120,79 @@ export class NodeGeometryManager {
         return geometry;
     }
 
+    /**
+     * Get the appropriate geometry for a given distance with hysteresis to prevent
+     * rapid switching between LOD levels
+     */
     public getGeometryForDistance(distance: number): BufferGeometry {
-        // Determine appropriate LOD level based on distance
-        let targetLOD = LODLevel.HIGH;
+        // Start with current LOD level
+        let targetLOD = this.currentLOD;
+
+        // Calculate distance change since last update
+        const distanceChange = Math.abs(distance - this.lastDistance);
+        this.lastDistance = distance;
+        
+        // Skip LOD calculation if distance hasn't changed significantly (< 0.1m)
+        // This prevents unnecessary LOD switches due to tiny camera movements
+        if (distanceChange < 0.1 && this.currentLOD !== LODLevel.HIGH) {
+            return this.getGeometryForLOD(this.currentLOD);
+        }
         
         // Use more conservative thresholds for AR mode
         const isAR = window.location.href.includes('ar=true') || 
                     document.querySelector('#xr-button')?.textContent?.includes('Exit AR');
         
-        // Apply different thresholds for AR mode
-        // Use adjusted thresholds for AR mode
-        const mediumThreshold = isAR ? this.lodThresholds[LODLevel.MEDIUM] * 1.5 : this.lodThresholds[LODLevel.MEDIUM];
+        // Apply AR mode adjustments if needed
+        let thresholds = this.lodThresholds;
+        if (isAR) {
+            // In AR mode, use more conservative thresholds (1.5x further)
+            thresholds = {
+                upscale: {
+                    [LODLevel.HIGH]: this.lodThresholds.upscale[LODLevel.HIGH] * 1.5,
+                    [LODLevel.MEDIUM]: this.lodThresholds.upscale[LODLevel.MEDIUM] * 1.5,
+                },
+                downscale: {
+                    [LODLevel.MEDIUM]: this.lodThresholds.downscale[LODLevel.MEDIUM] * 1.5,
+                    [LODLevel.LOW]: this.lodThresholds.downscale[LODLevel.LOW] * 1.5,
+                }
+            };
+        }
         
-        // Fix the LOD logic to ensure nodes don't vanish as we get closer
-        // The closer we are, the higher the detail should be
-        if (distance <= this.lodThresholds[LODLevel.HIGH]) {
-            // Close distance: use high detail
-            targetLOD = LODLevel.HIGH;
-        } else if (distance <= mediumThreshold) {
-            // Medium distance: use medium detail
-            targetLOD = LODLevel.MEDIUM;
-        } else {
-            // Far distance: use low detail
-            targetLOD = LODLevel.LOW;
+        // Apply hysteresis based on current LOD level and distance
+        switch (this.currentLOD) {
+            case LODLevel.HIGH:
+                // Currently high detail - only downgrade if we move far enough away
+                if (distance > thresholds.downscale[LODLevel.MEDIUM]) {
+                    targetLOD = LODLevel.MEDIUM;
+                }
+                break;
+                
+            case LODLevel.MEDIUM:
+                // Currently medium detail - upgrade or downgrade based on distance
+                if (distance <= thresholds.upscale[LODLevel.HIGH]) {
+                    targetLOD = LODLevel.HIGH;
+                } else if (distance > thresholds.downscale[LODLevel.LOW]) {
+                    targetLOD = LODLevel.LOW;
+                }
+                break;
+                
+            case LODLevel.LOW:
+                // Currently low detail - only upgrade if we get close enough
+                if (distance <= thresholds.upscale[LODLevel.MEDIUM]) {
+                    targetLOD = LODLevel.MEDIUM;
+                }
+                break;
         }
 
         // Only update if LOD level changed
         if (targetLOD !== this.currentLOD) {
+            this.switchCount++;
             this.currentLOD = targetLOD;
-            logger.info(`Switching to LOD level ${targetLOD} for distance ${distance.toFixed(2)}`);
+            logger.info(`Switching to LOD level ${targetLOD} for distance ${distance.toFixed(2)}`, 
+                createDataMetadata({ 
+                    switchCount: this.switchCount,
+                    distanceChange: distanceChange.toFixed(3)
+                }));
         }
 
         // Always ensure we return a valid geometry
@@ -141,14 +203,34 @@ export class NodeGeometryManager {
         }
         return geometry;
     }
+    
+    /**
+     * Get geometry for a specific LOD level
+     */
+    private getGeometryForLOD(level: LODLevel): BufferGeometry {
+        const geometry = this.geometryCache.get(level);
+        if (!geometry) {
+            logger.warn(`No geometry found for LOD level ${level}, falling back to MEDIUM`);
+            return this.geometryCache.get(LODLevel.MEDIUM)!;
+        }
+        return geometry;
+    }
 
     public getCurrentLOD(): LODLevel {
         return this.currentLOD;
     }
 
-    public getThresholdForLOD(level: LODLevel): number {
-        return this.lodThresholds[level];
-    }
+    /**
+     * Get the upscale threshold for a specific LOD level
+     */
+    public getUpscaleThresholdForLOD(level: LODLevel): number | undefined {
+        if (level === LODLevel.HIGH || level === LODLevel.MEDIUM) {
+            return this.lodThresholds.upscale[level];
+        } else if (level === LODLevel.LOW) {
+            return undefined; // No upscale threshold for LOW level
+        }
+        return undefined;
+    } 
 
     public dispose(): void {
         // Clean up geometries

@@ -1,6 +1,14 @@
 use byteorder::{LittleEndian, WriteBytesExt, ReadBytesExt};
 use std::io::Cursor;
+use std::time::{SystemTime, UNIX_EPOCH};
 use crate::utils::socket_flow_messages::BinaryNodeData;
+
+// Protocol version and constants
+const PROTOCOL_VERSION: u8 = 1;
+
+// Static sequence counter for detecting missed updates
+static mut SEQUENCE_NUMBER: u32 = 0;
+static mut LAST_TIMESTAMP: u64 = 0;
 
 pub fn encode_node_data(nodes: &[(u32, BinaryNodeData)]) -> Vec<u8> {
     // Only log non-empty node transmissions to reduce spam
@@ -9,6 +17,27 @@ pub fn encode_node_data(nodes: &[(u32, BinaryNodeData)]) -> Vec<u8> {
     }
     
     let mut buffer = Vec::new();
+
+    // Get current timestamp in milliseconds
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64;
+
+    // Get and increment sequence number (thread-safe)
+    let sequence_number = unsafe {
+        // Only increment if timestamp has changed to avoid rapid increments
+        if timestamp > LAST_TIMESTAMP {
+            SEQUENCE_NUMBER = SEQUENCE_NUMBER.wrapping_add(1);
+            LAST_TIMESTAMP = timestamp;
+        }
+        SEQUENCE_NUMBER
+    };
+
+    // Write header: version (1 byte), sequence number (4 bytes), timestamp (8 bytes)
+    buffer.write_u8(PROTOCOL_VERSION).unwrap();
+    buffer.write_u32::<LittleEndian>(sequence_number).unwrap();
+    buffer.write_u64::<LittleEndian>(timestamp).unwrap();
     
     // Log some samples of the encoded data
     let sample_size = std::cmp::min(3, nodes.len());
@@ -51,6 +80,25 @@ pub fn encode_node_data(nodes: &[(u32, BinaryNodeData)]) -> Vec<u8> {
 pub fn decode_node_data(data: &[u8]) -> Result<Vec<(u32, BinaryNodeData)>, String> {
     let mut cursor = Cursor::new(data);
     
+    // Check if data is empty or too small for header
+    if data.len() < 13 { // 1 (version) + 4 (sequence) + 8 (timestamp)
+        return Err("Data too small to contain header".into());
+    }
+
+    // Read header
+    let version = cursor.read_u8()
+        .map_err(|e| format!("Failed to read protocol version: {}", e))?;
+    let sequence = cursor.read_u32::<LittleEndian>()
+        .map_err(|e| format!("Failed to read sequence number: {}", e))?;
+    let timestamp = cursor.read_u64::<LittleEndian>()
+        .map_err(|e| format!("Failed to read timestamp: {}", e))?;
+
+    // Log header information
+    log::info!(
+        "Decoding binary data: version={}, sequence={}, timestamp={}, size={} bytes",
+        version, sequence, timestamp, data.len()
+    );
+
     // Always log this for visibility
     log::info!("Decoding binary data of size: {} bytes", data.len());
 
@@ -63,7 +111,7 @@ pub fn decode_node_data(data: &[u8]) -> Result<Vec<(u32, BinaryNodeData)>, Strin
     log::info!("Starting binary data decode, expecting nodes with position and velocity data");
     
     while cursor.position() < data.len() as u64 {
-        // Each update is 28 bytes: 4 (nodeId) + 12 (position) + 12 (velocity)
+        // Each node update is 28 bytes: 4 (nodeId) + 12 (position) + 12 (velocity)
         if cursor.position() + 28 > data.len() as u64 {
             return Err("Unexpected end of data while reading node update".into());
         }
@@ -118,7 +166,8 @@ pub fn decode_node_data(data: &[u8]) -> Result<Vec<(u32, BinaryNodeData)>, Strin
 pub fn calculate_message_size(updates: &[(u32, BinaryNodeData)]) -> usize {
     // Each update: u32 (node_id) + 3*f32 (position) + 3*f32 (velocity)
     // = 4 + 12 + 12 = 28 bytes
-    updates.len() * 28
+    // Plus header: 1 (version) + 4 (sequence) + 8 (timestamp) = 13 bytes
+    13 + (updates.len() * 28)
 }
 
 #[cfg(test)]

@@ -35,6 +35,13 @@ const scale = new Vector3();
 const VISIBLE = new Color(0xffffff);
 // Removed INVISIBLE constant
 
+// Global registry for tracking instances
+interface InstanceInfo {
+    scene: Scene;
+    material: Material;
+    timestamp: number;
+}
+
 interface NodeUpdate {
     id: string;
     position: Vector3;  // Three.js Vector3
@@ -50,7 +57,10 @@ interface NodeUpdate {
 }
 
 export class NodeInstanceManager {
-    private static instance: NodeInstanceManager;
+    private static instance: NodeInstanceManager | null = null;
+    private static instanceInfo: InstanceInfo | null = null;
+    private static instanceCount: number = 0;
+    private static readonly INSTANCE_TIMEOUT_MS = 5000; // 5 seconds timeout for stale instances
     private scene: Scene;
     private nodeInstances: InstancedMesh;
     private geometryManager: NodeGeometryManager;
@@ -66,6 +76,7 @@ export class NodeInstanceManager {
     private isReady: boolean = false;
     private positionUpdateCount: number = 0;
     private lastPositionLog: number = 0;
+    private instanceId: number;
 
     private validateAndLogVector3(vec: Vector3, max: number, context: string, nodeId?: string): boolean {
         const isValid = this.validateVector3(vec, max);
@@ -113,6 +124,8 @@ export class NodeInstanceManager {
     }
 
     private constructor(scene: Scene, material: Material) {
+        this.instanceId = ++NodeInstanceManager.instanceCount;
+        logger.info(`Creating NodeInstanceManager instance #${this.instanceId}`);
         this.scene = scene;
         this.geometryManager = NodeGeometryManager.getInstance();
         this.settingsStore = SettingsStore.getInstance();
@@ -153,7 +166,7 @@ export class NodeInstanceManager {
         // Add to scene
         this.scene.add(this.nodeInstances);
         if (debugState.isEnabled()) {
-            logger.info('Initialized NodeInstanceManager');
+            logger.info(`Initialized NodeInstanceManager instance #${this.instanceId}`);
         }
 
         // Subscribe to settings changes
@@ -169,8 +182,47 @@ export class NodeInstanceManager {
     }
 
     public static getInstance(scene: Scene, material: Material): NodeInstanceManager {
+        // Check if we already have an instance
+        if (NodeInstanceManager.instance && NodeInstanceManager.instance.isReady) {
+            // Check if the instance is for the same scene and material
+            if (NodeInstanceManager.instanceInfo && 
+                NodeInstanceManager.instanceInfo.scene === scene && 
+                NodeInstanceManager.instanceInfo.material === material) {
+                
+                // Update timestamp to indicate this instance is still in use
+                if (NodeInstanceManager.instanceInfo) {
+                    NodeInstanceManager.instanceInfo.timestamp = Date.now();
+                }
+                
+                return NodeInstanceManager.instance;
+            } else {
+                // Different scene or material - dispose the old instance
+                logger.warn('Disposing existing NodeInstanceManager for different scene/material');
+                NodeInstanceManager.instance.dispose();
+                NodeInstanceManager.instance = null;
+                NodeInstanceManager.instanceInfo = null;
+            }
+        } else if (NodeInstanceManager.instance && !NodeInstanceManager.instance.isReady) {
+            // Instance exists but is not ready - check if it's stale
+            if (NodeInstanceManager.instanceInfo && 
+                Date.now() - NodeInstanceManager.instanceInfo.timestamp > NodeInstanceManager.INSTANCE_TIMEOUT_MS) {
+                
+                // Stale instance - dispose and create a new one
+                logger.warn('Disposing stale NodeInstanceManager instance');
+                NodeInstanceManager.instance.dispose();
+                NodeInstanceManager.instance = null;
+                NodeInstanceManager.instanceInfo = null;
+            }
+        }
+        
+        // Create a new instance if needed
         if (!NodeInstanceManager.instance) {
             NodeInstanceManager.instance = new NodeInstanceManager(scene, material);
+            NodeInstanceManager.instanceInfo = {
+                scene,
+                material,
+                timestamp: Date.now()
+            };
         }
         return NodeInstanceManager.instance;
     }
@@ -641,9 +693,15 @@ export class NodeInstanceManager {
         this.pendingUpdates.clear();
         this.velocities.clear();
         this.isReady = false;
-        NodeInstanceManager.instance = null!;
+        
+        // Only clear the static instance if it's this instance
+        if (NodeInstanceManager.instance === this) {
+            NodeInstanceManager.instance = null;
+            NodeInstanceManager.instanceInfo = null;
+        }
+        
         if (debugState.isEnabled()) {
-            logger.info('Disposed NodeInstanceManager');
+            logger.info(`Disposed NodeInstanceManager instance #${this.instanceId}`);
         }
     }
 

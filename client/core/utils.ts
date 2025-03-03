@@ -72,22 +72,51 @@ export const convertObjectKeysToCamelCase = (obj: any): any => {
 export class UpdateThrottler {
   private lastUpdate: number = 0;
   private throttleInterval: number;
+  private frameCount: number = 0;
+  private totalTime: number = 0;
 
   constructor(throttleInterval: number = THROTTLE_INTERVAL) {
     this.throttleInterval = throttleInterval;
   }
 
+  /**
+   * Check if an update should be allowed based on the throttle interval
+   */
   shouldUpdate(): boolean {
     const now = performance.now();
-    if (now - this.lastUpdate >= this.throttleInterval) {
+    const elapsed = now - this.lastUpdate;
+    
+    if (elapsed >= this.throttleInterval) {
+      // Update metrics for adaptive throttling
+      this.frameCount++;
+      this.totalTime += elapsed;
+      
       this.lastUpdate = now;
       return true;
     }
     return false;
   }
 
+  /**
+   * Get the time remaining until the next update is allowed
+   */
+  getTimeUntilNextUpdate(): number {
+    const now = performance.now();
+    const elapsed = now - this.lastUpdate;
+    return Math.max(0, this.throttleInterval - elapsed);
+  }
+  
+  /**
+   * Get the current effective update rate in Hz
+   */
+  getRate(): number {
+    return this.frameCount > 0 ? (1000 * this.frameCount) / this.totalTime : 0;
+  }
+
   reset(): void {
     this.lastUpdate = 0;
+    this.frameCount = 0;
+    this.totalTime = 0;
   }
 }
 

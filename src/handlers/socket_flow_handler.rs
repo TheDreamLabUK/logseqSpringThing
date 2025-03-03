@@ -5,6 +5,7 @@ use flate2::{write::ZlibEncoder, Compression};
 use log::{debug, error, info, warn};
 use std::io::Write;
 use std::sync::Arc;
+use std::collections::HashMap;
 use tokio::sync::RwLock;
 
 use crate::app_state::AppState;
@@ -22,6 +23,10 @@ pub struct SocketFlowServer {
     last_activity: std::time::Instant, // Track last activity time
     heartbeat_timer_set: bool, // Flag to track if heartbeat timer is set
     update_interval: std::time::Duration,
+    // New fields for batched updates and deadband filtering
+    node_position_cache: HashMap<String, BinaryNodeData>,
+    last_sent_positions: HashMap<String, [f32; 3]>,
+    position_deadband: f32, // Minimum position change to trigger an update
 }
 
 impl SocketFlowServer {
@@ -43,6 +48,9 @@ impl SocketFlowServer {
             last_activity: std::time::Instant::now(),
             heartbeat_timer_set: false,
             update_interval,
+            node_position_cache: HashMap::new(),
+            last_sent_positions: HashMap::new(),
+            position_deadband: 0.01, // 1cm deadband by default
         }
     }
 
@@ -77,6 +85,42 @@ impl SocketFlowServer {
     fn should_log_update(&mut self) -> bool {
         self.update_counter = (self.update_counter + 1) % DEBUG_LOG_SAMPLE_RATE;
         self.update_counter == 0
+    }
+    
+    // New method to check if a node's position has changed enough to warrant an update
+    fn has_position_changed_significantly(&mut self, node_id: &str, new_position: [f32; 3]) -> bool {
+        if let Some(last_position) = self.last_sent_positions.get(node_id) {
+            // Calculate Euclidean distance between last sent position and new position
+            let dx = new_position[0] - last_position[0];
+            let dy = new_position[1] - last_position[1];
+            let dz = new_position[2] - last_position[2];
+            let distance_squared = dx*dx + dy*dy + dz*dz;
+            
+            // Only send update if position has changed by more than the deadband
+            if distance_squared > self.position_deadband * self.position_deadband {
+                // Update the last sent position
+                self.last_sent_positions.insert(node_id.to_string(), new_position);
+                return true;
+            }
+            return false;
+        } else {
+            // First time seeing this node, always send update
+            self.last_sent_positions.insert(node_id.to_string(), new_position);
+            return true;
+        }
+    }
+    
+    // New method to collect nodes that have changed position
+    fn collect_changed_nodes(&mut self) -> Vec<(u32, BinaryNodeData)> {
+        let mut changed_nodes = Vec::new();
+        
+        for (node_id, node_data) in self.node_position_cache.drain() {
+            if let Ok(node_id_u32) = node_id.parse::<u32>() {
+                changed_nodes.push((node_id_u32, node_data));
+            }
+        }
+        
+        changed_nodes
     }
 }
 
@@ -165,7 +209,11 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
                                 ctx.run_interval(self.update_interval, move |act: &mut SocketFlowServer, ctx| {
                                     let app_state_clone = app_state.clone();
                                     let settings_clone = act.settings.clone();
+                                    
+                                    // First check if we should log this update (before spawning the future)
+                                    let should_log = act.should_log_update();
 
+                                    // Create the future without moving act
                                     let fut = async move {
                                         let raw_nodes = app_state_clone
                                             .graph_service
@@ -196,14 +244,14 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
                                         let mut nodes = Vec::with_capacity(raw_nodes.len());
                                         for node in raw_nodes {
                                             if let Ok(node_id) = node.id.parse::<u32>() {
-                                                // The node.id should now be numeric, so parsing should always succeed
-                                                nodes.push((node_id, BinaryNodeData {
+                                                let node_data = BinaryNodeData {
                                                     position: node.data.position,
                                                     velocity: node.data.velocity,
                                                     mass: node.data.mass,
                                                     flags: node.data.flags,
                                                     padding: node.data.padding,
-                                                }));
+                                                };
+                                                nodes.push((node_id, node_data));
                                             } else {
                                                 warn!("[WebSocket] Failed to parse node ID as u32: '{}', metadata_id: '{}'", 
                                                     node.id, node.metadata_id);
@@ -211,25 +259,31 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
                                         }
 
                                         // Only generate binary data if we have nodes to send
+                                        // Only generate binary data if we have changed nodes to send
                                         if nodes.is_empty() {
+                                            // Send a keepalive message every ~5 seconds if no nodes have changed
+                                            // Just return an empty vector - activity timing is handled in the actor
+                                            if false {
+                                                return Some((Vec::new(), detailed_debug, Vec::new()));
+                                            }
                                             return None;
-
                                         }
                                        
+                                        // Encode only the nodes that have changed
                                         let data = binary_protocol::encode_node_data(&nodes);
                                         
                                         // Return detailed debug info along with the data
                                         Some((data, detailed_debug, nodes))
                                     };
 
-                                    // First check if we should log this update (before spawning the future)
-                                    let should_log = act.should_log_update();
-                                    
-                                    let fut = fut.into_actor(act);
+                                    // Convert future to actor future without ownership issues
+                                    // This avoids the need to move 'act' into the future
+                                    let fut = actix::fut::wrap_future::<_, Self>(fut);
+
                                     ctx.spawn(fut.map(move |result, act, ctx| {
                                         if let Some((binary_data, detailed_debug, nodes)) = result {
                                             // Log debug info if needed
-                                            if detailed_debug && should_log {
+                                            if detailed_debug && should_log && !binary_data.is_empty() {
                                                 debug!("[WebSocket] Encoded binary data: {} bytes for {} nodes", binary_data.len(), nodes.len());
                                                 
                                                 // Log details about a sample node to track position changes
@@ -244,14 +298,20 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
                                                 }
                                             }
 
-                                            let final_data = act.maybe_compress(binary_data);
-                                            
-                                            // Only log if detailed debugging is enabled
-                                            if detailed_debug && should_log {
-                                                    debug!("[WebSocket] Final binary update sent to client: {} bytes", final_data.len());
+                                            // Only send data if we have nodes to update
+                                            if !binary_data.is_empty() {
+                                                let final_data = act.maybe_compress(binary_data);
+                                                
+                                                // Only log if detailed debugging is enabled
+                                                if detailed_debug && should_log {
+                                                        debug!("[WebSocket] Final binary update sent to client: {} bytes", final_data.len());
+                                                }
+                                                
+                                                ctx.binary(final_data);
+                                            } else if detailed_debug && should_log {
+                                                // Log keepalive
+                                                debug!("[WebSocket] Sending keepalive (no position changes)");
                                             }
-                                            
-                                            ctx.binary(final_data);
                                         }
                                     }));
                                 });

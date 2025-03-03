@@ -10,7 +10,7 @@ import {
     Material,
     Color
 } from 'three';
-import { createLogger } from '../core/logger';
+import { createLogger, createDataMetadata } from '../core/logger';
 import { Edge } from '../core/types';
 import { Settings } from '../types/settings';
 import { NodeInstanceManager } from './node/instance/NodeInstanceManager';
@@ -31,6 +31,8 @@ export class EdgeManager {
     private updateFrameCount = 0;
     private readonly UPDATE_FREQUENCY = 2; // Update every other frame
     private readonly MAX_EDGE_LENGTH = 20.0; // Increased maximum edge length
+    private lastEdgeUpdateTime = 0;
+    private edgeUpdateCount = 0;
 
     constructor(scene: Scene, settings: Settings, nodeManager: NodeInstanceManager) {
         this.scene = scene;
@@ -58,6 +60,8 @@ export class EdgeManager {
                 this.handleSettingsUpdate(this.settings);
             }
         });
+        
+        logger.info('EdgeManager initialized');
     }
 
     /**
@@ -117,10 +121,12 @@ export class EdgeManager {
      * Updates all edges with new data from the graph
      */
     public updateEdges(edges: Edge[]): void {
+        // Record update time for debugging
+        this.lastEdgeUpdateTime = performance.now();
+        this.edgeUpdateCount++;
+        
         // Debug logging - only if node debug is enabled
-        if (debugState.isNodeDebugEnabled()) {
-            logger.debug(`Updating ${edges.length} edges`);
-        }
+        logger.info(`Updating ${edges.length} edges (update #${this.edgeUpdateCount})`);
         
         // Clear existing edges
         this.clearEdges();
@@ -133,38 +139,81 @@ export class EdgeManager {
         // Track counts for debugging
         let edgesCreated = 0;
         let edgesSkipped = 0;
+        let positionsFound = 0;
+        
+        // Log more detailed information about the edges
+        if (debugState.isNodeDebugEnabled()) {
+            const edgesWithPositions = edges.filter(e => e.sourcePosition && e.targetPosition);
+            logger.debug(`Edge update details:`, createDataMetadata({
+                totalEdges: edges.length,
+                edgesWithPositions: edgesWithPositions.length,
+                firstFewEdges: edges.slice(0, 3).map(e => ({
+                    id: e.id,
+                    source: e.source,
+                    target: e.target,
+                    hasSourcePos: !!e.sourcePosition,
+                    hasTargetPos: !!e.targetPosition
+                }))
+            }));
+        }
 
         // Create new edges
         edges.forEach(edge => {
             // Cache mapping between source and target IDs
-            this.sourceTargetCache.set(edge.id || `${edge.source}_${edge.target}`, `${edge.source}:${edge.target}`);
+            const edgeId = edge.id || `${edge.source}_${edge.target}`;
+            this.sourceTargetCache.set(edgeId, `${edge.source}:${edge.target}`);
             
-            if (!edge.sourcePosition || !edge.targetPosition) { edgesSkipped++; return; }
+            let sourcePosition = edge.sourcePosition;
+            let targetPosition = edge.targetPosition;
+            
+            // Try to get positions from node manager if not provided
+            if (!sourcePosition || !targetPosition) {
+                const sourcePos = this.nodeManager.getNodePosition(edge.source);
+                const targetPos = this.nodeManager.getNodePosition(edge.target);
+                
+                if (sourcePos && targetPos) {
+                    // We found positions from the node manager, use them
+                    sourcePosition = sourcePos;
+                    targetPosition = targetPos;
+                    positionsFound++;
+                    
+                    if (debugState.isNodeDebugEnabled() && edgesCreated < 3) {
+                        logger.debug(`Found positions for edge ${edgeId} from node manager`);
+                    }
+                } else {
+                    // Still missing positions, skip this edge
+                    if (debugState.isNodeDebugEnabled() && edgesSkipped < 3) {
+                        logger.debug(`Missing positions for edge ${edgeId}: sourcePos=${!!sourcePos}, targetPos=${!!targetPos}`);
+                    }
+                    edgesSkipped++;
+                    return;
+                }
+            }
 
             // Clamp positions to reasonable values
             const source = new Vector3(
-                Math.min(100, Math.max(-100, edge.sourcePosition.x)),
-                Math.min(100, Math.max(-100, edge.sourcePosition.y)),
-                Math.min(100, Math.max(-100, edge.sourcePosition.z))
+                Math.min(100, Math.max(-100, sourcePosition.x)),
+                Math.min(100, Math.max(-100, sourcePosition.y)),
+                Math.min(100, Math.max(-100, sourcePosition.z))
             );
             
             const target = new Vector3(
-                Math.min(100, Math.max(-100, edge.targetPosition.x)),
-                Math.min(100, Math.max(-100, edge.targetPosition.y)),
-                Math.min(100, Math.max(-100, edge.targetPosition.z))
+                Math.min(100, Math.max(-100, targetPosition.x)),
+                Math.min(100, Math.max(-100, targetPosition.y)),
+                Math.min(100, Math.max(-100, targetPosition.z))
             );
 
             // Skip edge creation if source and target are too close
             const distance = source.distanceTo(target);
             if (distance < 0.001) {
-                if (debugState.isNodeDebugEnabled()) {
-                    logger.debug(`Skipping edge ${edge.id} - nodes too close: distance=${distance.toFixed(6)}`);
+                if (debugState.isNodeDebugEnabled() && edgesSkipped < 5) {
+                    logger.debug(`Skipping edge ${edgeId} - nodes too close: distance=${distance.toFixed(6)}`);
                 }
                 edgesSkipped++;
                 return;
             } else if (distance < 0.1) {
-                if (debugState.isNodeDebugEnabled()) {
-                    logger.debug(`Edge ${edge.id} has very small distance: ${distance.toFixed(6)}`);
+                if (debugState.isNodeDebugEnabled() && edgesCreated < 5) {
+                    logger.debug(`Edge ${edgeId} has very small distance: ${distance.toFixed(6)}`);
                 }
             }
 
@@ -177,16 +226,26 @@ export class EdgeManager {
             line.layers.enable(1);
             
             this.edgeGroup.add(line);
-            this.edges.set(edge.id, line);
-            this.edgeData.set(edge.id, edge);
+            this.edges.set(edgeId, line);
+            this.edgeData.set(edgeId, {
+                ...edge,
+                sourcePosition: source,
+                targetPosition: target
+            });
             edgesCreated++;
         });
         
         // Log summary
-        if (debugState.isNodeDebugEnabled()) {
-            logger.debug(`Edge update complete: ${edgesCreated} edges created, ${edgesSkipped} edges skipped`);
-            // Log first few edge positions for debugging
-            if (this.edgeData.size > 0) this.logEdgePositions(3);
+        logger.info(`Edge update complete:`, createDataMetadata({
+            edgesCreated,
+            edgesSkipped,
+            positionsFound,
+            totalEdges: this.edges.size
+        }));
+        
+        // Log first few edge positions for debugging
+        if (this.edgeData.size > 0 && debugState.isNodeDebugEnabled()) {
+            this.logEdgePositions(3);
         }
     }
 
@@ -203,7 +262,7 @@ export class EdgeManager {
                 try {
                     edge.material.color.set(settings.visualization.edges.color);
                 } catch (error) {
-                    console.warn('Could not update edge material color');
+                    logger.warn('Could not update edge material color');
                 }
                 edge.material.needsUpdate = true;
             }
@@ -227,11 +286,11 @@ export class EdgeManager {
             const sourcePos = this.nodeManager.getNodePosition(edgeData.source);
             const targetPos = this.nodeManager.getNodePosition(edgeData.target);
             
-            logger.debug(`Edge ${edgeId} (${edgeData.source}->${edgeData.target}):`, {
+            logger.debug(`Edge ${edgeId} (${edgeData.source}->${edgeData.target}):`, createDataMetadata({
                 source: sourcePos ? [sourcePos.x.toFixed(2), sourcePos.y.toFixed(2), sourcePos.z.toFixed(2)] : 'unknown',
                 target: targetPos ? [targetPos.x.toFixed(2), targetPos.y.toFixed(2), targetPos.z.toFixed(2)] : 'unknown',
                 meshExists: edge ? 'yes' : 'no'
-            });
+            }));
             
             logged++;
         }
@@ -246,14 +305,16 @@ export class EdgeManager {
 
         // Add debug logging to check edge count
         if (this.updateFrameCount % 60 === 0) {
-            console.log(`[EdgeManager] Currently tracking ${this.edges.size} edges, ${this.edgeData.size} edge data entries`);
+            logger.info(`Currently tracking ${this.edges.size} edges, ${this.edgeData.size} edge data entries, last update: ${Math.round((performance.now() - this.lastEdgeUpdateTime)/1000)}s ago`);
         }
         
         // Update edge positions based on current node positions
         this.edgeData.forEach((edgeData, edgeId) => {
             const edge = this.edges.get(edgeId);
             if (!edge) {
-                console.warn(`[EdgeManager] Edge ${edgeId} not found in edges map`);
+                if (this.updateFrameCount % 120 === 0) {
+                    logger.warn(`Edge ${edgeId} not found in edges map`);
+                }
                 return;
             }
 
@@ -261,8 +322,8 @@ export class EdgeManager {
             const targetPos = this.nodeManager.getNodePosition(edgeData.target);
 
             // Log positions for debugging
-            if (this.updateFrameCount % 120 === 0) {
-                console.log(`[EdgeManager] Edge ${edgeId} positions - sourcePos: ${sourcePos ? 'found' : 'missing'}, targetPos: ${targetPos ? 'found' : 'missing'}`);
+            if (this.updateFrameCount % 120 === 0 && debugState.isNodeDebugEnabled()) {
+                logger.debug(`Edge ${edgeId} positions - sourcePos: ${sourcePos ? 'found' : 'missing'}, targetPos: ${targetPos ? 'found' : 'missing'}`);
             }
 
             if (!sourcePos || !targetPos) {
@@ -271,10 +332,12 @@ export class EdgeManager {
             
             // Validate positions
             if (!this.validateVector3(sourcePos) || !this.validateVector3(targetPos)) {
-                if (this.updateFrameCount % 120 === 0)
-                    if (debugState.isNodeDebugEnabled()) {
-                        logger.warn(`Invalid vector in edge ${edgeId}: source=${JSON.stringify(sourcePos)}, target=${JSON.stringify(targetPos)}`);
-                    }
+                if (this.updateFrameCount % 120 === 0 && debugState.isNodeDebugEnabled()) {
+                    logger.warn(`Invalid vector in edge ${edgeId}:`, createDataMetadata({
+                        source: sourcePos ? [sourcePos.x, sourcePos.y, sourcePos.z] : 'invalid',
+                        target: targetPos ? [targetPos.x, targetPos.y, targetPos.z] : 'invalid'
+                    }));
+                }
                 return; 
             }
                 
@@ -306,58 +369,6 @@ export class EdgeManager {
         });
     }
 
-    // Updated version of update method that doesn't use forEach to avoid potential iterator issues
-    /*
-    public update(_deltaTime: number): void {
-        this.updateFrameCount++;
-        if (this.updateFrameCount % this.UPDATE_FREQUENCY !== 0) return;
-        
-        // Update edge positions based on current node positions
-        const edgeDataEntries = Array.from(this.edgeData.entries());
-        
-        for (const [edgeId, edgeData] of edgeDataEntries) {
-            const edge = this.edges.get(edgeId);
-            if (!edge) continue;
-
-            const sourcePos = this.nodeManager.getNodePosition(edgeData.source);
-            const targetPos = this.nodeManager.getNodePosition(edgeData.target);
-
-            if (!sourcePos || !targetPos) continue;
-
-                // Validate positions
-                if (!this.validateVector3(sourcePos) || !this.validateVector3(targetPos)) {
-                    continue; 
-                }
-                
-                // Limit edge length
-                const distance = sourcePos.distanceTo(targetPos);
-                let finalTargetPos = targetPos.clone();
-                
-                if (distance > this.MAX_EDGE_LENGTH) {
-                    const direction = new Vector3().subVectors(targetPos, sourcePos).normalize();
-                    finalTargetPos = sourcePos.clone().add(direction.multiplyScalar(this.MAX_EDGE_LENGTH));
-                }
-
-                // Update the existing geometry's positions directly
-                const posAttr = edge.geometry.getAttribute('position');
-                if (posAttr) {
-                    // Update each vertex position directly
-                    // Create a new geometry instead of updating the existing one
-                    const newGeometry = this.createLineGeometry(sourcePos, finalTargetPos);
-                    edge.geometry.dispose();
-                    edge.geometry = newGeometry;
-                }
-                
-                // Apply subtle pulsing animation if desired
-                if (edge.material instanceof LineBasicMaterial) {
-                    const baseOpacity = this.settings.visualization.edges.opacity || 0.7;
-                    const pulse = Math.sin(Date.now() * 0.001) * 0.1 + 0.9;
-                    edge.material.opacity = baseOpacity * pulse;
-                    edge.material.needsUpdate = true;
-                }
-            }
-        });
-    }*/
     /**
      * Set XR mode for edge rendering
      */
