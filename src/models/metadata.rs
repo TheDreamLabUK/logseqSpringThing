@@ -17,6 +17,8 @@ pub struct Metadata {
     pub hyperlink_count: usize,
     #[serde(default)]
     pub sha1: String,
+    #[serde(default = "default_node_id")]
+    pub node_id: String,
     #[serde(default = "Utc::now")]
     pub last_modified: DateTime<Utc>,
     #[serde(default)]
@@ -27,15 +29,30 @@ pub struct Metadata {
     pub topic_counts: HashMap<String, usize>,
 }
 
+// Default function for node_id to ensure backward compatibility
+fn default_node_id() -> String {
+    // Will be replaced with actual ID during processing
+    "0".to_string()
+}
+
 /// Type alias for metadata storage with camelCase keys
 pub type MetadataStore = HashMap<String, Metadata>;
 
 // Implement helper methods directly on HashMap<String, Metadata>
 pub trait MetadataOps {
     fn validate_files(&self, markdown_dir: &str) -> bool;
+    fn get_max_node_id(&self) -> u32;
 }
 
 impl MetadataOps for MetadataStore {
+    fn get_max_node_id(&self) -> u32 {
+        // Find the maximum node_id in the metadata store
+        self.values()
+            .map(|m| m.node_id.parse::<u32>().unwrap_or(0))
+            .max()
+            .unwrap_or(0)
+    }
+    
     fn validate_files(&self, markdown_dir: &str) -> bool {
         if self.is_empty() {
             return false;

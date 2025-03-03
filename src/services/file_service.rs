@@ -3,6 +3,7 @@ use crate::models::graph::GraphData;
 use crate::config::Settings;
 use serde::{Deserialize, Serialize};
 use log::{info, debug, error};
+use std::sync::atomic::{AtomicU32, Ordering};
 use regex::Regex;
 use std::fs;
 use std::path::Path;
@@ -33,11 +34,43 @@ pub struct ProcessedFile {
 
 pub struct FileService {
     settings: Arc<RwLock<Settings>>,
+    // Counter for assigning node IDs, initialized based on existing metadata
+    node_id_counter: AtomicU32,
 }
 
 impl FileService {
     pub fn new(settings: Arc<RwLock<Settings>>) -> Self {
-        Self { settings }
+        // Initialize with a default counter
+        let service = Self { 
+            settings,
+            node_id_counter: AtomicU32::new(1),
+        };
+        
+        // Try to initialize the counter based on existing metadata
+        if let Ok(metadata) = Self::load_or_create_metadata() {
+            let max_id = metadata.get_max_node_id();
+            if max_id > 0 {
+                // Start from the next ID after the maximum
+                service.node_id_counter.store(max_id + 1, Ordering::SeqCst);
+                info!("Initialized node ID counter to {} based on existing metadata", max_id + 1);
+            }
+        }
+        
+        service
+    }
+    
+    /// Get the next unique node ID
+    fn get_next_node_id(&self) -> u32 {
+        self.node_id_counter.fetch_add(1, Ordering::SeqCst)
+    }
+    
+    /// Update node IDs for processed files
+    fn update_node_ids(&self, processed_files: &mut Vec<ProcessedFile>) {
+        for processed_file in processed_files {
+            if processed_file.metadata.node_id == "0" {
+                processed_file.metadata.node_id = self.get_next_node_id().to_string();
+            }
+        }
     }
 
     /// Process uploaded file and return graph data
@@ -70,6 +103,7 @@ impl FileService {
             file_name: temp_filename.clone(),
             file_size,
             node_size,
+            node_id: "0".to_string(),
             hyperlink_count: Self::count_hyperlinks(&content),
             sha1: Self::calculate_sha1(&content),
             last_modified: Utc::now(),
@@ -77,6 +111,10 @@ impl FileService {
             last_perplexity_process: None,
             topic_counts,
         };
+
+        // Assign a unique node ID
+        let mut file_metadata = file_metadata;
+        file_metadata.node_id = self.get_next_node_id().to_string();
 
         // Update graph data
         graph_data.metadata.insert(temp_filename.clone(), file_metadata);
@@ -124,6 +162,7 @@ impl FileService {
             file_name: filename.to_string(),
             file_size,
             node_size,
+            node_id: "0".to_string(),
             hyperlink_count: Self::count_hyperlinks(&content),
             sha1: Self::calculate_sha1(&content),
             last_modified: Utc::now(),
@@ -131,6 +170,10 @@ impl FileService {
             last_perplexity_process: None,
             topic_counts,
         };
+
+        // Assign a unique node ID
+        let mut file_metadata = file_metadata;
+        file_metadata.node_id = self.get_next_node_id().to_string();
 
         // Update graph data
         graph_data.metadata.insert(filename.to_string(), file_metadata);
@@ -494,6 +537,7 @@ impl FileService {
                                         file_name: file_meta.name.clone(),
                                         file_size,
                                         node_size,
+                                        node_id: "0".to_string(), // Will be assigned properly later
                                         hyperlink_count: Self::count_hyperlinks(&content),
                                         sha1: Self::calculate_sha1(&content),
                                         last_modified: file_meta.last_modified.unwrap_or_else(|| Utc::now()),
@@ -540,6 +584,9 @@ impl FileService {
 
             sleep(GITHUB_API_DELAY).await;
         }
+
+        // Assign node IDs to any new files
+        self.update_node_ids(&mut processed_files);
 
         // Update topic counts after all files are processed
         Self::update_topic_counts(metadata_store)?;

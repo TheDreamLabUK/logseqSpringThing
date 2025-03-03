@@ -114,8 +114,12 @@ impl GraphService {
 
         // Create nodes for all valid node IDs
         for node_id in &valid_nodes {
-            let mut node = Node::new(node_id.clone());
-            // Store the mapping from numeric ID to metadata_id
+            // Get metadata for this node, including the node_id if available
+            let metadata_entry = graph.metadata.get(&format!("{}.md", node_id));
+            let stored_node_id = metadata_entry.map(|m| m.node_id.clone());
+            
+            // Create node with stored ID or generate a new one if not available
+            let mut node = Node::new_with_id(node_id.clone(), stored_node_id);
             graph.id_to_metadata.insert(node.id.clone(), node_id.clone());
             
             // Get metadata for this node
@@ -222,8 +226,12 @@ impl GraphService {
 
         // Create nodes for all valid node IDs
         for node_id in &valid_nodes {
-            let mut node = Node::new(node_id.clone());
-            // Store the mapping from numeric ID to metadata_id
+            // Get metadata for this node, including the node_id if available
+            let metadata_entry = metadata.get(&format!("{}.md", node_id));
+            let stored_node_id = metadata_entry.map(|m| m.node_id.clone());
+            
+            // Create node with stored ID or generate a new one if not available
+            let mut node = Node::new_with_id(node_id.clone(), stored_node_id);
             graph.id_to_metadata.insert(node.id.clone(), node_id.clone());
             
             // Get metadata for this node
