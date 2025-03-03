@@ -23,9 +23,10 @@ Located in `src/utils/compute_forces.cu`:
 ### 3. Binary Protocol
 Located in `src/utils/binary_protocol.rs`:
 - Direct serialization of Vec3Data
+- Node IDs stored as u16 (2 bytes) for compactness
 - Consistent 12-byte layout per vector
 - Little-endian encoding
-- Zero-copy potential
+- 26 bytes per node (2 + 12 + 12)
 
 ### 4. WebSocket Protocol
 Located in `src/utils/socket_flow_messages.rs`:
@@ -38,7 +39,7 @@ Located in `client/types/vec3.ts`:
 - TypeScript Vec3 interface mirrors Vec3Data
 - Conversion utilities for Three.js Vector3
 - Array format support for compatibility
-- Zero initialization helper
+- Direct mapping to THREE.Vector3 objects
 
 ## Memory Layout
 
@@ -93,6 +94,14 @@ const vec = Vec3.new(x, y, z);
 ```
 
 ## Future Improvements
+
+1. Optimized Binary Protocol:
+   - Reduced node size from 28 to 26 bytes per node
+   - Changed node ID from u32 to u16
+   - Removed header metadata (version, sequence, timestamp)
+   - Direct Vector3/Vec3Data representation throughout pipeline
+   - Helper functions for GPU array compatibility
+   - Improved type safety and code clarity
 
 1. SIMD Operations:
    - Add SIMD-optimized operations to Vec3Data

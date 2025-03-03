@@ -1,6 +1,6 @@
 import { transformGraphData, Node, Edge, GraphData } from '../core/types';
 import { createLogger } from '../core/utils';
-import { Vec3 } from '../types/vec3';
+import { Vector3 } from 'three';
 import { API_ENDPOINTS } from '../core/constants';
 import { debugState } from '../core/debugState';
 
@@ -33,8 +33,8 @@ interface EdgeWithId extends Edge {
   id: string;
 }
 
-// Define NodePosition type using Vec3 interface
-type NodePosition = Vec3;
+// Update NodePosition type to use THREE.Vector3
+type NodePosition = Vector3;
 
 export class GraphDataManager {
   private static instance: GraphDataManager;
@@ -445,6 +445,8 @@ export class GraphDataManager {
     transformedData.nodes.forEach((node: Node) => {
       // Check if we already have this node
       const existingNode = this.nodes.get(node.id);
+      
+      
       if (existingNode) {
         // Update position and velocity
         existingNode.data.position.copy(node.data.position);
@@ -599,11 +601,12 @@ export class GraphDataManager {
       
       if (!nodeId) continue;
 
-      this.positionUpdateBuffer.set(nodeId, {
-        x: positions[offset],
-        y: positions[offset + 1],
-        z: positions[offset + 2]
-      });
+      // Create proper THREE.Vector3 object instead of a plain object
+      this.positionUpdateBuffer.set(nodeId, new Vector3(
+        positions[offset],
+        positions[offset + 1],
+        positions[offset + 2]
+      ));
     }
 
     // Schedule buffer flush if not already scheduled
@@ -618,10 +621,14 @@ export class GraphDataManager {
   private flushPositionUpdates(): void {
     if (this.positionUpdateBuffer.size === 0) return;
 
+    // Make sure we're working with proper THREE.Vector3 objects for data flow
     const updates = Array.from(this.positionUpdateBuffer.entries())
       .map(([id, position]) => ({
         id,
-        data: { position, velocity: undefined }
+        data: { 
+          position, // This is now a THREE.Vector3 object
+          velocity: undefined 
+        }
       }));
 
     // Convert node updates to Float32Array for binary protocol
@@ -631,6 +638,7 @@ export class GraphDataManager {
     updates.forEach((node, index) => {
       const baseIndex = index * FLOATS_PER_NODE;
       // Position (x, y, z)
+      // Access x, y, z properties from the THREE.Vector3 object
       positionsArray[baseIndex] = node.data.position.x;
       positionsArray[baseIndex + 1] = node.data.position.y;
       positionsArray[baseIndex + 2] = node.data.position.z;

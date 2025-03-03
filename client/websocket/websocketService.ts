@@ -2,7 +2,6 @@ import { createLogger, createErrorMetadata, createMessageMetadata, createDataMet
 import { buildWsUrl } from '../core/api';
 import { debugState } from '../core/debugState';
 import { Vector3 } from 'three';
-import { createVector3, zeroVector3, vector3ToObject, isValidVector3, clampVector3, vector3Equals } from '../utils/vectorUtils';
 import pako from 'pako';
 import { UpdateThrottler } from '../core/utils';
 
@@ -26,9 +25,8 @@ function debugLog(message: string, ...args: any[]) {
 // Compression settings
 const COMPRESSION_THRESHOLD = 1024; // Only compress messages larger than 1KB
 
-// Protocol constants
-const PROTOCOL_VERSION = 1;
-const HEADER_SIZE = 13; // 1 byte version + 4 bytes sequence + 8 bytes timestamp
+// Binary format constants
+const BYTES_PER_NODE = 26; // 2 (ID) + 12 (position) + 12 (velocity)
 
 enum ConnectionState {
     DISCONNECTED = 'disconnected',
@@ -40,9 +38,9 @@ enum ConnectionState {
 
 // Interface for node updates from user interaction
 interface NodeUpdate {
-    id: string;          // Node ID (string in metadata, but must be converted to u32 index for binary protocol)
-    position: Vector3;   // Current position (Three.js Vector3)
-    velocity?: Vector3;  // Optional velocity (Three.js Vector3)
+    id: string;          // Node ID (string in metadata, but must be converted to u16 index for binary protocol)
+    position: Vector3;   // Current position (Three.js Vector3 object)
+    velocity?: Vector3;  // Optional velocity (Three.js Vector3 object)
     metadata?: {
         name?: string;
         lastModified?: number;
@@ -53,21 +51,14 @@ interface NodeUpdate {
     };
 }
 
-// Interface matching server's binary protocol format (28 bytes per node):
-// - id: 4 bytes (u32)
-// - position: 12 bytes (Vec3Data)
-// - velocity: 12 bytes (Vec3Data)
+// Interface matching server's binary protocol format (26 bytes per node):
+// - id: 2 bytes (u16)
+// - position: 12 bytes (3xf32)
+// - velocity: 12 bytes (3xf32)
 interface BinaryNodeData {
     id: number;
-    position: Vector3;   // Three.js Vector3
-    velocity: Vector3;   // Three.js Vector3
-}
-
-// New interface for binary message header
-interface BinaryMessageHeader {
-    version: number;
-    sequence: number;
-    timestamp: number;
+    position: Vector3;   // Three.js Vector3 object
+    velocity: Vector3;   // Three.js Vector3 object
 }
 
 type BinaryMessageCallback = (nodes: BinaryNodeData[]) => void;
@@ -88,8 +79,6 @@ export class WebSocketService {
     private url: string = buildWsUrl(); // Initialize URL immediately
     private initialDataReceived: boolean = false;
     private connectionStatusHandler: ((status: boolean) => void) | null = null;
-    private readonly MAX_POSITION = 1000.0;
-    private readonly MAX_VELOCITY = 0.05; // Reduced to align with server's MAX_VELOCITY (0.02)
 
     // Add a debounce mechanism for node updates
     private loadingStatusHandler: ((isLoading: boolean, message?: string) => void) | null = null;
@@ -101,24 +90,8 @@ export class WebSocketService {
     
     // New fields for improved throttling
     private updateThrottler = new UpdateThrottler(16.67); // ~60fps (1000ms / 60)
-    private lastSequenceNumber: number = 0;
     private pendingNodeUpdates: BinaryNodeData[] = [];
 
-    private validateAndClampVector3(vec: Vector3, max: number): Vector3 {
-        if (!isValidVector3(vec)) {
-            // Return a valid vector at origin rather than zeroing out
-            return zeroVector3();
-        }
-        
-        // If the vector has NaN or infinite values, replace with zero
-        const sanitizedVec = new Vector3(
-            isNaN(vec.x) || !isFinite(vec.x) ? 0 : vec.x,
-            isNaN(vec.y) || !isFinite(vec.y) ? 0 : vec.y,
-            isNaN(vec.z) || !isFinite(vec.z) ? 0 : vec.z
-        );
-        
-        return clampVector3(sanitizedVec, -max, max);
-    }
 
     private constructor() {
         // Don't automatically connect - wait for explicit connect() call
@@ -385,121 +358,82 @@ export class WebSocketService {
 
     private handleBinaryMessage(buffer: ArrayBuffer): void {
         try {
-            // Log raw buffer details before processing
             if (buffer.byteLength === 0) {
                 logger.warn('Received empty binary message, ignoring');
                 return;
             }
             
-            const isCompressed = buffer.byteLength > 0 && (buffer.byteLength - HEADER_SIZE) % 28 !== 0;
+            const isCompressed = buffer.byteLength > 0 && buffer.byteLength % BYTES_PER_NODE !== 0;
 
             const decompressedBuffer = this.tryDecompress(buffer);
-           
+            
             // Throttled debug logging for binary messages
-             debugLog('Binary data processed:', createDataMetadata({ 
+            debugLog('Binary data processed:', createDataMetadata({ 
                 rawSize: buffer.byteLength, 
                 initialDataReceived: this.initialDataReceived,
                 decompressedSize: decompressedBuffer.byteLength, 
                 isCompressed,
-                nodeCount: (decompressedBuffer.byteLength - HEADER_SIZE) / 28
+                nodeCount: decompressedBuffer.byteLength / BYTES_PER_NODE
             }));
             
-            // Check if buffer is too small to contain header
-            if (!decompressedBuffer || decompressedBuffer.byteLength < HEADER_SIZE) {
-                logger.error('Binary message too small to contain header');
+            // Check if buffer is empty
+            if (!decompressedBuffer || decompressedBuffer.byteLength === 0) {
+                logger.error('Empty binary message after decompression');
                 return;
             }
             
             const dataView = new DataView(decompressedBuffer);
             
-            // Read header
-            const header: BinaryMessageHeader = {
-                version: dataView.getUint8(0),
-                sequence: dataView.getUint32(1, true),
-                timestamp: Number(dataView.getBigUint64(5, true))
-            };
-            
-            // Log header information
-            debugLog('Binary message header:', createDataMetadata({
-                version: header.version,
-                sequence: header.sequence,
-                timestamp: header.timestamp,
-                timeDiff: Date.now() - header.timestamp
-            }));
-            
-            // Check for missed messages
-            if (this.lastSequenceNumber > 0 && header.sequence > this.lastSequenceNumber + 1) {
-                logger.warn(`Missed ${header.sequence - this.lastSequenceNumber - 1} binary updates`);
-            }
-            this.lastSequenceNumber = header.sequence;
-            
-            // Validate message size (must be header + multiple of 28 bytes)
-            if ((decompressedBuffer.byteLength - HEADER_SIZE) % 28 !== 0) {
+            // Validate message size (must be a multiple of BYTES_PER_NODE)
+            if (decompressedBuffer.byteLength % BYTES_PER_NODE !== 0) {
                 // Enhanced error logging for production debugging
                 const errorDetails = {
                     bufferSize: buffer.byteLength,
                     decompressedSize: decompressedBuffer?.byteLength ?? 0,
-                    remainder: (decompressedBuffer?.byteLength - HEADER_SIZE) % 28,
-                    expectedNodeCount: Math.floor((decompressedBuffer?.byteLength - HEADER_SIZE) / 28),
+                    remainder: decompressedBuffer?.byteLength % BYTES_PER_NODE,
+                    expectedNodeCount: Math.floor(decompressedBuffer?.byteLength / BYTES_PER_NODE),
                     url: this.url
                 };
                 logger.error('Invalid binary message size:', createDataMetadata(errorDetails));
                 return;
             }
 
-            const nodeCount = (decompressedBuffer.byteLength - HEADER_SIZE) / 28;
+            const nodeCount = decompressedBuffer.byteLength / BYTES_PER_NODE;
 
             if (nodeCount === 0) {
                 logger.warn('No nodes in binary update - empty message received');
                 return;
             }
             
-            // Start reading nodes after the header
-            let offset = HEADER_SIZE;
-            let invalidValuesFound = false;
+            // Start reading nodes from the beginning
+            let offset = 0;
             const nodes: BinaryNodeData[] = [];
             
             for (let i = 0; i < nodeCount; i++) {
-                const id = dataView.getUint32(offset, true);
-                offset += 4;
-
-                const position = createVector3(
-                    dataView.getFloat32(offset, true),      // x
-                    dataView.getFloat32(offset + 4, true),  // y
-                    dataView.getFloat32(offset + 8, true)   // z
-                );
+                // Read node ID (u16)
+                const id = dataView.getUint16(offset, true);
+                offset += 2;
+                
+                // Create THREE.Vector3 objects directly
+                const position = new Vector3(
+                    dataView.getFloat32(offset, true),     // x
+                    dataView.getFloat32(offset + 4, true), // y
+                    dataView.getFloat32(offset + 8, true)  // z
+                );                
                 offset += 12;
 
-                const velocity = createVector3(
+                const velocity = new Vector3(
                     dataView.getFloat32(offset, true),      // x
                     dataView.getFloat32(offset + 4, true),  // y
                     dataView.getFloat32(offset + 8, true)   // z
                 );
                 offset += 12;
                 
-                // Validate and clamp position and velocity
-                // No longer being lenient with position validation to prevent node explosions
-                const sanitizedPosition = this.validateAndClampVector3(position, this.MAX_POSITION);
-                const sanitizedVelocity = this.validateAndClampVector3(velocity, this.MAX_VELOCITY);
-                
-                // Check if values were invalid using vector3Equals
-                if (!vector3Equals(position, sanitizedPosition) || !vector3Equals(velocity, sanitizedVelocity)) {
-                    invalidValuesFound = true;
-                    logger.warn('Invalid values detected in binary message:', createDataMetadata({
-                        nodeId: id,
-                        originalPosition: vector3ToObject(position),
-                        sanitizedPosition: vector3ToObject(sanitizedPosition),
-                        originalVelocity: vector3ToObject(velocity),
-                        sanitizedVelocity: vector3ToObject(sanitizedVelocity)
-                    }));
-                }
-
-                nodes.push({ id, position: sanitizedPosition, velocity: sanitizedVelocity });
+                nodes.push({ id, position, velocity });
             }
-            
+
             // Enhanced logging for node ID tracking - log every 100th update
-            const shouldLogExtras = debugState.isNodeDebugEnabled() && 
-                                   Math.random() < 0.01; // ~1% chance to log per update
+            const shouldLogExtras = debugState.isNodeDebugEnabled() && Math.random() < 0.01; // ~1% chance to log per update
                 
             if (shouldLogExtras) {
                 // Sample a few nodes for debugging
@@ -518,10 +452,6 @@ export class WebSocketService {
                         }))
                     }));
                 }
-            }
-            
-            if (invalidValuesFound) {
-                logger.warn('Some nodes had invalid position/velocity values that were clamped');
             }
 
             // Add nodes to pending updates
@@ -779,18 +709,13 @@ export class WebSocketService {
         // Clear the queue
         this.nodeUpdateQueue = [];
 
-        // Calculate buffer size: header + node data
-        const bufferSize = HEADER_SIZE + (updates.length * 28);
+        // Calculate buffer size based on node count (26 bytes per node)
+        const bufferSize = updates.length * BYTES_PER_NODE;
         const buffer = new ArrayBuffer(bufferSize);
         const dataView = new DataView(buffer);
         
-        // Write header: version, sequence number, timestamp
-        dataView.setUint8(0, PROTOCOL_VERSION);
-        dataView.setUint32(1, this.lastSequenceNumber + 1, true);
-        dataView.setBigUint64(5, BigInt(Date.now()), true);
-        
-        // Start writing node data after header
-        let offset = HEADER_SIZE;
+        // Start writing node data from the beginning
+        let offset = 0;
 
         updates.forEach(update => {
             const id = parseInt(update.id, 10); 
@@ -804,26 +729,26 @@ export class WebSocketService {
                 }));
                 return; // Skip this update
             }
-            dataView.setUint32(offset, id, true);
-            offset += 4;
+            // Write node ID as u16 
+            dataView.setUint16(offset, id, true);
+            offset += 2;
 
             // Validate and clamp position
-            const validPosition = this.validateAndClampVector3(update.position, this.MAX_POSITION);
+            const position = update.position;
             
             // Write position
-            dataView.setFloat32(offset, validPosition.x, true);
-            dataView.setFloat32(offset + 4, validPosition.y, true);
-            dataView.setFloat32(offset + 8, validPosition.z, true);
+            dataView.setFloat32(offset, position.x, true);
+            dataView.setFloat32(offset + 4, position.y, true);
+            dataView.setFloat32(offset + 8, position.z, true);
             offset += 12;
 
             // Validate and clamp velocity (default to zero vector if not provided)
-            const rawVelocity = update.velocity ?? zeroVector3();
-            const validVelocity = this.validateAndClampVector3(rawVelocity, this.MAX_VELOCITY);
+            const velocity = update.velocity ?? new Vector3(0, 0, 0);
             
             // Write velocity
-            dataView.setFloat32(offset, validVelocity.x, true);
-            dataView.setFloat32(offset + 4, validVelocity.y, true);
-            dataView.setFloat32(offset + 8, validVelocity.z, true);
+            dataView.setFloat32(offset, velocity.x, true);
+            dataView.setFloat32(offset + 4, velocity.y, true);
+            dataView.setFloat32(offset + 8, velocity.z, true);
             offset += 12;
         });
 

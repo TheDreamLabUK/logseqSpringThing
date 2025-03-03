@@ -1,8 +1,10 @@
 use serde::{Deserialize, Serialize};
 use bytemuck::{Pod, Zeroable};
 use std::collections::HashMap;
+use crate::types::vec3::Vec3Data;
 use std::sync::atomic::{AtomicU32, Ordering};
 use cudarc::driver::{DeviceRepr, ValidAsZeroBits};
+use glam::Vec3;
 
 // Static counter for generating unique numeric IDs
 static NEXT_NODE_ID: AtomicU32 = AtomicU32::new(1);  // Start from 1 (0 could be reserved)
@@ -11,16 +13,16 @@ static NEXT_NODE_ID: AtomicU32 = AtomicU32::new(1);  // Start from 1 (0 could be
 #[derive(Debug, Clone, Copy, Pod, Zeroable, Serialize, Deserialize)]
 /// Binary node data structure for efficient transmission and GPU processing
 /// 
-/// Wire format (28 bytes per node):
-/// - position: [f32; 3] (12 bytes)
-/// - velocity: [f32; 3] (12 bytes)
-/// - id: u32 (4 bytes)
+/// Wire format (26 bytes per node):
+/// - position: Vec3Data (12 bytes)
+/// - velocity: Vec3Data (12 bytes)
+/// - id: u16 (2 bytes)
 ///
 /// Note: mass, flags, and padding are server-side only and not transmitted over the wire
 /// to optimize bandwidth. They are still available for GPU processing and physics calculations.
 pub struct BinaryNodeData {
-    pub position: [f32; 3],
-    pub velocity: [f32; 3],
+    pub position: Vec3Data,
+    pub velocity: Vec3Data,
     pub mass: u8,      // Server-side only, not transmitted
     pub flags: u8,     // Server-side only, not transmitted
     pub padding: [u8; 2], // Server-side only, not transmitted
@@ -92,8 +94,8 @@ impl Node {
             metadata_id: metadata_id.clone(),
             label: metadata_id,
             data: BinaryNodeData {
-                position: [0.0, 0.0, 0.0],
-                velocity: [0.0, 0.0, 0.0],
+                position: Vec3Data::zero(),
+                velocity: Vec3Data::zero(),
                 mass: 0, // default mass, will be updated based on file size
                 flags: 0,
                 padding: [0, 0],
@@ -126,19 +128,19 @@ impl Node {
     }
 
     // Convenience getters/setters for x, y, z coordinates
-    pub fn x(&self) -> f32 { self.data.position[0] }
-    pub fn y(&self) -> f32 { self.data.position[1] }
-    pub fn z(&self) -> f32 { self.data.position[2] }
-    pub fn vx(&self) -> f32 { self.data.velocity[0] }
-    pub fn vy(&self) -> f32 { self.data.velocity[1] }
-    pub fn vz(&self) -> f32 { self.data.velocity[2] }
+    pub fn x(&self) -> f32 { self.data.position.x }
+    pub fn y(&self) -> f32 { self.data.position.y }
+    pub fn z(&self) -> f32 { self.data.position.z }
+    pub fn vx(&self) -> f32 { self.data.velocity.x }
+    pub fn vy(&self) -> f32 { self.data.velocity.y }
+    pub fn vz(&self) -> f32 { self.data.velocity.z }
     
-    pub fn set_x(&mut self, val: f32) { self.data.position[0] = val; }
-    pub fn set_y(&mut self, val: f32) { self.data.position[1] = val; }
-    pub fn set_z(&mut self, val: f32) { self.data.position[2] = val; }
-    pub fn set_vx(&mut self, val: f32) { self.data.velocity[0] = val; }
-    pub fn set_vy(&mut self, val: f32) { self.data.velocity[1] = val; }
-    pub fn set_vz(&mut self, val: f32) { self.data.velocity[2] = val; }
+    pub fn set_x(&mut self, val: f32) { self.data.position.x = val; }
+    pub fn set_y(&mut self, val: f32) { self.data.position.y = val; }
+    pub fn set_z(&mut self, val: f32) { self.data.position.z = val; }
+    pub fn set_vx(&mut self, val: f32) { self.data.velocity.x = val; }
+    pub fn set_vy(&mut self, val: f32) { self.data.velocity.y = val; }
+    pub fn set_vz(&mut self, val: f32) { self.data.velocity.z = val; }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -152,4 +154,20 @@ pub enum Message {
     
     #[serde(rename = "enableRandomization")]
     EnableRandomization { enabled: bool },
+}
+
+// Helper functions to convert between Vec3Data and [f32; 3] for GPU computations
+#[inline]
+pub fn vec3data_to_array(vec: &Vec3Data) -> [f32; 3] {
+    [vec.x, vec.y, vec.z]
+}
+
+#[inline]
+pub fn array_to_vec3data(arr: [f32; 3]) -> Vec3Data {
+    Vec3Data::new(arr[0], arr[1], arr[2])
+}
+
+#[inline]
+pub fn vec3data_to_glam(vec: &Vec3Data) -> Vec3 {
+    Vec3::new(vec.x, vec.y, vec.z)
 }

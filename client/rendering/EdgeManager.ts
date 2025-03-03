@@ -34,6 +34,11 @@ export class EdgeManager {
     private lastEdgeUpdateTime = 0;
     private edgeUpdateCount = 0;
 
+    // Reusable objects to avoid allocation during updates
+    private tempDirection = new Vector3();
+    private tempSourceVec = new Vector3();
+    private tempTargetVec = new Vector3();
+
     constructor(scene: Scene, settings: Settings, nodeManager: NodeInstanceManager) {
         this.scene = scene;
         this.nodeManager = nodeManager;
@@ -70,8 +75,8 @@ export class EdgeManager {
     private validateVector3(vec: Vector3): boolean {
         const MAX_VALUE = 1000;
         return isFinite(vec.x) && isFinite(vec.y) && isFinite(vec.z) &&
-               !isNaN(vec.x) && !isNaN(vec.y) && !isNaN(vec.z) &&
-               Math.abs(vec.x) < MAX_VALUE && Math.abs(vec.y) < MAX_VALUE && Math.abs(vec.z) < MAX_VALUE;
+             !isNaN(vec.x) && !isNaN(vec.y) && !isNaN(vec.z) &&
+             Math.abs(vec.x) < MAX_VALUE && Math.abs(vec.y) < MAX_VALUE && Math.abs(vec.z) < MAX_VALUE;
     }
 
     /**
@@ -82,14 +87,14 @@ export class EdgeManager {
         
         // Apply maximum edge length limit to prevent explosion
         const distance = source.distanceTo(target);
-        const finalTarget = new Vector3().copy(target);
+        const finalTarget = target.clone();
         
         if (distance > this.MAX_EDGE_LENGTH) {
             // Create limited-length vector in same direction
-            const direction = new Vector3().subVectors(target, source).normalize();
+            this.tempDirection.subVectors(target, source).normalize();
             // Direction check to prevent issues with zero vectors
-            if (isNaN(direction.x) || isNaN(direction.y) || isNaN(direction.z)) return geometry;
-            finalTarget.copy(source).add(direction.multiplyScalar(this.MAX_EDGE_LENGTH));
+            if (isNaN(this.tempDirection.x) || isNaN(this.tempDirection.y) || isNaN(this.tempDirection.z)) return geometry;
+            finalTarget.copy(source).add(this.tempDirection.multiplyScalar(this.MAX_EDGE_LENGTH));
         }
         
         // Line geometry only needs the start and end positions
@@ -120,34 +125,34 @@ export class EdgeManager {
     /**
      * Updates all edges with new data from the graph
      */
-    public updateEdges(edges: Edge[]): void {
+    public updateEdges(newEdges: Edge[]): void {
         // Record update time for debugging
         this.lastEdgeUpdateTime = performance.now();
         this.edgeUpdateCount++;
         
-        // Debug logging - only if node debug is enabled
-        logger.info(`Updating ${edges.length} edges (update #${this.edgeUpdateCount})`);
+        logger.info(`Updating ${newEdges.length} edges (update #${this.edgeUpdateCount})`);
         
-        // Clear existing edges
-        this.clearEdges();
+        // Track current edge IDs to detect removals
+        const currentEdgeIds = new Set(this.edges.keys());
+        const updatedEdgeIds = new Set<string>();
         
-        // Clear maps
-        this.edgeData.clear();
-        this.edges.clear();
+        // Only clear source-target cache, we'll rebuild it while keeping active edges
         this.sourceTargetCache.clear();
         
         // Track counts for debugging
         let edgesCreated = 0;
+        let edgesUpdated = 0;
         let edgesSkipped = 0;
+        let edgesRemoved = 0;
         let positionsFound = 0;
         
         // Log more detailed information about the edges
         if (debugState.isNodeDebugEnabled()) {
-            const edgesWithPositions = edges.filter(e => e.sourcePosition && e.targetPosition);
+            const edgesWithPositions = newEdges.filter(e => e.sourcePosition && e.targetPosition);
             logger.debug(`Edge update details:`, createDataMetadata({
-                totalEdges: edges.length,
+                totalEdges: newEdges.length,
                 edgesWithPositions: edgesWithPositions.length,
-                firstFewEdges: edges.slice(0, 3).map(e => ({
+                firstFewEdges: newEdges.slice(0, 3).map(e => ({
                     id: e.id,
                     source: e.source,
                     target: e.target,
@@ -157,10 +162,11 @@ export class EdgeManager {
             }));
         }
 
-        // Create new edges
-        edges.forEach(edge => {
+        // Process new edges
+        newEdges.forEach(edge => {
             // Cache mapping between source and target IDs
             const edgeId = edge.id || `${edge.source}_${edge.target}`;
+            updatedEdgeIds.add(edgeId);
             this.sourceTargetCache.set(edgeId, `${edge.source}:${edge.target}`);
             
             let sourcePosition = edge.sourcePosition;
@@ -191,20 +197,24 @@ export class EdgeManager {
             }
 
             // Clamp positions to reasonable values
-            const source = new Vector3(
+            this.tempSourceVec.set(
                 Math.min(100, Math.max(-100, sourcePosition.x)),
                 Math.min(100, Math.max(-100, sourcePosition.y)),
                 Math.min(100, Math.max(-100, sourcePosition.z))
             );
             
-            const target = new Vector3(
+            this.tempTargetVec.set(
                 Math.min(100, Math.max(-100, targetPosition.x)),
                 Math.min(100, Math.max(-100, targetPosition.y)),
                 Math.min(100, Math.max(-100, targetPosition.z))
             );
 
+            // Create permanent copies for storage
+            const source = this.tempSourceVec.clone();
+            const target = this.tempTargetVec.clone();
+
             // Skip edge creation if source and target are too close
-            const distance = source.distanceTo(target);
+            const distance = this.tempSourceVec.distanceTo(this.tempTargetVec);
             if (distance < 0.001) {
                 if (debugState.isNodeDebugEnabled() && edgesSkipped < 5) {
                     logger.debug(`Skipping edge ${edgeId} - nodes too close: distance=${distance.toFixed(6)}`);
@@ -217,28 +227,68 @@ export class EdgeManager {
                 }
             }
 
-            const geometry = this.createLineGeometry(source, target);
-            const material = this.createEdgeMaterial();
-            const line = new Mesh(geometry, material);
+            // Check if we already have this edge
+            const existingEdge = this.edges.get(edgeId);
+            if (existingEdge) {
+                // Update existing edge - store new positions
+                this.edgeData.set(edgeId, {
+                    ...edge,
+                    sourcePosition: source,
+                    targetPosition: target
+                });
+                edgesUpdated++;
+            } else {
+                // Create new edge
+                const geometry = this.createLineGeometry(source, target);
+                const material = this.createEdgeMaterial();
+                const line = new Mesh(geometry, material);
 
-            // Enable both layers for the edge
-            line.layers.enable(0);
-            line.layers.enable(1);
-            
-            this.edgeGroup.add(line);
-            this.edges.set(edgeId, line);
-            this.edgeData.set(edgeId, {
-                ...edge,
-                sourcePosition: source,
-                targetPosition: target
-            });
-            edgesCreated++;
+                // Enable both layers for the edge
+                line.layers.enable(0);
+                line.layers.enable(1);
+                
+                this.edgeGroup.add(line);
+                this.edges.set(edgeId, line);
+                this.edgeData.set(edgeId, {
+                    ...edge,
+                    sourcePosition: source,
+                    targetPosition: target
+                });
+                edgesCreated++;
+            }
         });
+
+        // Remove edges that weren't in the update
+        for (const edgeId of currentEdgeIds) {
+            if (!updatedEdgeIds.has(edgeId)) {
+                const edge = this.edges.get(edgeId);
+                if (edge) {
+                    // Remove from group
+                    this.edgeGroup.remove(edge);
+                    
+                    // Dispose of geometry and material
+                    if (edge.geometry) {
+                        edge.geometry.dispose();
+                    }
+                    
+                    if (edge.material instanceof Material) {
+                        edge.material.dispose();
+                    }
+                    
+                    // Remove from maps
+                    this.edges.delete(edgeId);
+                    this.edgeData.delete(edgeId);
+                    edgesRemoved++;
+                }
+            }
+        }
         
         // Log summary
         logger.info(`Edge update complete:`, createDataMetadata({
             edgesCreated,
+            edgesUpdated,
             edgesSkipped,
+            edgesRemoved,
             positionsFound,
             totalEdges: this.edges.size
         }));
@@ -343,20 +393,24 @@ export class EdgeManager {
                 
             // Limit edge length
             const distance = sourcePos.distanceTo(targetPos);
-            let finalTargetPos = targetPos.clone();
+            
+            // Reuse vectors to reduce allocations
+            this.tempTargetVec.copy(targetPos);
             
             if (distance > this.MAX_EDGE_LENGTH) {
-                const direction = new Vector3().subVectors(targetPos, sourcePos).normalize();
-                finalTargetPos = sourcePos.clone().add(direction.multiplyScalar(this.MAX_EDGE_LENGTH));
+                this.tempDirection.subVectors(targetPos, sourcePos).normalize();
+                this.tempTargetVec.copy(sourcePos).add(
+                    this.tempDirection.multiplyScalar(this.MAX_EDGE_LENGTH)
+                );
             }
 
             // Update the existing geometry's positions directly
             const posAttr = edge.geometry.getAttribute('position');
             if (posAttr) {
-                // Create a new geometry instead of updating the existing one
-                const newGeometry = this.createLineGeometry(sourcePos, finalTargetPos);
-                edge.geometry.dispose();
-                edge.geometry = newGeometry;
+                // Update the existing BufferAttribute instead of recreating the geometry
+                posAttr.setXYZ(0, sourcePos.x, sourcePos.y, sourcePos.z);
+                posAttr.setXYZ(1, this.tempTargetVec.x, this.tempTargetVec.y, this.tempTargetVec.z);
+                posAttr.needsUpdate = true;
             }
             
             // Apply subtle pulsing animation if desired

@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU32, Ordering};
 use crate::utils::socket_flow_messages::BinaryNodeData;
+use crate::types::vec3::Vec3Data;
 
 // Static counter for generating unique numeric IDs
 static NEXT_NODE_ID: AtomicU32 = AtomicU32::new(1);  // Start from 1 (0 could be reserved)
@@ -47,8 +48,8 @@ impl Node {
             metadata_id: metadata_id.clone(),
             label: metadata_id,
             data: BinaryNodeData {
-                position: [0.0, 0.0, 0.0],
-                velocity: [0.0, 0.0, 0.0],
+                position: Vec3Data::zero(),
+                velocity: Vec3Data::zero(),
                 mass: 0,
                 flags: 1, // Active by default
                 padding: [0, 0],
@@ -73,12 +74,12 @@ impl Node {
     }
 
     pub fn with_position(mut self, x: f32, y: f32, z: f32) -> Self {
-        self.data.position = [x, y, z];
+        self.data.position = Vec3Data::new(x, y, z);
         self
     }
 
     pub fn with_velocity(mut self, vx: f32, vy: f32, vz: f32) -> Self {
-        self.data.velocity = [vx, vy, vz];
+        self.data.velocity = Vec3Data::new(vx, vy, vz);
         self
     }
 
@@ -118,19 +119,19 @@ impl Node {
     }
 
     // Convenience getters/setters for position and velocity
-    pub fn x(&self) -> f32 { self.data.position[0] }
-    pub fn y(&self) -> f32 { self.data.position[1] }
-    pub fn z(&self) -> f32 { self.data.position[2] }
-    pub fn vx(&self) -> f32 { self.data.velocity[0] }
-    pub fn vy(&self) -> f32 { self.data.velocity[1] }
-    pub fn vz(&self) -> f32 { self.data.velocity[2] }
+    pub fn x(&self) -> f32 { self.data.position.x }
+    pub fn y(&self) -> f32 { self.data.position.y }
+    pub fn z(&self) -> f32 { self.data.position.z }
+    pub fn vx(&self) -> f32 { self.data.velocity.x }
+    pub fn vy(&self) -> f32 { self.data.velocity.y }
+    pub fn vz(&self) -> f32 { self.data.velocity.z }
     
-    pub fn set_x(&mut self, val: f32) { self.data.position[0] = val; }
-    pub fn set_y(&mut self, val: f32) { self.data.position[1] = val; }
-    pub fn set_z(&mut self, val: f32) { self.data.position[2] = val; }
-    pub fn set_vx(&mut self, val: f32) { self.data.velocity[0] = val; }
-    pub fn set_vy(&mut self, val: f32) { self.data.velocity[1] = val; }
-    pub fn set_vz(&mut self, val: f32) { self.data.velocity[2] = val; }
+    pub fn set_x(&mut self, val: f32) { self.data.position.x = val; }
+    pub fn set_y(&mut self, val: f32) { self.data.position.y = val; }
+    pub fn set_z(&mut self, val: f32) { self.data.position.z = val; }
+    pub fn set_vx(&mut self, val: f32) { self.data.velocity.x = val; }
+    pub fn set_vy(&mut self, val: f32) { self.data.velocity.y = val; }
+    pub fn set_vz(&mut self, val: f32) { self.data.velocity.z = val; }
 }
 
 #[cfg(test)]
@@ -180,8 +181,12 @@ mod tests {
         assert!(node.id.parse::<u32>().is_ok(), "ID should be numeric, got: {}", node.id);
         assert_eq!(node.metadata_id, "test");
         assert_eq!(node.label, "Test Node");
-        assert_eq!(node.data.position, [1.0, 2.0, 3.0]);
-        assert_eq!(node.data.velocity, [0.1, 0.2, 0.3]);
+        assert_eq!(node.data.position.x, 1.0);
+        assert_eq!(node.data.position.y, 2.0);
+        assert_eq!(node.data.position.z, 3.0);
+        assert_eq!(node.data.velocity.x, 0.1);
+        assert_eq!(node.data.velocity.y, 0.2);
+        assert_eq!(node.data.velocity.z, 0.3);
         assert_eq!(node.node_type, Some("test_type".to_string()));
         assert_eq!(node.size, Some(1.5));
         assert_eq!(node.color, Some("#FF0000".to_string()));

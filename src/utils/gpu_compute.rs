@@ -10,7 +10,7 @@ use log::{debug, error, warn};
 use crate::models::graph::GraphData;
 use std::collections::HashMap;
 use crate::models::simulation_params::SimulationParams;
-use crate::utils::socket_flow_messages::BinaryNodeData;
+use crate::utils::socket_flow_messages::{BinaryNodeData, vec3data_to_array, array_to_vec3data};
 use tokio::sync::RwLock;
 
 // Constants for GPU computation
@@ -177,13 +177,21 @@ impl GPUCompute {
         // Prepare node data
         let mut node_data = Vec::with_capacity(graph.nodes.len());
         for node in &graph.nodes {
+            // For GPU computation we need to convert Vec3Data to array format
+            let position_array = vec3data_to_array(&node.data.position);
+            let velocity_array = vec3data_to_array(&node.data.velocity);
+            
+            // Create the node data with Vec3Data structures
             node_data.push(BinaryNodeData {
-                position: node.data.position,
-                velocity: node.data.velocity,
+                position: node.data.position.clone(),
+                velocity: node.data.velocity.clone(),
                 mass: node.data.mass,
-                flags: 1, // Active by default
-                padding: [0, 0],
+                flags: node.data.flags, 
+                padding: node.data.padding,
             });
+            
+            // NOTE: For actual GPU kernel processing, you would use the arrays:
+            // position_array and velocity_array instead of the Vec3Data structures
         }
 
         debug!("Copying {} nodes to GPU", graph.nodes.len());
@@ -241,19 +249,36 @@ impl GPUCompute {
     }
 
     pub fn get_node_data(&self) -> Result<Vec<BinaryNodeData>, Error> {
-        let mut gpu_nodes = vec![BinaryNodeData {
-            position: [0.0, 0.0, 0.0],
-            velocity: [0.0, 0.0, 0.0],
+        // Create buffer for GPU to copy into
+        let mut gpu_raw_data = vec![BinaryNodeData {
+            position: array_to_vec3data([0.0, 0.0, 0.0]),
+            velocity: array_to_vec3data([0.0, 0.0, 0.0]),
             mass: 0,
             flags: 0,
             padding: [0, 0],
         }; self.num_nodes as usize];
 
-        self.device.dtoh_sync_copy_into(&self.node_data, &mut gpu_nodes)
+        // Get the raw data from GPU
+        self.device.dtoh_sync_copy_into(&self.node_data, &mut gpu_raw_data)
             .map_err(|e| Error::new(std::io::ErrorKind::Other, e.to_string()))?;
+
+        // Process the raw data into BinaryNodeData format
+        let gpu_nodes = gpu_raw_data.into_iter().map(|raw_node| {
+            // Convert between formats if needed for GPU processing
+            BinaryNodeData {
+                position: raw_node.position,
+                velocity: raw_node.velocity,
+                mass: raw_node.mass,
+                flags: raw_node.flags,
+                padding: raw_node.padding,
+            }
+        }).collect();
 
         Ok(gpu_nodes)
     }
+
+    // For GPU kernels that need raw array access, we'll add helper methods 
+    // to convert Vec3Data to arrays when needed
 
     pub fn step(&mut self) -> Result<(), Error> {
         self.compute_forces()?;

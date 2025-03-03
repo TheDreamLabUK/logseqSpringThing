@@ -470,12 +470,9 @@ export function transformNodeData(node: any): Node {
     id: node.id,
     label: node.label || node.metadata_id, // Preserve server-side label, fallback to metadata_id
     data: {
-      position: node.data.position instanceof ThreeVector3 ? node.data.position : new ThreeVector3(
-        node.data.position.x,
-        node.data.position.y,
-        node.data.position.z
-      ),
-      velocity: node.data.velocity instanceof ThreeVector3 ? node.data.velocity : new ThreeVector3(0, 0, 0),
+      // Always create new Vector3 objects to ensure proper type and consistent behavior
+      position: new ThreeVector3(node.data.position?.x || 0, node.data.position?.y || 0, node.data.position?.z || 0),
+      velocity: new ThreeVector3(node.data.velocity?.x || 0, node.data.velocity?.y || 0, node.data.velocity?.z || 0),
       metadata
     },
     color: node.color

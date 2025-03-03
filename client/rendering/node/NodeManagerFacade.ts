@@ -15,7 +15,6 @@ import { XRHandWithHaptics } from '../../types/xr';
 import { debugState } from '../../core/debugState';
 import { createLogger, createErrorMetadata, createDataMetadata } from '../../core/logger';
 import { UpdateThrottler } from '../../core/utils';
-import { Vec3 } from '../../types/vec3';
 
 const logger = createLogger('NodeManagerFacade');
 
@@ -42,10 +41,6 @@ export class NodeManagerFacade implements NodeManagerInterface {
     private tempVector = new Vector3();
     private metadataUpdateThrottler = new UpdateThrottler(100); // Update at most every 100ms
     private readonly MAX_POSITION = 1000.0; // Reasonable limit for safe positions
-
-    private toThreeVec3(vec: Vec3): Vector3 {
-        return new Vector3(vec.x, vec.y, vec.z);
-    }
 
     private constructor(scene: Scene, camera: Camera, material: Material) {
         this.camera = camera;
@@ -138,8 +133,8 @@ export class NodeManagerFacade implements NodeManagerInterface {
         this.instanceManager.updateNodePositions(nodes.map(node => ({
             id: node.id,
             metadata: node.data.metadata,
-            position: this.toThreeVec3(node.data.position),
-            velocity: node.data.velocity ? this.toThreeVec3(node.data.velocity) : undefined
+            position: node.data.position,
+            velocity: node.data.velocity
         })));
        
         // Only update metadata if the throttler allows it

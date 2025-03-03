@@ -61,13 +61,12 @@ A browser-compatible version that can be loaded directly in the browser console:
 
 The WebSocket binary protocol uses a specific format:
 
-- Header: 8 bytes
-  - Message type (uint32): 4 bytes
-  - Node count (uint32): 4 bytes
-- Node data: 28 bytes per node
-  - Node ID (uint32): 4 bytes
-  - Position (3 x float32): 12 bytes
-  - Velocity (3 x float32): 12 bytes
+- Node data: 26 bytes per node
+  - Node ID (uint16): 2 bytes
+  - Position (3 x float32): 12 bytes (stored as Vec3Data/THREE.Vector3)
+  - Velocity (3 x float32): 12 bytes (stored as Vec3Data/THREE.Vector3)
+
+The protocol is a simple "firehose" of node updates without additional header metadata.
 
 The diagnostics tools validate that binary messages conform to this format.
 
@@ -81,7 +80,7 @@ The diagnostics tools validate that binary messages conform to this format.
 
 ### Binary Protocol Issues
 
-- **Message Size Mismatch**: Ensure client and server agree on the binary format (28 bytes per node)
+- **Message Size Mismatch**: Ensure client and server agree on the binary format (26 bytes per node)
 - **Compression Issues**: Large messages are compressed with zlib; ensure decompression works correctly
 
 ### Performance Issues

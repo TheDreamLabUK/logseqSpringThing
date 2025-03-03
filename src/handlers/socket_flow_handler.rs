@@ -10,6 +10,7 @@ use tokio::sync::RwLock;
 
 use crate::app_state::AppState;
 use crate::utils::binary_protocol;
+use crate::types::vec3::Vec3Data;
 use crate::utils::socket_flow_messages::{BinaryNodeData, PingMessage, PongMessage};
 
 // Constants for throttling debug logs
@@ -25,7 +26,7 @@ pub struct SocketFlowServer {
     update_interval: std::time::Duration,
     // New fields for batched updates and deadband filtering
     node_position_cache: HashMap<String, BinaryNodeData>,
-    last_sent_positions: HashMap<String, [f32; 3]>,
+    last_sent_positions: HashMap<String, Vec3Data>,
     position_deadband: f32, // Minimum position change to trigger an update
 }
 
@@ -88,18 +89,18 @@ impl SocketFlowServer {
     }
     
     // New method to check if a node's position has changed enough to warrant an update
-    fn has_position_changed_significantly(&mut self, node_id: &str, new_position: [f32; 3]) -> bool {
+    fn has_position_changed_significantly(&mut self, node_id: &str, new_position: Vec3Data) -> bool {
         if let Some(last_position) = self.last_sent_positions.get(node_id) {
             // Calculate Euclidean distance between last sent position and new position
-            let dx = new_position[0] - last_position[0];
-            let dy = new_position[1] - last_position[1];
-            let dz = new_position[2] - last_position[2];
+            let dx = new_position.x - last_position.x;
+            let dy = new_position.y - last_position.y;
+            let dz = new_position.z - last_position.z;
             let distance_squared = dx*dx + dy*dy + dz*dz;
             
             // Only send update if position has changed by more than the deadband
             if distance_squared > self.position_deadband * self.position_deadband {
                 // Update the last sent position
-                self.last_sent_positions.insert(node_id.to_string(), new_position);
+                self.last_sent_positions.insert(node_id.to_string(), new_position.clone());
                 return true;
             }
             return false;
@@ -111,12 +112,12 @@ impl SocketFlowServer {
     }
     
     // New method to collect nodes that have changed position
-    fn collect_changed_nodes(&mut self) -> Vec<(u32, BinaryNodeData)> {
+    fn collect_changed_nodes(&mut self) -> Vec<(u16, BinaryNodeData)> {
         let mut changed_nodes = Vec::new();
         
         for (node_id, node_data) in self.node_position_cache.drain() {
-            if let Ok(node_id_u32) = node_id.parse::<u32>() {
-                changed_nodes.push((node_id_u32, node_data));
+            if let Ok(node_id_u16) = node_id.parse::<u16>() {
+                changed_nodes.push((node_id_u16, node_data));
             }
         }
         
@@ -243,7 +244,7 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
 
                                         let mut nodes = Vec::with_capacity(raw_nodes.len());
                                         for node in raw_nodes {
-                                            if let Ok(node_id) = node.id.parse::<u32>() {
+                                            if let Ok(node_id) = node.id.parse::<u16>() {
                                                 let node_data = BinaryNodeData {
                                                     position: node.data.position,
                                                     velocity: node.data.velocity,
@@ -253,7 +254,7 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
                                                 };
                                                 nodes.push((node_id, node_data));
                                             } else {
-                                                warn!("[WebSocket] Failed to parse node ID as u32: '{}', metadata_id: '{}'", 
+                                                warn!("[WebSocket] Failed to parse node ID as u16: '{}', metadata_id: '{}'", 
                                                     node.id, node.metadata_id);
                                             }
                                         }
@@ -291,10 +292,10 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
                                                     let node = &nodes[0];
                                                     debug!(
                                                         "Sample node: id={}, pos=[{:.2},{:.2},{:.2}], vel=[{:.2},{:.2},{:.2}]",
-                                                        node.0,
-                                                        node.1.position[0], node.1.position[1], node.1.position[2],
-                                                        node.1.velocity[0], node.1.velocity[1], node.1.velocity[2]
-                                                    );
+                                                        node.0, 
+                                                        node.1.position.x, node.1.position.y, node.1.position.z,
+                                                        node.1.velocity.x, node.1.velocity.y, node.1.velocity.z
+                                                   );
                                                 }
                                             }
 
@@ -361,12 +362,12 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
                 info!("Received binary message, length: {}", data.len());
                 self.last_activity = std::time::Instant::now();
                 
-                // Enhanced logging for binary messages
-                if data.len() % 28 != 0 {
+                // Enhanced logging for binary messages (26 bytes per node now)
+                if data.len() % 26 != 0 {
                     warn!(
-                        "Binary message size mismatch: {} bytes (not a multiple of 28, remainder: {})",
+                        "Binary message size mismatch: {} bytes (not a multiple of 26, remainder: {})",
                         data.len(),
-                        data.len() % 28
+                        data.len() % 26
                     );
                 }
                 

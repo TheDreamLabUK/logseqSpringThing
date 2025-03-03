@@ -1,43 +1,22 @@
 use byteorder::{LittleEndian, WriteBytesExt, ReadBytesExt};
 use std::io::Cursor;
-use std::time::{SystemTime, UNIX_EPOCH};
 use crate::utils::socket_flow_messages::BinaryNodeData;
+use log;
 
-// Protocol version and constants
-const PROTOCOL_VERSION: u8 = 1;
+// Binary format (simplified):
+// - For each node (24 bytes):
+//   - Node Index: 2 bytes (u16)
+//   - Position: 3 × 4 bytes = 12 bytes
+//   - Velocity: 3 × 4 bytes = 12 bytes
+// Total: 26 bytes per node
 
-// Static sequence counter for detecting missed updates
-static mut SEQUENCE_NUMBER: u32 = 0;
-static mut LAST_TIMESTAMP: u64 = 0;
-
-pub fn encode_node_data(nodes: &[(u32, BinaryNodeData)]) -> Vec<u8> {
+pub fn encode_node_data(nodes: &[(u16, BinaryNodeData)]) -> Vec<u8> {
     // Only log non-empty node transmissions to reduce spam
     if nodes.len() > 0 {
         log::info!("Encoding {} nodes for binary transmission", nodes.len());
     }
     
     let mut buffer = Vec::new();
-
-    // Get current timestamp in milliseconds
-    let timestamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_millis() as u64;
-
-    // Get and increment sequence number (thread-safe)
-    let sequence_number = unsafe {
-        // Only increment if timestamp has changed to avoid rapid increments
-        if timestamp > LAST_TIMESTAMP {
-            SEQUENCE_NUMBER = SEQUENCE_NUMBER.wrapping_add(1);
-            LAST_TIMESTAMP = timestamp;
-        }
-        SEQUENCE_NUMBER
-    };
-
-    // Write header: version (1 byte), sequence number (4 bytes), timestamp (8 bytes)
-    buffer.write_u8(PROTOCOL_VERSION).unwrap();
-    buffer.write_u32::<LittleEndian>(sequence_number).unwrap();
-    buffer.write_u64::<LittleEndian>(timestamp).unwrap();
     
     // Log some samples of the encoded data
     let sample_size = std::cmp::min(3, nodes.len());
@@ -47,24 +26,24 @@ pub fn encode_node_data(nodes: &[(u32, BinaryNodeData)]) -> Vec<u8> {
     
     for (node_id, node) in nodes {
         // Log the first few nodes for debugging
-        if sample_size > 0 && *node_id < sample_size as u32 {
+        if sample_size > 0 && *node_id < sample_size as u16 {
             log::info!("Encoding node {}: pos=[{:.3},{:.3},{:.3}], vel=[{:.3},{:.3},{:.3}]", 
                 node_id, 
-                node.position[0], node.position[1], node.position[2],
-                node.velocity[0], node.velocity[1], node.velocity[2]);
+                node.position.x, node.position.y, node.position.z,
+                node.velocity.x, node.velocity.y, node.velocity.z);
         }
-        // Write node ID (u32)
-        buffer.write_u32::<LittleEndian>(*node_id).unwrap();
+        // Write node ID (u16)
+        buffer.write_u16::<LittleEndian>(*node_id).unwrap();
         
-        // Write position [f32; 3]
-        buffer.write_f32::<LittleEndian>(node.position[0]).unwrap();
-        buffer.write_f32::<LittleEndian>(node.position[1]).unwrap();
-        buffer.write_f32::<LittleEndian>(node.position[2]).unwrap();
+        // Write position Vec3Data
+        buffer.write_f32::<LittleEndian>(node.position.x).unwrap();
+        buffer.write_f32::<LittleEndian>(node.position.y).unwrap();
+        buffer.write_f32::<LittleEndian>(node.position.z).unwrap();
         
-        // Write velocity [f32; 3]
-        buffer.write_f32::<LittleEndian>(node.velocity[0]).unwrap();
-        buffer.write_f32::<LittleEndian>(node.velocity[1]).unwrap();
-        buffer.write_f32::<LittleEndian>(node.velocity[2]).unwrap();
+        // Write velocity Vec3Data
+        buffer.write_f32::<LittleEndian>(node.velocity.x).unwrap();
+        buffer.write_f32::<LittleEndian>(node.velocity.y).unwrap();
+        buffer.write_f32::<LittleEndian>(node.velocity.z).unwrap();
 
         // Mass, flags, and padding are no longer sent to the client
         // They are still available in the BinaryNodeData struct for server-side use
@@ -77,31 +56,23 @@ pub fn encode_node_data(nodes: &[(u32, BinaryNodeData)]) -> Vec<u8> {
     buffer
 }
 
-pub fn decode_node_data(data: &[u8]) -> Result<Vec<(u32, BinaryNodeData)>, String> {
+pub fn decode_node_data(data: &[u8]) -> Result<Vec<(u16, BinaryNodeData)>, String> {
     let mut cursor = Cursor::new(data);
     
-    // Check if data is empty or too small for header
-    if data.len() < 13 { // 1 (version) + 4 (sequence) + 8 (timestamp)
-        return Err("Data too small to contain header".into());
+    // Check if data is empty
+    if data.len() < 2 { // At least a node ID (2 bytes)
+        return Err("Data too small to contain any nodes".into());
     }
-
-    // Read header
-    let version = cursor.read_u8()
-        .map_err(|e| format!("Failed to read protocol version: {}", e))?;
-    let sequence = cursor.read_u32::<LittleEndian>()
-        .map_err(|e| format!("Failed to read sequence number: {}", e))?;
-    let timestamp = cursor.read_u64::<LittleEndian>()
-        .map_err(|e| format!("Failed to read timestamp: {}", e))?;
-
+    
     // Log header information
     log::info!(
-        "Decoding binary data: version={}, sequence={}, timestamp={}, size={} bytes",
-        version, sequence, timestamp, data.len()
+        "Decoding binary data: size={} bytes, expected nodes={}",
+        data.len(), data.len() / 26
     );
-
+    
     // Always log this for visibility
     log::info!("Decoding binary data of size: {} bytes", data.len());
-
+    
     let mut updates = Vec::new();
     
     // Set up sample logging
@@ -111,30 +82,33 @@ pub fn decode_node_data(data: &[u8]) -> Result<Vec<(u32, BinaryNodeData)>, Strin
     log::info!("Starting binary data decode, expecting nodes with position and velocity data");
     
     while cursor.position() < data.len() as u64 {
-        // Each node update is 28 bytes: 4 (nodeId) + 12 (position) + 12 (velocity)
-        if cursor.position() + 28 > data.len() as u64 {
+        // Each node update is 26 bytes: 2 (nodeId) + 12 (position) + 12 (velocity)
+        if cursor.position() + 26 > data.len() as u64 {
             return Err("Unexpected end of data while reading node update".into());
         }
         
-        // Read node ID (u32)
-        let node_id = cursor.read_u32::<LittleEndian>()
+        // Read node ID (u16)
+        let node_id = cursor.read_u16::<LittleEndian>()
             .map_err(|e| format!("Failed to read node ID: {}", e))?;
         
-        // Read position [f32; 3]
+        // Read position Vec3Data
         let pos_x = cursor.read_f32::<LittleEndian>()
             .map_err(|e| format!("Failed to read position[0]: {}", e))?;
         let pos_y = cursor.read_f32::<LittleEndian>()
             .map_err(|e| format!("Failed to read position[1]: {}", e))?;
         let pos_z = cursor.read_f32::<LittleEndian>()
             .map_err(|e| format!("Failed to read position[2]: {}", e))?;
+
+        let position = crate::types::vec3::Vec3Data::new(pos_x, pos_y, pos_z);
         
-        // Read velocity [f32; 3]
+        // Read velocity Vec3Data
         let vel_x = cursor.read_f32::<LittleEndian>()
             .map_err(|e| format!("Failed to read velocity[0]: {}", e))?;
         let vel_y = cursor.read_f32::<LittleEndian>()
             .map_err(|e| format!("Failed to read velocity[1]: {}", e))?;
         let vel_z = cursor.read_f32::<LittleEndian>()
             .map_err(|e| format!("Failed to read velocity[2]: {}", e))?;
+        let velocity = crate::types::vec3::Vec3Data::new(vel_x, vel_y, vel_z);
 
         // Default mass value - this will be replaced with the actual mass from the node_map
         // in socket_flow_handler.rs for accurate physics calculations
@@ -146,13 +120,14 @@ pub fn decode_node_data(data: &[u8]) -> Result<Vec<(u32, BinaryNodeData)>, Strin
         if samples_logged < max_samples {
             log::info!(
                 "Decoded node {}: pos=[{:.3},{:.3},{:.3}], vel=[{:.3},{:.3},{:.3}]", 
-                node_id, pos_x, pos_y, pos_z, vel_x, vel_y, vel_z
+                node_id, position.x, position.y, position.z, 
+                velocity.x, velocity.y, velocity.z
             );
             samples_logged += 1;
         }
         updates.push((node_id, BinaryNodeData {
-            position: [pos_x, pos_y, pos_z],
-            velocity: [vel_x, vel_y, vel_z],
+            position,
+            velocity,
             mass,
             flags,
             padding,
@@ -163,11 +138,9 @@ pub fn decode_node_data(data: &[u8]) -> Result<Vec<(u32, BinaryNodeData)>, Strin
     Ok(updates)
 }
 
-pub fn calculate_message_size(updates: &[(u32, BinaryNodeData)]) -> usize {
-    // Each update: u32 (node_id) + 3*f32 (position) + 3*f32 (velocity)
-    // = 4 + 12 + 12 = 28 bytes
-    // Plus header: 1 (version) + 4 (sequence) + 8 (timestamp) = 13 bytes
-    13 + (updates.len() * 28)
+pub fn calculate_message_size(updates: &[(u16, BinaryNodeData)]) -> usize {
+    // Each update: u16 (node_id) + 3*f32 (position) + 3*f32 (velocity)
+    updates.len() * 26
 }
 
 #[cfg(test)]
@@ -177,16 +150,16 @@ mod tests {
     #[test]
     fn test_encode_decode_roundtrip() {
         let nodes = vec![
-            (1, BinaryNodeData {
-                position: [1.0, 2.0, 3.0],
-                velocity: [0.1, 0.2, 0.3],
+            (1u16, BinaryNodeData {
+                position: crate::types::vec3::Vec3Data::new(1.0, 2.0, 3.0),
+                velocity: crate::types::vec3::Vec3Data::new(0.1, 0.2, 0.3),
                 mass: 100,
                 flags: 1,
                 padding: [0, 0],
             }),
-            (2, BinaryNodeData {
-                position: [4.0, 5.0, 6.0],
-                velocity: [0.4, 0.5, 0.6],
+            (2u16, BinaryNodeData {
+                position: crate::types::vec3::Vec3Data::new(4.0, 5.0, 6.0),
+                velocity: crate::types::vec3::Vec3Data::new(0.4, 0.5, 0.6),
                 mass: 200,
                 flags: 1,
                 padding: [0, 0],
@@ -209,7 +182,7 @@ mod tests {
     #[test]
     fn test_decode_invalid_data() {
         // Test with data that's too short
-        let result = decode_node_data(&[0u8; 27]);
+        let result = decode_node_data(&[0u8; 25]);
         assert!(result.is_err());
     }
 }

@@ -57,31 +57,28 @@ This document describes the WebSocket connection and communication process in th
 ## 3. Binary Protocol (`src/utils/binary_protocol.rs`)
 
 *   **`MessageType`:** `PositionVelocityUpdate` (0x01).
-*   **`NodeData`:**
-    *   `id`: `u32` (4 bytes)
-    *   `position`: `Vec3` (12 bytes: x, y, z as `f32`)
-    *   `velocity`: `Vec3` (12 bytes: x, y, z as `f32`)
-    *   Total: 28 bytes per node.
-*   **Encoding (`encode_node_data`):**
-    *   Header:
-        *   Message Type (`u32` Little Endian).
-        *   Node Count (`u32` Little Endian).
-    *   Node Data (repeated for each node):
-        *   Node ID (`u32` Little Endian).
+*   **`BinaryNodeData`:**
+    *   `id`: `u16` (2 bytes)
+    *   `position`: `Vec3Data` (12 bytes: x, y, z as `f32` properties)
+    *   `velocity`: `Vec3Data` (12 bytes: x, y, z as `f32` properties)
+    *   Total: 26 bytes per node.
+*   **Encoding:**
+    *   Node Data (stream of nodes without header):
+        *   Node ID (`u16` Little Endian).
         *   Position (x, y, z as `f32` Little Endian).
         *   Velocity (x, y, z as `f32` Little Endian).
-*   **Decoding (`decode_node_data`):**
-    *   Reads the header.
-    *   Reads node data based on the node count.
+*   **Decoding:**
+    *   Validates message size is a multiple of 26 bytes.
+    *   Reads node data for each 26-byte segment.
 * **Byte Order:** Little Endian.
 
 ## 4. Data Alignment and Case Handling
 
 *   **Client (TypeScript):** Uses `camelCase` for variables and interfaces.
 *   **Server (Rust):**
-    *   `socket_flow_messages::NodeData`: Uses `snake_case` for fields (position, velocity, mass, flags, padding).
-    *   `binary_protocol::NodeData`: Uses `snake_case` (id, position, velocity).
-    *   `socket_flow_messages::Node`: Uses `camelCase` for fields (due to Serde's `rename_all` attribute).
+    *   `socket_flow_messages::BinaryNodeData`: Uses Vec3Data struct with x,y,z properties for position and velocity
+    *   `types::vec3::Vec3Data`: Structured vector representation with x,y,z fields
+    *   `models::node::Node`: Uses `camelCase` for fields (due to Serde's `rename_all` attribute)
     * API calls use `burger-case`.
 *   **Data Transfer:** The binary protocol ensures data alignment between the client and server. The `BinaryNodeData` struct in `socket_flow_messages.rs` mirrors the structure sent over the WebSocket.
 
@@ -89,10 +86,10 @@ This document describes the WebSocket connection and communication process in th
 
 *   **Client:** Uses `pako` library for zlib compression/decompression.
     *   Compresses binary messages if they are larger than `COMPRESSION_THRESHOLD` (1024 bytes).
-    *   Attempts to decompress all incoming binary messages, falling back to the original data if decompression fails.
+    *   Attempts to decompress incoming binary messages, falling back to original data if decompression fails.
 *   **Server:** Uses `flate2` crate for zlib compression/decompression.
     *   `maybe_compress()`: Compresses if enabled in settings and data size exceeds the threshold.
-    *   `maybe_decompress()`: Decompresses if enabled in settings. If decompression fails, assumes data is uncompressed.
+    *   `maybe_decompress()`: Decompresses if enabled in settings.
 
 ## 6. Heartbeat
 
@@ -137,3 +134,17 @@ This document describes the WebSocket connection and communication process in th
 *   **Updates Started Signal:** Once the server is ready to send position updates, it sends an `updatesStarted` message.
 *   **Loading Complete:** Upon receiving the `updatesStarted` message, the client hides the loading indicator and begins displaying the graph.
 *   This provides visual feedback during the initialization process and ensures users don't see poorly-distributed node layouts.
+
+## 10. Recent Protocol Optimizations
+
+*   **Size Reduction:** 
+    * Node ID changed from u32 (4 bytes) to u16 (2 bytes)
+    * Node data size reduced from 28 to 26 bytes per node (~7% reduction)
+
+*   **Format Simplification:**
+    * Removed message headers (no version number, sequence number, timestamp)
+    * Binary data is now a simple array of node updates
+
+*   **Type Consistency:**
+    * Consistent use of structured Vec3Data/THREE.Vector3 objects throughout the pipeline
+    * Helper functions handle GPU compatibility where array formats are needed

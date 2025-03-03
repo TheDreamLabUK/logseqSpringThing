@@ -331,9 +331,9 @@ impl GraphService {
                 info!("Initialized node {}: id={}, pos=[{:.3},{:.3},{:.3}]", 
                      i,
                      node.id,
-                     node.data.position[0], 
-                     node.data.position[1], 
-                     node.data.position[2]);
+                     node.data.position.x, 
+                     node.data.position.y, 
+                     node.data.position.z);
             }
         }
     }
@@ -443,12 +443,12 @@ impl GraphService {
         self.gpu_compute.clone()
     }
 
-    pub async fn update_node_positions(&self, updates: Vec<(u32, Node)>) -> Result<(), Error> {
+    pub async fn update_node_positions(&self, updates: Vec<(u16, Node)>) -> Result<(), Error> {
         let mut graph = self.graph_data.write().await;
         let mut node_map = self.node_map.write().await;
 
-        for (node_id_u32, node_data) in updates {
-            let node_id = node_id_u32.to_string();
+        for (node_id_u16, node_data) in updates {
+            let node_id = node_id_u16.to_string();
             if let Some(node) = node_map.get_mut(&node_id) {
                 node.data = node_data.data.clone();
             }
