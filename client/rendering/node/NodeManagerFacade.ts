@@ -120,6 +120,10 @@ export class NodeManagerFacade implements NodeManagerInterface {
     public updateNodes(nodes: { id: string, data: NodeData }[]): void {
         if (!this.isInitialized) return;
 
+        if (debugState.isDataDebugEnabled()) {
+            logger.debug('Updating nodes in NodeManagerFacade', { nodeCount: nodes.length });
+        }
+
         const shouldDebugLog = debugState.isEnabled() && debugState.isNodeDebugEnabled();
         
         // Create dedicated ID set to ensure unique handling
@@ -137,6 +141,15 @@ export class NodeManagerFacade implements NodeManagerInterface {
                                  metadata: node.data.metadata,
                                  fileSize: node.data.metadata?.fileSize
                               }));
+            }
+            
+            // *** CRITICAL: Set the label correctly ***  
+            // Use type assertion to safely add the label property
+            // This ensures we have a consistent label for each node
+            (node as any).label = (node as any).label || (node as any).metadataId;
+            
+            if (debugState.isNodeDebugEnabled()) {
+                logger.info(`Node ${index}: metadataId=${(node as any).metadataId}, id=${node.id}, label=${(node as any).label}`);
             }
             
             // Skip if this node ID has already been processed in this batch
@@ -218,7 +231,9 @@ export class NodeManagerFacade implements NodeManagerInterface {
                     // Check if node has a label (from server)
                     let displayName: string = metadataId;
                     if ('metadataId' in node && typeof node['metadataId'] === 'string') {
-                        displayName = node['metadataId'] as string;
+                        // Check if label exists before trying to use it
+                        displayName = ('label' in node && typeof node['label'] === 'string') ? 
+                                      node['label'] as string : node['metadataId'] as string;
                     } else if ('label' in node && typeof node['label'] === 'string') {
                         displayName = node['label'] as string;
                     } else if ('metadata_id' in node && typeof node['metadata_id'] === 'string') {

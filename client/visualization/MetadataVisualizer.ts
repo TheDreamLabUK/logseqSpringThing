@@ -46,6 +46,9 @@ export class MetadataVisualizer {
     private settings: Settings;
     private fontLoadAttempts: number = 0;
 
+    // Default values for missing data
+    private readonly DEFAULT_FILE_SIZE = 1000; // 1KB
+
     constructor(camera: THREE.PerspectiveCamera, scene: THREE.Scene, settings: Settings) {
         this.scene = scene;
         this.camera = camera;
@@ -257,6 +260,14 @@ export class MetadataVisualizer {
         });
     }
 
+    private formatFileSize(bytes: number): string {
+        if (!bytes || isNaN(bytes)) return 'N/A';
+        if (bytes < 1024) return `${bytes} B`;
+        if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+        if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+        return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+    }
+
     public async createMetadataLabel(metadata: NodeMetadata): Promise<MetadataLabelGroup> {
         const group = new Group() as MetadataLabelGroup;
         group.name = 'metadata-label';
@@ -269,17 +280,29 @@ export class MetadataVisualizer {
             nameMesh.scale.setScalar(0.8);
             group.add(nameMesh);
         }
-
-        // Create text for commit age
-        const ageMesh = await this.createTextMesh(`${Math.round(metadata.commitAge)} days`);
-        if (ageMesh) {
-            ageMesh.position.y = 0.8;
-            ageMesh.scale.setScalar(0.7);
-            group.add(ageMesh);
+        
+        // Create text for file size
+        const fileSize = metadata.fileSize || this.DEFAULT_FILE_SIZE;
+        const fileSizeText = `Size: ${this.formatFileSize(fileSize)}`;
+        const fileSizeMesh = await this.createTextMesh(fileSizeText);
+        if (fileSizeMesh) {
+            fileSizeMesh.position.y = 0.8;
+            fileSizeMesh.scale.setScalar(0.7);
+            group.add(fileSizeMesh);
+            
+            if (debugState.isNodeDebugEnabled()) {
+                logger.debug(`Creating file size label: ${fileSizeText} for node ${metadata.id}`);
+            }
         }
 
         // Create text for hyperlink count
-        const linksMesh = await this.createTextMesh(`${metadata.hyperlinkCount} links`);
+        // Ensure we have a valid value, defaulting to 0 if undefined or invalid
+        const hyperlinkCount = Number.isFinite(metadata.hyperlinkCount) ? metadata.hyperlinkCount : 0;
+        const linksText = `Links: ${hyperlinkCount}`;
+        if (debugState.isNodeDebugEnabled()) {
+            logger.debug(`Creating hyperlink count label: ${linksText} for node ${metadata.id}`);
+        }
+        const linksMesh = await this.createTextMesh(linksText);
         if (linksMesh) {
             linksMesh.position.y = 0.4;
             linksMesh.scale.setScalar(0.7);

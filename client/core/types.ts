@@ -498,7 +498,10 @@ export function transformNodeData(node: any): Node {
   return {
     id: nodeId, // The numeric ID string, used for binary protocol
     metadataId: node.metadata_id || node.label || metadata.name, // Preserve server-provided metadata ID
-    label: node.label || node.metadata_id, // Preserve server-side label, fallback to metadata_id
+    // CRITICAL: Consistent label handling - use provided label or fallback to metadataId
+    // This ensures we always have a correct human-readable label for display
+    label: node.label || node.metadata_id || metadata.name, 
+
     data: {
       // Always create new Vector3 objects to ensure proper type and consistent behavior
       position: new ThreeVector3(node.data.position?.x || 0, node.data.position?.y || 0, node.data.position?.z || 0),
