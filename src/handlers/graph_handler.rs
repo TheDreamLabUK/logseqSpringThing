@@ -265,6 +265,13 @@ pub async fn refresh_graph(state: web::Data<AppState>) -> impl Responder {
             }
             
             *graph = new_graph;
+            
+            // Update node_map with new graph nodes
+            node_map.clear();
+            for node in &graph.nodes {
+                node_map.insert(node.id.clone(), node.clone());
+            }
+            
             info!("Graph refreshed successfully with {} nodes and {} edges", 
                 graph.nodes.len(), 
                 graph.edges.len()

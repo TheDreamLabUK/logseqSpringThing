@@ -97,7 +97,7 @@ impl Node {
                 position: Vec3Data::zero(),
                 velocity: Vec3Data::zero(),
                 mass: 0, // default mass, will be updated based on file size
-                flags: 0,
+                flags: 1, // Set to 1 by default (active state)
                 padding: [0, 0],
             },
             metadata: HashMap::new(),
@@ -158,7 +158,7 @@ impl Node {
                 position: Vec3Data::zero(),
                 velocity: Vec3Data::zero(),
                 mass: 0, // default mass, will be updated based on file size
-                flags: 0,
+                flags: 1, // Set to 1 by default (active state)
                 padding: [0, 0],
             },
             metadata: HashMap::new(),

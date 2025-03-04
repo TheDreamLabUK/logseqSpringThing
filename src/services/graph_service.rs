@@ -121,19 +121,50 @@ impl GraphService {
             // Create node with stored ID or generate a new one if not available
             let mut node = Node::new_with_id(node_id.clone(), stored_node_id);
             graph.id_to_metadata.insert(node.id.clone(), node_id.clone());
-            
+
             // Get metadata for this node
             if let Some(metadata) = metadata.get(&format!("{}.md", node_id)) {
+                // Set file size which also calculates mass
                 node.set_file_size(metadata.file_size as u64);  // This will update both file_size and mass
+                
+                // Set visual properties from metadata
                 node.size = Some(metadata.node_size as f32);
-                // Label is already set to the metadata_id (filename without .md) in Node::new
                 
                 // Add metadata fields to node's metadata map
+                // Add all relevant metadata fields to ensure consistency
+                node.metadata.insert("fileName".to_string(), metadata.file_name.clone());
+                
+                // Add name field (without .md extension) for client-side metadata ID mapping
+                if metadata.file_name.ends_with(".md") {
+                    let name = metadata.file_name[..metadata.file_name.len() - 3].to_string();
+                    node.metadata.insert("name".to_string(), name.clone());
+                    node.metadata.insert("metadataId".to_string(), name);
+                } else {
+                    node.metadata.insert("name".to_string(), metadata.file_name.clone());
+                    node.metadata.insert("metadataId".to_string(), metadata.file_name.clone());
+                }
+                
                 node.metadata.insert("fileSize".to_string(), metadata.file_size.to_string());
+                node.metadata.insert("nodeSize".to_string(), metadata.node_size.to_string());
                 node.metadata.insert("hyperlinkCount".to_string(), metadata.hyperlink_count.to_string());
+                node.metadata.insert("sha1".to_string(), metadata.sha1.clone());
                 node.metadata.insert("lastModified".to_string(), metadata.last_modified.to_string());
+                
+                if !metadata.perplexity_link.is_empty() {
+                    node.metadata.insert("perplexityLink".to_string(), metadata.perplexity_link.clone());
+                }
+                
+                if let Some(last_process) = metadata.last_perplexity_process {
+                    node.metadata.insert("lastPerplexityProcess".to_string(), last_process.to_string());
+                }
+                
+                // We don't add topic_counts to metadata as it would create circular references
+                // and is already used to create edges
+                
+                // Ensure flags is set to 1 (default active state)
+                node.data.flags = 1;
             }
-            
+
             let node_clone = node.clone();
             graph.nodes.push(node_clone);
             // Store nodes in map by numeric ID for efficient lookups
@@ -233,17 +264,48 @@ impl GraphService {
             // Create node with stored ID or generate a new one if not available
             let mut node = Node::new_with_id(node_id.clone(), stored_node_id);
             graph.id_to_metadata.insert(node.id.clone(), node_id.clone());
-            
+
             // Get metadata for this node
             if let Some(metadata) = graph.metadata.get(&format!("{}.md", node_id)) {
+                // Set file size which also calculates mass
                 node.set_file_size(metadata.file_size as u64);  // This will update both file_size and mass
+                
+                // Set visual properties from metadata
                 node.size = Some(metadata.node_size as f32);
-                // Label is already set to the metadata_id (filename without .md) in Node::new
                 
                 // Add metadata fields to node's metadata map
+                // Add all relevant metadata fields to ensure consistency
+                node.metadata.insert("fileName".to_string(), metadata.file_name.clone());
+                
+                // Add name field (without .md extension) for client-side metadata ID mapping
+                if metadata.file_name.ends_with(".md") {
+                    let name = metadata.file_name[..metadata.file_name.len() - 3].to_string();
+                    node.metadata.insert("name".to_string(), name.clone());
+                    node.metadata.insert("metadataId".to_string(), name);
+                } else {
+                    node.metadata.insert("name".to_string(), metadata.file_name.clone());
+                    node.metadata.insert("metadataId".to_string(), metadata.file_name.clone());
+                }
+                
                 node.metadata.insert("fileSize".to_string(), metadata.file_size.to_string());
+                node.metadata.insert("nodeSize".to_string(), metadata.node_size.to_string());
                 node.metadata.insert("hyperlinkCount".to_string(), metadata.hyperlink_count.to_string());
+                node.metadata.insert("sha1".to_string(), metadata.sha1.clone());
                 node.metadata.insert("lastModified".to_string(), metadata.last_modified.to_string());
+                
+                if !metadata.perplexity_link.is_empty() {
+                    node.metadata.insert("perplexityLink".to_string(), metadata.perplexity_link.clone());
+                }
+                
+                if let Some(last_process) = metadata.last_perplexity_process {
+                    node.metadata.insert("lastPerplexityProcess".to_string(), last_process.to_string());
+                }
+                
+                // We don't add topic_counts to metadata as it would create circular references
+                // and is already used to create edges
+                
+                // Ensure flags is set to 1 (default active state)
+                node.data.flags = 1;
             }
             
             let node_clone = node.clone();
@@ -512,5 +574,65 @@ impl GraphService {
                 Err(Error::new(ErrorKind::Other, format!("GPU initialization failed: {}", e)))
             }
         }
+    }
+
+    // Development test function to verify metadata transfer
+    #[cfg(test)]
+    pub async fn test_metadata_transfer() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        use chrono::Utc;
+        use std::collections::HashMap;
+        use crate::models::metadata::Metadata;
+
+        // Create test metadata
+        let mut metadata = crate::models::metadata::MetadataStore::new();
+        let file_name = "test.md";
+        
+        // Create a test metadata entry
+        let meta = Metadata {
+            file_name: file_name.to_string(),
+            file_size: 1000,
+            node_size: 1.5,
+            hyperlink_count: 5,
+            sha1: "abc123".to_string(),
+            node_id: "1".to_string(),
+            last_modified: Utc::now(),
+            perplexity_link: "https://example.com".to_string(),
+            last_perplexity_process: Some(Utc::now()),
+            topic_counts: HashMap::new(),
+        };
+        
+        metadata.insert(file_name.to_string(), meta.clone());
+        
+        // Build graph from metadata
+        let graph = Self::build_graph_from_metadata(&metadata).await?;
+        
+        // Check that the graph has one node with the correct metadata
+        assert_eq!(graph.nodes.len(), 1);
+        
+        // Verify metadata_id
+        let node = &graph.nodes[0];
+        assert_eq!(node.metadata_id, "test");
+        
+        // Verify metadata fields
+        assert!(node.metadata.contains_key("fileName"));
+        assert_eq!(node.metadata.get("fileName").unwrap(), "test.md");
+        
+        assert!(node.metadata.contains_key("fileSize"));
+        assert_eq!(node.metadata.get("fileSize").unwrap(), "1000");
+        
+        assert!(node.metadata.contains_key("nodeSize"));
+        assert_eq!(node.metadata.get("nodeSize").unwrap(), "1.5");
+        
+        assert!(node.metadata.contains_key("hyperlinkCount"));
+        assert_eq!(node.metadata.get("hyperlinkCount").unwrap(), "5");
+        
+        assert!(node.metadata.contains_key("sha1"));
+        assert!(node.metadata.contains_key("lastModified"));
+        
+        // Check flags
+        assert_eq!(node.data.flags, 1);
+
+        println!("All metadata tests passed!");
+        Ok(())
     }
 }
