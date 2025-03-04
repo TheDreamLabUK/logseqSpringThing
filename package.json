@@ -14,23 +14,23 @@
     "format": "prettier --write client/"
   },
   "dependencies": {
-    "@mui/material": "^5.15.11",
+    "@mui/material": "^5.16.14",
     "@types/pako": "^2.0.3",
     "@types/webxr": "^0.5.21",
     "alby-js-sdk": "^2.3.0",
     "pako": "^2.1.0",
-    "three": "0.173.0"
+    "three": "0.174.0"
   },
   "devDependencies": {
-    "@types/node": "^22.10.0",
-    "@types/three": "0.173.0",
-    "@typescript-eslint/eslint-plugin": "^8.16.0",
-    "@typescript-eslint/parser": "^8.16.0",
-    "eslint": "^8.57.0",
-    "prettier": "^3.4.1",
-    "terser": "^5.36.0",
+    "@types/node": "^22.13.9",
+    "@types/three": "0.174.0",
+    "@typescript-eslint/eslint-plugin": "^8.26.0",
+    "@typescript-eslint/parser": "^8.26.0",
+    "eslint": "^8.57.1",
+    "prettier": "^3.5.3",
+    "terser": "^5.39.0",
     "typescript": "~5.4.5",
-    "vite": "^5.4.12"
+    "vite": "^5.4.14"
   },
   "engines": {
     "node": ">=18.0.0"

@@ -227,7 +227,7 @@ impl GraphService {
         // Create nodes for all valid node IDs
         for node_id in &valid_nodes {
             // Get metadata for this node, including the node_id if available
-            let metadata_entry = metadata.get(&format!("{}.md", node_id));
+            let metadata_entry = graph.metadata.get(&format!("{}.md", node_id));
             let stored_node_id = metadata_entry.map(|m| m.node_id.clone());
             
             // Create node with stored ID or generate a new one if not available

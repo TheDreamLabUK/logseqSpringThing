@@ -5,10 +5,7 @@ import {
     Mesh,
     Scene,
     Vector3,
-    Material,
-    Color,
-    Matrix4,
-    Object3D
+    Material
 } from 'three';
 import { createLogger } from '../core/logger';
 import { Edge } from '../core/types';
@@ -22,7 +19,6 @@ export class EdgeManager {
     private settings: Settings;
     private edges: Map<string, Mesh> = new Map(); // Store edges by ID
     private nodeInstanceManager: NodeInstanceManager; // Reference to NodeInstanceManager
-    private tempMatrix = new Matrix4();
 
     constructor(scene: Scene, settings: Settings, nodeInstanceManager: NodeInstanceManager) {
         this.scene = scene;
@@ -204,7 +200,7 @@ export class EdgeManager {
         });
     }
 
-    public update(deltaTime: number): void {
+    public update(): void {
         // The edge update is now handled during updateEdges
         // This method is kept for compatibility with the rendering loop
     }

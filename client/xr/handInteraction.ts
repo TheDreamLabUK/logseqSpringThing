@@ -1,6 +1,5 @@
 import { Vector3 } from 'three';
 import { XRHandWithHaptics } from '../types/xr';
-import { WebSocketService } from '../websocket/websocketService';
 import { NodeManagerFacade } from '../rendering/node/NodeManagerFacade';
 import { NodeInteractionManager } from '../rendering/node/interaction/NodeInteractionManager';
 import { createLogger } from '../core/logger';
@@ -12,7 +11,6 @@ const logger = createLogger('HandInteraction');
 export class HandInteractionManager {
     private static instance: HandInteractionManager;
     private lastPinchState: boolean = false;
-    private websocketService: WebSocketService;
     private settingsStore: SettingsStore;
     private nodeManager?: NodeManagerFacade;
     private interactionManager?: NodeInteractionManager;
@@ -22,7 +20,6 @@ export class HandInteractionManager {
     private sessionStateListener: ((state: string) => void) | null = null;
 
     private constructor() {
-        this.websocketService = WebSocketService.getInstance();
         this.settingsStore = SettingsStore.getInstance();
         this.initializationTime = Date.now();
         this.setupSessionStateListener();
@@ -115,12 +112,8 @@ export class HandInteractionManager {
             return;
         }
         
-        // Send node position update through websocket
-        this.websocketService.sendNodeUpdates([{
-            id: nodeId,
-            position: position.clone(),
-            velocity: new Vector3(0, 0, 0)
-        }]);
+        // Send node position update through the interaction manager
+        this.interactionManager.sendNodeUpdates(nodeId, position);
 
         // Update local node position
         this.nodeManager.updateNodePositions([{

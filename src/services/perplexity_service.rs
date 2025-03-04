@@ -120,6 +120,7 @@ impl PerplexityService {
         let metadata = Metadata {
             file_name: file_name.to_string(),
             file_size: perplexity_response.content.len(),
+            node_id: "0".to_string(), // Will be assigned properly later
             node_size: 10.0, // Default size
             hyperlink_count: 0,
             sha1: String::new(),

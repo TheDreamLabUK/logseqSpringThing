@@ -12,8 +12,7 @@ let lastDebugLogTime = 0;
 const DEBUG_LOG_THROTTLE_MS = 1000; // Only log once per second
 
 // Position update deadband threshold (only update if position changes by this amount)
-const POSITION_DEADBAND = 0.05; // Units in world space (0.05 = 5cm)
-const VELOCITY_DEADBAND = 0.01; // Units in world space/second
+const POSITION_DEADBAND = 0.15; // Units in world space (0.15 = 15cm) - Increased from 0.05
 
 // Helper for conditional debug logging
 function debugLog(message: string, ...args: any[]) {
@@ -93,7 +92,7 @@ export class WebSocketService {
     private readonly NODE_UPDATE_DEBOUNCE_MS = 50; // 50ms debounce for node updates
     
     // New fields for improved throttling
-    private updateThrottler = new UpdateThrottler(50); // ~20fps (was: 16.67 = ~60fps)
+    private updateThrottler = new UpdateThrottler(150); // ~6-7fps (was: 50ms = ~20fps) to reduce updates
     private lastNodePositions: Map<number, Vector3> = new Map(); // Keep track of last sent positions
     private pendingNodeUpdates: BinaryNodeData[] = [];
 
@@ -449,7 +448,10 @@ export class WebSocketService {
                     positionChanged = distanceSquared > (POSITION_DEADBAND * POSITION_DEADBAND);
                     
                     if (!positionChanged && Math.random() < 0.001) { // Log occasionally (0.1% chance)
-                        logger.debug(`Filtering node ${id} - position change too small: ${Math.sqrt(distanceSquared).toFixed(5)}`);
+                        if (debugState.isWebsocketDebugEnabled()) {
+                            logger.debug(`Filtering node ${id} - position change too small: ${Math.sqrt(distanceSquared).toFixed(5)} < ${POSITION_DEADBAND}`);
+                        }
+                        continue; // Skip this position update entirely
                     }
                 }
                 
@@ -686,9 +688,7 @@ export class WebSocketService {
         if (validatedUpdates.length === 0 && updates.length > 0) {
             // If we have non-numeric node IDs (metadata names), convert them to numeric indices
             const indexedUpdates = updates.filter(update => {
-                // Get or create index for this metadata name
                 if (!this.nodeNameToIndexMap.has(update.id)) {
-                    // Assign a new numeric index to this metadata name
                     this.nodeNameToIndexMap.set(update.id, this.nextNodeIndex++);
                     logger.info(`Mapped metadata name "${update.id}" to numeric index ${this.nextNodeIndex-1} for binary protocol`);
                 }
@@ -710,7 +710,6 @@ export class WebSocketService {
                 }
                 
                 // Use the numeric index for the binary protocol
-                const numericId = this.nodeNameToIndexMap.get(update.id)!;
                 // Keep this update and transform it
                 return true;
             }).map(update => {

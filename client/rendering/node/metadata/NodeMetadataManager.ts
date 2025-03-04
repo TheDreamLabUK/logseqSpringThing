@@ -70,9 +70,9 @@ export class NodeMetadataManager {
         // Use metadata relationships to get the proper name/label
         let displayName = metadata.name || metadata.id || 'Unknown';
         // If the ID looks like a numeric ID, try to find a better name from our mapping
-        if (/^\d+$/.test(metadata.id) && this.nodeIdToMetadataId.has(metadata.id)) {
+        if (/^\d+$/.test(metadata.id)) {
             displayName = this.nodeIdToMetadataId.get(metadata.id) || displayName;
-            if (debugState.isNodeDebugEnabled()) logger.debug(`Using mapped name: ${displayName} for node ID: ${metadata.id}`);
+            if (debugState.isNodeDebugEnabled()) logger.debug(`Using mapped name for node ID ${metadata.id}: ${displayName}`);
         }
         
         // Log metadata only if node debug is enabled
@@ -121,12 +121,67 @@ export class NodeMetadataManager {
     }
 
     public async createMetadataLabel(metadata: NodeMetadata): Promise<Object3D> {
-        const texture = this.createLabelTexture(metadata);
+        // The problem: We were using a shared canvas instance for all node labels
+        // Create a unique texture for each node with its own canvas instance
+        
+        // Create a dedicated canvas for this label
+        const canvas = document.createElement('canvas');
+        canvas.width = 256;
+        canvas.height = 128;
+        
+        const context = canvas.getContext('2d');
+        if (!context) {
+            throw new Error('Failed to get 2D context for dedicated canvas');
+        }
+        
+        // Configure the context the same way as our shared one
+        context.textAlign = 'center';
+        context.textBaseline = 'middle';
+        context.font = 'bold 24px Arial';
+        
+        // Use metadata relationships to get the proper name/label
+        let displayName = metadata.name || metadata.id || 'Unknown';
+        // If the ID looks like a numeric ID, try to find a better name from our mapping
+        if (/^\d+$/.test(metadata.id)) {
+            displayName = this.nodeIdToMetadataId.get(metadata.id) || displayName;
+            if (debugState.isNodeDebugEnabled()) logger.debug(`Using mapped name for node ID ${metadata.id}: ${displayName}`);
+        }
+        
+        // Draw background
+        context.fillStyle = 'rgba(0, 0, 0, 0.5)';
+        context.fillRect(0, 0, canvas.width, canvas.height);
+        
+        // Draw main label (filename)
+        context.fillStyle = 'white';
+        context.font = 'bold 20px Arial';
+        context.fillText(displayName, canvas.width / 2, 30);
+        
+        // Draw subtext lines
+        context.font = '14px Arial';
+        context.fillStyle = '#dddddd';
+        
+        // Add file size if available
+        if (metadata.fileSize) {
+            const fileSizeText = this.formatFileSize(metadata.fileSize);
+            context.fillText(`Size: ${fileSizeText}`, canvas.width / 2, 55);
+        }
+        
+        // Add hyperlink count if available
+        if (metadata.hyperlinkCount !== undefined) {
+            context.fillText(`Links: ${metadata.hyperlinkCount}`, canvas.width / 2, 75);
+        }
+        
+        // Create a unique texture from this canvas instance
+        const texture = new Texture(canvas);
+        texture.needsUpdate = true;
+        
         const material = new SpriteMaterial({
             map: texture,
             color: 0xffffff,
             transparent: true,
-            opacity: 0.8
+            opacity: 0.8,
+            // Ensure the renderer knows this material is unique
+            depthWrite: true
         });
 
         const sprite = new Sprite(material);
@@ -146,6 +201,12 @@ export class NodeMetadataManager {
 
         // Add to scene
         this.scene.add(sprite);
+
+        // If this node has a numeric ID, make sure to map it even if it wasn't mapped earlier
+        if (/^\d+$/.test(metadata.id) && metadata.name && !this.nodeIdToMetadataId.has(metadata.id)) {
+            this.mapNodeIdToMetadataId(metadata.id, metadata.name);
+            logger.info(`Auto-mapped node ID ${metadata.id} to metadata name ${metadata.name}`);
+        }
 
         this.labels.set(metadata.id, label);
         return sprite;
@@ -214,6 +275,11 @@ export class NodeMetadataManager {
             this.mapNodeIdToMetadataId(metadata.id, metadata.name);
             if (debugState.isNodeDebugEnabled()) {
                 logger.debug(`Updated metadata mapping: ${metadata.id} -> ${metadata.name}`);
+            } else {
+                // Log at info level for important mappings to help diagnose issues
+                if (/^\d+$/.test(metadata.id)) {
+                    logger.info(`Updated numeric ID mapping: ${metadata.id} -> ${metadata.name}`);
+                }
             }
         }
         

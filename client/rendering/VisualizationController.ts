@@ -678,7 +678,7 @@ export class VisualizationController {
 
             // Update edge animations
             if (this.edgeManager) {
-                this.edgeManager.update(deltaTime);
+                this.edgeManager.update();  // No parameter needed as the method was updated
             }
             
             // Update ONLY metadata positions - do not recreate labels every frame

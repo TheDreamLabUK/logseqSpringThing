@@ -141,6 +141,36 @@ impl Node {
     pub fn set_vx(&mut self, val: f32) { self.data.velocity.x = val; }
     pub fn set_vy(&mut self, val: f32) { self.data.velocity.y = val; }
     pub fn set_vz(&mut self, val: f32) { self.data.velocity.z = val; }
+    
+    /// Create a new node with a specific ID or use a stored ID if available
+    pub fn new_with_id(metadata_id: String, stored_node_id: Option<String>) -> Self {
+        // Use stored ID if available, otherwise generate a new one
+        let id = match stored_node_id {
+            Some(stored_id) => stored_id,
+            None => NEXT_NODE_ID.fetch_add(1, Ordering::SeqCst).to_string(),
+        };
+        
+        Self {
+            id,
+            metadata_id: metadata_id.clone(),
+            label: metadata_id,
+            data: BinaryNodeData {
+                position: Vec3Data::zero(),
+                velocity: Vec3Data::zero(),
+                mass: 0, // default mass, will be updated based on file size
+                flags: 0,
+                padding: [0, 0],
+            },
+            metadata: HashMap::new(),
+            file_size: 0,
+            node_type: None,
+            size: None,
+            color: None,
+            weight: None,
+            group: None,
+            user_data: None,
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]

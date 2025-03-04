@@ -178,8 +178,8 @@ impl GPUCompute {
         let mut node_data = Vec::with_capacity(graph.nodes.len());
         for node in &graph.nodes {
             // For GPU computation we need to convert Vec3Data to array format
-            let position_array = vec3data_to_array(&node.data.position);
-            let velocity_array = vec3data_to_array(&node.data.velocity);
+            let _position_array = vec3data_to_array(&node.data.position);
+            let _velocity_array = vec3data_to_array(&node.data.velocity);
             
             // Create the node data with Vec3Data structures
             node_data.push(BinaryNodeData {

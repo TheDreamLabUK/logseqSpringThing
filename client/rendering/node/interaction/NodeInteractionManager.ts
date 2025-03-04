@@ -5,6 +5,7 @@ import {
 } from 'three';
 import { XRHandWithHaptics, HapticActuator } from '../../../types/xr';
 import { createLogger } from '../../../core/logger';
+import { WebSocketService } from '../../../websocket/websocketService';
 
 const logger = createLogger('NodeInteractionManager');
 
@@ -15,9 +16,11 @@ export class NodeInteractionManager {
     private readonly interactionRadius: number = 0.1; // 10cm interaction radius
     private readonly HAPTIC_STRENGTH = 0.5; // 50% intensity
     private hapticActuators: HapticActuator[] | null = null;
+    private webSocketService: WebSocketService;
     
     private constructor(instanceMesh: InstancedMesh) {
         this.instanceMesh = instanceMesh;
+        this.webSocketService = WebSocketService.getInstance();
     }
 
     public static getInstance(instanceMesh: InstancedMesh): NodeInteractionManager {
@@ -76,6 +79,25 @@ export class NodeInteractionManager {
         }
 
         return closestIndex;
+    }
+
+    /**
+     * Send node position updates to the server via WebSockets
+     * @param nodeId The ID of the node being updated
+     * @param position The new position for the node
+     */
+    public sendNodeUpdates(nodeId: string, position: Vector3): void {
+        if (!nodeId) {
+            logger.warn('Cannot send node update: Invalid node ID');
+            return;
+        }
+
+        // Send the update to the WebSocket service
+        this.webSocketService.sendNodeUpdates([{
+            id: nodeId,
+            position: position.clone(),
+            velocity: new Vector3(0, 0, 0)
+        }]);
     }
 
     private handleNodeHover(_instanceIndex: number): void {

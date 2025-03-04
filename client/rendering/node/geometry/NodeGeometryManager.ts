@@ -40,18 +40,19 @@ export class NodeGeometryManager {
     private currentLOD: LODLevel = LODLevel.HIGH;
     private lastDistance: number = 0;
     private switchCount: number = 0;
+    private _lastSwitchTime: number = 0;
     
     // Implement hysteresis with different thresholds for upscaling vs downscaling
     private readonly lodThresholds: LODHysteresisThresholds = {
         // Thresholds for increasing detail (moving closer)
         upscale: {
-            [LODLevel.HIGH]: 8.0,     // Switch to HIGH when closer than 8m (was 10m)
-            [LODLevel.MEDIUM]: 40.0,  // Switch to MEDIUM when closer than 40m (was 50m)
+            [LODLevel.HIGH]: 5.0,     // Switch to HIGH when closer than 5m (reduced from 8m)
+            [LODLevel.MEDIUM]: 30.0,  // Switch to MEDIUM when closer than 30m (reduced from 40m)
         },
         // Thresholds for decreasing detail (moving away)
         downscale: {
-            [LODLevel.MEDIUM]: 12.0,  // Switch to MEDIUM when further than 12m (was 10m)
-            [LODLevel.LOW]: 60.0,     // Switch to LOW when further than 60m (was 50m)
+            [LODLevel.MEDIUM]: 15.0,  // Switch to MEDIUM when further than 15m (increased from 12m)
+            [LODLevel.LOW]: 70.0,     // Switch to LOW when further than 70m (increased from 60m)
         }
     };
 
@@ -132,9 +133,9 @@ export class NodeGeometryManager {
         const distanceChange = Math.abs(distance - this.lastDistance);
         this.lastDistance = distance;
         
-        // Skip LOD calculation if distance hasn't changed significantly (< 0.1m)
+        // Skip LOD calculation if distance hasn't changed significantly (< 0.5m)
         // This prevents unnecessary LOD switches due to tiny camera movements
-        if (distanceChange < 0.1 && this.currentLOD !== LODLevel.HIGH) {
+        if (distanceChange < 0.5) {
             return this.getGeometryForLOD(this.currentLOD);
         }
         
@@ -187,12 +188,29 @@ export class NodeGeometryManager {
         // Only update if LOD level changed
         if (targetLOD !== this.currentLOD) {
             this.switchCount++;
-            this.currentLOD = targetLOD;
-            logger.info(`Switching to LOD level ${targetLOD} for distance ${distance.toFixed(2)}`, 
-                createDataMetadata({ 
+            
+            // Add a dampening mechanism to reduce switch frequency
+            // Only update if we've had a significant distance change or a minimum count of frames
+            const significantDistanceChange = distanceChange > 2.0; // 2 meters movement is significant
+            
+            // Implement a cooldown period for LOD switching (don't switch too frequently)
+            const currentTime = performance.now();
+            const timeSinceLastSwitch = currentTime - (this._lastSwitchTime || 0);
+            const minimumSwitchInterval = 1000; // 1 second between LOD changes
+            
+            if (significantDistanceChange || timeSinceLastSwitch > minimumSwitchInterval) {
+                // Update LOD level
+                this.currentLOD = targetLOD;
+                this._lastSwitchTime = currentTime;
+                
+                // Log at debug level to reduce console spam
+                logger.info(`Switching to LOD level ${targetLOD} for distance ${distance.toFixed(2)}`, 
+                    createDataMetadata({ 
+                        previousLevel: this.currentLOD,
                     switchCount: this.switchCount,
                     distanceChange: distanceChange.toFixed(3)
                 }));
+            }
         }
 
         // Always ensure we return a valid geometry

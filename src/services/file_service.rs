@@ -346,6 +346,7 @@ impl FileService {
                             file_name: file_meta.name.clone(),
                             file_size,
                             node_size,
+                            node_id: "0".to_string(), // Will be assigned properly later
                             hyperlink_count: Self::count_hyperlinks(&content),
                             sha1: Self::calculate_sha1(&content),
                             last_modified: file_meta.last_modified.unwrap_or_else(|| Utc::now()),

@@ -26,9 +26,9 @@ public/fonts/Roboto-Regular.woff2
 public/fonts/helvetiker_regular.typeface.json
 rendering/UnifiedTextRenderer.ts
 rendering/scene.ts
+rendering/EdgeManager.ts
 rendering/textRenderer.ts
 rendering/SDFFontAtlasGenerator.ts
-rendering/EdgeManager.ts
 rendering/MetadataVisualizer.ts
 rendering/VisualizationController.ts
 rendering/factories/MaterialFactory.ts

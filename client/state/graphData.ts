@@ -522,8 +522,6 @@ export class GraphDataManager {
         if (!this.nodes.has(edge.source) || !this.nodes.has(edge.target)) {
           // It's possible we're seeing edges before their nodes due to pagination
           // Let's try to get node IDs from node-to-metadata mapping
-          const sourceMeta = edge.source;
-          const targetMeta = edge.target;
           
           // We'll log this condition to help debug pagination issues
           if (this.nodes.size > 0 && debugState.isNodeDebugEnabled()) {

@@ -1,7 +1,7 @@
 // Core types for the application
 import { Vector3 as ThreeVector3 } from 'three';
 import { debugState } from './debugState';
-import { createLogger } from './logger';
+import { createLogger, createDataMetadata } from './logger';
 
 const logger = createLogger('CoreTypes');
 
@@ -378,6 +378,7 @@ export interface Logger {
 interface RawNode {
   id: string;
   metadata_id?: string;  // Added to match the server's data structure
+  label?: string;
   data: {
     position: Vector3;
     metadata?: NodeMetadata;
@@ -403,14 +404,19 @@ interface RawGraphData {
 }
 
 export function transformGraphData(data: RawGraphData): GraphData {
+  if (debugState.isNodeDebugEnabled()) {
+    logger.debug(`Transforming graph data with ${data.nodes.length} nodes and ${data.edges.length} edges`);
+  }
+  
   const nodes = data.nodes.map((node: RawNode) => transformNodeData(node));
-  const nodePositions = new Map(nodes.map((node: Node) => [
-    node.id,
-    node.data.position 
-  ]));
+  
+  // Create a map for faster position lookup
+  const nodePositions = new Map<string, Vector3>();
+  nodes.forEach(node => {
+    nodePositions.set(node.id, node.data.position);
+  });
 
-  // Enhanced edge processing with logging for troubleshooting
-  const edges = data.edges.map((edge: RawEdge) => {
+  const edges = data.edges.map((edge: RawEdge, index: number) => {
     // Check if node positions exist for the source and target
     const sourcePos = nodePositions.get(edge.source);
     const targetPos = nodePositions.get(edge.target);
@@ -418,7 +424,15 @@ export function transformGraphData(data: RawGraphData): GraphData {
     // For debugging missing edges
     if (!sourcePos || !targetPos) {
       if (debugState.isNodeDebugEnabled()) {
-        logger.warn(`Edge processing: Missing position for ${!sourcePos ? 'source' : 'target'} node ID ${!sourcePos ? edge.source : edge.target}`);
+        const missingPart = !sourcePos ? 'source' : 'target';
+        const missingId = !sourcePos ? edge.source : edge.target;
+        logger.warn(`Edge ${index}: Missing position for ${missingPart} node ID ${missingId}`, createDataMetadata({
+          edge: {
+            source: edge.source,
+            target: edge.target,
+            id: edge.id || `${edge.source}_${edge.target}`
+          }
+        }));
       }
     }
     
@@ -428,7 +442,7 @@ export function transformGraphData(data: RawGraphData): GraphData {
       // These will be updated later with actual node positions
       sourcePosition: sourcePos || new ThreeVector3(0, 0, 0),
       targetPosition: targetPos || new ThreeVector3(0, 0, 0),
-      id: edge.id || `${edge.source}_${edge.target}`
+      id: edge.id || `edge_${edge.source}_${edge.target}`
     };
   });
 
@@ -440,32 +454,37 @@ export function transformGraphData(data: RawGraphData): GraphData {
 }
 
 export function transformNodeData(node: any): Node {
-  // Make sure we have appropriate metadata
+  // For debugging
+  if (debugState.isNodeDebugEnabled()) {
+    logger.debug(`Transforming node with ID: ${node.id}, metadata_id: ${node.metadata_id || 'undefined'}, label: ${node.label || 'undefined'}`);
+  }
+  
+  // Build metadata with careful fallbacks
   const metadata = {
     // Use multiple fallbacks for name with preference order:
     // 1. Existing metadata name
     // 2. Label (from server)
     // 3. metadata_id (filename)
     // 4. Numeric ID as last resort
-    name: node.data.metadata?.name || 
+    name: node.data?.metadata?.name || 
           node.label || 
           node.metadata_id || 
           node.id,
-    lastModified: parseInt(node.data.metadata?.lastModified) || Date.now(),
-    links: node.data.metadata?.links || [],
-    references: node.data.metadata?.references || [],
-    fileSize: node.metadata?.fileSize || 
-              parseInt(node.data.metadata?.fileSize) || 
+    lastModified: parseInt(node.data?.metadata?.lastModified) || Date.now(),
+    links: node.data?.metadata?.links || [],
+    references: node.data?.metadata?.references || [],
+    fileSize: node.data?.metadata?.fileSize || 
+              parseInt(node.data?.metadata?.fileSize) || 
               1000, // Default file size of 1KB
-    hyperlinkCount: node.metadata?.hyperlinkCount || 
-                    parseInt(node.data.metadata?.hyperlinkCount) || 0
+    hyperlinkCount: node.data?.metadata?.hyperlinkCount || 
+                    parseInt(node.data?.metadata?.hyperlinkCount) || 0
   };
   
-  // For debugging
-  if (debugState.isNodeDebugEnabled() && node.metadata_id) {
-    logger.debug(`Transforming node with metadata_id: ${node.metadata_id}, label: ${node.label}, id: ${node.id}`);
+  // Important: Make sure to log when we have a numeric ID with a metadata name
+  if (/^\d+$/.test(node.id) && (node.metadata_id || node.label)) {
+    logger.info(`Node ${node.id} has metadata_id: ${node.metadata_id || 'N/A'}, label: ${node.label || 'N/A'}`);
   }
-  
+
   return {
     id: node.id,
     label: node.label || node.metadata_id, // Preserve server-side label, fallback to metadata_id
