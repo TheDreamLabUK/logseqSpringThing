@@ -122,18 +122,44 @@ export class NodeManagerFacade implements NodeManagerInterface {
 
         const shouldDebugLog = debugState.isEnabled() && debugState.isNodeDebugEnabled();
         
+        // Create dedicated ID set to ensure unique handling
+        const processedIds = new Set<string>();
+        
         // Track node IDs and handle metadata mapping
-        nodes.forEach(node => {
+        nodes.forEach((node, index) => {
+            if (shouldDebugLog && index < 3) {
+                // Log the first few nodes to help debug
+                logger.debug(`Processing node ${index}: id=${node.id}, ` +
+                             `metadataId=${(node as any).metadataId || 'undefined'}, ` +
+                             `label=${(node as any).label || 'undefined'}`, 
+                              createDataMetadata({
+                                 hasMetadata: !!node.data.metadata,
+                                 metadata: node.data.metadata,
+                                 fileSize: node.data.metadata?.fileSize
+                              }));
+            }
+            
+            // Skip if this node ID has already been processed in this batch
+            // This prevents duplicate processing which could lead to overwriting
+            if (processedIds.has(node.id)) {
+                logger.warn(`Skipping duplicate node ID: ${node.id}`);
+                return;
+            }
+            processedIds.add(node.id);
+
             // Store the node ID in our index map
             this.nodeIndices.set(node.id, node.id);
             
             if (node.data.metadata) {
                 // Extract the proper metadata name/ID from the node
                 // This could be the file name without the .md extension
-                let metadataId: string = '';
+                let metadataId: string = node.id; // Default to node ID
                 
                 // First, try using any server-provided label
-                if ('label' in node && typeof node['label'] === 'string') {
+                if ('metadataId' in node && typeof node['metadataId'] === 'string') {
+                    // Prefer explicit metadataId if available (this is the filename)
+                    metadataId = node['metadataId'] as string;
+                } else if ('label' in node && typeof node['label'] === 'string') {
                     metadataId = node['label'] as string;
                 } else if ('metadata_id' in node && typeof node['metadata_id'] === 'string') {
                     // Next, check for a specific metadata_id property if it exists
@@ -146,6 +172,9 @@ export class NodeManagerFacade implements NodeManagerInterface {
                 if (metadataId && metadataId !== node.id) {
                     this.nodeIdToMetadataId.set(node.id, metadataId);
                     this.metadataManager.mapNodeIdToMetadataId(node.id, metadataId);
+                    if (shouldDebugLog) {
+                        logger.debug(`Mapped node ID ${node.id} to metadata ID ${metadataId}`);
+                    }
                 } 
             }
             if (shouldDebugLog) {
@@ -154,29 +183,43 @@ export class NodeManagerFacade implements NodeManagerInterface {
         });
 
         // Update instance positions
-        this.instanceManager.updateNodePositions(nodes.map(node => ({
-            id: node.id, 
-            metadata: node.data.metadata,
+        // Important: Use fresh map to avoid modifying the original nodes
+        const nodePositionUpdates = nodes.map(node => ({
+            // Extract just what's needed for position update
+            id: node.id,
+            metadata: node.data.metadata || {},
             position: node.data.position,
             velocity: node.data.velocity
-        })));
+        }));
+        this.instanceManager.updateNodePositions(nodePositionUpdates);
        
         // Only update metadata if the throttler allows it
         if (this.metadataUpdateThrottler.shouldUpdate()) {
             // Update metadata for each node
             nodes.forEach(node => {
                 if (node.data.metadata) {
-                    const fileSize = node.data.metadata.fileSize || DEFAULT_FILE_SIZE;
+                    // Ensure we have valid file size
+                    const fileSize = node.data.metadata.fileSize && node.data.metadata.fileSize > 0 
+                        ? node.data.metadata.fileSize 
+                        : DEFAULT_FILE_SIZE;
+                    
                     // Use the metadata ID from our mapping, or fall back to node.id
                     const metadataId = this.nodeIdToMetadataId.get(node.id) || node.id;
                     
                     if (shouldDebugLog) {
-                        logger.debug('Updating node metadata', createDataMetadata({ nodeId: node.id, metadataId }));
+                        logger.debug('Updating node metadata', createDataMetadata({ 
+                            nodeId: node.id, 
+                            metadataId,
+                            fileSize: node.data.metadata.fileSize,
+                            hyperlinkCount: node.data.metadata.hyperlinkCount || 0
+                        }));
                     }
                     
                     // Check if node has a label (from server)
                     let displayName: string = metadataId;
-                    if ('label' in node && typeof node['label'] === 'string') {
+                    if ('metadataId' in node && typeof node['metadataId'] === 'string') {
+                        displayName = node['metadataId'] as string;
+                    } else if ('label' in node && typeof node['label'] === 'string') {
                         displayName = node['label'] as string;
                     } else if ('metadata_id' in node && typeof node['metadata_id'] === 'string') {
                         displayName = node['metadata_id'] as string;
@@ -191,10 +234,15 @@ export class NodeManagerFacade implements NodeManagerInterface {
                         id: node.id,
                         name: displayName || metadataId, // Use the best name available
                         position: node.data.position,
-                        commitAge: 0,
-                        hyperlinkCount: node.data.metadata.links?.length || 0,
-                        importance: 0,
-                        fileSize: fileSize,
+                        // Ensure proper metadata is set with appropriate defaults
+                        commitAge: node.data.metadata.lastModified !== undefined 
+                            ? node.data.metadata.lastModified 
+                            : 0,
+                        hyperlinkCount: (node.data.metadata.hyperlinkCount !== undefined && node.data.metadata.hyperlinkCount > 0)
+                            ? node.data.metadata.hyperlinkCount
+                            : node.data.metadata.links?.length || 0,
+                        importance: node.data.metadata.hyperlinkCount || 0,
+                        fileSize: fileSize, // Use the provided fileSize
                         nodeSize: this.calculateNodeSize(fileSize),
                     });
                 }

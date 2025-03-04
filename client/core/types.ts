@@ -25,6 +25,7 @@ export interface NodeData {
 
 export interface Node {
   id: string;
+  metadataId?: string;
   label?: string;
   data: {
     position: Vector3;
@@ -456,24 +457,29 @@ export function transformGraphData(data: RawGraphData): GraphData {
 export function transformNodeData(node: any): Node {
   // For debugging
   if (debugState.isNodeDebugEnabled()) {
-    logger.debug(`Transforming node with ID: ${node.id}, metadata_id: ${node.metadata_id || 'undefined'}, label: ${node.label || 'undefined'}`);
+    logger.debug(`Transforming node with ID: ${node.id}, metadata_id: ${node.metadata_id || 'undefined'}, label: ${node.label || 'undefined'}`,
+                createDataMetadata({ 
+                  hasMetadata: !!node.data?.metadata,
+                  metadata_name: node.data?.metadata?.name || 'undefined',
+                  fileSize: node.data?.metadata?.fileSize || 'undefined',
+                  hyperlinkCount: node.data?.metadata?.hyperlinkCount || 'undefined'
+                }));
   }
   
-  // Build metadata with careful fallbacks
+  // Store server-provided metadataId and label directly, without modification
+  const nodeId = node.id;
+  const metadataId = node.metadata_id || node.label || node.id;
+  
+  // Build metadata (additional information)
   const metadata = {
-    // Use multiple fallbacks for name with preference order:
-    // 1. Existing metadata name
-    // 2. Label (from server)
-    // 3. metadata_id (filename)
-    // 4. Numeric ID as last resort
-    name: node.data?.metadata?.name || 
-          node.label || 
-          node.metadata_id || 
-          node.id,
+    // Use the metadata_id (filename) as the metadata name
+    name: metadataId,
     lastModified: parseInt(node.data?.metadata?.lastModified) || Date.now(),
     links: node.data?.metadata?.links || [],
     references: node.data?.metadata?.references || [],
-    fileSize: node.data?.metadata?.fileSize || 
+    // Important: make sure to retain file size information specifically
+    fileSize: node.data?.metadata?.fileSize ||
+              (node.file_size !== undefined ? parseInt(node.file_size) : null) || 
               parseInt(node.data?.metadata?.fileSize) || 
               1000, // Default file size of 1KB
     hyperlinkCount: node.data?.metadata?.hyperlinkCount || 
@@ -482,11 +488,16 @@ export function transformNodeData(node: any): Node {
   
   // Important: Make sure to log when we have a numeric ID with a metadata name
   if (/^\d+$/.test(node.id) && (node.metadata_id || node.label)) {
-    logger.info(`Node ${node.id} has metadata_id: ${node.metadata_id || 'N/A'}, label: ${node.label || 'N/A'}`);
+    logger.info(`Node ${node.id} has metadata_id: ${node.metadata_id || 'N/A'}, label: ${node.label || 'N/A'}`,
+               createDataMetadata({
+                 fileSize: metadata.fileSize,
+                 hyperlinkCount: metadata.hyperlinkCount
+               }));
   }
 
   return {
-    id: node.id,
+    id: nodeId, // The numeric ID string, used for binary protocol
+    metadataId: node.metadata_id || node.label || metadata.name, // Preserve server-provided metadata ID
     label: node.label || node.metadata_id, // Preserve server-side label, fallback to metadata_id
     data: {
       // Always create new Vector3 objects to ensure proper type and consistent behavior
