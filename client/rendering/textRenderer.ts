@@ -132,6 +132,8 @@ export class TextRenderer {
 
         // Create sprite
         const sprite = new Sprite(material);
+        // Disable frustum culling to ensure labels are visible regardless of position
+        sprite.frustumCulled = false;
         
         // Scale based on text resolution
         const resolution = this.settings.textResolution || 16;
@@ -247,6 +249,11 @@ export class TextRenderer {
                     if (this.settings.billboardMode === 'camera') {
                         // Full billboard - always face camera
                         state.sprite.quaternion.copy(this.camera.quaternion);
+                        
+                        // Ensure sprite is always visible regardless of camera position
+                        if (!state.sprite.visible) {
+                            state.sprite.visible = true;
+                        }
                     } else {
                         // Vertical billboard - only rotate around Y axis
                         const tempVec = new Vector3().copy(this.camera.position).sub(state.position);

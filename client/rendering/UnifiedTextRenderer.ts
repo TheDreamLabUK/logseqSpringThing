@@ -332,18 +332,31 @@ export class UnifiedTextRenderer {
     public update(): void {
         if (!this.camera || !this.material) return;
         
-        // Update only visible labels
-        this.labels.forEach((label, id) => {
-            if (this.isLabelVisible(label)) {
+        // When in camera billboard mode, update all labels regardless of position
+        if (this.settings.billboardMode === 'camera') {
+            this.labels.forEach((label, id) => {
                 this.updateLabel(id, label.text, label.position, label.color);
-            }
-        });
+            });
+        } else {
+            // For other billboard modes, update only visible labels
+            this.labels.forEach((label, id) => {
+                if (this.isLabelVisible(label)) {
+                    this.updateLabel(id, label.text, label.position, label.color);
+                }
+            });
+        }
     }
 
     private isLabelVisible(label: LabelInstance): boolean {
         if (!label.visible) return false;
         
-        // Use distance-based culling with the camera's far plane
+        // When billboard_mode is "camera", don't cull labels based on position relative to camera
+        // This ensures labels are visible regardless of which side of the origin they're on
+        if (this.settings.billboardMode === 'camera') {
+            return true;
+        }
+        
+        // For other billboard modes, use distance-based culling with the camera's far plane
         const distanceToCamera = label.position.distanceTo(this.camera.position);
         const margin = 5.0;  // Units in world space
         
