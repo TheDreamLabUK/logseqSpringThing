@@ -86,7 +86,14 @@ export class NodeManagerFacade implements NodeManagerInterface {
 
         try {
             const instanceMesh = this.instanceManager.getInstanceMesh();
-            instanceMesh.layers.set(enabled ? 1 : 0);
+            if (enabled) {
+                // In XR mode, only use layer 1
+                instanceMesh.layers.set(1);
+            } else {
+                // In non-XR mode, make sure both layers are enabled for consistent visibility
+                instanceMesh.layers.enable(0);
+                instanceMesh.layers.enable(1);
+            }
             this.metadataManager.setXRMode(enabled);
             logger.debug('XR mode status changed', createDataMetadata({ enabled }));
         } catch (error) {

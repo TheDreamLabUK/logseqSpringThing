@@ -15,6 +15,7 @@ const logger = createLogger('NodeMetadataManager');
 
 interface MetadataLabel {
     sprite: Sprite;
+    container: Object3D;
     metadata: NodeMetadata;
     lastUpdateDistance: number;
     lastVisible: boolean;
@@ -246,28 +247,35 @@ export class NodeMetadataManager {
             map: texture,
             color: 0xffffff,
             transparent: true,
-            opacity: 0.8,
+            opacity: 0.9,  // Slightly increased for better visibility
             // Ensure the renderer knows this material is unique
-            depthWrite: true
+            depthWrite: false  // Changed to false to prevent occlusion by other objects
         });
 
         const sprite = new Sprite(material);
         sprite.scale.set(this.LABEL_SCALE * 2, this.LABEL_SCALE, 1);
-        sprite.renderOrder = 1; // Ensure labels render on top
+        sprite.renderOrder = 1000; // Significantly increase render order to ensure labels are always on top
 
+        // Add the sprite to an Object3D container for better control
+        const container = new Object3D();
+        container.add(sprite);
+        container.renderOrder = 1000; // Ensure the entire container has high render priority
+        container.position.copy(sprite.position); // Initialize container position
+        
         // Enable both layers for desktop mode
         sprite.layers.enable(0);
         sprite.layers.enable(1);
 
         const label: MetadataLabel = {
             sprite,
+            container,
             metadata,
             lastUpdateDistance: Infinity,
             lastVisible: false
         };
 
         // Add to scene
-        this.scene.add(sprite);
+        this.scene.add(container);
 
         // If this node has a numeric ID, map it to the display name
         if (/^\d+$/.test(metadata.id) && displayName && displayName !== metadata.id) {
@@ -292,7 +300,7 @@ export class NodeMetadataManager {
         const cameraPosition = camera.position;
 
         this.labels.forEach((label) => {
-            const { sprite, metadata } = label;
+            const { sprite, container, metadata } = label;
             
             // Get actual world position from metadata
             this.worldPosition.set(
@@ -302,7 +310,7 @@ export class NodeMetadataManager {
             );
             
             // Update sprite position
-            sprite.position.copy(this.worldPosition);
+            container.position.copy(this.worldPosition);
             
             const distance = this.worldPosition.distanceTo(cameraPosition);
 
@@ -324,7 +332,7 @@ export class NodeMetadataManager {
                 );
 
                 // Make sprite face camera
-                sprite.lookAt(cameraPosition);
+                container.lookAt(cameraPosition);
             }
 
             // Update last known distance
@@ -405,7 +413,7 @@ export class NodeMetadataManager {
                         y: position.y, 
                         z: position.z 
                     };
-                    metadataLabel.sprite.position.copy(position);
+                    metadataLabel.container.position.copy(position);
                     return;
                 }
             }
@@ -420,7 +428,7 @@ export class NodeMetadataManager {
         // Update metadata position
         label.metadata.position = { x: position.x, y: position.y, z: position.z };
         // Update sprite position
-        label.sprite.position.copy(position);
+        label.container.position.copy(position);
     }
 
     public updateVisibilityThreshold(threshold: number): void {
@@ -477,7 +485,7 @@ export class NodeMetadataManager {
         label.sprite.material.dispose();
 
         // Remove from scene
-        this.scene.remove(label.sprite);
+        this.scene.remove(label.container);
         
         // Remove from tracking
         this.labels.delete(id);
@@ -490,7 +498,7 @@ export class NodeMetadataManager {
             label.sprite.material.dispose();
             
             // Remove from scene
-            this.scene.remove(label.sprite);
+            this.scene.remove(label.container);
         });
         this.labels.clear();
         

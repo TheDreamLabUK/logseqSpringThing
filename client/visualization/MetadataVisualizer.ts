@@ -135,7 +135,9 @@ export class MetadataVisualizer {
             emissive: this.settings.visualization.labels.textColor || '#ffffff',
             transparent: true,
             opacity: 1.0,
-            side: THREE.DoubleSide
+            side: THREE.DoubleSide,
+            depthWrite: false, // Disable depth writing to prevent occlusion
+            depthTest: false   // Disable depth testing to ensure visibility
         });
 
         // Create mesh with the text geometry and center it
@@ -177,15 +179,17 @@ export class MetadataVisualizer {
             transparent: true,
             opacity: 1.0,
             side: DoubleSide,
-            depthWrite: true,
-            depthTest: true
+            depthWrite: false,  // Changed to false to prevent occlusion by other objects
+            depthTest: false    // Changed to false for consistent behavior
         });
 
         // Add outline for better visibility
         if (this.settings.visualization.labels.textOutlineWidth > 0) {
             const outlineMaterial = new MeshBasicMaterial({
                 color: this.settings.visualization.labels.textOutlineColor || '#000000',
-                side: DoubleSide
+                side: DoubleSide,
+                depthWrite: false, // Disable depth writing for outline to match main material
+                depthTest: false   // Disable depth testing to ensure outline is always visible
             });
             
             const outlineWidth = this.settings.visualization.labels.textOutlineWidth;
@@ -204,7 +208,9 @@ export class MetadataVisualizer {
             
             const group = new Group();
             group.add(outlineMesh);
+            outlineMesh.renderOrder = 1000; // Ensure outline renders on top
             group.add(new Mesh(textGeometry as unknown as BufferGeometry, material));
+            group.renderOrder = 1000; // Ensure entire group renders on top
             
             // Center the group
             const bbox = textGeometry.boundingBox;
@@ -219,6 +225,7 @@ export class MetadataVisualizer {
         // Create mesh with the text geometry and center it
         const bbox = textGeometry.boundingBox;
         const mesh = new Mesh(textGeometry as unknown as BufferGeometry, material);
+        mesh.renderOrder = 1000; // Ensure text mesh renders on top
 
         if (bbox) {
             const width = bbox.max.x - bbox.min.x;
@@ -283,6 +290,7 @@ export class MetadataVisualizer {
     public async createMetadataLabel(metadata: NodeMetadata, nodeLabel?: string): Promise<MetadataLabelGroup> {
         const group = new Group() as MetadataLabelGroup;
         group.name = 'metadata-label';
+        group.renderOrder = 1000; // Set high render order to ensure visibility
         group.userData = { isMetadata: true };
         
         // Log the label source for debugging

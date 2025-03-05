@@ -127,12 +127,14 @@ export class XRSessionManager {
     private createGroundPlane(): Mesh {
         const geometry = new PlaneGeometry(0.5, 0.5); // 0.5x0.5 meter plane
         const material = new MeshPhongMaterial({
-            color: 0x444444, // Darker gray color
+            color: 0x808080, // Medium gray color
             transparent: true,
-            opacity: 0.15, // Even more transparent
+            opacity: 0.1, // More transparent to avoid visual interference
             side: DoubleSide,
-            depthWrite: false // Prevent depth writing to avoid z-fighting
+            depthWrite: false, // Prevent depth writing to avoid z-fighting
+            depthTest: false // Disable depth testing to prevent occlusion of other elements
         });
+        
         const plane = new Mesh(geometry, material);
         plane.rotateX(-Math.PI / 2);
         plane.position.y = -0.015; // Slightly below grid but not too far
@@ -404,9 +406,8 @@ export class XRSessionManager {
             // Show AR visualization elements after a short delay to ensure proper placement
             setTimeout(() => {
                 this.gridHelper.visible = true;
-                // Only show ground plane in Quest mode if explicitly enabled in settings
-                this.groundPlane.visible = platformManager.isQuest() && 
-                    (this.currentSettings.showPlaneOverlay === true);
+                // Force ground plane to remain invisible to prevent occlusion of node labels
+                this.groundPlane.visible = false;
                 this.arLight.visible = true;
             }, 1500); // Increased delay for better stability
             

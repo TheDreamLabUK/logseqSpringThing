@@ -83,10 +83,13 @@ export class UnifiedTextRenderer {
             });
         }
         
-        // Use basic material instead of shader material to avoid WebGL issues
+        // Use basic material instead of shader material to avoid WebGL issues.
+        // Disable depthTest and depthWrite so labels are always visible.
         this.material = new MeshBasicMaterial({ 
             color: new Color(this.settings.textColor),
-            transparent: true
+            transparent: true,
+            depthTest: false,
+            depthWrite: false
         });
         
         this.geometry = this.createInstancedGeometry();
@@ -102,6 +105,8 @@ export class UnifiedTextRenderer {
         }
         
         this.mesh = new Mesh(this.geometry, this.material);
+        // Ensure text labels render on top by assigning a very high render order
+        this.mesh.renderOrder = 1000; // Increased to match NodeMetadataManager sprite renderOrder
         this.group.add(this.mesh);
         
         this.setXRMode(platformManager.isXRMode);
@@ -212,10 +217,7 @@ export class UnifiedTextRenderer {
             return;
         }
         
-        // Skip positions with all zeros (likely uninitialized nodes)
-        if (position.x === 0 && position.y === 0 && position.z === 0) {
-            return;
-        }
+
         
         // Only log when debug is enabled
         if (debugState.isDataDebugEnabled()) {
