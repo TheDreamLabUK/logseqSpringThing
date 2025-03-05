@@ -120,6 +120,7 @@ export class NodeManagerFacade implements NodeManagerInterface {
     public updateNodes(nodes: { id: string, data: NodeData }[]): void {
         if (!this.isInitialized) return;
 
+        // Set the initial count on NodeInstanceManager
         if (debugState.isDataDebugEnabled()) {
             logger.debug('Updating nodes in NodeManagerFacade', { nodeCount: nodes.length });
         }
@@ -127,6 +128,14 @@ export class NodeManagerFacade implements NodeManagerInterface {
         const shouldDebugLog = debugState.isEnabled() && debugState.isNodeDebugEnabled();
         
         // Create dedicated ID set to ensure unique handling
+        // CRITICAL FIX: Initialize the node-to-metadata ID mappings FIRST
+        // This ensures labels are correct from the very beginning
+        const mappingNodes = nodes.map(node => ({
+            id: node.id,
+            metadataId: (node as any).metadataId,
+            label: (node as any).label || (node as any).metadataId
+        }));
+        this.metadataManager.initializeMappings(mappingNodes);
         const processedIds = new Set<string>();
         
         // Track node IDs and handle metadata mapping
@@ -240,8 +249,14 @@ export class NodeManagerFacade implements NodeManagerInterface {
                         displayName = node['metadata_id'] as string;
                     } 
                     
+                    // Verify that we're using the correct metadata ID for the displayName
+                    if (/^\d+$/.test(node.id) && displayName === node.id) {
+                        // If displayName is still the numeric ID, try to get a better name from our mapping
+                        displayName = this.metadataManager.getLabel(node.id);
+                    }
+                    
                     // Make sure to map the node ID to the proper metadata ID for labels
-                    if (displayName && displayName !== node.id) {
+                    if (displayName && displayName !== node.id && metadataId !== displayName) {
                         this.metadataManager.mapNodeIdToMetadataId(node.id, displayName);
                     }
                     

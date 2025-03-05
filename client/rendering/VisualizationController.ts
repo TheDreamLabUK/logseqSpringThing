@@ -777,13 +777,25 @@ export class VisualizationController {
         
         // Create metadata for all nodes
         currentData.nodes.forEach((node, index) => {
-            // Skip if already processed or no metadata available
+            // Skip if already processed
             if (processedNodeIds.has(node.id)) {
                 return;
             }
             
             // Mark as processed
             processedNodeIds.add(node.id);
+
+            // CRITICAL: Get the proper label from the node
+            // This is crucial for correct label display - using the right property chain
+            let nodeLabel: string | undefined;
+            if ('label' in node && typeof node.label === 'string') {
+                nodeLabel = node.label; // Use explicit node.label if available
+            } else if ('metadataId' in node && typeof node.metadataId === 'string') {
+                nodeLabel = node.metadataId; // Fall back to metadataId (filename)
+            }
+            
+            // Log actual label being used
+            logger.info(`Using label for node ${node.id}: "${nodeLabel || 'undefined'}"`);
             
             // Create metadata even if node.data.metadata is missing
             // Use node ID as a fallback for the name
@@ -793,6 +805,7 @@ export class VisualizationController {
             if (index < 5) {
                 logger.info(`Processing node #${index}: ${node.id}`, createDataMetadata({
                     name: nodeMetadata.name || node.id,
+                    label: nodeLabel || '(undefined)',
                     fileSize: nodeMetadata.fileSize,
                     position: node.data.position
                 })); 
@@ -801,7 +814,7 @@ export class VisualizationController {
             const metadata: NodeMetadata = {
                 id: node.id,
                 // Use explicit || chaining to handle all possible undefined cases
-                name: (nodeMetadata.name || node.id || `Node ${index}`).toString(),
+                name: (nodeLabel || nodeMetadata.name || node.id || `Node ${index}`).toString(),
                 commitAge: Math.floor((Date.now() - (nodeMetadata.lastModified || Date.now())) / (1000 * 60 * 60 * 24)),
                 hyperlinkCount: nodeMetadata.hyperlinkCount || 0,
                 fileSize: nodeMetadata.fileSize || 1024,
@@ -815,7 +828,7 @@ export class VisualizationController {
             };
                 
             // Create the label with proper unique metadata
-            this.metadataVisualizer?.createMetadataLabel(metadata, node.id);
+            this.metadataVisualizer?.createMetadataLabel(metadata, nodeLabel || node.id); // Pass node.id as fallback if nodeLabel is undefined
                 
             // Update position immediately to avoid the "dropping in" effect
             const position = this.nodeManager?.getNodeInstanceManager().getNodePosition(node.id);

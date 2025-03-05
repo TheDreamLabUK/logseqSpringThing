@@ -260,6 +260,11 @@ export class MetadataVisualizer {
         });
     }
 
+    /**
+     * Format file size in a human-readable way
+     * @param bytes File size in bytes
+     * @returns Formatted string (e.g., "1.5 KB")
+     */
     private formatFileSize(bytes: number): string {
         if (!bytes || isNaN(bytes)) return 'N/A';
         if (bytes < 1024) return `${bytes} B`;
@@ -268,13 +273,24 @@ export class MetadataVisualizer {
         return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
     }
 
-    public async createMetadataLabel(metadata: NodeMetadata): Promise<MetadataLabelGroup> {
+    /**
+     * Create a metadata label for a node
+     * CRITICAL: This function now explicitly accepts a nodeLabel parameter
+     * to prioritize the label from the Node object over metadata.name
+     * @param metadata Metadata object containing node details
+     * @param nodeLabel Optional label from Node.label property (preferred over metadata.name)
+     */
+    public async createMetadataLabel(metadata: NodeMetadata, nodeLabel?: string): Promise<MetadataLabelGroup> {
         const group = new Group() as MetadataLabelGroup;
         group.name = 'metadata-label';
         group.userData = { isMetadata: true };
-
+        
+        // Log the label source for debugging
+        logger.info(`Creating metadata label for ${metadata.id} with ${nodeLabel ? 'explicit' : 'metadata'} label: "${nodeLabel || metadata.name}"`);
+        
         // Create text for name
-        const nameMesh = await this.createTextMesh(metadata.name);
+        const displayName = nodeLabel || metadata.name;
+        const nameMesh = await this.createTextMesh(displayName);
         if (nameMesh) {
             nameMesh.position.y = 1.2;
             nameMesh.scale.setScalar(0.8);
@@ -289,6 +305,10 @@ export class MetadataVisualizer {
             fileSizeMesh.position.y = 0.8;
             fileSizeMesh.scale.setScalar(0.7);
             group.add(fileSizeMesh);
+
+            if (debugState.isNodeDebugEnabled()) {
+                logger.debug(`Created file size label: ${fileSizeText} for node "${displayName}" (${metadata.id})`);
+            }
             
             if (debugState.isNodeDebugEnabled()) {
                 logger.debug(`Creating file size label: ${fileSizeText} for node ${metadata.id}`);
@@ -299,7 +319,7 @@ export class MetadataVisualizer {
         // Ensure we have a valid value, defaulting to 0 if undefined or invalid
         const hyperlinkCount = Number.isFinite(metadata.hyperlinkCount) ? metadata.hyperlinkCount : 0;
         const linksText = `Links: ${hyperlinkCount}`;
-        if (debugState.isNodeDebugEnabled()) {
+        if (hyperlinkCount > 0 && debugState.isNodeDebugEnabled()) {
             logger.debug(`Creating hyperlink count label: ${linksText} for node ${metadata.id}`);
         }
         const linksMesh = await this.createTextMesh(linksText);

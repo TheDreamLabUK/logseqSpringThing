@@ -29,7 +29,9 @@ export class NodeMetadataManager {
     private VISIBILITY_THRESHOLD = 100;  // Increased maximum distance for label visibility
     private readonly UPDATE_INTERVAL = 2;        // More frequent updates
     private readonly LABEL_SCALE = 0.5;         // Base scale for labels
+    private readonly DEFAULT_FILE_SIZE = 1000; // Default fileSize for fallback
     private frameCount = 0;
+    private isInitialMappingComplete = false;
 
     private worldPosition = new Vector3();
     private labelCanvas: HTMLCanvasElement;
@@ -63,22 +65,39 @@ export class NodeMetadataManager {
         return NodeMetadataManager.instance;
     }
 
+    /**
+     * Prioritize mapping node IDs to metadata IDs before any other operation
+     * This is critical for ensuring labels are displayed correctly from the start
+     * @param nodes Array of nodes to establish initial mappings
+     */
+    public initializeMappings(nodes: Array<{id: string, metadataId?: string, label?: string}>): void {
+        if (this.isInitialMappingComplete) return;
+        
+        logger.info(`Initializing metadata mappings for ${nodes.length} nodes`);
+        
+        nodes.forEach(node => {
+            const displayName = node.label || node.metadataId || node.id;
+            if (displayName && displayName !== node.id) {
+                this.mapNodeIdToMetadataId(node.id, displayName);
+                logger.info(`Initial mapping: Node ID ${node.id} -> metadata ID "${displayName}"`);
+            }
+        });
+        
+        this.isInitialMappingComplete = true;
+        logger.info(`Completed initial metadata mappings for ${this.nodeIdToMetadataId.size} nodes`);
+    }
+
     private createLabelTexture(metadata: NodeMetadata): Texture {
         // Clear canvas
         this.labelContext.clearRect(0, 0, this.labelCanvas.width, this.labelCanvas.height);
 
-        // Use metadata relationships to get the proper name/label
+        // CRITICAL: Prioritize metadata relationships to get the proper name/label
         let displayName = metadata.name || metadata.id || 'Unknown';
-        // If the ID looks like a numeric ID, try to find a better name from our mapping
+        
+        // For numeric IDs, always check our ID-to-metadata mapping first
         if (/^\d+$/.test(metadata.id) || metadata.id !== displayName) {
-            displayName = this.nodeIdToMetadataId.get(metadata.id) || displayName;
-            if (debugState.isNodeDebugEnabled()) {
-                logger.debug(`Using mapped name for node ID ${metadata.id}: ${displayName}`, 
-                    createDataMetadata({
-                        fileSize: metadata.fileSize,
-                        hyperlinkCount: metadata.hyperlinkCount
-                    }));
-            }
+            displayName = this.nodeIdToMetadataId.get(metadata.id) || displayName; 
+            logger.info(`Label texture for node ${metadata.id}: Using mapped name "${displayName}"`);
         }
         if (debugState.isNodeDebugEnabled()) {
             logger.debug(`Creating label texture for ${metadata.id} with name: ${displayName}`, 
@@ -100,13 +119,15 @@ export class NodeMetadataManager {
         
         // Add file size if available
         if (metadata.fileSize) {
-            const fileSizeText = this.formatFileSize(metadata.fileSize);
+            // Use actual fileSize or a reasonable default
+            const fileSize = metadata.fileSize || this.DEFAULT_FILE_SIZE;
+            const fileSizeText = this.formatFileSize(fileSize);
             this.labelContext.fillText(`Size: ${fileSizeText}`, this.labelCanvas.width / 2, 55);
         }
         
         // Add hyperlink count if available
-        if (metadata.hyperlinkCount !== undefined) {
-            this.labelContext.fillText(`Links: ${metadata.hyperlinkCount}`, this.labelCanvas.width / 2, 75);
+        if (metadata.hyperlinkCount !== undefined && metadata.hyperlinkCount > 0) {
+            this.labelContext.fillText(`Links: ${metadata.hyperlinkCount}`, this.labelCanvas.width / 2, 75); 
         }
 
         // Create texture
@@ -129,7 +150,7 @@ export class NodeMetadataManager {
         // The problem: We were using a shared canvas instance for all node labels
         // Create a unique texture for each node with its own canvas instance
         
-        // Log detailed info to debug node identity
+        // Log detailed info to track node identity
         logger.info(`Creating metadata label for node ID: ${metadata.id}, metadata name: ${metadata.name}`);
         
         // Create a dedicated canvas for this label
@@ -147,14 +168,19 @@ export class NodeMetadataManager {
         context.textBaseline = 'middle';
         context.font = 'bold 24px Arial';
         
-        // Important: Create a separate local variable to avoid mutating shared state
-        let displayName = (metadata.name && metadata.name !== 'undefined') 
-            ? metadata.name 
-            : metadata.id || 'Unknown';
+        // CRITICAL FIX: Always check the node ID to metadata ID mapping FIRST
+        // This ensures we use the human-readable filename rather than numeric ID
+        let displayName: string;
         
-        logger.info(`Initial display name for node ${metadata.id}: "${displayName}"`);
+        if (/^\d+$/.test(metadata.id)) {
+            // For numeric IDs, ALWAYS use our mapping if available
+            displayName = this.nodeIdToMetadataId.get(metadata.id) || 
+                         (metadata.name && metadata.name !== 'undefined' ? metadata.name : metadata.id);
+            logger.info(`Node ${metadata.id} - Using mapped name: "${displayName}"`);
+        } else {
+            displayName = (metadata.name && metadata.name !== 'undefined') ? metadata.name : metadata.id || 'Unknown';
+        }
         
-        // If the ID looks like a numeric ID, try to find a better name from our mapping
         if (/^\d+$/.test(metadata.id) || metadata.id !== displayName) {
             const mappedName = this.nodeIdToMetadataId.get(metadata.id);
             if (mappedName) displayName = mappedName;
@@ -185,7 +211,7 @@ export class NodeMetadataManager {
         context.fillStyle = '#dddddd';
         
         // Add file size if available
-        if (metadata.fileSize && metadata.fileSize > 0) {
+        if (metadata.fileSize !== undefined && metadata.fileSize > 0) {
             const fileSizeText = this.formatFileSize(metadata.fileSize);
             context.fillText(`Size: ${fileSizeText}`, canvas.width / 2, 55);
         } else {
@@ -193,7 +219,7 @@ export class NodeMetadataManager {
             if (debugState.isNodeDebugEnabled()) {
                 logger.debug(`Node ${metadata.id} (${displayName}) missing file size`, 
                     createDataMetadata({ 
-                        metadataFileSize: metadata.fileSize 
+                        metadataFileSize: metadata.fileSize || 'undefined'
                     }));
             }
         }
@@ -206,7 +232,7 @@ export class NodeMetadataManager {
             if (debugState.isNodeDebugEnabled()) {
                 logger.debug(`Node ${metadata.id} (${displayName}) missing hyperlink count`, 
                     createDataMetadata({ 
-                        metadataHyperlinkCount: metadata.hyperlinkCount 
+                        metadataHyperlinkCount: metadata.hyperlinkCount || 'undefined'
                     }));
             }
         }
@@ -244,11 +270,15 @@ export class NodeMetadataManager {
         this.scene.add(sprite);
 
         // If this node has a numeric ID, map it to the display name
-        if (/^\d+$/.test(metadata.id) && displayName && displayName !== metadata.id && !this.nodeIdToMetadataId.has(metadata.id)) {
-            this.mapNodeIdToMetadataId(metadata.id, displayName);
-            // Use displayName to ensure we're capturing the correct name
-            metadata.name = displayName; 
-            logger.info(`Auto-mapped node ID ${metadata.id} to metadata name ${metadata.name}`);
+        if (/^\d+$/.test(metadata.id) && displayName && displayName !== metadata.id) {
+            // Add or update the mapping
+            const existingMapping = this.nodeIdToMetadataId.get(metadata.id);
+            if (!existingMapping || existingMapping !== displayName) {
+                this.mapNodeIdToMetadataId(metadata.id, displayName);
+                // Use displayName to ensure we're capturing the correct name
+                metadata.name = displayName; 
+                logger.info(`Updated mapping for node ID ${metadata.id} to "${displayName}"`);
+            }
         }
 
         this.labels.set(metadata.id, label);
@@ -346,8 +376,14 @@ export class NodeMetadataManager {
         // Don't map empty metadata IDs
         if (!metadataId || metadataId === 'undefined' || metadataId === 'Unknown') return;
         
+        // Log previous mapping if it exists and is different
+        const prevMapping = this.nodeIdToMetadataId.get(nodeId);
+        if (prevMapping && prevMapping !== metadataId) {
+            logger.info(`Updating node ID ${nodeId} mapping from "${prevMapping}" to "${metadataId}"`);
+        }
+        
         this.nodeIdToMetadataId.set(nodeId, metadataId);
-        // Only update reverse mapping if this metadata ID doesn't already have a node ID
+        // Maintain reverse mapping for bidirectional lookup
         if (!this.metadataIdToNodeId.has(metadataId)) {
             this.metadataIdToNodeId.set(metadataId, nodeId);
         }
