@@ -8,7 +8,7 @@ import {
 import { NodeGeometryManager } from './geometry/NodeGeometryManager';
 import { NodeInstanceManager } from './instance/NodeInstanceManager'; 
 import { NodeMetadataManager } from './metadata/NodeMetadataManager';
-import { NodeInteractionManager } from './interaction/NodeInteractionManager';
+import { NodeInteractionManager } from './interaction/NodeInteractionManager'; 
 import { NodeManagerInterface, NodeManagerError, NodeManagerErrorType } from './NodeManagerInterface'; 
 import { NodeData } from '../../core/types';
 import { XRHandWithHaptics } from '../../types/xr';
@@ -45,14 +45,27 @@ export class NodeManagerFacade implements NodeManagerInterface {
 
     private constructor(scene: Scene, camera: Camera, material: Material) {
         this.camera = camera;
+        
+        logger.info('NodeManagerFacade constructor called', createDataMetadata({
+            timestamp: Date.now(),
+            cameraPosition: camera?.position ? 
+                {x: camera.position.x, y: camera.position.y, z: camera.position.z} : 
+                'undefined'
+        }));
 
         try {
+            logger.info('INITIALIZATION ORDER: NodeManagerFacade - Step 1: Creating NodeGeometryManager');
             // Initialize managers in the correct order
             this.geometryManager = NodeGeometryManager.getInstance();
+            
+            logger.info('INITIALIZATION ORDER: NodeManagerFacade - Step 2: Creating NodeInstanceManager');
             this.instanceManager = NodeInstanceManager.getInstance(scene, material);
+            
+            logger.info('INITIALIZATION ORDER: NodeManagerFacade - Step 3: Creating NodeMetadataManager');
             this.metadataManager = NodeMetadataManager.getInstance(scene);
             
             // Initialize interaction manager with instance mesh
+            logger.info('INITIALIZATION ORDER: NodeManagerFacade - Step 4: Creating NodeInteractionManager');
             const instanceMesh = this.instanceManager.getInstanceMesh();
             this.interactionManager = NodeInteractionManager.getInstance(instanceMesh);
 
@@ -125,12 +138,18 @@ export class NodeManagerFacade implements NodeManagerInterface {
      * @param nodes Array of node updates
      */
     public updateNodes(nodes: { id: string, data: NodeData }[]): void {
+        const updateStartTime = performance.now();
+        
         if (!this.isInitialized) return;
 
         // Set the initial count on NodeInstanceManager
-        if (debugState.isDataDebugEnabled()) {
-            logger.debug('Updating nodes in NodeManagerFacade', { nodeCount: nodes.length });
-        }
+        logger.info(`Updating ${nodes.length} nodes in NodeManagerFacade`, createDataMetadata({
+            timestamp: Date.now(),
+            nodeCount: nodes.length,
+            firstNodeId: nodes.length > 0 ? nodes[0].id : 'none',
+            hasInstanceManager: !!this.instanceManager,
+            hasMetadataManager: !!this.metadataManager
+        }));
 
         const shouldDebugLog = debugState.isEnabled() && debugState.isNodeDebugEnabled();
         
@@ -161,11 +180,15 @@ export class NodeManagerFacade implements NodeManagerInterface {
             
             // *** CRITICAL: Set the label correctly ***  
             // Use type assertion to safely add the label property
+            const oldLabel = (node as any).label;
             // This ensures we have a consistent label for each node
-            (node as any).label = (node as any).label || (node as any).metadataId;
+            (node as any).label = (node as any).label || (node as any).metadataId || node.id;
             
-            if (debugState.isNodeDebugEnabled()) {
-                logger.info(`Node ${index}: metadataId=${(node as any).metadataId}, id=${node.id}, label=${(node as any).label}`);
+            if (shouldDebugLog) {
+                logger.debug(`Setting node label: ${oldLabel || 'undefined'} -> ${(node as any).label}, id=${node.id}`, createDataMetadata({
+                    metadataId: (node as any).metadataId || 'undefined',
+                    hasMappedId: this.nodeIdToMetadataId.has(node.id)
+                }));
             }
             
             // Skip if this node ID has already been processed in this batch
@@ -183,6 +206,23 @@ export class NodeManagerFacade implements NodeManagerInterface {
                 // Extract the proper metadata name/ID from the node
                 // This could be the file name without the .md extension
                 let metadataId: string = node.id; // Default to node ID
+
+                // Log position information to help diagnose issues
+                if (node.data.position && 
+                    (node.data.position.x === 0 && node.data.position.y === 0 && node.data.position.z === 0)) {
+                    logger.warn(`Node ${node.id} has ZERO position during updateNodes`, createDataMetadata({
+                        metadataId: (node as any).metadataId || 'undefined',
+                        label: (node as any).label || 'undefined',
+                        position: `x:0, y:0, z:0`
+                    }));
+                } else if (node.data.position) {
+                    if (shouldDebugLog && index < 5) {
+                        logger.debug(`Node ${node.id} position: x:${node.data.position.x.toFixed(2)}, ` +
+                                     `y:${node.data.position.y.toFixed(2)}, z:${node.data.position.z.toFixed(2)}`);
+                    }
+                } else {
+                    logger.warn(`Node ${node.id} has NO position during updateNodes`);
+                }
                 
                 // First, try using any server-provided label
                 if ('metadataId' in node && typeof node['metadataId'] === 'string') {
@@ -285,6 +325,14 @@ export class NodeManagerFacade implements NodeManagerInterface {
                 }
             });
         }
+
+        const updateElapsedTime = performance.now() - updateStartTime;
+        logger.info(`Node updates completed in ${updateElapsedTime.toFixed(2)}ms`, createDataMetadata({
+            nodeCount: nodes.length,
+            processedCount: processedIds.size,
+            uniqueMetadataIdCount: this.nodeIdToMetadataId.size,
+            elapsedTimeMs: updateElapsedTime.toFixed(2)
+        }));
     }
  
     /**
@@ -326,21 +374,76 @@ export class NodeManagerFacade implements NodeManagerInterface {
         id: string, 
         data: { 
             position: Vector3,
-            velocity: Vector3
+            velocity?: Vector3
         } 
     }[]): void {
+        const updatePosStartTime = performance.now();
+        
         if (!this.isInitialized) return;
+        
+        logger.info(`Updating positions for ${nodes.length} nodes`, createDataMetadata({
+            timestamp: Date.now(),
+            nodeCount: nodes.length
+        }));
+
+        // Track zero position counts for diagnostics
+        let zeroPositionCount = 0;
+        let nullVelocityCount = 0;
 
         try {
             // Handle NaN values and validate positions before passing to instance manager
             const validatedNodes = nodes.map(node => {
-                this.validateAndFixVector3(node.data.position, 'position', node.id);
-                if (node.data.velocity) this.validateAndFixVector3(node.data.velocity, 'velocity', node.id);
+                // Check for zero positions
+                if (node.data.position.x === 0 && node.data.position.y === 0 && node.data.position.z === 0) {
+                    zeroPositionCount++;
+                    if (Math.random() < 0.05) { // Log only 5% of cases to avoid spam
+                        logger.debug(`Node ${node.id} has ZERO position during updateNodePositions`);
+                    }
+                }
+                
+                // Check for null velocities
+                if (!node.data.velocity) {
+                    nullVelocityCount++;
+                    // Create a zero velocity vector if missing
+                    node.data.velocity = new Vector3(0, 0, 0);
+                }
+                
+                const positionValid = this.validateAndFixVector3(node.data.position, 'position', node.id);
+                const velocityValid = node.data.velocity ? 
+                                     this.validateAndFixVector3(node.data.velocity, 'velocity', node.id) : 
+                                     false;
+                
+                if (!positionValid || !velocityValid) {
+                    logger.warn(`Fixed invalid vectors for node ${node.id}`, createDataMetadata({
+                        positionValid,
+                        velocityValid,
+                        position: {
+                            x: node.data.position.x, 
+                            y: node.data.position.y, 
+                            z: node.data.position.z
+                        },
+                        velocity: node.data.velocity ? {
+                            x: node.data.velocity.x, 
+                            y: node.data.velocity.y, 
+                            z: node.data.velocity.z
+                        } : 'undefined'
+                    }));
+                }
+                
                 return { id: node.id, position: node.data.position, velocity: node.data.velocity };
             });
             
             this.instanceManager.updateNodePositions(validatedNodes);
+            
+            const updatePosElapsedTime = performance.now() - updatePosStartTime;
+            logger.info(`Position updates completed in ${updatePosElapsedTime.toFixed(2)}ms`, createDataMetadata({
+                nodeCount: nodes.length,
+                zeroPositionCount,
+                nullVelocityCount,
+                elapsedTimeMs: updatePosElapsedTime.toFixed(2)
+            }));
         } catch (error) {
+            logger.error('Position update failed:', createErrorMetadata(error));
             throw new NodeManagerError(
                 NodeManagerErrorType.UPDATE_FAILED,
                 'Failed to update node positions',
@@ -365,27 +468,57 @@ export class NodeManagerFacade implements NodeManagerInterface {
     public update(deltaTime: number): void {
         if (!this.isInitialized) return;
 
+        const updateFrameStartTime = performance.now();
+
         // Update instance visibility and LOD
         this.instanceManager.update(this.camera, deltaTime);
+        
+        // Log position updates only occasionally
+        const shouldLogDetail = this.frameCount % 300 === 0; // Log every 300 frames
+        let noPositionCount = 0;
+        let zeroPositionCount = 0;
 
         // Update metadata positions to match instances
         try {
             // Only update positions every few frames for performance
+            const nodeCount = this.nodeIndices.size;
+            
             this.nodeIndices.forEach((id) => {
-                    const position = this.instanceManager.getNodePosition(id);
-                    if (position) {
-                        this.tempVector.copy(position);
-                        
-                        // Calculate dynamic offset based on node size
-                        // Use the node's calculated size for offset
-                        const nodeSize = this.calculateNodeSize();
-                        
-                        this.tempVector.y += nodeSize * 0.03; // Drastically reduced offset for much closer label positioning
-                        // Update individual label position
-                        this.metadataManager.updatePosition(id, this.tempVector.clone());
+                const position = this.instanceManager.getNodePosition(id);
+                if (!position) {
+                    noPositionCount++;
+                    return;
+                }
+                
+                // Check for zero positions
+                if (position.x === 0 && position.y === 0 && position.z === 0) {
+                    zeroPositionCount++;
+                    if (shouldLogDetail && Math.random() < 0.2) { // Only log 20% of zero positions
+                        logger.warn(`Node ${id} has ZERO position during metadata position update`);
                     }
+                }
+                
+                this.tempVector.copy(position);
+                
+                // Calculate dynamic offset based on node size
+                // Use the node's calculated size for offset
+                const nodeSize = this.calculateNodeSize();
+                
+                this.tempVector.y += nodeSize * 0.03; // Drastically reduced offset for much closer label positioning
+                // Update individual label position
+                this.metadataManager.updatePosition(id, this.tempVector.clone());
             });
             this.frameCount++;
+            
+            if (shouldLogDetail) {
+                const updateFrameElapsedTime = performance.now() - updateFrameStartTime;
+                logger.info(`Metadata position update frame ${this.frameCount}`, createDataMetadata({
+                    totalNodes: nodeCount,
+                    nodesWithoutPosition: noPositionCount,
+                    nodesWithZeroPosition: zeroPositionCount,
+                    elapsedTimeMs: updateFrameElapsedTime.toFixed(2)
+                }));
+            }
         } catch (error) {
             logger.error('Error updating metadata positions:', createErrorMetadata(error));
         }

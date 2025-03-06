@@ -134,15 +134,21 @@ export class VisualizationController {
 
     public initializeScene(scene: Scene, camera: PerspectiveCamera): void {
         logger.info('Initializing visualization scene');
-        
+
+        logger.info('INITIALIZATION ORDER: Step 1 - Configuring camera layers');
         // Ensure camera can see nodes
         camera.layers.enable(0);
-        logger.debug('Camera layers configured');
+        logger.debug('Camera layers configured', createDataMetadata({
+            layerMask: camera.layers.mask.toString(2),
+            layer0Enabled: Boolean(camera.layers.mask & (1 << 0)),
+            layer1Enabled: Boolean(camera.layers.mask & (1 << 1))
+        }));
         
         // Enable WebSocket debugging
         this.currentSettings.system.debug.enabled = true;
         this.currentSettings.system.debug.enableWebsocketDebug = true;
         
+        logger.info('INITIALIZATION ORDER: Step 2 - Connecting WebSocket');
         // Connect to websocket first
         this.websocketService.connect().then(() => {
             logger.info('WebSocket connected, enabling binary updates');
@@ -166,16 +172,21 @@ export class VisualizationController {
         }).catch(error => {
             logger.error('Failed to connect WebSocket:', createErrorMetadata(error));
         });
-        
+
+        logger.info('INITIALIZATION ORDER: Step 3 - Creating managers');        
         const materialFactory = MaterialFactory.getInstance();
-        // Add debug logging
-        logger.debug('Creating NodeManagerFacade');
+
+        logger.info('INITIALIZATION ORDER: Step 3.1 - Creating NodeManagerFacade');
         this.nodeManager = NodeManagerFacade.getInstance(
             scene,
             camera,
             materialFactory.getNodeMaterial(this.currentSettings)
         );
+        
+        logger.info('INITIALIZATION ORDER: Step 3.2 - Creating EdgeManager');
         this.edgeManager = new EdgeManager(scene, this.currentSettings, this.nodeManager.getNodeInstanceManager());
+        
+        logger.info('INITIALIZATION ORDER: Step 3.3 - Creating MetadataVisualizer');
         this.metadataVisualizer = new MetadataVisualizer(camera, scene, this.currentSettings);
         this.isInitialized = true;
         
@@ -187,6 +198,7 @@ export class VisualizationController {
             this.nodeManager.updateNodes(currentData.nodes);
         }
 
+        logger.info('INITIALIZATION ORDER: Step 4 - Starting animation loop');
         // Start animation loop
         this.animate();
 
@@ -731,6 +743,8 @@ export class VisualizationController {
      * are available so positions are correct
      */
     private initializeMetadataVisualization(): void {
+        const startTime = performance.now();
+        
         if (!this.isInitialized || !this.metadataVisualizer || !this.nodeManager) return;
         if (this.metadataVisualizationInitialized) {
             logger.debug('Metadata visualization already initialized, skipping initialization');
@@ -741,7 +755,10 @@ export class VisualizationController {
         this.metadataVisualizationInitialized = true;
         this.lastMetadataUpdateTime = performance.now();
         
-        logger.info('Initializing metadata visualization for the first time');
+        logger.info('CRITICAL EVENT: Initializing metadata visualization for the first time', createDataMetadata({
+            hasNodeManager: !!this.nodeManager,
+            hasMetadataVisualizer: !!this.metadataVisualizer
+        }));
         
         // Perform the full visualization update (create labels)
         this.updateMetadataVisualization(true);
@@ -752,6 +769,7 @@ export class VisualizationController {
      * @param clearExisting Whether to clear existing labels
      */
     private updateMetadataVisualization(clearExisting: boolean = false): void {
+        const startTime = performance.now();
         if (!this.isInitialized || !this.metadataVisualizer || !this.nodeManager) return;
         
         // Debounce frequently repeated calls
@@ -762,7 +780,13 @@ export class VisualizationController {
         // Only clear existing labels if specified
         if (clearExisting) {
             logger.debug('Clearing existing metadata labels before creating new ones');
-            this.metadataVisualizer.clearAllLabels();
+            if (this.metadataVisualizer && 'clearAllLabels' in this.metadataVisualizer) {
+                this.metadataVisualizer.clearAllLabels();
+            } else {
+                logger.warn('Cannot clear labels: clearAllLabels method not found on MetadataVisualizer', createDataMetadata({
+                    availableMethods: this.metadataVisualizer ? Object.getOwnPropertyNames(Object.getPrototypeOf(this.metadataVisualizer)) : []
+                }));
+            }
         }
         
         
@@ -774,6 +798,7 @@ export class VisualizationController {
         
         // Keep track of processed node ids to avoid duplicates
         const processedNodeIds = new Set<string>();
+        const positionMap = new Map();
         
         // Create metadata for all nodes
         currentData.nodes.forEach((node, index) => {
@@ -788,6 +813,21 @@ export class VisualizationController {
             // CRITICAL: Get the proper label from the node
             // This is crucial for correct label display - using the right property chain
             let nodeLabel: string | undefined;
+            
+            // Check for valid position
+            if (!node.data?.position || 
+                (node.data.position.x === 0 && node.data.position.y === 0 && node.data.position.z === 0)) {
+                logger.warn(`Node ${node.id} has zero/null position during label initialization`, createDataMetadata({
+                    position: node.data?.position ? JSON.stringify(node.data.position) : 'undefined',
+                    hasData: !!node.data,
+                    metadataId: node.metadataId || 'undefined',
+                    label: node.label || 'undefined'
+                }));
+            } else if (node.data?.position) {
+                // Store valid positions for logging
+                positionMap.set(node.id, `x:${node.data.position.x.toFixed(2)}, y:${node.data.position.y.toFixed(2)}, z:${node.data.position.z.toFixed(2)}`);
+            }
+            
             if ('label' in node && typeof node.label === 'string') {
                 nodeLabel = node.label; // Use explicit node.label if available
             } else if ('metadataId' in node && typeof node.metadataId === 'string') {
@@ -836,9 +876,21 @@ export class VisualizationController {
                 this.metadataVisualizer?.updateMetadataPosition(node.id, position);
             }
         });
-        
-        logger.info(`Metadata visualization updated: ${processedNodeIds.size} nodes with unique labels. Sample labels: ${
-            currentData.nodes.slice(0, 3).map(n => n.data?.metadata?.name || n.id).join(", ")
-        }`);
+
+        // Log position information to help diagnose issues
+        const samplePositions = Array.from(positionMap.entries()).slice(0, 5)
+            .map(([id, pos]) => `${id}: ${pos}`).join(', ');
+
+        const elapsedTime = performance.now() - startTime;
+
+        logger.info('Metadata visualization complete', createDataMetadata({
+            nodesProcessed: processedNodeIds.size,
+            processingTimeMs: elapsedTime.toFixed(2),
+            nodesWithPosition: positionMap.size,
+            nodesWithoutPosition: processedNodeIds.size - positionMap.size,
+            samplePositions: samplePositions,
+            sampleLabels: currentData.nodes.slice(0, 3).map(n => n.data?.metadata?.name || n.id).join(", "),
+            elapsedTimeMs: elapsedTime.toFixed(2)
+        }));
     }
 }

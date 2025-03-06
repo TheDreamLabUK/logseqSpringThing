@@ -15,7 +15,7 @@ import { NodeMetadata } from '../types/metadata';
 import { Settings } from '../types/settings';
 import { platformManager } from '../platform/platformManager';
 import { debugState } from '../core/debugState';
-import { logger } from '../core/logger';
+import { logger, createDataMetadata, createErrorMetadata } from '../core/logger';
 
 type GeometryWithBoundingBox = THREE.BufferGeometry & {
     boundingBox: THREE.Box3 | null;
@@ -45,11 +45,17 @@ export class MetadataVisualizer {
     private labelGroup: THREE.Group;
     private settings: Settings;
     private fontLoadAttempts: number = 0;
+    private metadataLabelMap: Map<string, MetadataLabelGroup> = new Map();
 
     // Default values for missing data
     private readonly DEFAULT_FILE_SIZE = 1000; // 1KB
 
     constructor(camera: THREE.PerspectiveCamera, scene: THREE.Scene, settings: Settings) {
+        logger.info('MetadataVisualizer constructor called', createDataMetadata({
+            timestamp: Date.now(),
+            cameraPosition: camera?.position ? {x: camera.position.x, y: camera.position.y, z: camera.position.z} : 'undefined'
+        }));
+        
         this.scene = scene;
         this.camera = camera;
         this.fontLoader = new FontLoader();
@@ -63,6 +69,7 @@ export class MetadataVisualizer {
         
         this.settings = settings;
         this.scene.add(this.labelGroup);
+        logger.info('MetadataVisualizer labelGroup added to scene');
         this.loadFont();
         
         // Set initial layer mode
@@ -83,15 +90,18 @@ export class MetadataVisualizer {
     private async loadFont(): Promise<void> {
         try {
             await this.attemptFontLoad();
+            logger.info('Font loaded successfully on first attempt');
         } catch (error) {
-            console.error('Initial font load failed:', error);
+            logger.error('Initial font load failed:', createErrorMetadata(error));
             await this.retryFontLoad();
         }
     }
 
     private async attemptFontLoad(): Promise<void> {
+        logger.info(`Attempting to load font from ${this.fontPath}`);
         this.font = await new Promise((resolve, reject) => {
             this.fontLoader.load(
+                // Font path
                 this.fontPath,
                 resolve,
                 undefined,
@@ -107,11 +117,11 @@ export class MetadataVisualizer {
             try {
                 await this.attemptFontLoad();
                 if (debugState.isShaderDebugEnabled()) {
-                    logger.shader('Font loaded successfully after retry');
+                    logger.info('Font loaded successfully after retry');
                 }
                 break;
             } catch (error) {
-                console.error(`Font load attempt ${this.fontLoadAttempts} failed:`, error);
+                logger.error(`Font load attempt ${this.fontLoadAttempts} failed:`, createErrorMetadata(error));
             }
         }
     }
@@ -156,9 +166,11 @@ export class MetadataVisualizer {
 
     public async createTextMesh(text: string): Promise<Mesh | Group | null> {
         if (!this.font) {
-            console.warn('Font not loaded yet');
+            logger.warn(`Cannot create text mesh: font not loaded yet (text: ${text})`);
             return null;
         }
+        
+        logger.debug(`Creating text mesh: "${text}"`);
 
         const textGeometry = new TextGeometry(text, {
             font: this.font,
@@ -289,18 +301,40 @@ export class MetadataVisualizer {
      */
     public async createMetadataLabel(metadata: NodeMetadata, nodeLabel?: string): Promise<MetadataLabelGroup> {
         const group = new Group() as MetadataLabelGroup;
+        
+        // Check if metadata position is zero or undefined
+        if (!metadata.position || (metadata.position.x === 0 && metadata.position.y === 0 && metadata.position.z === 0)) {
+            logger.warn(`[POSITION WARNING] Metadata for node ${metadata.id} has zero/undefined position`, 
+                createDataMetadata({
+                    position: metadata.position || 'undefined',
+                    nodeLabel: nodeLabel || 'undefined',
+                    metadataName: metadata.name || 'undefined'
+                })
+            );
+        }
+        
         group.name = 'metadata-label';
         group.renderOrder = 1000; // Set high render order to ensure visibility
         group.userData = { isMetadata: true };
         
         // Log the label source for debugging
-        logger.info(`Creating metadata label for ${metadata.id} with ${nodeLabel ? 'explicit' : 'metadata'} label: "${nodeLabel || metadata.name}"`);
+        logger.info(`Creating metadata label for node ${metadata.id}`, createDataMetadata({
+            labelSource: nodeLabel ? 'explicit nodeLabel' : 'metadata.name',
+            displayName: nodeLabel || metadata.name,
+            position: metadata.position ? 
+                `x:${metadata.position.x.toFixed(2)}, y:${metadata.position.y.toFixed(2)}, z:${metadata.position.z.toFixed(2)}` : 
+                'undefined',
+            fileSize: metadata.fileSize || 'undefined',
+            hyperlinkCount: metadata.hyperlinkCount || 'undefined'
+        }));
         
         // Create text for name
         const displayName = nodeLabel || metadata.name;
         const nameMesh = await this.createTextMesh(displayName);
         if (nameMesh) {
             nameMesh.position.y = 1.2;
+            // Log position and scale to verify
+            logger.debug(`nameMesh created at position y=${nameMesh.position.y} with scale=${nameMesh.scale.x}`);
             nameMesh.scale.setScalar(0.8);
             group.add(nameMesh);
         }
@@ -312,6 +346,7 @@ export class MetadataVisualizer {
         if (fileSizeMesh) {
             fileSizeMesh.position.y = 0.8;
             fileSizeMesh.scale.setScalar(0.7);
+            logger.debug(`fileSizeMesh created at position y=${fileSizeMesh.position.y} with scale=${fileSizeMesh.scale.x}`);
             group.add(fileSizeMesh);
 
             if (debugState.isNodeDebugEnabled()) {
@@ -334,6 +369,7 @@ export class MetadataVisualizer {
         if (linksMesh) {
             linksMesh.position.y = 0.4;
             linksMesh.scale.setScalar(0.7);
+            logger.debug(`linksMesh created at position y=${linksMesh.position.y} with scale=${linksMesh.scale.x}`);
             group.add(linksMesh);
         }
 
@@ -362,6 +398,16 @@ export class MetadataVisualizer {
         // Set initial layer
         this.setGroupLayer(group, platformManager.isXRMode);
 
+        // Add to label map for tracking
+        this.metadataLabelMap.set(metadata.id, group);
+        
+        // Verify layer settings on the group
+        logger.debug(`Label group for ${metadata.id} - Layer visibility:`, createDataMetadata({
+            layerInfo: `Mask value: ${group.layers.mask.toString(2)}`,
+            isOnLayer0: Boolean(group.layers.mask & (1 << 0)),
+            isOnLayer1: Boolean(group.layers.mask & (1 << 1))
+        }));
+        
         return group;
     }
 
@@ -385,7 +431,51 @@ export class MetadataVisualizer {
         }
     }
 
+    /**
+     * Update the position of a metadata label
+     * @param id The node ID
+     * @param position The new position
+     */
+    public updateMetadataPosition(id: string, position: Vector3): void {
+        const group = this.metadataLabelMap.get(id);
+        if (!group) {
+            // Only log in debug mode to avoid console spam
+            if (debugState.isNodeDebugEnabled()) {
+                logger.debug(`No metadata label found for node ${id} to update position`);
+            }
+            return;
+        }
+        
+        // Update the position
+        group.position.copy(position);
+        
+        // Occasionally log position updates for important nodes (using modulo to reduce spam)
+        if (Math.random() < 0.01) { // Only log ~1% of updates
+            logger.debug(`Updated position for node ${id} to`, createDataMetadata({
+                x: position.x.toFixed(2),
+                y: position.y.toFixed(2),
+                z: position.z.toFixed(2)
+            }));
+        }
+    }
+    
+    /**
+     * Clear all metadata labels
+     */
+    public clearAllLabels(): void {
+        logger.info(`Clearing all metadata labels (count: ${this.metadataLabelMap.size})`);
+        
+        // Remove all labels from the scene
+        this.metadataLabelMap.forEach((group) => {
+            this.labelGroup.remove(group);
+        });
+        
+        // Clear the map
+        this.metadataLabelMap.clear();
+    }
+
     public setXRMode(enabled: boolean): void {
+        logger.info(`Setting XR mode: ${enabled ? 'enabled' : 'disabled'}`);
         if (enabled) {
             // In XR mode, only show on layer 1
             this.labelGroup.traverse(child => {
@@ -407,6 +497,7 @@ export class MetadataVisualizer {
 
     public dispose(): void {
         // Clean up geometries
+        logger.info('Disposing MetadataVisualizer resources');
         Object.values(this.geometries).forEach(geometry => geometry.dispose());
         
         // Clean up label group
@@ -418,5 +509,8 @@ export class MetadataVisualizer {
                 }
             }
         });
+        
+        // Clear label map
+        this.metadataLabelMap.clear();
     }
 }
