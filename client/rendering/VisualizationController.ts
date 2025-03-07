@@ -743,7 +743,7 @@ export class VisualizationController {
      * are available so positions are correct
      */
     private initializeMetadataVisualization(): void {
-        const startTime = performance.now();
+        // Removed unused startTime variable
         
         if (!this.isInitialized || !this.metadataVisualizer || !this.nodeManager) return;
         if (this.metadataVisualizationInitialized) {

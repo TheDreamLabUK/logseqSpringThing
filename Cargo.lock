@@ -3490,6 +3490,7 @@ dependencies = [
  "mockall",
  "nalgebra",
  "nostr-sdk",
+ "once_cell",
  "pollster",
  "pretty_assertions",
  "rand",
