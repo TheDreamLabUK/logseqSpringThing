@@ -360,7 +360,7 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
                                         // Return detailed debug info along with the data
                                         Some((data, detailed_debug, nodes))
                                     };
-
+                                    
                                     // Convert future to actor future without ownership issues
                                     // This avoids the need to move 'act' into the future
                                     let fut = actix::fut::wrap_future::<_, Self>(fut);

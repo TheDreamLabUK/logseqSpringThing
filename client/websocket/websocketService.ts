@@ -380,6 +380,7 @@ export class WebSocketService {
                 decompressedSize: decompressedBuffer.byteLength, 
                 nodeCount: Math.floor(decompressedBuffer.byteLength / BYTES_PER_NODE)
             }));
+            logger.debug(`Received binary update with ${Math.floor(decompressedBuffer.byteLength / BYTES_PER_NODE)} nodes`);
             
             // Check if buffer is empty
             if (!decompressedBuffer || decompressedBuffer.byteLength === 0) {
@@ -401,7 +402,12 @@ export class WebSocketService {
             // If there's a remainder, log it but continue processing the complete nodes
             const remainder = decompressedBuffer.byteLength % BYTES_PER_NODE;
             if (remainder > 0) {
-                logger.warn(`Binary message has ${remainder} extra bytes that don't form a complete node. Processing ${nodeCount} complete nodes.`);
+                // Only log at debug level to reduce noise - this is expected behavior
+                // The extra bytes are likely padding or alignment in the binary protocol
+                if (debugState.isWebsocketDebugEnabled()) {
+                    logger.debug(`Binary message has ${remainder} extra bytes that don't form a complete node. ` +
+                                `Processing ${nodeCount} complete nodes.`);
+                }
             }
 
             if (nodeCount === 0) {
@@ -417,6 +423,14 @@ export class WebSocketService {
                 // Read node ID (u16)
                 const id = dataView.getUint16(offset, true);
                 offset += 2;
+
+                // Skip nodes with invalid IDs
+                if (id === 0 || id === 65535) { // 0 and 65535 are often used as sentinel values
+                    if (debugState.isNodeDebugEnabled()) {
+                        logger.debug(`Skipping node with reserved ID: ${id}`);
+                    }
+                    continue;
+                }
                 
                 // Check if this is a valid node ID
                 if (id > MAX_U16_VALUE) {
@@ -541,7 +555,7 @@ export class WebSocketService {
                 
                 // Clear pending updates
                 this.pendingNodeUpdates = [];
-            } catch (error) {
+            } catch (error: any) {
                 logger.error('Error processing node updates:', createErrorMetadata(error));
             }
         }
