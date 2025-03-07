@@ -92,12 +92,12 @@ system:
     bind_address: 0.0.0.0
     domain: visionflow.info
     enable_http2: false
-    enable_rate_limiting: true
+    enable_rate_limiting: false
     enable_tls: false
     max_request_size: 10485760
     min_tls_version: ''
     port: 3001
-    rate_limit_requests: 100
+    rate_limit_requests: 1000
     rate_limit_window: 60
     tunnel_id: dummy
     api_client_timeout: 30
@@ -132,12 +132,12 @@ system:
     enable_request_validation: true
     session_timeout: 3600
   debug:
-    enabled: true
-    enable_data_debug: true
-    enable_websocket_debug: true
-    log_binary_headers: true
-    log_full_json: true
-    log_level: trace
+    enabled: false
+    enable_data_debug: false
+    enable_websocket_debug: false
+    log_binary_headers: false
+    log_full_json: false
+    log_level: warn
     log_format: json
 xr:
   mode: inline
