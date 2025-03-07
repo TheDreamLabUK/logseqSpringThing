@@ -3,7 +3,7 @@ import { buildWsUrl } from '../core/api';
 import { debugState } from '../core/debugState';
 import { Vector3 } from 'three';
 import pako from 'pako';
-import { UpdateThrottler } from '../core/utils';
+import { UpdateThrottler, validateAndFixVector3 } from '../core/utils';
 
 const logger = createLogger('WebSocketService');
 
@@ -30,6 +30,9 @@ const COMPRESSION_THRESHOLD = 1024; // Only compress messages larger than 1KB
 
 // Binary format constants
 const BYTES_PER_NODE = 26; // 2 (ID) + 12 (position) + 12 (velocity)
+
+// Maximum value for u16 node IDs
+const MAX_U16_VALUE = 65535;
 
 enum ConnectionState {
     DISCONNECTED = 'disconnected',
@@ -109,6 +112,7 @@ export class WebSocketService {
     private resetNodeIndices(): void {
         this.nodeNameToIndexMap.clear();
         this.nextNodeIndex = 0;
+        logger.info('Node indices reset');
     }
 
     public static getInstance(): WebSocketService {
@@ -414,19 +418,28 @@ export class WebSocketService {
                 const id = dataView.getUint16(offset, true);
                 offset += 2;
                 
+                // Check if this is a valid node ID
+                if (id > MAX_U16_VALUE) {
+                    logger.error(`Invalid node ID: ${id} exceeds maximum u16 value`);
+                    continue;
+                }
+                
                 // Create THREE.Vector3 objects directly
-                const position = new Vector3(
+                const rawPosition = new Vector3(
                     dataView.getFloat32(offset, true),     // x
                     dataView.getFloat32(offset + 4, true), // y
                     dataView.getFloat32(offset + 8, true)  // z
-                );                
+                );
+                // Use validateAndFixVector3 to ensure we don't have NaN or Infinity values
+                const position = validateAndFixVector3(rawPosition, 1000);
                 offset += 12;
 
-                const velocity = new Vector3(
+                const rawVelocity = new Vector3(
                     dataView.getFloat32(offset, true),      // x
                     dataView.getFloat32(offset + 4, true),  // y
                     dataView.getFloat32(offset + 8, true)   // z
                 );
+                const velocity = validateAndFixVector3(rawVelocity, 0.05);
                 offset += 12;
                 
                 // Apply deadband filtering - only include if position has changed significantly
@@ -457,6 +470,11 @@ export class WebSocketService {
                 // Only include the node if position changed or we don't have a previous position
                 if (positionChanged) {
                     nodes.push({ id, position, velocity });
+                    
+                    // Debug logging for node ID tracking
+                    if (debugState.isNodeDebugEnabled() && Math.random() < 0.01) {
+                        logger.debug(`Processing node ID ${id} from binary update`);
+                    }
                 }
             }
 
@@ -659,6 +677,12 @@ export class WebSocketService {
         // Pre-validate node IDs before adding to queue
         const validatedUpdates = updates.filter(update => {
             const id = parseInt(update.id, 10);
+
+            // Ensure ID is within u16 range (0-65535)
+            if (id > MAX_U16_VALUE) {
+                logger.warn(`Node ID ${id} exceeds maximum u16 value (${MAX_U16_VALUE}), cannot send update`);
+                return false;
+            }
             
             // Check for NaN or non-numeric IDs
             if (isNaN(id) || id < 0 || !Number.isInteger(id)) {
@@ -685,8 +709,16 @@ export class WebSocketService {
             // If we have non-numeric node IDs (metadata names), convert them to numeric indices
             const indexedUpdates = updates.filter(update => {
                 if (!this.nodeNameToIndexMap.has(update.id)) {
-                    this.nodeNameToIndexMap.set(update.id, this.nextNodeIndex++);
-                    logger.info(`Mapped metadata name "${update.id}" to numeric index ${this.nextNodeIndex-1} for binary protocol`);
+                    // Ensure we don't exceed u16 max value
+                    if (this.nextNodeIndex > MAX_U16_VALUE) {
+                        logger.warn(`Cannot map more node IDs, reached maximum u16 value (${MAX_U16_VALUE})`);
+                        return false;
+                    }
+                    
+                    // Generate a valid u16 index
+                    const nodeIndex = this.nextNodeIndex++;
+                    this.nodeNameToIndexMap.set(update.id, nodeIndex);
+                    logger.info(`Mapped metadata name "${update.id}" to numeric index ${nodeIndex} for binary protocol`);
                 }
                 
                 // Apply deadband filtering for client-initiated updates too
@@ -778,8 +810,8 @@ export class WebSocketService {
             dataView.setUint16(offset, id, true);
             offset += 2;
 
-            // Validate and clamp position
-            const position = update.position;
+            // Validate position using our new utility function
+            const position = validateAndFixVector3(update.position, 1000);
             
             // Write position
             dataView.setFloat32(offset, position.x, true);
@@ -788,7 +820,8 @@ export class WebSocketService {
             offset += 12;
 
             // Validate and clamp velocity (default to zero vector if not provided)
-            const velocity = update.velocity ?? new Vector3(0, 0, 0);
+            const rawVelocity = update.velocity ?? new Vector3(0, 0, 0);
+            const velocity = validateAndFixVector3(rawVelocity, 0.05);
             
             // Write velocity
             dataView.setFloat32(offset, velocity.x, true);

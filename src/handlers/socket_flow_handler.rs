@@ -22,6 +22,9 @@ const COMPRESSION_LEVEL: Compression = Compression::best(); // Use best compress
 const POSITION_DEADBAND: f32 = 0.005; // 5mm deadband (reduced from 1cm)
 const VELOCITY_DEADBAND: f32 = 0.001; // 1mm/s deadband for velocity
 
+// Maximum value for u16 node IDs
+const MAX_U16_VALUE: u32 = 65535;
+
 pub struct SocketFlowServer {
     app_state: Arc<AppState>,
     settings: Arc<RwLock<crate::config::Settings>>,
@@ -283,7 +286,18 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
 
                                         let mut nodes = Vec::with_capacity(raw_nodes.len());
                                         for node in raw_nodes {
-                                            if let Ok(node_id) = node.id.parse::<u16>() {
+                                            // First try to parse as u16
+                                            let node_id_result = match node.id.parse::<u16>() {
+                                                Ok(id) => Ok(id),
+                                                Err(_) => {
+                                                    // If parsing as u16 fails, try parsing as u32 and check if it's within u16 range
+                                                    match node.id.parse::<u32>() {
+                                                        Ok(id) if id <= MAX_U16_VALUE => Ok(id as u16),
+                                                        _ => Err(())
+                                                    }
+                                                }
+                                            };
+                                            if let Ok(node_id) = node_id_result {
                                                 let node_data = BinaryNodeData {
                                                     position: node.data.position,
                                                     velocity: node.data.velocity,
@@ -293,8 +307,14 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
                                                 };
                                                 nodes.push((node_id, node_data));
                                             } else {
-                                                warn!("[WebSocket] Failed to parse node ID as u16: '{}', metadata_id: '{}'", 
-                                                    node.id, node.metadata_id);
+                                                // Log more detailed information about the node ID
+                                                if let Ok(id) = node.id.parse::<u32>() {
+                                                    warn!("[WebSocket] Node ID too large for u16: '{}' ({}), metadata_id: '{}'", 
+                                                        node.id, id, node.metadata_id);
+                                                } else {
+                                                    warn!("[WebSocket] Failed to parse node ID as u16: '{}', metadata_id: '{}'", 
+                                                        node.id, node.metadata_id);
+                                                }
                                             }
                                         }
 
@@ -481,7 +501,17 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
                                 let mut node_map = app_state.graph_service.get_node_map_mut().await;
 
                                 for (node_id, node_data) in nodes_vec {
+                                    // Convert node_id to string for lookup
                                     let node_id_str = node_id.to_string();
+                                    
+                                    // Debug logging for node ID tracking
+                                    if node_id < 5 {
+                                        debug!(
+                                            "Processing binary update for node ID: {} with position [{:.3}, {:.3}, {:.3}]",
+                                            node_id, node_data.position.x, node_data.position.y, node_data.position.z
+                                        );
+                                    }
+                                    
                                     if let Some(node) = node_map.get_mut(&node_id_str) {
                                         // Node exists with this numeric ID
                                         // Explicitly preserve existing mass and flags

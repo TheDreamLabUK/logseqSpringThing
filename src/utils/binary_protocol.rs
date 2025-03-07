@@ -1,7 +1,7 @@
 use byteorder::{LittleEndian, WriteBytesExt, ReadBytesExt};
 use std::io::Cursor;
 use crate::utils::socket_flow_messages::BinaryNodeData;
-use log;
+use log::{info, warn, debug};
 
 // Binary format (simplified):
 // - For each node (26 bytes):
@@ -13,7 +13,7 @@ use log;
 pub fn encode_node_data(nodes: &[(u16, BinaryNodeData)]) -> Vec<u8> {
     // Only log non-empty node transmissions to reduce spam
     if nodes.len() > 0 {
-        log::info!("Encoding {} nodes for binary transmission", nodes.len());
+        info!("Encoding {} nodes for binary transmission", nodes.len());
     }
     
     let mut buffer = Vec::new();
@@ -21,13 +21,13 @@ pub fn encode_node_data(nodes: &[(u16, BinaryNodeData)]) -> Vec<u8> {
     // Log some samples of the encoded data
     let sample_size = std::cmp::min(3, nodes.len());
     if sample_size > 0 {
-        log::info!("Sample of nodes being encoded:");
+        info!("Sample of nodes being encoded:");
     }
     
     for (node_id, node) in nodes {
         // Log the first few nodes for debugging
         if sample_size > 0 && *node_id < sample_size as u16 {
-            log::info!("Encoding node {}: pos=[{:.3},{:.3},{:.3}], vel=[{:.3},{:.3},{:.3}]", 
+            info!("Encoding node {}: pos=[{:.3},{:.3},{:.3}], vel=[{:.3},{:.3},{:.3}]", 
                 node_id, 
                 node.position.x, node.position.y, node.position.z,
                 node.velocity.x, node.velocity.y, node.velocity.z);
@@ -51,7 +51,7 @@ pub fn encode_node_data(nodes: &[(u16, BinaryNodeData)]) -> Vec<u8> {
 
     // Only log non-empty node transmissions to reduce spam
     if nodes.len() > 0 {
-        log::info!("Encoded binary data: {} bytes for {} nodes", buffer.len(), nodes.len());
+        info!("Encoded binary data: {} bytes for {} nodes", buffer.len(), nodes.len());
     }
     buffer
 }
@@ -65,13 +65,13 @@ pub fn decode_node_data(data: &[u8]) -> Result<Vec<(u16, BinaryNodeData)>, Strin
     }
     
     // Log header information
-    log::info!(
+    info!(
         "Decoding binary data: size={} bytes, expected nodes={}",
         data.len(), data.len() / 26
     );
     
     // Always log this for visibility
-    log::info!("Decoding binary data of size: {} bytes", data.len());
+    info!("Decoding binary data of size: {} bytes", data.len());
     
     let mut updates = Vec::new();
     
@@ -79,7 +79,7 @@ pub fn decode_node_data(data: &[u8]) -> Result<Vec<(u16, BinaryNodeData)>, Strin
     let max_samples = 3;
     let mut samples_logged = 0;
     
-    log::info!("Starting binary data decode, expecting nodes with position and velocity data");
+    info!("Starting binary data decode, expecting nodes with position and velocity data");
     
     while cursor.position() < data.len() as u64 {
         // Each node update is 26 bytes: 2 (nodeId) + 12 (position) + 12 (velocity)
@@ -118,7 +118,7 @@ pub fn decode_node_data(data: &[u8]) -> Result<Vec<(u16, BinaryNodeData)>, Strin
         
         // Log the first few decoded items as samples
         if samples_logged < max_samples {
-            log::info!(
+            info!(
                 "Decoded node {}: pos=[{:.3},{:.3},{:.3}], vel=[{:.3},{:.3},{:.3}]", 
                 node_id, position.x, position.y, position.z, 
                 velocity.x, velocity.y, velocity.z
@@ -134,7 +134,7 @@ pub fn decode_node_data(data: &[u8]) -> Result<Vec<(u16, BinaryNodeData)>, Strin
         }));
     }
     
-    log::info!("Successfully decoded {} nodes from binary data", updates.len());
+    info!("Successfully decoded {} nodes from binary data", updates.len());
     Ok(updates)
 }
 

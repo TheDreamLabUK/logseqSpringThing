@@ -155,6 +155,38 @@ export const vectorOps = {
 
 };
 
+/**
+ * Validates a Vector3 and fixes any invalid values (NaN, Infinity)
+ * @param vec The Vector3 to validate
+ * @param maxValue Maximum allowed absolute value for any component
+ * @param defaultValue Default value to use if the vector is invalid
+ * @returns A new Vector3 with valid values
+ */
+export const validateAndFixVector3 = (
+    vec: Vector3, 
+    maxValue: number = 1000, 
+    defaultValue: Vector3 = new Vector3(0, 0, 0)
+): Vector3 => {
+    // Check for NaN or Infinity
+    if (isNaN(vec.x) || isNaN(vec.y) || isNaN(vec.z) ||
+        !isFinite(vec.x) || !isFinite(vec.y) || !isFinite(vec.z)) {
+        // Return a copy of the default value
+        return defaultValue.clone();
+    }
+    
+    // Check for values exceeding maximum
+    if (Math.abs(vec.x) > maxValue || Math.abs(vec.y) > maxValue || Math.abs(vec.z) > maxValue) {
+        // Clamp values to the maximum
+        return new Vector3(
+            Math.max(-maxValue, Math.min(maxValue, vec.x)),
+            Math.max(-maxValue, Math.min(maxValue, vec.y)),
+            Math.max(-maxValue, Math.min(maxValue, vec.z))
+        );
+    }
+    
+    return vec.clone();
+};
+
 // Scale utilities
 export const scaleOps = {
   // Normalize a value between min and max
