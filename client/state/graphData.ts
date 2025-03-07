@@ -365,6 +365,16 @@ export class GraphDataManager {
     // Enable binary updates flag - actual WebSocket connection is handled by WebSocketService
     this.setBinaryUpdatesEnabled(true);
     logger.info('Binary updates enabled');
+    
+    // Explicitly check WebSocket service status
+    const isDefaultService = this.wsService.send.toString().includes('WebSocket service not configured');
+    if (isDefaultService) {
+      logger.warn('Binary updates enabled but WebSocket service not yet configured. Starting retry mechanism...');
+      debugState.setBinaryProtocolStatus('pending');
+    } else {
+      logger.info('WebSocket service is properly configured for binary updates');
+      debugState.setBinaryProtocolStatus('active');
+    }
   }
 
   /**
@@ -400,10 +410,20 @@ export class GraphDataManager {
   private retryWebSocketConfiguration(): void {
     // Only set up retry if not already running
     if (this._retryTimeout) {
+      logger.debug('Retry mechanism already running, not starting a new one');
       return;
     }
     
+    logger.info('Starting WebSocket configuration retry mechanism');
+    debugState.setBinaryProtocolStatus('pending');
+    
+    // Define maximum retry attempts
+    let retryCount = 0;
+    const MAX_RETRIES = 30; // 30 seconds max
+    
     const checkAndRetry = () => {
+      retryCount++;
+      
       // Check if WebSocket service is now configured
       const isDefaultService = this.wsService.send.toString().includes('WebSocket service not configured');
       if (!isDefaultService) {
@@ -411,9 +431,17 @@ export class GraphDataManager {
         logger.info('WebSocket service now available, sending initial update');
         this.updatePositions(new Float32Array());
         this._retryTimeout = null;
+        debugState.setBinaryProtocolStatus('active');
       } else {
-        // Still not configured, retry after delay
-        this._retryTimeout = setTimeout(checkAndRetry, 1000) as any;
+        // Still not configured, retry after delay if under max retries
+        if (retryCount < MAX_RETRIES) {
+          logger.debug(`WebSocket service still not configured (attempt ${retryCount}/${MAX_RETRIES})`);
+          this._retryTimeout = setTimeout(checkAndRetry, 1000) as any;
+        } else {
+          logger.warn(`WebSocket configuration retry failed after ${MAX_RETRIES} attempts`);
+          this._retryTimeout = null;
+          debugState.setBinaryProtocolStatus('failed');
+        }
       }
     };
     
@@ -443,9 +471,20 @@ export class GraphDataManager {
         return;
       }
       
+      // Update binary protocol status in debug state
+      debugState.setBinaryProtocolStatus('active');
+      
+      // Log the update if debugging is enabled
+      if (debugState.isDataDebugEnabled()) {
+        const nodeCount = positions.length / FLOATS_PER_NODE;
+        logger.debug(`Sending binary position update for ${nodeCount} nodes`);
+      }
+      
       this.wsService.send(positions.buffer);
     } catch (error) {
       logger.error('Failed to send position update:', error);
+      // Update status to reflect error
+      debugState.setBinaryProtocolStatus('error');
       // Don't disable binary updates on error - let the application decide
       // this.binaryUpdatesEnabled = false;
     }

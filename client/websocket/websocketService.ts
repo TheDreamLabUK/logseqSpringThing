@@ -606,6 +606,10 @@ export class WebSocketService {
             maxAttempts: this._maxReconnectAttempts,
             url: this.url
         }));
+        
+        // Update binary protocol status to failed
+        debugState.setBinaryProtocolStatus('failed');
+        
         if (this.connectionStatusHandler) {
             this.connectionStatusHandler(false);
         }
@@ -672,18 +676,34 @@ export class WebSocketService {
     
     
     public sendNodeUpdates(updates: NodeUpdate[]): void {
+        if (debugState.isWebsocketDebugEnabled()) {
+            logger.debug(`Sending ${updates.length} node updates. Binary updates enabled: ${debugState.isBinaryProtocolEnabled()}`);
+        }
+        
+        // Update binary protocol status based on connection state
+        if (debugState.getBinaryProtocolStatus() === 'inactive') {
+            debugState.setBinaryProtocolStatus('pending');
+        }
+        
         if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
             logger.warn('WebSocket not connected, attempting to reconnect before sending updates');
+            debugState.setBinaryProtocolStatus('pending');
+            
             // Try to reconnect and then send updates 
             this.connect().then(() => {
                 // Check if connection succeeded
                 if (this.ws?.readyState === WebSocket.OPEN) {
                     logger.info('Reconnected successfully, now sending queued node updates');
+                    debugState.setBinaryProtocolStatus('active');
                     this.nodeUpdateQueue.push(...updates);
                     this.processNodeUpdateQueue();
+                } else {
+                    logger.warn('WebSocket still not connected after reconnect attempt');
+                    debugState.setBinaryProtocolStatus('failed');
                 }
             }).catch(e => {
                 logger.error('Failed to reconnect for node updates:', createErrorMetadata(e));
+                debugState.setBinaryProtocolStatus('error');
             });
             return;
         }
@@ -701,23 +721,22 @@ export class WebSocketService {
             // Check for NaN or non-numeric IDs
             if (isNaN(id) || id < 0 || !Number.isInteger(id)) {
                 // This is likely a metadata name being incorrectly used as a node ID
-                logger.warn('Invalid node ID:', createDataMetadata({
-                    message: update.id,
-                    valueType: typeof update.id,
-                    invalidReason: isNaN(id) ? 'Not a numeric ID' : 
-                                  id < 0 ? 'Negative ID not allowed' :
-                                  'Non-integer ID not allowed',
-                    attemptedParse: id
-                }));
-                
-                // Log additional context to help diagnose the issue
-                if (typeof update.id === 'string' && update.id.length > 10) {
-                    logger.warn('Possible metadata name detected as ID', createDataMetadata({ id: update.id }));
+                if (debugState.isWebsocketDebugEnabled()) {
+                    logger.debug('Non-numeric node ID detected, will map to numeric index:', createDataMetadata({
+                        id: update.id,
+                        valueType: typeof update.id,
+                        length: typeof update.id === 'string' ? update.id.length : 0
+                    }));
                 }
+                // Don't filter out non-numeric IDs - they will be mapped below
                 return false;
             }
             return true;
         });
+        
+        if (debugState.isWebsocketDebugEnabled()) {
+            logger.debug(`Validated ${validatedUpdates.length}/${updates.length} node updates as numeric IDs`);
+        }
 
         if (validatedUpdates.length === 0 && updates.length > 0) {
             // If we have non-numeric node IDs (metadata names), convert them to numeric indices
@@ -735,9 +754,11 @@ export class WebSocketService {
                     logger.info(`Mapped metadata name "${update.id}" to numeric index ${nodeIndex} for binary protocol`);
                 }
                 
-                // Apply deadband filtering for client-initiated updates too
+                // Check if this is a randomization operation (large position changes)
+                // If so, bypass the deadband filtering
                 const nodeId = this.nodeNameToIndexMap.get(update.id)!;
                 const lastPosition = this.lastNodePositions.get(nodeId);
+                
                 if (lastPosition) {
                     // Calculate squared distance manually
                     const dx = update.position.x - lastPosition.x;
@@ -745,9 +766,19 @@ export class WebSocketService {
                     const dz = update.position.z - lastPosition.z;
                     const distanceSquared = dx*dx + dy*dy + dz*dz;
                     
-                    if (distanceSquared < (POSITION_DEADBAND * POSITION_DEADBAND)) {
-                        if (Math.random() < 0.01) logger.debug(`Filtered client update for node ${update.id} - position change too small`);
+                    // Check if this is a significant position change (likely from randomization)
+                    const isSignificantChange = distanceSquared > 1.0; // 1.0 is a larger threshold to detect randomization
+                    
+                    // Only apply deadband filtering for small movements, not for randomization
+                    if (!isSignificantChange && distanceSquared < (POSITION_DEADBAND * POSITION_DEADBAND)) {
+                        if (debugState.isWebsocketDebugEnabled() && Math.random() < 0.01) {
+                            logger.debug(`Filtered client update for node ${update.id} - position change too small`);
+                        }
                         return false; // Filter out this update
+                    }
+                    
+                    if (isSignificantChange && debugState.isWebsocketDebugEnabled()) {
+                        logger.debug(`Detected significant position change for node ${update.id} - likely randomization`);
                     }
                 }
                 
@@ -780,8 +811,21 @@ export class WebSocketService {
     
     private processNodeUpdateQueue(): void {
         if (!this.ws || this.ws.readyState !== WebSocket.OPEN || this.nodeUpdateQueue.length === 0) {
+            if (this.nodeUpdateQueue.length > 0) {
+                logger.warn(`Discarding ${this.nodeUpdateQueue.length} updates because WebSocket is not open`);
+                debugState.setBinaryProtocolStatus('error');
+            }
             this.nodeUpdateQueue = [];
             return;
+        }
+        
+        // Update binary protocol status to active since we're about to send updates
+        if (debugState.getBinaryProtocolStatus() === 'pending') {
+            debugState.setBinaryProtocolStatus('active');
+        }
+        
+        if (debugState.isWebsocketDebugEnabled()) {
+            logger.debug(`Processing node update queue with ${this.nodeUpdateQueue.length} updates`);
         }
         
         // Get the most recent updates for each node ID (to avoid sending outdated positions)
@@ -790,15 +834,28 @@ export class WebSocketService {
             latestUpdates.set(update.id, update);
         }
         
-        // Convert to array and limit to 2 nodes per update as per server requirements
+        // Convert to array - allow more nodes per update for randomization operations
         let updates = Array.from(latestUpdates.values());
-        if (updates.length > 2) {
-            debugLog('Too many nodes in update, limiting to first 2');
-            updates = updates.slice(0, 2);
+        const originalCount = updates.length;
+        
+        // For randomization, we want to send more nodes at once
+        // Check if this is likely a randomization operation (many nodes at once)
+        const isLikelyRandomization = updates.length > 5;
+        const maxNodesPerUpdate = isLikelyRandomization ? 10 : 2;
+        
+        if (updates.length > maxNodesPerUpdate) {
+            if (debugState.isWebsocketDebugEnabled()) {
+                logger.debug(`Many nodes in update (${updates.length}), limiting to ${maxNodesPerUpdate} nodes per batch`);
+            }
+            updates = updates.slice(0, maxNodesPerUpdate);
         }
         
         // Clear the queue
         this.nodeUpdateQueue = [];
+        
+        if (debugState.isWebsocketDebugEnabled()) {
+            logger.debug(`Processing ${updates.length}/${originalCount} node updates`);
+        }
 
         // Calculate buffer size based on node count (26 bytes per node)
         const bufferSize = updates.length * BYTES_PER_NODE;

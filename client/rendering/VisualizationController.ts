@@ -488,6 +488,8 @@ export class VisualizationController {
     public async randomizeNodePositions(radius: number = 7): Promise<void> {
         // First, ensure WebSocket is connected
         const connectionState = this.websocketService.getConnectionStatus();
+        logger.info(`Randomizing nodes. Current WebSocket state: ${connectionState}`);
+        
         if (connectionState !== 'connected') {
             logger.warn(`WebSocket not connected (state: ${connectionState}), attempting to reconnect...`);
             
@@ -504,6 +506,8 @@ export class VisualizationController {
                     logger.error(`Failed to establish WebSocket connection (state: ${newState})`);
                     // Proceed with local randomization only
                     logger.warn('Will perform randomization locally only without server sync');
+                } else {
+                    logger.info('Successfully reconnected WebSocket for randomization');
                 }
             } catch (error) {
                 logger.error('Error reconnecting WebSocket:', createErrorMetadata(error));
@@ -602,16 +606,42 @@ export class VisualizationController {
             
             // Only send updates if websocket is connected
             if (connectionState === 'connected') {
-            for (let i = 0; i < updates.length; i += batchSize) {
-                const batch = updates.slice(i, i + batchSize);
-                const wsUpdates = batch.map(update => ({ 
-                    id: update.id,
-                    position: update.data.position,
-                    velocity: update.data.velocity
-                }));
+                logger.info(`Sending ${updates.length} node updates to server in ${Math.ceil(updates.length/batchSize)} batches`);
                 
-                this.websocketService.sendNodeUpdates(wsUpdates);
-            }
+                // Send updates in batches with a small delay between batches
+                for (let i = 0; i < updates.length; i += batchSize) {
+                    const batch = updates.slice(i, i + batchSize);
+                    const wsUpdates = batch.map(update => ({ 
+                        id: update.id,
+                        position: update.data.position,
+                        velocity: update.data.velocity
+                    }));
+                    
+                    // Log the first batch to help with debugging
+                    if (i === 0) {
+                        logger.info('First batch node updates:', createDataMetadata({
+                            batchSize: wsUpdates.length,
+                            sampleNodeId: wsUpdates[0].id,
+                            sampleNodeIdType: typeof wsUpdates[0].id,
+                            samplePosition: {
+                                x: wsUpdates[0].position.x,
+                                y: wsUpdates[0].position.y,
+                                z: wsUpdates[0].position.z
+                            }
+                        }));
+                    }
+                    
+                    this.websocketService.sendNodeUpdates(wsUpdates);
+                    
+                    // Small delay between batches to avoid overwhelming the server
+                    if (i + batchSize < updates.length) {
+                        await new Promise(resolve => setTimeout(resolve, 50));
+                    }
+                }
+                
+                logger.info('Finished sending all node update batches');
+            } else {
+                logger.warn(`Cannot send updates - WebSocket not connected (state: ${connectionState})`);
             }
             
             // Old approach that sent one at a time - keeping as fallback

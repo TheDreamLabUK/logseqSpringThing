@@ -12,6 +12,9 @@ export interface DebugState {
     enableShaderDebug: boolean;
     enableMatrixDebug: boolean;
     enablePerformanceDebug: boolean;
+    // Binary protocol status tracking
+    binaryProtocolEnabled: boolean;
+    binaryProtocolStatus: 'inactive' | 'pending' | 'active' | 'error' | 'failed';
 }
 
 class DebugStateManager {
@@ -26,7 +29,9 @@ class DebugStateManager {
         enableNodeDebug: false,
         enableShaderDebug: false,
         enableMatrixDebug: false,
-        enablePerformanceDebug: false
+        enablePerformanceDebug: false,
+        binaryProtocolEnabled: false,
+        binaryProtocolStatus: 'inactive'
     };
 
     private constructor() {}
@@ -53,7 +58,9 @@ class DebugStateManager {
             enableNodeDebug: settingsStore.get('system.debug.enable_node_debug') as boolean ?? false,
             enableShaderDebug: settingsStore.get('system.debug.enable_shader_debug') as boolean ?? false,
             enableMatrixDebug: settingsStore.get('system.debug.enable_matrix_debug') as boolean ?? false,
-            enablePerformanceDebug: settingsStore.get('system.debug.enable_performance_debug') as boolean ?? false
+            enablePerformanceDebug: settingsStore.get('system.debug.enable_performance_debug') as boolean ?? false,
+            binaryProtocolEnabled: false,
+            binaryProtocolStatus: 'inactive' as 'inactive' | 'pending' | 'active' | 'error' | 'failed'
         };
 
         // Subscribe to debug setting changes
@@ -148,6 +155,36 @@ class DebugStateManager {
 
     public isPerformanceDebugEnabled(): boolean {
         return this.state.enabled && this.state.enablePerformanceDebug;
+    }
+
+    public isBinaryProtocolEnabled(): boolean {
+        return this.state.binaryProtocolEnabled;
+    }
+
+    public setBinaryProtocolEnabled(enabled: boolean): void {
+        this.state.binaryProtocolEnabled = enabled;
+        if (!enabled) {
+            this.state.binaryProtocolStatus = 'inactive';
+        }
+    }
+
+    public getBinaryProtocolStatus(): string {
+        return this.state.binaryProtocolStatus;
+    }
+
+    public setBinaryProtocolStatus(status: 'inactive' | 'pending' | 'active' | 'error' | 'failed'): void {
+        this.state.binaryProtocolStatus = status;
+        
+        // If we're setting to active or error, implicitly enable the protocol
+        if (status === 'active' || status === 'pending') {
+            this.state.binaryProtocolEnabled = true;
+        }
+        
+        // Log status changes if debug is enabled
+        if (this.state.enabled && this.state.enableWebsocketDebug) {
+            const { logger } = require('./logger');
+            logger.debug(`Binary protocol status changed to: ${status}`);
+        }
     }
 
     public getState(): DebugState {
