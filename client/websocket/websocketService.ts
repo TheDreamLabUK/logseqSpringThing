@@ -367,8 +367,6 @@ export class WebSocketService {
                 return;
             }
             
-            const isCompressed = buffer.byteLength > 0 && buffer.byteLength % BYTES_PER_NODE !== 0;
-
             const decompressedBuffer = this.tryDecompress(buffer);
             
             // Throttled debug logging for binary messages
@@ -376,8 +374,7 @@ export class WebSocketService {
                 rawSize: buffer.byteLength, 
                 initialDataReceived: this.initialDataReceived,
                 decompressedSize: decompressedBuffer.byteLength, 
-                isCompressed,
-                nodeCount: decompressedBuffer.byteLength / BYTES_PER_NODE
+                nodeCount: Math.floor(decompressedBuffer.byteLength / BYTES_PER_NODE)
             }));
             
             // Check if buffer is empty
@@ -388,21 +385,20 @@ export class WebSocketService {
             
             const dataView = new DataView(decompressedBuffer);
             
-            // Validate message size (must be a multiple of BYTES_PER_NODE)
-            if (decompressedBuffer.byteLength % BYTES_PER_NODE !== 0) {
-                // Enhanced error logging for production debugging
-                const errorDetails = {
-                    bufferSize: buffer.byteLength,
-                    decompressedSize: decompressedBuffer?.byteLength ?? 0,
-                    remainder: decompressedBuffer?.byteLength % BYTES_PER_NODE,
-                    expectedNodeCount: Math.floor(decompressedBuffer?.byteLength / BYTES_PER_NODE),
-                    url: this.url
-                };
-                logger.error('Invalid binary message size:', createDataMetadata(errorDetails));
+            // Check if there's enough data for at least one node
+            if (decompressedBuffer.byteLength < BYTES_PER_NODE) {
+                logger.error('Binary message too small to contain any nodes');
                 return;
             }
-
-            const nodeCount = decompressedBuffer.byteLength / BYTES_PER_NODE;
+            
+            // Calculate how many complete nodes we can read
+            const nodeCount = Math.floor(decompressedBuffer.byteLength / BYTES_PER_NODE);
+            
+            // If there's a remainder, log it but continue processing the complete nodes
+            const remainder = decompressedBuffer.byteLength % BYTES_PER_NODE;
+            if (remainder > 0) {
+                logger.warn(`Binary message has ${remainder} extra bytes that don't form a complete node. Processing ${nodeCount} complete nodes.`);
+            }
 
             if (nodeCount === 0) {
                 logger.warn('No nodes in binary update - empty message received');

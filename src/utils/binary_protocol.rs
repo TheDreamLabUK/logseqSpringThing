@@ -4,7 +4,7 @@ use crate::utils::socket_flow_messages::BinaryNodeData;
 use log;
 
 // Binary format (simplified):
-// - For each node (24 bytes):
+// - For each node (26 bytes):
 //   - Node Index: 2 bytes (u16)
 //   - Position: 3 × 4 bytes = 12 bytes
 //   - Velocity: 3 × 4 bytes = 12 bytes
