@@ -6,12 +6,16 @@
 
 ![P1080785_1728030359430_0](https://github.com/user-attachments/assets/3ecac4a3-95d7-4c75-a3b2-e93deee565d6)
 
+## About LogseqXR
+
+LogseqXR transforms your Logseq knowledge base into an immersive 3D visualization that you can explore in VR/AR. Experience your ideas as tangible objects in space, discover new connections, and interact with your knowledge in ways never before possible.
+
 ## Quick Links
 
 - [Project Overview](docs/overview/introduction.md)
 - [Technical Architecture](docs/overview/architecture.md)
 - [Development Setup](docs/development/setup.md)
-- [API Documentation](docs/api/rest.md)
+- [API Documentation](docs/api/index.md)
 - [Contributing Guidelines](docs/contributing/guidelines.md)
 
 ## Documentation Structure
@@ -21,17 +25,17 @@
 - [System Architecture](docs/overview/architecture.md)
 
 ### Technical Documentation
+- [WebSocket Communication](docs/technical/websockets.md)
 - [Binary Protocol](docs/technical/binary-protocol.md)
-- [WebGPU Pipeline](docs/technical/webgpu.md)
 - [Performance Optimizations](docs/technical/performance.md)
 - [Class Diagrams](docs/technical/class-diagrams.md)
-- [Authentication & Settings](docs/technical/auth-settings.md)
-- [Modular Control Panel](docs/technical/control-panel.md)
 
 ### Development
 - [Setup Guide](docs/development/setup.md)
+- [Debugging Guide](docs/development/debugging.md)
 
 ### API Documentation
+- [API Overview](docs/api/index.md)
 - [REST API](docs/api/rest.md)
 - [WebSocket API](docs/api/websocket.md)
 

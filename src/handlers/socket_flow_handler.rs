@@ -7,6 +7,7 @@ use std::io::Write;
 use std::sync::Arc;
 use std::collections::HashMap;
 use tokio::sync::RwLock;
+use std::time::Instant;
 
 use crate::app_state::AppState;
 use crate::utils::binary_protocol;
@@ -16,6 +17,11 @@ use crate::utils::socket_flow_messages::{BinaryNodeData, PingMessage, PongMessag
 // Constants for throttling debug logs
 const DEBUG_LOG_SAMPLE_RATE: usize = 10; // Only log 1 in 10 updates
 
+// Constants for data optimization
+const COMPRESSION_LEVEL: Compression = Compression::best(); // Use best compression
+const POSITION_DEADBAND: f32 = 0.005; // 5mm deadband (reduced from 1cm)
+const VELOCITY_DEADBAND: f32 = 0.001; // 1mm/s deadband for velocity
+
 pub struct SocketFlowServer {
     app_state: Arc<AppState>,
     settings: Arc<RwLock<crate::config::Settings>>,
@@ -24,10 +30,18 @@ pub struct SocketFlowServer {
     last_activity: std::time::Instant, // Track last activity time
     heartbeat_timer_set: bool, // Flag to track if heartbeat timer is set
     update_interval: std::time::Duration,
-    // New fields for batched updates and deadband filtering
+    // Fields for batched updates and deadband filtering
     node_position_cache: HashMap<String, BinaryNodeData>,
     last_sent_positions: HashMap<String, Vec3Data>,
+    last_sent_velocities: HashMap<String, Vec3Data>,
     position_deadband: f32, // Minimum position change to trigger an update
+    velocity_deadband: f32, // Minimum velocity change to trigger an update
+    // Performance metrics
+    last_transfer_size: usize,
+    last_transfer_time: Instant,
+    total_bytes_sent: usize,
+    update_count: usize,
+    nodes_sent_count: usize
 }
 
 impl SocketFlowServer {
@@ -51,7 +65,14 @@ impl SocketFlowServer {
             update_interval,
             node_position_cache: HashMap::new(),
             last_sent_positions: HashMap::new(),
-            position_deadband: 0.01, // 1cm deadband by default
+            last_sent_velocities: HashMap::new(),
+            position_deadband: POSITION_DEADBAND,
+            velocity_deadband: VELOCITY_DEADBAND,
+            last_transfer_size: 0,
+            last_transfer_time: Instant::now(),
+            total_bytes_sent: 0,
+            update_count: 0,
+            nodes_sent_count: 0,
         }
     }
 
@@ -63,18 +84,19 @@ impl SocketFlowServer {
         }
     }
 
-    fn maybe_compress(&self, data: Vec<u8>) -> Vec<u8> {
-        if let Ok(settings) = self.settings.try_read() {
-            if settings.system.websocket.compression_enabled
-                && data.len() >= settings.system.websocket.compression_threshold
-            {
-                let mut encoder = ZlibEncoder::new(Vec::new(), Compression::default());
-                if encoder.write_all(&data).is_ok() {
-                    if let Ok(compressed) = encoder.finish() {
-                        if compressed.len() < data.len() {
-                            debug!("Compressed binary message: {} -> {} bytes", data.len(), compressed.len());
-                            return compressed;
+    fn maybe_compress(&mut self, data: Vec<u8>) -> Vec<u8> {
+        // Always compress data to reduce transfer size
+        if data.len() > 100 { // Only compress if data is larger than 100 bytes
+            let mut encoder = ZlibEncoder::new(Vec::new(), COMPRESSION_LEVEL);
+            if encoder.write_all(&data).is_ok() {
+                if let Ok(compressed) = encoder.finish() {
+                    if compressed.len() < data.len() {
+                        if self.should_log_update() {
+                            debug!("Compressed binary message: {} -> {} bytes ({}% reduction)", 
+                                data.len(), compressed.len(), 
+                                ((data.len() - compressed.len()) * 100) / data.len());
                         }
+                        return compressed;
                     }
                 }
             }
@@ -88,27 +110,44 @@ impl SocketFlowServer {
         self.update_counter == 0
     }
     
-    // New method to check if a node's position has changed enough to warrant an update
-    fn has_position_changed_significantly(&mut self, node_id: &str, new_position: Vec3Data) -> bool {
-        if let Some(last_position) = self.last_sent_positions.get(node_id) {
+    // Check if a node's position or velocity has changed enough to warrant an update
+    fn has_node_changed_significantly(&mut self, node_id: &str, new_position: Vec3Data, new_velocity: Vec3Data) -> bool {
+        let position_changed = if let Some(last_position) = self.last_sent_positions.get(node_id) {
             // Calculate Euclidean distance between last sent position and new position
             let dx = new_position.x - last_position.x;
             let dy = new_position.y - last_position.y;
             let dz = new_position.z - last_position.z;
             let distance_squared = dx*dx + dy*dy + dz*dz;
             
-            // Only send update if position has changed by more than the deadband
-            if distance_squared > self.position_deadband * self.position_deadband {
-                // Update the last sent position
-                self.last_sent_positions.insert(node_id.to_string(), new_position.clone());
-                return true;
-            }
-            return false;
+            // Check if position has changed by more than the deadband
+            distance_squared > self.position_deadband * self.position_deadband
         } else {
-            // First time seeing this node, always send update
+            // First time seeing this node, always consider it changed
+            true
+        };
+        
+        let velocity_changed = if let Some(last_velocity) = self.last_sent_velocities.get(node_id) {
+            // Calculate velocity change magnitude
+            let dvx = new_velocity.x - last_velocity.x;
+            let dvy = new_velocity.y - last_velocity.y;
+            let dvz = new_velocity.z - last_velocity.z;
+            let velocity_change_squared = dvx*dvx + dvy*dvy + dvz*dvz;
+            
+            // Check if velocity has changed by more than the deadband
+            velocity_change_squared > self.velocity_deadband * self.velocity_deadband
+        } else {
+            // First time seeing this node's velocity, always consider it changed
+            true
+        };
+        
+        // Update stored values if changed
+        if position_changed || velocity_changed {
             self.last_sent_positions.insert(node_id.to_string(), new_position);
+            self.last_sent_velocities.insert(node_id.to_string(), new_velocity);
             return true;
         }
+        
+        false
     }
     
     // New method to collect nodes that have changed position
@@ -269,9 +308,34 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
                                             }
                                             return None;
                                         }
+                                        
+                                        // Filter nodes to only include those that have changed significantly
+                                        // This reduces the amount of data we need to send
+                                        let mut filtered_nodes = Vec::new();
+                                        for (node_id, node_data) in nodes {
+                                            // Store node data in a temporary map for the actor to process later
+                                            let node_id_str = node_id.to_string();
+                                            let position = node_data.position.clone();
+                                            let velocity = node_data.velocity.clone();
+                                            
+                                            // Always include the node for now - filtering will be done in the actor
+                                            filtered_nodes.push((node_id, node_data));
+                                            
+                                            if detailed_debug && filtered_nodes.len() <= 5 {
+                                                debug!("Including node {} in update", node_id_str);
+                                            }
+                                        }
+                                        
+                                        // If no nodes have changed significantly, don't send an update
+                                        if filtered_nodes.is_empty() {
+                                            return None;
+                                        }
                                        
-                                        // Encode only the nodes that have changed
-                                        let data = binary_protocol::encode_node_data(&nodes);
+                                        // Encode only the nodes that have changed significantly
+                                        let data = binary_protocol::encode_node_data(&filtered_nodes);
+                                        
+                                        // Use filtered nodes for the rest of the processing
+                                        nodes = filtered_nodes;
                                         
                                         // Return detailed debug info along with the data
                                         Some((data, detailed_debug, nodes))
@@ -284,12 +348,33 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
                                     ctx.spawn(fut.map(move |result, act, ctx| {
                                         if let Some((binary_data, detailed_debug, nodes)) = result {
                                             // Log debug info if needed
+                                            
+                                            // Apply node filtering here using the actor's state
+                                            let mut truly_filtered_nodes = Vec::new();
+                                            for (node_id, node_data) in nodes {
+                                                // Check if this node has changed enough to warrant an update
+                                                if act.has_node_changed_significantly(
+                                                    &node_id.to_string(), 
+                                                    node_data.position.clone(),
+                                                    node_data.velocity.clone()
+                                                ) {
+                                                    truly_filtered_nodes.push((node_id, node_data));
+                                                }
+                                            }
+                                            
+                                            // If no nodes have changed significantly, don't send an update
+                                            if truly_filtered_nodes.is_empty() {
+                                                return;
+                                            }
+                                            
+                                            // Re-encode the truly filtered nodes
+                                            let binary_data = binary_protocol::encode_node_data(&truly_filtered_nodes);
                                             if detailed_debug && should_log && !binary_data.is_empty() {
-                                                debug!("[WebSocket] Encoded binary data: {} bytes for {} nodes", binary_data.len(), nodes.len());
+                                                debug!("[WebSocket] Encoded binary data: {} bytes for {} nodes", binary_data.len(), truly_filtered_nodes.len());
                                                 
                                                 // Log details about a sample node to track position changes
-                                                if !nodes.is_empty() {
-                                                    let node = &nodes[0];
+                                                if !truly_filtered_nodes.is_empty() {
+                                                    let node = &truly_filtered_nodes[0];
                                                     debug!(
                                                         "Sample node: id={}, pos=[{:.2},{:.2},{:.2}], vel=[{:.2},{:.2},{:.2}]",
                                                         node.0, 
@@ -300,12 +385,26 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
                                             }
 
                                             // Only send data if we have nodes to update
-                                            if !binary_data.is_empty() {
+                                            if !truly_filtered_nodes.is_empty() {
                                                 let final_data = act.maybe_compress(binary_data);
                                                 
-                                                // Only log if detailed debugging is enabled
+                                                // Update performance metrics
+                                                act.last_transfer_size = final_data.len();
+                                                act.total_bytes_sent += final_data.len();
+                                                act.update_count += 1;
+                                                act.nodes_sent_count += truly_filtered_nodes.len();
+                                                let now = Instant::now();
+                                                let elapsed = now.duration_since(act.last_transfer_time);
+                                                act.last_transfer_time = now;
+                                                
+                                                // Log performance metrics periodically
                                                 if detailed_debug && should_log {
-                                                        debug!("[WebSocket] Final binary update sent to client: {} bytes", final_data.len());
+                                                    let avg_bytes_per_update = if act.update_count > 0 {
+                                                        act.total_bytes_sent / act.update_count
+                                                    } else { 0 };
+                                                    
+                                                    debug!("[WebSocket] Transfer: {} bytes, {} nodes, {:?} since last, avg {} bytes/update",
+                                                        final_data.len(), truly_filtered_nodes.len(), elapsed, avg_bytes_per_update);
                                                 }
                                                 
                                                 ctx.binary(final_data);

@@ -828,10 +828,18 @@ export class VisualizationController {
                 positionMap.set(node.id, `x:${node.data.position.x.toFixed(2)}, y:${node.data.position.y.toFixed(2)}, z:${node.data.position.z.toFixed(2)}`);
             }
             
-            if ('label' in node && typeof node.label === 'string') {
+            // Get the label from the node using the correct property path
+            // First check if node has a direct label property
+            if (node.label && typeof node.label === 'string') {
                 nodeLabel = node.label; // Use explicit node.label if available
-            } else if ('metadataId' in node && typeof node.metadataId === 'string') {
+            } 
+            // Then check if node has a metadataId (filename)
+            else if (node.metadataId && typeof node.metadataId === 'string') {
                 nodeLabel = node.metadataId; // Fall back to metadataId (filename)
+            }
+            // Finally check if the label is in node.data.metadata
+            else if (node.data?.metadata?.name && typeof node.data.metadata.name === 'string') {
+                nodeLabel = node.data.metadata.name;
             }
             
             // Log actual label being used
@@ -854,7 +862,8 @@ export class VisualizationController {
             const metadata: NodeMetadata = {
                 id: node.id,
                 // Use explicit || chaining to handle all possible undefined cases
-                name: (nodeLabel || nodeMetadata.name || node.id || `Node ${index}`).toString(),
+                // Ensure each node gets its own unique label
+                name: nodeLabel || nodeMetadata.name || node.id || `Node ${index}`,
                 commitAge: Math.floor((Date.now() - (nodeMetadata.lastModified || Date.now())) / (1000 * 60 * 60 * 24)),
                 hyperlinkCount: nodeMetadata.hyperlinkCount || 0,
                 fileSize: nodeMetadata.fileSize || 1024,
@@ -868,7 +877,9 @@ export class VisualizationController {
             };
                 
             // Create the label with proper unique metadata
-            this.metadataVisualizer?.createMetadataLabel(metadata, nodeLabel || node.id); // Pass node.id as fallback if nodeLabel is undefined
+            // Ensure we're passing the correct label to the visualizer
+            const finalLabel = metadata.name.toString(); // Convert to string to ensure it's a valid label
+            this.metadataVisualizer?.createMetadataLabel(metadata, finalLabel);
                 
             // Update position immediately to avoid the "dropping in" effect
             const position = this.nodeManager?.getNodeInstanceManager().getNodePosition(node.id);
