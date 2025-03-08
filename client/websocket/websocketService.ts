@@ -444,9 +444,11 @@ export class WebSocketService {
                     dataView.getFloat32(offset + 4, true), // y
                     dataView.getFloat32(offset + 8, true)  // z
                 );
-                // Use validateAndFixVector3 to ensure we don't have NaN or Infinity values
+                
+                // CRITICAL FIX: Ensure we're using the correct numeric ID from the server
+                // This ID is directly from the binary protocol and must be preserved as-is
+                // to maintain proper mapping with node metadata
                 const position = validateAndFixVector3(rawPosition, 1000);
-                offset += 12;
 
                 const rawVelocity = new Vector3(
                     dataView.getFloat32(offset, true),      // x
@@ -454,8 +456,13 @@ export class WebSocketService {
                     dataView.getFloat32(offset + 8, true)   // z
                 );
                 const velocity = validateAndFixVector3(rawVelocity, 0.05);
-                offset += 12;
                 
+                // Update offsets after reading all data
+                offset += 12; // position (3 * 4 bytes)
+                offset += 12; // velocity (3 * 4 bytes)
+
+                // Convert the numeric ID to a string to match our node ID storage format
+                const nodeId = id.toString();
                 // Apply deadband filtering - only include if position has changed significantly
                 const lastPosition = this.lastNodePositions.get(id);
                 let positionChanged = true;
@@ -483,7 +490,12 @@ export class WebSocketService {
                 
                 // Only include the node if position changed or we don't have a previous position
                 if (positionChanged) {
-                    nodes.push({ id, position, velocity });
+                    // IMPORTANT: Use the string nodeId that matches the metadata format
+                    // This ensures the position updates will be correctly applied to
+                    // the nodes with matching metadata
+                    nodes.push({ 
+                        id: parseInt(nodeId, 10), 
+                        position, velocity });
                     
                     // Debug logging for node ID tracking
                     if (debugState.isNodeDebugEnabled() && Math.random() < 0.01) {

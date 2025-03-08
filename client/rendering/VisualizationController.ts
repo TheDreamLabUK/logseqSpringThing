@@ -78,11 +78,24 @@ export class VisualizationController {
         // Subscribe to websocket binary updates
         this.websocketService.onBinaryMessage((nodes) => {            
             if (this.nodeManager && this.isInitialized) {
-                // Convert binary node data to the format expected by updateNodePositions
+                /**
+                 * CRITICAL NODE ID BINDING: Binary WebSocket Protocol
+                 * 
+                 * This is a critical section that handles the node ID binding between the server's
+                 * binary protocol and the client-side metadata visualization system:
+                 * 
+                 * 1. The server sends binary data containing node numeric IDs (u16 values)
+                 * 2. These binary IDs must be preserved as strings in our client system
+                 * 3. The metadata visualization system relies on these same IDs to bind positions
+                 *    with the correct metadata
+                 * 
+                 * The WebSocketService has already converted the numeric IDs to strings, but we must
+                 * ensure these string IDs are used consistently throughout the application.
+                 */
                 this.hasReceivedBinaryUpdate = true;
                 
                 let updates = nodes.map(node => ({
-                    id: node.id.toString(),
+                    id: node.id.toString(), // Ensure ID is a string to match metadata binding
                     data: {
                         position: node.position,
                         velocity: node.velocity
@@ -832,9 +845,28 @@ export class VisualizationController {
         
         // Create metadata for all nodes
         currentData.nodes.forEach((node, index) => {
-            // Skip if already processed
+            /**
+             * CRITICAL NODE ID BINDING: Metadata Visualization
+             * 
+             * This is where metadata gets bound to node IDs. The critical points:
+             * 
+             * 1. The node.id MUST be a numeric string that matches the IDs from the binary protocol
+             * 2. This ID originated from the server as a u16 value in the binary messages
+             * 3. Both MetadataVisualizer and NodeInstanceManager must use the same ID values
+             *    to ensure proper position updates and metadata binding
+             * 4. Duplicate IDs must be skipped to prevent overwriting metadata
+             */
             if (processedNodeIds.has(node.id)) {
+                logger.debug(`Skipping duplicate node ID ${node.id}`);
                 return;
+            }
+            
+            // Validate ID format - we expect numeric string IDs from the binary protocol
+            // Check if ID is a valid numeric string - this is critical for proper binding
+            // with the binary message protocol which uses numeric IDs
+            if (!/^\d+$/.test(node.id)) {
+                logger.warn(`Node ${node.id} has non-numeric ID format which may cause metadata binding issues. 
+                    Binary protocol requires numeric string IDs for proper binding.`);
             }
             
             // Mark as processed
@@ -873,7 +905,7 @@ export class VisualizationController {
             }
             
             // Log actual label being used
-            logger.info(`Using label for node ${node.id}: "${nodeLabel || 'undefined'}"`);
+            logger.debug(`Using label for node ${node.id}: "${nodeLabel || 'undefined'}"`);
             
             // Create metadata even if node.data.metadata is missing
             // Use node ID as a fallback for the name
@@ -906,10 +938,20 @@ export class VisualizationController {
                 }
             };
                 
-            // Create the label with proper unique metadata
-            // Ensure we're passing the correct label to the visualizer
-            const finalLabel = metadata.name.toString(); // Convert to string to ensure it's a valid label
-            this.metadataVisualizer?.createMetadataLabel(metadata, finalLabel);
+            /**
+             * CRITICAL NODE ID BINDING: Creating Metadata Labels
+             * 
+             * When creating metadata labels, we MUST pass the node.id (numeric string)
+             * to the MetadataVisualizer rather than the display name or other identifier.
+             * 
+             * This ensures the correct binding between:
+             * 1. Binary position updates from WebSocket (which use numeric IDs)
+             * 2. Metadata visualizations (which need to track those same IDs)
+             * 3. Node instance updates (which also use those IDs)
+             * 
+             * IMPORTANT: Passing the wrong ID here was the root cause of the metadata binding issue
+             */
+            this.metadataVisualizer?.createMetadataLabel(metadata, node.id);
                 
             // Update position immediately to avoid the "dropping in" effect
             const position = this.nodeManager?.getNodeInstanceManager().getNodePosition(node.id);

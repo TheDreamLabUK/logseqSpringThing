@@ -90,7 +90,11 @@ export class MetadataVisualizer {
     public async createMetadataLabel(metadata: NodeMetadata, nodeId: string): Promise<MetadataLabelGroup> {
         // Track how many labels we've created
         this.labelUpdateCount++;
-        
+
+        // CRITICAL FIX: Ensure we're using the correct nodeId parameter passed in
+        // The nodeId parameter from VisualizationController is now the correct numeric ID
+        // that matches the binary WebSocket protocol IDs
+
         // Log detailed metadata info to help debug node label issues
         if (this.debugEnabled) {
             console.log(`[MetadataVisualizer] Creating label for node ${nodeId}:`, {
@@ -104,8 +108,10 @@ export class MetadataVisualizer {
         group.name = 'metadata-label';
         group.userData = { 
             isMetadata: true,
+            // Ensure we're storing the correct nodeId for position updates
             nodeId
         };
+
 
         // Format file size
         const fileSizeFormatted = !metadata.fileSize ? '0B' : metadata.fileSize > 1024 * 1024 
@@ -113,6 +119,11 @@ export class MetadataVisualizer {
             : metadata.fileSize > 1024
                 ? `${(metadata.fileSize / 1024).toFixed(1)}KB`
                 : `${metadata.fileSize}B`;
+                
+        // Log actual file size for debugging
+        if (this.debugEnabled) {
+            console.log(`[MetadataVisualizer] File size for node ${nodeId}: ${metadata.fileSize} bytes (${fileSizeFormatted})`);
+        }
 
         // Only log detailed metadata at trace level (effectively disabling it)
         if (debugState.isDataDebugEnabled()) {
@@ -126,10 +137,9 @@ export class MetadataVisualizer {
             });
         }
 
-        // Use the filename from metadata name (which should come from metadata_id)
-        // and fallback to nodeId if not available
-        const displayName = metadata.name || nodeId;
-        
+        // Use metadata name, ensuring we show a properly formatted name
+        const displayName = metadata.name || nodeId.toString();
+
         // Create text labels using UnifiedTextRenderer
         // First, find the node's actual position
         let nodePosition = new Vector3(0, 0, 0);
@@ -217,6 +227,19 @@ export class MetadataVisualizer {
     }
 
     public updateMetadataPosition(nodeId: string, position: Vector3): void {
+        /**
+         * CRITICAL NODE ID BINDING: Position Updates
+         * 
+         * This method is called from VisualizationController to update the position
+         * of a metadata label when node positions change via the WebSocket.
+         * 
+         * The nodeId parameter MUST match:
+         * 1. The ID used in createMetadataLabel() to create the label
+         * 2. The IDs coming from the binary WebSocket protocol
+         * 
+         * If labels don't move with their nodes, it's likely due to a mismatch
+         * between the ID used here and the ID used in the binary protocol.
+         */
         const group = this.metadataGroups.get(nodeId);
         if (group) {
             group.position.copy(position);

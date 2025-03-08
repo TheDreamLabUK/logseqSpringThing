@@ -466,7 +466,11 @@ export function transformNodeData(node: any): Node {
                 }));
   }
   
-  // Store server-provided metadataId and label directly, without modification
+  // CRITICAL FIX: Ensure proper ID mapping
+  // The node.id is the numeric ID from the server which is used to track nodes in the 
+  // binary protocol. This ID must be preserved exactly as is to ensure proper
+  // binding between the node's position/velocity data and its metadata.
+
   const nodeId = node.id;
   const metadataId = node.metadata_id || node.label || node.id;
   
@@ -474,16 +478,25 @@ export function transformNodeData(node: any): Node {
   const metadata = {
     // Use the metadata_id (filename) as the metadata name
     name: metadataId,
-    lastModified: parseInt(node.data?.metadata?.lastModified) || Date.now(),
-    links: node.data?.metadata?.links || [],
-    references: node.data?.metadata?.references || [],
+    lastModified: 
+      typeof node.data?.metadata?.lastModified === 'string' ? 
+        parseInt(node.data.metadata.lastModified) : 
+        (node.data?.metadata?.lastModified || Date.now()),
+    links: Array.isArray(node.data?.metadata?.links) ? node.data.metadata.links : [],
+    references: Array.isArray(node.data?.metadata?.references) ? node.data.metadata.references : [],
     // Important: make sure to retain file size information specifically
-    fileSize: node.data?.metadata?.fileSize ||
-              (node.file_size !== undefined ? parseInt(node.file_size) : null) || 
-              parseInt(node.data?.metadata?.fileSize) || 
-              1000, // Default file size of 1KB
-    hyperlinkCount: node.data?.metadata?.hyperlinkCount || 
-                    parseInt(node.data?.metadata?.hyperlinkCount) || 0
+    fileSize: 
+      node.data?.metadata?.fileSize !== undefined ? 
+        (typeof node.data.metadata.fileSize === 'string' ? 
+          parseInt(node.data.metadata.fileSize) : 
+          node.data.metadata.fileSize) :
+      node.file_size !== undefined ? 
+        (typeof node.file_size === 'string' ? parseInt(node.file_size) : node.file_size) : 
+       1000, // Default file size of 1KB
+    hyperlinkCount: 
+      node.data?.metadata?.hyperlinkCount !== undefined ? 
+        (typeof node.data.metadata.hyperlinkCount === 'string' ?parseInt(node.data.metadata.hyperlinkCount) : node.data.metadata.hyperlinkCount) : 
+        0
   };
   
   // Important: Make sure to log when we have a numeric ID with a metadata name
