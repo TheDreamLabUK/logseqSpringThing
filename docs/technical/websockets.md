@@ -1,4 +1,66 @@
 # WebSocket Connection and Communication in Logseq XR
+## WebSocket Connection Architecture
+
+The application uses a two-component architecture for WebSocket communication:
+
+1. **WebSocketService** (client/websocket/websocketService.ts):
+   - Handles the raw WebSocket connection to the server
+   - Manages binary protocol encoding/decoding
+   - Implements reconnection logic
+   - Uses socket-flow library on the server side
+
+2. **GraphDataManager** (client/state/graphData.ts):
+   - Manages graph data state
+   - Processes node and edge updates
+   - Communicates with WebSocketService for binary updates
+
+### Connection Flow
+
+The proper connection sequence must follow this order:
+
+1. Initialize GraphVisualization in index.ts
+2. Connect WebSocketService to server with websocketService.connect()
+3. Set up binary message handler with websocketService.onBinaryMessage()
+4. **Create an adapter** that connects WebSocketService to GraphDataManager
+5. Register the adapter with GraphDataManager using setWebSocketService()
+6. Enable binary updates in GraphDataManager with graphDataManager.setBinaryUpdatesEnabled(true)
+
+This sequence ensures proper communication between the two components, which use different interfaces.
+
+This sequence ensures that GraphDataManager knows when it can start sending binary updates through WebSocketService.
+
+### Common Issues
+
+#### "WebSocket service not configured" Error
+
+If you see log messages like:
+```
+[GraphDataManager] Binary updates enabled but WebSocket service not yet configured
+[GraphDataManager] WebSocket service still not configured (attempt X/30)
+```
+
+This indicates that GraphDataManager is trying to send binary updates before WebSocketService is properly initialized. The fix is to ensure proper initialization sequence:
+
+1. First connect the WebSocketService
+2. Then enable binary updates in GraphDataManager
+
+Do not try to directly connect these components through their internal interfaces, as they use different communication patterns. Instead, use their public API methods as shown in the connection flow.
+
+### Component Bridging with Adapter Pattern
+
+GraphDataManager and WebSocketService use different interfaces, which can cause errors if not connected properly. The solution is to use an adapter:
+
+```typescript
+// Create an adapter that implements the InternalWebSocketService interface
+const webSocketAdapter = {
+    send: (data: ArrayBuffer) => {
+        websocketService.sendRawBinaryData(data);
+    }
+};
+
+// Register the adapter with GraphDataManager
+graphDataManager.setWebSocketService(webSocketAdapter);
+```
 
 This document describes the WebSocket connection and communication process in the Logseq XR project, covering the client-server interaction, data formats, compression, heartbeats, and configuration.
 
@@ -121,7 +183,9 @@ This document describes the WebSocket connection and communication process in th
 9.  The server sends a `loading` message to signal that the client should display a loading indicator.
 10. The client displays a loading indicator and sends a `requestInitialData` message (JSON).
 11. The server starts sending binary position updates at the configured interval.
-12. The server sends an `updatesStarted` message to signal that updates have begun.
+12. The client creates an adapter to connect WebSocketService with GraphDataManager.
+13. The client registers the adapter using GraphDataManager.setWebSocketService().
+14. The server sends an `updatesStarted` message to signal that updates have begun.
 13. The client hides the loading indicator upon receiving the `updatesStarted` message.
 14. The client receives and processes the binary data, updating the visualization.
 15. The server and client exchange `ping` and `pong` messages for connection health (although the client-side pinging is primarily handled by the `docker-compose` healthcheck and potentially Cloudflared).

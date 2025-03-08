@@ -262,8 +262,9 @@ export class GraphDataManager {
       };
 
       // Enable WebSocket updates immediately
-      this.enableBinaryUpdates();
-      this.setBinaryUpdatesEnabled(true);
+      // Binary updates will be enabled by GraphVisualization when the WebSocket is connected
+      // this.enableBinaryUpdates();
+      // this.setBinaryUpdatesEnabled(true);
       
       // Notify listeners of initial data
       this.notifyUpdateListeners();
@@ -591,11 +592,6 @@ export class GraphDataManager {
     // Notify listeners
     this.notifyUpdateListeners();
     throttledDebugLog(`Updated graph data: ${this.nodes.size} nodes, ${this.edges.size} edges`);
-
-    // Enable binary updates after initial data is received
-    if (!this.binaryUpdatesEnabled) {
-      this.enableBinaryUpdates();
-    }
   }
 
   /**

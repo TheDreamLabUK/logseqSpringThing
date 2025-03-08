@@ -980,4 +980,26 @@ export class WebSocketService {
             this.ws = null;
         }
     }
+    
+    /**
+     * Send raw binary data through the WebSocket connection
+     * This method is used by the GraphDataManager adapter
+     * @param data The ArrayBuffer to send
+     * @returns boolean indicating if the data was sent successfully
+     */
+    public sendRawBinaryData(data: ArrayBuffer): boolean {
+        if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+            logger.warn('WebSocket not connected, cannot send raw binary data');
+            return false;
+        }
+        
+        try {
+            const finalData = this.compressIfNeeded(data);
+            this.ws.send(finalData);
+            return true;
+        } catch (error) {
+            logger.error('Error sending raw binary data:', createErrorMetadata(error));
+            return false;
+        }
+    }
 }

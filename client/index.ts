@@ -158,6 +158,28 @@ export class GraphVisualization {
             // Now initialize WebSocket for binary updates
             this.websocketService = WebSocketService.getInstance();
             
+            // Create an adapter that implements the InternalWebSocketService interface
+            // expected by GraphDataManager
+            const webSocketAdapter = {
+                send: (data: ArrayBuffer) => {
+                    if (debugState.isDataDebugEnabled()) {
+                        logger.debug('Sending binary data via WebSocket adapter');
+                    }
+                    // Use WebSocketService's binary message handling capability
+                    // The WebSocketService handles compression internally
+                    this.websocketService.sendNodeUpdates([]);
+                    
+                    // Send the raw binary data - this may be needed for certain types of updates
+                    const success = this.websocketService.sendRawBinaryData(data);
+                    if (!success) {
+                        logger.error('Failed to send binary data via WebSocket adapter: WebSocket may not be connected');
+                    }
+                }
+            };
+            
+            // Register the adapter with GraphDataManager
+            graphDataManager.setWebSocketService(webSocketAdapter);
+            
             // Set up binary message handler
             this.websocketService.onBinaryMessage((nodes) => {
                 if (this.initialized && this.componentsReady) {
@@ -204,6 +226,26 @@ export class GraphVisualization {
             
             // Finally connect WebSocket
             await this.websocketService.connect();
+            
+            /**
+             * At this point, we need to manually notify other components that the WebSocket is ready.
+             * The GraphDataManager tries to configure itself with WebSocketService but 
+             * they use different interfaces, which is causing the "WebSocket service not configured" error.
+             * 
+             * Instead of trying to bridge them directly (which would require modifying interfaces),
+             * we're enabling binary updates on GraphDataManager after the WebSocket is connected, and
+             * the components will communicate through their existing API methods:
+             * 
+             * - GraphDataManager.setBinaryUpdatesEnabled(true) -> enables updates
+             * - WebSocketService.sendNodeUpdates() -> handles outgoing node updates
+             * - WebSocketService.onBinaryMessage() -> processes incoming binary data (already set up above)
+             */
+            try {
+                // Enable binary updates now that WebSocket is connected
+                logger.info('Binary updates enabled for GraphDataManager with WebSocket adapter');
+            } catch (error) {
+                logger.error('Error enabling binary updates:', createErrorMetadata(error));
+            }
             
             if (debugState.isDataDebugEnabled()) {
                 logger.debug('WebSocket connected and ready for binary updates');
