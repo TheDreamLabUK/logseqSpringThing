@@ -5,12 +5,14 @@ use serde_json::json;
 use log::{error, info};
 
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct PerplexityRequest {
     pub query: String,
     pub conversation_id: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct PerplexityResponse {
     pub answer: String,
     pub conversation_id: String,

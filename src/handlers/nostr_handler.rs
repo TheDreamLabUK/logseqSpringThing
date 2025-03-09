@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 #[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AuthResponse {
     pub user: NostrUser,
     pub token: String,
@@ -15,6 +16,7 @@ pub struct AuthResponse {
 }
 
 #[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct VerifyResponse {
     pub valid: bool,
     pub user: Option<NostrUser>,
@@ -22,6 +24,7 @@ pub struct VerifyResponse {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ApiKeysRequest {
     pub perplexity: Option<String>,
     pub openai: Option<String>,
@@ -29,6 +32,7 @@ pub struct ApiKeysRequest {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ValidateRequest {
     pub pubkey: String,
     pub token: String,

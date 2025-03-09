@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 use chrono::Utc;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ApiKeys {
     pub perplexity: Option<String>,
     pub openai: Option<String>,
@@ -9,6 +10,7 @@ pub struct ApiKeys {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct NostrUser {
     pub pubkey: String,
     pub npub: String,
@@ -19,6 +21,7 @@ pub struct NostrUser {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ProtectedSettings {
     pub network: NetworkSettings,
     pub security: SecuritySettings,
@@ -28,6 +31,7 @@ pub struct ProtectedSettings {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct NetworkSettings {
     pub bind_address: String,
     pub domain: String,
@@ -43,6 +47,7 @@ pub struct NetworkSettings {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SecuritySettings {
     pub allowed_origins: Vec<String>,
     pub audit_log_path: String,
@@ -56,6 +61,7 @@ pub struct SecuritySettings {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct WebSocketServerSettings {
     pub max_connections: usize,
     pub max_message_size: usize,

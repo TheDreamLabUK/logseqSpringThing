@@ -8,11 +8,13 @@ use actix_web::web::Bytes;
 use crate::services::ragflow_service::RAGFlowError;
 
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct InitChatRequest {
     pub user_id: String,
 }
 
 #[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct InitChatResponse {
     pub success: bool,
     pub conversation_id: String,
@@ -20,6 +22,7 @@ pub struct InitChatResponse {
 }
 
 #[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SendMessageRequest {
     pub message: String,
     pub quote: Option<bool>,

@@ -6,6 +6,7 @@ use crate::models::metadata::Metadata;
 use crate::services::github::GitHubFileMetadata;
 
 #[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct PageInfo {
     id: String,
     title: String,

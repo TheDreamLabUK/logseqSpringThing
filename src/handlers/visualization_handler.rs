@@ -1,5 +1,4 @@
 use crate::config::Settings;
-use crate::utils::case_conversion::to_snake_case;
 use crate::AppState;
 use actix_web::{web, HttpResponse};
 use log::{debug, error, info};
@@ -10,6 +9,31 @@ use std::fs;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::RwLock;
+
+// Internal helper function to convert camelCase or kebab-case to snake_case
+// This replaces the dependency on case_conversion.rs
+fn to_snake_case(s: &str) -> String {
+    // First handle kebab-case by replacing hyphens with underscores
+    let s = s.replace('-', "_");
+    
+    // Then handle camelCase by adding underscores before uppercase letters
+    let mut result = String::with_capacity(s.len() + 4);
+    let mut chars = s.chars().peekable();
+    
+    while let Some(c) = chars.next() {
+        if c.is_ascii_uppercase() {
+            // If this is an uppercase letter, add an underscore before it
+            // unless it's at the beginning of the string
+            if !result.is_empty() {
+                result.push('_');
+            }
+            result.push(c.to_ascii_lowercase());
+        } else {
+            result.push(c);
+        }
+    }
+    result
+}
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

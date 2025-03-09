@@ -4,6 +4,7 @@ use crate::config::{
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
 pub struct UISettings {
     pub visualization: VisualizationSettings,
     pub system: UISystemSettings,
@@ -11,12 +12,14 @@ pub struct UISettings {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
 pub struct UISystemSettings {
     pub websocket: WebSocketClientSettings,
     pub debug: DebugSettings,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
 pub struct WebSocketClientSettings {
     pub reconnect_attempts: u32,
     pub reconnect_delay: u64,
