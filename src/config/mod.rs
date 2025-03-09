@@ -178,6 +178,10 @@ pub struct NetworkSettings {
 pub struct WebSocketSettings {
     pub binary_chunk_size: usize,
     pub binary_update_rate: u32,
+    pub min_update_rate: u32,       // Minimum updates per second when graph is stable
+    pub max_update_rate: u32,       // Maximum updates per second during high motion
+    pub motion_threshold: f32,      // Consider graph in motion if at least X% of nodes are moving
+    pub motion_damping: f32,        // Damping factor for rate changes (higher = smoother transitions)
     pub binary_message_version: u32,
     pub compression_enabled: bool,
     pub compression_threshold: usize,
@@ -513,6 +517,10 @@ impl Default for Settings {
                 websocket: WebSocketSettings {
                     binary_chunk_size: 65536,
                     binary_update_rate: 30,
+                    min_update_rate: 5,
+                    max_update_rate: 60,
+                    motion_threshold: 0.05,
+                    motion_damping: 0.9,
                     binary_message_version: 1,
                     compression_enabled: true,
                     compression_threshold: 1024,

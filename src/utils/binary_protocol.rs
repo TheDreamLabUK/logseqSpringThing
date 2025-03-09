@@ -1,7 +1,7 @@
 use byteorder::{LittleEndian, WriteBytesExt, ReadBytesExt};
 use std::io::Cursor;
 use crate::utils::socket_flow_messages::BinaryNodeData;
-use log::{info, warn, debug};
+use log::debug;
 
 // Binary format (simplified):
 // - For each node (26 bytes total):

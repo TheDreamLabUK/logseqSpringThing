@@ -109,6 +109,11 @@ system:
   websocket:
     binary_chunk_size: 2048
     binary_update_rate: 30
+    # Dynamic update rate parameters
+    min_update_rate: 5      # Minimum updates per second when graph is stable
+    max_update_rate: 60     # Maximum updates per second during high motion
+    motion_threshold: 0.05  # Consider graph in motion if at least 5% of nodes are moving
+    motion_damping: 0.9     # Damping factor for rate changes (higher = smoother transitions)
     binary_message_version: 1
     compression_enabled: false
     compression_threshold: 512

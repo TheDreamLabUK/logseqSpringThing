@@ -10,7 +10,7 @@ use crate::services::file_service::FileService;
 use crate::services::graph_service::GraphService;
 
 #[derive(Serialize)]
-#[serde(rename_all = "snake_case")]
+#[serde(rename_all = "camelCase")]
 pub struct GraphResponse {
     pub nodes: Vec<Node>,
     pub edges: Vec<crate::models::edge::Edge>,
@@ -18,7 +18,7 @@ pub struct GraphResponse {
 }
 
 #[derive(Serialize)]
-#[serde(rename_all = "snake_case")]
+#[serde(rename_all = "camelCase")]
 pub struct PaginatedGraphResponse {
     pub nodes: Vec<Node>,
     pub edges: Vec<crate::models::edge::Edge>,

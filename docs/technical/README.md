@@ -23,6 +23,7 @@ This directory contains detailed technical documentation about the system archit
 * [Performance](./performance.md) - Performance considerations and optimizations
 * [Scale Factors Architecture](./scale-factors-architecture.md) - Architecture of scale factors system
 * [Scale Factors Review](./scale-factors-review.md) - Review of scale factors implementation
+* [Dynamic Update Rate Optimization](./dynamic-update-rate-optimization.md) - WebSocket update rate optimization for force-directed graphs
 * [Vec3 Alignment](./vec3-alignment.md) - Alignment requirements for Vec3 structures
 
 ### Integration and Settings
