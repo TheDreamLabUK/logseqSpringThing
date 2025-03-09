@@ -74,13 +74,15 @@ export class NodeMetadataManager {
     public initializeMappings(nodes: Array<{id: string, metadataId?: string, label?: string}>): void {
         if (this.isInitialMappingComplete) return;
         
-        logger.info(`Initializing metadata mappings for ${nodes.length} nodes`);
+        logger.info(`Initializing metadata mappings for ${nodes.length} nodes`, 
+            createDataMetadata({ nodeCount: nodes.length }));
         
         nodes.forEach(node => {
-            const displayName = node.label || node.metadataId || node.id;
-            if (displayName && displayName !== node.id) {
-                this.mapNodeIdToMetadataId(node.id, displayName);
-                logger.info(`Initial mapping: Node ID ${node.id} -> metadata ID "${displayName}"`);
+            // Always prefer metadataId (filename) over label for mapping
+            const metadataId = node.metadataId || node.label || node.id;
+            if (metadataId && metadataId !== node.id) {
+                this.mapNodeIdToMetadataId(node.id, metadataId);
+                logger.info(`Initial mapping: Node ID ${node.id} -> metadata ID "${metadataId}"`);
             }
         });
         
@@ -92,18 +94,19 @@ export class NodeMetadataManager {
         // Clear canvas
         this.labelContext.clearRect(0, 0, this.labelCanvas.width, this.labelCanvas.height);
 
-        // CRITICAL: Prioritize metadata relationships to get the proper name/label
-        let displayName = metadata.name || metadata.id || 'Unknown';
+        // CRITICAL: First check if we have a mapping for this node ID
+        let displayName = this.nodeIdToMetadataId.get(metadata.id) || metadata.name || metadata.id || 'Unknown';
         
-        // For numeric IDs, always check our ID-to-metadata mapping first
-        if (/^\d+$/.test(metadata.id) || metadata.id !== displayName) {
-            displayName = this.nodeIdToMetadataId.get(metadata.id) || displayName; 
-            logger.info(`Label texture for node ${metadata.id}: Using mapped name "${displayName}"`);
-        }
         if (debugState.isNodeDebugEnabled()) {
-            logger.debug(`Creating label texture for ${metadata.id} with name: ${displayName}`, 
-                createDataMetadata({ originalName: metadata.name, fileSize: metadata.fileSize }));
+            logger.debug(`Creating label for node ${metadata.id} with name: ${displayName}`,
+                createDataMetadata({ 
+                    originalName: metadata.name,
+                    mappedName: this.nodeIdToMetadataId.get(metadata.id),
+                    fileSize: metadata.fileSize 
+                }));
         }
+        
+        logger.info(`Label texture for node ${metadata.id}: Using name "${displayName}"`);
 
         // Draw a slightly larger background to accommodate multiple lines
         this.labelContext.fillStyle = 'rgba(0, 0, 0, 0.5)';
@@ -150,9 +153,8 @@ export class NodeMetadataManager {
     public async createMetadataLabel(metadata: NodeMetadata): Promise<Object3D> {
         // The problem: We were using a shared canvas instance for all node labels
         // Create a unique texture for each node with its own canvas instance
-        
-        // Log detailed info to track node identity
-        logger.info(`Creating metadata label for node ID: ${metadata.id}, metadata name: ${metadata.name}`);
+        logger.info(`Creating metadata label for node ID: ${metadata.id}, metadata name: ${metadata.name}`, 
+            createDataMetadata({ nodeId: metadata.id, name: metadata.name }));
         
         // Create a dedicated canvas for this label
         const canvas = document.createElement('canvas');
@@ -169,28 +171,19 @@ export class NodeMetadataManager {
         context.textBaseline = 'middle';
         context.font = 'bold 24px Arial';
         
-        // CRITICAL FIX: Always check the node ID to metadata ID mapping FIRST
-        // This ensures we use the human-readable filename rather than numeric ID
-        let displayName: string;
-        
-        if (/^\d+$/.test(metadata.id)) {
-            // For numeric IDs, ALWAYS use our mapping if available
-            displayName = this.nodeIdToMetadataId.get(metadata.id) || 
-                         (metadata.name && metadata.name !== 'undefined' ? metadata.name : metadata.id);
-            logger.info(`Node ${metadata.id} - Using mapped name: "${displayName}"`);
-        } else {
-            displayName = (metadata.name && metadata.name !== 'undefined') ? metadata.name : metadata.id || 'Unknown';
-        }
-        
-        if (/^\d+$/.test(metadata.id) || metadata.id !== displayName) {
-            const mappedName = this.nodeIdToMetadataId.get(metadata.id);
-            if (mappedName) displayName = mappedName;
-            logger.info(`Using mapped name for node ${metadata.id}: "${displayName}"`);
-            if (debugState.isNodeDebugEnabled()) {
-                logger.debug(`Using mapped name for node ID ${metadata.id}: ${displayName}`, 
-                    createDataMetadata({ fileSize: metadata.fileSize, 
+        // CRITICAL FIX: Simplified name resolution logic - consistent with createLabelTexture
+        // First check node-to-metadata mapping, then fall back to metadata name
+        let displayName = this.nodeIdToMetadataId.get(metadata.id) || 
+                         (metadata.name && metadata.name !== 'undefined' ? metadata.name : metadata.id) || 'Unknown';
+
+        // Log the name resolution process for debugging
+        if (debugState.isNodeDebugEnabled()) {
+            logger.debug(`Node ${metadata.id} display name resolution:`, 
+                createDataMetadata({ mappedName: this.nodeIdToMetadataId.get(metadata.id),
+                                    metadataName: metadata.name,
+                                    finalDisplayName: displayName,
+                                    fileSize: metadata.fileSize, 
                                        hyperlinkCount: metadata.hyperlinkCount }));
-            }
         }
         
         // Draw background
@@ -278,14 +271,12 @@ export class NodeMetadataManager {
         this.scene.add(container);
 
         // If this node has a numeric ID, map it to the display name
-        if (/^\d+$/.test(metadata.id) && displayName && displayName !== metadata.id) {
+        if (displayName && displayName !== metadata.id) {
             // Add or update the mapping
             const existingMapping = this.nodeIdToMetadataId.get(metadata.id);
             if (!existingMapping || existingMapping !== displayName) {
                 this.mapNodeIdToMetadataId(metadata.id, displayName);
-                // Use displayName to ensure we're capturing the correct name
-                metadata.name = displayName; 
-                logger.info(`Updated mapping for node ID ${metadata.id} to "${displayName}"`);
+                logger.info(`Updated mapping: node ID ${metadata.id} -> "${displayName}"`);
             }
         }
 
@@ -382,12 +373,18 @@ export class NodeMetadataManager {
      */
     public mapNodeIdToMetadataId(nodeId: string, metadataId: string): void {
         // Don't map empty metadata IDs
-        if (!metadataId || metadataId === 'undefined' || metadataId === 'Unknown') return;
+        if (!metadataId || metadataId === 'undefined' || metadataId === 'Unknown') {
+            if (debugState.isNodeDebugEnabled()) {
+                logger.debug(`Skipping invalid metadata ID mapping for node ${nodeId}: "${metadataId}"`);
+            }
+            return;
+        }
         
         // Log previous mapping if it exists and is different
         const prevMapping = this.nodeIdToMetadataId.get(nodeId);
         if (prevMapping && prevMapping !== metadataId) {
-            logger.info(`Updating node ID ${nodeId} mapping from "${prevMapping}" to "${metadataId}"`);
+            logger.info(`Updating node ID ${nodeId} mapping from "${prevMapping}" to "${metadataId}"`, 
+                createDataMetadata({ nodeId, previousMapping: prevMapping, newMapping: metadataId }));
         }
         
         this.nodeIdToMetadataId.set(nodeId, metadataId);
@@ -395,7 +392,11 @@ export class NodeMetadataManager {
         if (!this.metadataIdToNodeId.has(metadataId)) {
             this.metadataIdToNodeId.set(metadataId, nodeId);
         }
-        logger.info(`Mapped node ID ${nodeId} to metadata ID ${metadataId}`);
+        
+        // Only log new mappings or if debug is enabled
+        if (!prevMapping || debugState.isNodeDebugEnabled()) {
+            logger.info(`Mapped node ID ${nodeId} to metadata ID "${metadataId}"`);
+        }
     }
 
     public updatePosition(id: string, position: Vector3): void {

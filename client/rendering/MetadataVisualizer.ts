@@ -91,17 +91,18 @@ export class MetadataVisualizer {
         // Track how many labels we've created
         this.labelUpdateCount++;
 
-        // CRITICAL FIX: Ensure we're using the correct nodeId parameter passed in
-        // The nodeId parameter from VisualizationController is now the correct numeric ID
-        // that matches the binary WebSocket protocol IDs
+        // Log detailed metadata info at debug level
+        this.logger.debug(`Creating label for node ${nodeId}`, {
+            name: metadata.name,
+            id: metadata.id,
+            fileSize: metadata.fileSize,
+            hyperlinkCount: metadata.hyperlinkCount,
+            originalNodeId: nodeId
+        });
 
-        // Log detailed metadata info to help debug node label issues
-        if (this.debugEnabled) {
-            console.log(`[MetadataVisualizer] Creating label for node ${nodeId}:`, {
-                name: metadata.name,
-                fileSize: metadata.fileSize,
-                hyperlinkCount: metadata.hyperlinkCount
-            });
+        // Ensure nodeId and metadata.id are consistent - this helps with debuggability
+        if (nodeId !== metadata.id && debugState.isDataDebugEnabled()) {
+            this.logger.debug(`Node ID mismatch: nodeId parameter ${nodeId} differs from metadata.id ${metadata.id}`);
         }
 
         const group = new Group() as MetadataLabelGroup;
@@ -111,7 +112,6 @@ export class MetadataVisualizer {
             // Ensure we're storing the correct nodeId for position updates
             nodeId
         };
-
 
         // Format file size
         const fileSizeFormatted = !metadata.fileSize ? '0B' : metadata.fileSize > 1024 * 1024 
@@ -128,7 +128,8 @@ export class MetadataVisualizer {
         // Only log detailed metadata at trace level (effectively disabling it)
         if (debugState.isDataDebugEnabled()) {
             this.logger.debug(`Creating metadata label #${this.labelUpdateCount}:`, {
-                nodeId,
+                nodeIdForMapping: nodeId,
+                metadataId: metadata.id,
                 metadata: {
                     name: metadata.name,
                     fileSize: fileSizeFormatted,
@@ -138,7 +139,13 @@ export class MetadataVisualizer {
         }
 
         // Use metadata name, ensuring we show a properly formatted name
-        const displayName = metadata.name || nodeId.toString();
+        // Prefer the name from metadata, then fall back to ID if needed
+        const displayName = metadata.name || nodeId;
+        
+        // Log if we're displaying a numeric ID as the label
+        if (/^\d+$/.test(displayName) && debugState.isNodeDebugEnabled()) {
+            this.logger.debug(`Using numeric ID ${displayName} as label for node ${nodeId} - missing proper name`);
+        }
 
         // Create text labels using UnifiedTextRenderer
         // First, find the node's actual position
@@ -227,19 +234,6 @@ export class MetadataVisualizer {
     }
 
     public updateMetadataPosition(nodeId: string, position: Vector3): void {
-        /**
-         * CRITICAL NODE ID BINDING: Position Updates
-         * 
-         * This method is called from VisualizationController to update the position
-         * of a metadata label when node positions change via the WebSocket.
-         * 
-         * The nodeId parameter MUST match:
-         * 1. The ID used in createMetadataLabel() to create the label
-         * 2. The IDs coming from the binary WebSocket protocol
-         * 
-         * If labels don't move with their nodes, it's likely due to a mismatch
-         * between the ID used here and the ID used in the binary protocol.
-         */
         const group = this.metadataGroups.get(nodeId);
         if (group) {
             group.position.copy(position);
@@ -252,13 +246,7 @@ export class MetadataVisualizer {
                 const relativePosition = new Vector3(0, yOffset, 0);
                 const labelPosition = position.clone().add(relativePosition);
                 this.textRenderer.updateLabel(labelId, '', labelPosition); // Text content remains unchanged
-                
-                // Only log position updates when specific data debugging is enabled
-                if (index === 0 && debugState.isDataDebugEnabled()) {
-                    this.logger.debug(`Updating label position for ${nodeId}`, {
-                        labelId });
-                }
-                
+
                 // Only show debug helpers when debug is enabled
                 if (debugState.isEnabled()) {
                     const debugId = `${labelId}-debug`;
@@ -274,6 +262,10 @@ export class MetadataVisualizer {
                     debugSphere.visible = true;
                 }
             });
+        } else if (debugState.isNodeDebugEnabled() && Math.random() < 0.01) {
+            // Periodically log missing nodes to help diagnose issues
+            // Only show this 1% of the time to avoid log flooding
+            this.logger.debug(`No metadata group found for node ${nodeId} during position update`);
         }
     }
 

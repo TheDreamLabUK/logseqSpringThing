@@ -304,6 +304,77 @@ impl Actor for SocketFlowServer {
     }
 }
 
+// Helper function to fetch nodes without borrowing from the actor
+async fn fetch_nodes(
+    app_state: Arc<AppState>,
+    settings: Arc<RwLock<crate::config::Settings>>
+) -> Option<(Vec<(u16, BinaryNodeData)>, bool)> {
+    // Fetch raw nodes asynchronously
+    let raw_nodes = app_state.graph_service.get_node_positions().await;
+    
+    if raw_nodes.is_empty() {
+        debug!("[WebSocket] No nodes to send! Empty graph data.");
+        return None;
+    }
+
+    // Check if detailed debugging should be enabled
+    let detailed_debug = if let Ok(settings) = settings.try_read() {
+        settings.system.debug.enabled && 
+        settings.system.debug.enable_websocket_debug
+    } else {
+        false
+    };
+
+    if detailed_debug {
+        debug!("Raw nodes count: {}, showing first 5 nodes IDs:", raw_nodes.len());
+        for (i, node) in raw_nodes.iter().take(5).enumerate() {
+            debug!("  Node {}: id={} (numeric), metadata_id={} (filename)", 
+                i, node.id, node.metadata_id);
+        }
+    }
+    
+    let mut nodes = Vec::with_capacity(raw_nodes.len());
+    for node in raw_nodes {
+        // First try to parse as u16
+        let node_id_result = match node.id.parse::<u16>() {
+            Ok(id) => Ok(id),
+            Err(_) => {
+                // If parsing as u16 fails, try parsing as u32 and check if it's within u16 range
+                match node.id.parse::<u32>() {
+                    Ok(id) if id <= MAX_U16_VALUE => Ok(id as u16),
+                    _ => Err(())
+                }
+            }
+        };
+        if let Ok(node_id) = node_id_result {
+            let node_data = BinaryNodeData {
+                position: node.data.position,
+                velocity: node.data.velocity,
+                mass: node.data.mass,
+                flags: node.data.flags,
+                padding: node.data.padding,
+            };
+            nodes.push((node_id, node_data));
+        } else {
+            // Log more detailed information about the node ID
+            if let Ok(id) = node.id.parse::<u32>() {
+                warn!("[WebSocket] Node ID too large for u16: '{}' ({}), metadata_id: '{}'", 
+                    node.id, id, node.metadata_id);
+            } else {
+                warn!("[WebSocket] Failed to parse node ID as u16: '{}', metadata_id: '{}'", 
+                    node.id, node.metadata_id);
+            }
+        }
+    }
+    
+    if nodes.is_empty() {
+        return None;
+    }
+    
+    // Return nodes and debug flag
+    Some((nodes, detailed_debug))
+}
+
 impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer {
     fn handle(&mut self, msg: Result<ws::Message, ws::ProtocolError>, ctx: &mut Self::Context) {
         match msg {
@@ -342,135 +413,53 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
                                 // Use a smaller initial interval to start updates quickly
                                 let initial_interval = std::time::Duration::from_millis(10);
                                 let app_state = self.app_state.clone();
+                                let settings_clone = self.settings.clone();
                                 
-                                ctx.run_later(initial_interval, move |act: &mut SocketFlowServer, ctx| {
-                                    let settings_clone = Arc::clone(&act.settings);
-                                    
-                                    // First check if we should log this update (before spawning the future)
-                                    let should_log = act.should_log_update();
-
-                                    // Create the future without moving act
-                                    let fut = async move {
-                                        let raw_nodes = app_state
-                                            .graph_service 
-                                            .get_node_positions()
-                                            .await;
-
-                                        let node_count = raw_nodes.len();
-                                        if node_count == 0 {
-                                            debug!("[WebSocket] No nodes to send! Empty graph data."); return None;
-                                        }
-
-                                        // Check if detailed debugging should be enabled
-                                        let detailed_debug = if let Ok(settings) = settings_clone.try_read() {
-                                            settings.system.debug.enabled && 
-                                            settings.system.debug.enable_websocket_debug
-                                        } else {
-                                            false
-                                        };
-
-                                        if detailed_debug {
-                                            debug!("Raw nodes count: {}, showing first 5 nodes IDs:", raw_nodes.len());
-                                            for (i, node) in raw_nodes.iter().take(5).enumerate() {
-                                                debug!("  Node {}: id={} (numeric), metadata_id={} (filename)", 
-                                                    i, node.id, node.metadata_id);
-                                            }
-                                        }
-
-                                        let mut nodes = Vec::with_capacity(raw_nodes.len());
-                                        for node in raw_nodes {
-                                            // First try to parse as u16
-                                            let node_id_result = match node.id.parse::<u16>() {
-                                                Ok(id) => Ok(id),
-                                                Err(_) => {
-                                                    // If parsing as u16 fails, try parsing as u32 and check if it's within u16 range
-                                                    match node.id.parse::<u32>() {
-                                                        Ok(id) if id <= MAX_U16_VALUE => Ok(id as u16),
-                                                        _ => Err(())
-                                                    }
-                                                }
-                                            };
-                                            if let Ok(node_id) = node_id_result {
-                                                let node_data = BinaryNodeData {
-                                                    position: node.data.position,
-                                                    velocity: node.data.velocity,
-                                                    mass: node.data.mass,
-                                                    flags: node.data.flags,
-                                                    padding: node.data.padding,
-                                                };
-                                                nodes.push((node_id, node_data));
-                                            } else {
-                                                // Log more detailed information about the node ID
-                                                if let Ok(id) = node.id.parse::<u32>() {
-                                                    warn!("[WebSocket] Node ID too large for u16: '{}' ({}), metadata_id: '{}'", 
-                                                        node.id, id, node.metadata_id);
-                                                } else {
-                                                    warn!("[WebSocket] Failed to parse node ID as u16: '{}', metadata_id: '{}'", 
-                                                        node.id, node.metadata_id);
-                                                }
-                                            }
-                                        }
-
-                                        // Only generate binary data if we have nodes to send
-                                        // Only generate binary data if we have changed nodes to send
-                                        if nodes.is_empty() {
-                                            // Send a keepalive message every ~5 seconds if no nodes have changed
-                                            // Just return an empty vector - activity timing is handled in the actor
-                                            if false {
-                                                return Some((Vec::new(), detailed_debug, Vec::new()));
-                                            }
-                                            return None;
-                                        }
-                                        
-                                        // Filter nodes to only include those that have changed significantly
-                                        // This reduces the amount of data we need to send
-                                        let mut filtered_nodes = Vec::new();
-                                        for (node_id, node_data) in nodes {
-                                            let node_id_str = node_id.to_string();
-                                            let position = node_data.position.clone();
-                                            let velocity = node_data.velocity.clone();
-                                            
-                                            // Apply filtering before adding to filtered nodes
-                                            // Check if this node has changed enough to warrant an update
-                                            if act.has_node_changed_significantly(
-                                                &node_id_str,
-                                                position.clone(),
-                                                velocity.clone()
-                                            ) {
-                                                filtered_nodes.push((node_id, node_data));
-                                            }
-                                            
-                                            if detailed_debug && filtered_nodes.len() <= 5 {
-                                                debug!("Including node {} in update", node_id_str);
-                                            }
-                                        }
-                                        
-                                        // If no nodes have changed significantly, don't send an update
-                                        if filtered_nodes.is_empty() {
-                                            return None;
-                                        }
-                                       
-                                        // Encode only the nodes that have changed significantly
-                                        let data = binary_protocol::encode_node_data(&filtered_nodes);
-                                        
-                                        // Use filtered nodes for the rest of the processing
-                                        nodes = filtered_nodes;
-                                        
-                                        // Return detailed debug info along with the data
-                                        Some((data, detailed_debug, nodes))
-                                    };
-                                    
-                                    // Convert future to actor future without ownership issues
-                                    // This avoids the need to move 'act' into the future
+                                // First check if we should log this update
+                                let should_log = self.should_log_update();
+                                
+                                ctx.run_later(initial_interval, move |act, ctx| {
+                                    // Wrap the async function in an actor future
+                                    let fut = fetch_nodes(app_state.clone(), settings_clone.clone());
                                     let fut = actix::fut::wrap_future::<_, Self>(fut);
-
+                                    
                                     ctx.spawn(fut.map(move |result, act, ctx| {
-                                        if let Some((_, detailed_debug, nodes)) = result {
+                                        if let Some((nodes, detailed_debug)) = result {
+                                            // Now that we're back in the actor context, we can filter the nodes
+                                            // Filter nodes to only include those that have changed significantly
+                                            let mut filtered_nodes = Vec::new();
+                                            for (node_id, node_data) in &nodes {
+                                                let node_id_str = node_id.to_string();
+                                                let position = node_data.position.clone();
+                                                let velocity = node_data.velocity.clone();
+                                                
+                                                // Apply filtering before adding to filtered nodes
+                                                if act.has_node_changed_significantly(
+                                                    &node_id_str,
+                                                    position.clone(),
+                                                    velocity.clone()
+                                                ) {
+                                                    filtered_nodes.push((*node_id, node_data.clone()));
+                                                }
+                                                
+                                                if detailed_debug && filtered_nodes.len() <= 5 {
+                                                    debug!("Including node {} in update", node_id_str);
+                                                }
+                                            }
+                                            
+                                            // If no nodes have changed significantly, don't send an update
+                                            if filtered_nodes.is_empty() {
+                                                return;
+                                            }
+                                            
+                                            // Encode only the nodes that have changed significantly
+                                            let binary_data = binary_protocol::encode_node_data(&filtered_nodes);
+                                            
                                             // Update motion metrics for dynamic rate adjustment
-                                            act.total_node_count = nodes.len();
-                                             
+                                            act.total_node_count = filtered_nodes.len();
+                                              
                                             // Count nodes in motion (with non-zero velocity)
-                                            let moving_nodes = nodes.iter()
+                                            let moving_nodes = filtered_nodes.iter()
                                                 .filter(|(_, node_data)| {
                                                     let vel = &node_data.velocity;
                                                     vel.x.abs() > 0.001 || vel.y.abs() > 0.001 || vel.z.abs() > 0.001
@@ -487,110 +476,46 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
                                             
                                             if detailed_debug && should_log {
                                                 debug!("[WebSocket] Motion: {}/{} nodes, Rate: {} updates/sec, Interval: {:?}",
-                                                    moving_nodes, nodes.len(), act.current_update_rate, update_interval);
+                                                    moving_nodes, filtered_nodes.len(), act.current_update_rate, update_interval);
                                             }
                                             
-                                            // If no nodes to update, don't send anything
-                                            if nodes.is_empty() {
-                                                if detailed_debug && should_log {
-                                                    debug!("[WebSocket] No nodes to update, skipping");
-                                                }
-                                                return;
-                                            }
-                                            
-                                            // Encode the filtered nodes we already prepared
-                                            let binary_data = binary_protocol::encode_node_data(&nodes);
                                             if detailed_debug && should_log && !binary_data.is_empty() {
-                                                debug!("[WebSocket] Encoded binary data: {} bytes for {} nodes", binary_data.len(), nodes.len());
+                                                debug!("[WebSocket] Encoded binary data: {} bytes for {} nodes", binary_data.len(), filtered_nodes.len());
                                                 
                                                 // Log details about a sample node to track position changes
-                                                if !nodes.is_empty() {
-                                                    let node = &nodes[0];
+                                                if !filtered_nodes.is_empty() {
+                                                    let node = &filtered_nodes[0];
                                                     debug!(
                                                         "Sample node: id={}, pos=[{:.2},{:.2},{:.2}], vel=[{:.2},{:.2},{:.2}]",
                                                         node.0, 
                                                         node.1.position.x, node.1.position.y, node.1.position.z,
                                                         node.1.velocity.x, node.1.velocity.y, node.1.velocity.z
-                                                   );
+                                                    );
                                                 }
                                             }
 
                                             // Only send data if we have nodes to update
-                                            if !nodes.is_empty() {
+                                            if !filtered_nodes.is_empty() {
                                                 let final_data = act.maybe_compress(binary_data);
                                                 
                                                 // Update performance metrics
                                                 act.last_transfer_size = final_data.len();
                                                 act.total_bytes_sent += final_data.len();
                                                 act.update_count += 1;
-                                                act.nodes_sent_count += nodes.len();
+                                                act.nodes_sent_count += filtered_nodes.len();
                                                 let now = Instant::now();
                                                 let elapsed = now.duration_since(act.last_transfer_time);
                                                 act.last_transfer_time = now;
                                                 
                                                 // Schedule the next update using the dynamic rate
                                                 let next_interval = act.get_current_update_interval();
+                                                
+                                                // Use a simple recursive approach to restart the cycle
+                                                let app_state = act.app_state.clone();
+                                                let settings_clone = act.settings.clone();
                                                 ctx.run_later(next_interval, move |act, ctx| {
-                                                    // Re-run the update process after the dynamic interval
-                                                    let settings_clone = act.settings.clone();
-                                                    let _should_log = act.should_log_update();
-                                                    let app_state = act.app_state.clone();
-                                                    
-                                                    // Recursively schedule the next update with the same processing logic
-                                                    ctx.run_later(std::time::Duration::from_millis(0), move |act, ctx| {
-                                                        // This will re-run the position update logic
-                                                        // Create the future without moving act
-                                                        let fut = async move {
-                                                            let raw_nodes = app_state
-                                                                .graph_service
-                                                                .get_node_positions()
-                                                                .await;
-                                                            
-                                                            let detailed_debug = if let Ok(settings) = settings_clone.try_read() {
-                                                                settings.system.debug.enabled && 
-                                                                settings.system.debug.enable_websocket_debug
-                                                            } else {
-                                                                false
-                                                            };
-                                                            
-                                                            if raw_nodes.is_empty() {
-                                                                None
-                                                            } else {
-                                                                Some((Vec::<u8>::new(), detailed_debug, raw_nodes))
-                                                            }
-                                                        };
-                                                        let fut = actix::fut::wrap_future::<_, Self>(fut);
-                                                        ctx.spawn(fut.map(move |result, act, ctx| {
-                                                            if let Some((_, detailed_debug, raw_nodes)) = result {
-                                                                // Process the nodes using similar logic to the original handler
-                                                                // This completes the recursive update cycle
-                                                                
-                                                                // Update motion metrics
-                                                                act.total_node_count = raw_nodes.len();
-                                                                
-                                                                // Convert the raw nodes to binary format
-                                                                let should_log = act.should_log_update();
-                                                                
-                                                                if detailed_debug && should_log {
-                                                                    debug!("[WebSocket] Dynamic update: processing {} nodes", 
-                                                                           raw_nodes.len());
-                                                                }
-                                                                
-                                                                // Schedule the next update with dynamic rate
-                                                                let next_interval = act.get_current_update_interval();
-                                                                let app_state = act.app_state.clone();
-                                                                let settings_clone = act.settings.clone();
-                                                                
-                                                                // Continue the update cycle
-                                                                ctx.run_later(next_interval, move |act, ctx| {
-                                                                    // This restarts the update cycle with the same logic
-                                                                    let app_state = act.app_state.clone();
-                                                                    let settings_clone = act.settings.clone();
-                                                                    // ... and so on (recursive pattern established)
-                                                                });
-                                                            }
-                                                        }));
-                                                    });
+                                                    // Recursively call the handler to restart the cycle
+                                                    act.handle(Ok(ws::Message::Text("{\"type\":\"requestInitialData\"}".to_string().into())), ctx);
                                                 });
                                                 
                                                 // Log performance metrics periodically
@@ -600,7 +525,7 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
                                                     } else { 0 };
                                                     
                                                     debug!("[WebSocket] Transfer: {} bytes, {} nodes, {:?} since last, avg {} bytes/update",
-                                                        final_data.len(), nodes.len(), elapsed, avg_bytes_per_update);
+                                                        final_data.len(), filtered_nodes.len(), elapsed, avg_bytes_per_update);
                                                 }
                                                 
                                                 ctx.binary(final_data);

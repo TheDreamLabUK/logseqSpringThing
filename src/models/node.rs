@@ -58,7 +58,7 @@ impl Node {
         Self {
             id,
             metadata_id: metadata_id.clone(),
-            label: metadata_id,
+            label: String::new(), // Initialize as empty string, will be set from metadata later
             data: BinaryNodeData {
                 position: Vec3Data::zero(),
                 velocity: Vec3Data::zero(),

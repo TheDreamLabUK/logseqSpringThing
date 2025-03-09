@@ -127,6 +127,10 @@ impl GraphService {
                 // Set file size which also calculates mass
                 node.set_file_size(metadata.file_size as u64);  // This will update both file_size and mass
                 
+                // Set the node label to the file name without extension
+                // This will be used as the display name for the node
+                node.label = metadata.file_name.trim_end_matches(".md").to_string();
+                
                 // Set visual properties from metadata
                 node.size = Some(metadata.node_size as f32);
                 
@@ -269,6 +273,10 @@ impl GraphService {
             if let Some(metadata) = graph.metadata.get(&format!("{}.md", node_id)) {
                 // Set file size which also calculates mass
                 node.set_file_size(metadata.file_size as u64);  // This will update both file_size and mass
+                
+                // Set the node label to the file name without extension
+                // This will be used as the display name for the node
+                node.label = metadata.file_name.trim_end_matches(".md").to_string();
                 
                 // Set visual properties from metadata
                 node.size = Some(metadata.node_size as f32);
