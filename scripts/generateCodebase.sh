@@ -74,6 +74,10 @@ export_and_combine() {
     python "$EXPORT_REPO/export-repository-to-file.py" "../client"
     mv output.txt client.txt
 
+    # Export docs code
+    python "$EXPORT_REPO/export-repository-to-file.py" "../docs"
+    mv output.txt docs.txt
+
     # Combine files with clear separation
     echo -e "\n\n## Server Code (Rust)\n" >> codebase.txt
     cat server.txt >> codebase.txt
@@ -81,8 +85,12 @@ export_and_combine() {
     echo -e "\n\n## Client Code (TypeScript)\n" >> codebase.txt
     cat client.txt >> codebase.txt
     
+    echo -e "\n\n## Documentation\n" >> codebase.txt
+    cat docs.txt >> codebase.txt
+    
     rm server.txt
     rm client.txt
+    rm docs.txt
 }
 
 # Add project structure information
@@ -93,8 +101,8 @@ export_project_structure() {
     echo "Root files:" >> codebase.txt
     ls -p ../ | grep -v / >> codebase.txt
     echo -e "\nDirectories:" >> codebase.txt
-    # Show client and src directories structure
-    tree -I 'node_modules|target|dist|.git|venv' ../client ../src >> codebase.txt
+    # Show client, src, and docs directories structure
+    tree -I 'node_modules|target|dist|.git|venv' ../client ../src ../docs >> codebase.txt
     echo -e "\`\`\`\n" >> codebase.txt
 }
 

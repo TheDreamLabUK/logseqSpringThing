@@ -65,6 +65,7 @@ pub struct Node {
     // Metadata
     #[serde(skip_serializing_if = "HashMap::is_empty")]
     pub metadata: HashMap<String, String>,
+    // We need to keep this attribute to maintain WebSocket protocol compatibility
     #[serde(skip)]
     pub file_size: u64,
 
@@ -101,6 +102,7 @@ impl Node {
                 padding: [0, 0],
             },
             metadata: HashMap::new(),
+            // file_size is set to 0 initially, will be updated later with set_file_size
             file_size: 0,
             node_type: None,
             size: None,
@@ -125,6 +127,12 @@ impl Node {
         self.file_size = size;
         // Update mass based on new file size
         self.data.mass = Self::calculate_mass(size);
+        
+        // Add the file_size to the metadata HashMap so it gets serialized to the client
+        // This is our workaround since we can't directly serialize the file_size field
+        if size > 0 {
+            self.metadata.insert("fileSize".to_string(), size.to_string());
+        }
     }
 
     // Convenience getters/setters for x, y, z coordinates
@@ -162,6 +170,7 @@ impl Node {
                 padding: [0, 0],
             },
             metadata: HashMap::new(),
+            // file_size is set to 0 initially, will be updated later with set_file_size
             file_size: 0,
             node_type: None,
             size: None,
