@@ -19,7 +19,7 @@ RUN pnpm install --frozen-lockfile && \
     pnpm run build
 
 # Stage 2: Rust Dependencies Cache
-FROM nvidia/cuda:12.2.0-devel-ubuntu22.04 AS rust-deps-builder
+FROM nvidia/cuda:12.4.0-devel-ubuntu22.04 AS rust-deps-builder
 
 # Install build dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -77,7 +77,7 @@ RUN GIT_HASH=$(git rev-parse HEAD || echo "development") \
     (sleep 5 && GIT_HASH=$(git rev-parse HEAD || echo "development") cargo build --release --jobs 1)
 
 # Stage 3: Final Runtime Image
-FROM nvidia/cuda:12.2.0-devel-ubuntu22.04
+FROM nvidia/cuda:12.4.0-devel-ubuntu22.04
 
 ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONUNBUFFERED=1 \

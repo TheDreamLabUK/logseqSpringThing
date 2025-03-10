@@ -395,6 +395,15 @@ check_system_resources || {
     log "${YELLOW}System resources check failed - continuing for debugging${NC}"
 }
 
+# Set NVIDIA GPU UUID explicitly to the known working value
+log "${YELLOW}Setting GPU UUID...${NC}"
+
+# Use the specific GPU UUID we know works
+NVIDIA_GPU_UUID="GPU-553dc306-dab3-32e2-c69b-28175a6f4da6"
+export NVIDIA_GPU_UUID
+export NVIDIA_VISIBLE_DEVICES="$NVIDIA_GPU_UUID"
+log "${GREEN}GPU UUID configured as: ${NVIDIA_GPU_UUID:-not set}${NC}"
+
 # 6. Verify client directory structure (non-fatal if it fails)
 if ! verify_client_structure; then
     log "${RED}Client structure verification failed${NC}"
@@ -481,6 +490,7 @@ pnpm build || { log "${RED}Client build failed${NC}"; exit 1; }
 log "${GREEN}Client build successful${NC}"
 
 # Build with GIT_HASH environment variable
+log "${YELLOW}Building Docker containers (passing NVIDIA_GPU_UUID=${NVIDIA_GPU_UUID:-not set})${NC}"
 DEBUG_MODE=$DEBUG_MODE GIT_HASH=$GIT_HASH $DOCKER_COMPOSE build --pull --no-cache
 $DOCKER_COMPOSE up -d
 

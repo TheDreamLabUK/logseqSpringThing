@@ -8,7 +8,7 @@ use std::io::{Error, ErrorKind};
 use serde_json;
 use std::pin::Pin;
 use futures::Future;
-use log::{info, warn, error};
+use log::{info, warn, error, debug};
 
 use crate::models::graph::GraphData;
 use crate::utils::socket_flow_messages::Node;
@@ -35,6 +35,13 @@ impl GraphService {
         // Get physics settings
         let physics_settings = settings.read().await.visualization.physics.clone();
         let node_map = Arc::new(RwLock::new(HashMap::new()));
+
+        // Log GPU compute status for debugging
+        if gpu_compute.is_some() {
+            info!("[GraphService] GPU compute is enabled - physics simulation will run");
+        } else {
+            warn!("[GraphService] GPU compute is NOT enabled - physics simulation will not run");
+        }
 
         let graph_service = Self {
             graph_data: Arc::new(RwLock::new(GraphData::default())),
@@ -70,9 +77,15 @@ impl GraphService {
                 if physics_settings.enabled {
                     if let Some(gpu) = &gpu_compute {
                         if let Err(e) = Self::calculate_layout(gpu, &mut graph, &mut node_map, &params).await {
-                            warn!("[Graph] Error updating positions: {}", e);
+                            error!("[Graph] Error updating positions: {}", e);
+                        } else {
+                            debug!("[Graph] Successfully calculated layout for {} nodes", graph.nodes.len());
                         }
+                    } else {
+                        warn!("[Graph] Physics enabled but GPU compute not available - skipping physics calculation");
                     }
+                } else {
+                    debug!("[Graph] Physics disabled in settings - skipping physics calculation");
                 }
                 drop(graph); // Release locks
                 drop(node_map);
@@ -419,31 +432,71 @@ impl GraphService {
     pub async fn calculate_layout(
         gpu_compute: &Arc<RwLock<GPUCompute>>,
         graph: &mut GraphData,
-        node_map: &mut HashMap<String, Node>,
+        node_map: &mut HashMap<String, Node>, 
         params: &SimulationParams,
     ) -> std::io::Result<()> {
         {
-            let mut gpu_compute = gpu_compute.write().await;
+            info!("[calculate_layout] Starting GPU physics calculation for {} nodes", graph.nodes.len());
+            
+            // Get current timestamp for performance tracking
+            let start_time = std::time::Instant::now();
 
+            let mut gpu_compute = gpu_compute.write().await;
+            
             // Update data and parameters
-            gpu_compute.update_graph_data(graph)?;
-            gpu_compute.update_simulation_params(params)?;
+            if let Err(e) = gpu_compute.update_graph_data(graph) {
+                error!("[calculate_layout] Failed to update graph data in GPU: {}", e);
+                return Err(e);
+            }
+            
+            if let Err(e) = gpu_compute.update_simulation_params(params) {
+                error!("[calculate_layout] Failed to update simulation parameters in GPU: {}", e);
+                return Err(e);
+            }
             
             // Perform computation step
-            gpu_compute.step()?;
+            if let Err(e) = gpu_compute.step() {
+                error!("[calculate_layout] Failed to execute physics step: {}", e);
+                return Err(e);
+            }
             
             // Get updated positions
-            let updated_nodes = gpu_compute.get_node_data()?;
+            let updated_nodes = match gpu_compute.get_node_data() {
+                Ok(nodes) => {
+                    info!("[calculate_layout] Successfully retrieved {} nodes from GPU", nodes.len());
+                    nodes
+                },
+                Err(e) => {
+                    error!("[calculate_layout] Failed to get node data from GPU: {}", e);
+                    return Err(e);
+                }
+            };
             
             // Update graph with new positions
+            let mut nodes_updated = 0;
             for (i, node) in graph.nodes.iter_mut().enumerate() {
+                if i >= updated_nodes.len() {
+                    error!("[calculate_layout] Node index out of range: {} >= {}", i, updated_nodes.len());
+                    continue;
+                }
+                
                 // Update position and velocity from GPU data
                 node.data = updated_nodes[i];
+                nodes_updated += 1;
+                
                 // Update node_map as well
                 if let Some(map_node) = node_map.get_mut(&node.id) {
                     map_node.data = updated_nodes[i];
+                } else {
+                    warn!("[calculate_layout] Node {} not found in node_map", node.id);
                 }
             }
+            
+            // Log performance info
+            let elapsed = start_time.elapsed();
+            info!("[calculate_layout] Updated positions for {}/{} nodes in {:?}", 
+                  nodes_updated, graph.nodes.len(), elapsed);
+            
             Ok(())
         }
     }
@@ -564,21 +617,30 @@ impl GraphService {
     pub async fn initialize_gpu(&mut self, _settings: Arc<RwLock<Settings>>, graph_data: &GraphData) -> Result<(), Error> {
         info!("Initializing GPU compute system...");
 
+        // If GPU is already initialized, don't reinitialize
+        if self.gpu_compute.is_some() {
+            info!("GPU compute is already initialized, skipping initialization");
+            return Ok(());
+        }
+
         match GPUCompute::new(graph_data).await {
             Ok(gpu_instance) => {
                 // Try a test computation before accepting the GPU
-                let mut gpu = gpu_instance.write().await;
-                if let Err(e) = gpu.compute_forces() {
-                    error!("GPU test computation failed: {}", e);
-                    return Err(Error::new(ErrorKind::Other, format!("GPU test computation failed: {}", e)));
+                {
+                    let mut gpu = gpu_instance.write().await;
+                    if let Err(e) = gpu.compute_forces() {
+                        error!("GPU test computation failed: {}", e);
+                        return Err(Error::new(ErrorKind::Other, format!("GPU test computation failed: {}", e)));
+                    }
+                    info!("GPU test computation succeeded");
                 }
-                drop(gpu);
 
                 self.gpu_compute = Some(gpu_instance);
+                info!("GPU compute system successfully initialized");
                 Ok(())
             }
             Err(e) => {
-                error!("Failed to initialize GPU compute: {}", e);
+                error!("Failed to initialize GPU compute: {}. Physics simulation will not work.", e);
                 Err(Error::new(ErrorKind::Other, format!("GPU initialization failed: {}", e)))
             }
         }

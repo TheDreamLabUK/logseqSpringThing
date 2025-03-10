@@ -12,7 +12,8 @@ use webxr::{
         file_service::FileService,
         graph_service::GraphService,
         github::{GitHubClient, ContentAPI, GitHubConfig},
-    }
+    },
+    utils::gpu_compute::GPUCompute
 };
 
 use actix_web::{web, App, HttpServer, middleware};
@@ -118,14 +119,32 @@ async fn main() -> std::io::Result<()> {
         info!("Loaded metadata into app state");
     }
 
-    // Build initial graph from metadata
+    // Build initial graph from metadata and initialize GPU compute
     match GraphService::build_graph_from_metadata(&metadata_store).await {
         Ok(graph_data) => {            
-            // Initialize GPU compute with actual graph data
-            if let Err(e) = app_state.graph_service.initialize_gpu(settings.clone(), &graph_data).await {
-                error!("Failed to initialize GPU compute: {}", e);
-                return Err(std::io::Error::new(std::io::ErrorKind::Other, 
-                    format!("GPU initialization failed: {}", e)));
+            // Initialize GPU compute if not already done
+            if app_state.gpu_compute.is_none() {
+                info!("No GPU compute instance found, initializing one now");
+                match GPUCompute::new(&graph_data).await {
+                    Ok(gpu_instance) => {
+                        info!("GPU compute initialized successfully");
+                        // Update app_state with new GPU compute instance
+                        app_state.gpu_compute = Some(gpu_instance);
+                        
+                        // Reinitialize graph service with GPU compute
+                        app_state.graph_service = GraphService::new(
+                            settings.clone(), 
+                            app_state.gpu_compute.clone()
+                        ).await;
+                        
+                        info!("Graph service reinitialized with GPU compute");
+                    },
+                    Err(e) => {
+                        error!("Failed to initialize GPU compute: {}", e);
+                        return Err(std::io::Error::new(std::io::ErrorKind::Other, 
+                            format!("GPU initialization failed: {}", e)));
+                    }
+                }
             }
 
             // Update graph data after GPU is initialized

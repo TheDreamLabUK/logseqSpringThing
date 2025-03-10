@@ -20,7 +20,7 @@ services:
           devices:
             - driver: nvidia
               device_ids: ['0']  # Explicitly use GPU 0
-              capabilities: [gpu]
+              capabilities: [compute, utility]
     expose:
       - "4000"
     ports:
@@ -31,7 +31,8 @@ services:
       - BIND_ADDRESS=0.0.0.0
       - PORT=3001  # Explicitly set Rust backend to use port 3001
       - NGINX_PORT=4000  # Set nginx to use port 4000
-      - NVIDIA_VISIBLE_DEVICES=${NVIDIA_GPU_UUID:-0}  # Use GPU UUID from launch script
+      - NVIDIA_GPU_UUID=GPU-553dc306-dab3-32e2-c69b-28175a6f4da6  # Direct UUID value for the specific GPU
+      - NVIDIA_VISIBLE_DEVICES=GPU-553dc306-dab3-32e2-c69b-28175a6f4da6  # Pass the GPU UUID directly
       - NVIDIA_DRIVER_CAPABILITIES=compute,utility
       - NODE_ENV=production
       - GIT_HASH=${GIT_HASH:-development}  # Pass GIT_HASH from build environment
