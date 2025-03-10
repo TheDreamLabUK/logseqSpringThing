@@ -27,6 +27,7 @@ import { defaultSettings } from '../state/defaultSettings';
 import { debugState } from '../core/debugState';
 import { logger, createErrorMetadata, createDataMetadata } from '../core/logger';
 import { resourceMonitor } from '../core/resourceMonitor';
+import { NodeInteractionManager } from './node/interaction/NodeInteractionManager';
 
 const BACKGROUND_COLOR = 0x000000;  // Material Design Grey 900
 const LOW_PERF_FPS_THRESHOLD = 30;  // Lower FPS threshold for low performance mode
@@ -54,6 +55,7 @@ export class SceneManager {
   // Animation
   private animationFrameId: number | null = null;
   private isRunning: boolean = false;
+  private nodeInteractionManager: NodeInteractionManager | null = null;
   private visualizationController: VisualizationController | null = null;
   private lastFrameTime: number = performance.now();
   private readonly FRAME_BUDGET: number = 16; // Target 60fps (1000ms/60)
@@ -246,6 +248,23 @@ export class SceneManager {
     
     // Start resource monitoring
     resourceMonitor.startMonitoring(60000); // Increased monitoring interval to 60 seconds
+
+    // Initialize desktop node interactions
+    if (this.visualizationController) {
+      const nodeFacade = this.visualizationController.getNodeManagerFacade();
+      if (nodeFacade) {
+        const instanceMesh = nodeFacade.getInstancedMesh();
+        this.nodeInteractionManager = NodeInteractionManager.getInstance(instanceMesh);
+        
+        // Connect to the instance manager
+        const nodeInstanceManager = nodeFacade.getNodeInstanceManager();
+        this.nodeInteractionManager.setNodeInstanceManager(nodeInstanceManager);
+        
+        // Initialize desktop interactions
+        this.nodeInteractionManager.initializeDesktopInteraction(this.canvas, this.camera);
+        logger.info('Desktop node interactions initialized');
+      }
+    }
     
     // Use debounced resize handler to avoid performance issues
     window.removeEventListener('resize', this.handleResize.bind(this));
@@ -401,6 +420,12 @@ export class SceneManager {
 
   public dispose(): void {
     this.stop();
+    
+    // Clean up node interaction manager
+    if (this.nodeInteractionManager) {
+      this.nodeInteractionManager.dispose();
+      this.nodeInteractionManager = null;
+    }
     
     // Remove event listeners
     const boundResize = this.handleResize.bind(this);

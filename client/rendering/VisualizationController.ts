@@ -976,4 +976,12 @@ export class VisualizationController {
             elapsedTimeMs: elapsedTime.toFixed(2)
         }));
     }
+    
+    /**
+     * Get the node manager facade
+     * @returns The NodeManagerFacade instance or null if not initialized
+     */
+    public getNodeManagerFacade(): NodeManagerFacade | null {
+        return this.nodeManager;
+    }
 }

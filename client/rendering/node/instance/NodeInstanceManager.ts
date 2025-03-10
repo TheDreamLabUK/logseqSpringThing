@@ -32,8 +32,8 @@ const velocity = new Vector3();
 const scale = new Vector3();
 
 // Visibility states (using setRGB for proper initialization)
-const VISIBLE = new Color(0xffffff);
-// Removed INVISIBLE constant
+const VISIBLE = new Color(0xffffff); // White/default color
+const SELECTED = new Color(0x00ffff); // Cyan color for selected nodes
 
 // Global registry for tracking instances
 interface InstanceInfo {
@@ -733,5 +733,61 @@ export class NodeInstanceManager {
     
     public getInstanceId(nodeId: string): number | undefined {
         return this.nodeIdToInstanceId.get(nodeId);
+    }
+    
+    /**
+     * Set visual state of a node to indicate selection
+     * @param nodeId ID of the node to update
+     * @param selected Whether the node is selected
+     * @returns true if the update was successful, false otherwise
+     */
+    public setNodeSelectedState(nodeId: string, selected: boolean): boolean {
+        const index = this.nodeIndices.get(nodeId);
+        if (index === undefined) {
+            if (debugState.isNodeDebugEnabled()) {
+                logger.node('Cannot set selection state for node', createDataMetadata({
+                    nodeId,
+                    reason: 'Node index not found'
+                }));
+            }
+            return false;
+        }
+
+        // Get current node matrix
+        this.nodeInstances.getMatrixAt(index, matrix);
+        matrix.decompose(position, quaternion, scale);
+
+        // Apply visual changes based on selection state
+        if (selected) {
+            // Increase scale for selected nodes
+            const selectionScale = 1.2; // 20% larger when selected
+            scale.multiplyScalar(selectionScale);
+            
+            // Apply selection color if instance color exists
+            if (this.nodeInstances.instanceColor) {
+                this.nodeInstances.setColorAt(index, SELECTED);
+                this.nodeInstances.instanceColor.needsUpdate = true;
+            }
+        } else {
+            // Calculate normal scale based on node properties
+            const normalScale = this.getNodeScale({ 
+                id: nodeId, 
+                data: { position: position.clone(), velocity: new Vector3(0, 0, 0) }
+            });
+            scale.set(normalScale, normalScale, normalScale);
+            
+            // Reset color
+            if (this.nodeInstances.instanceColor) {
+                this.nodeInstances.setColorAt(index, VISIBLE);
+                this.nodeInstances.instanceColor.needsUpdate = true;
+            }
+        }
+        
+        // Update matrix with new scale/position
+        matrix.compose(position, quaternion, scale);
+        this.nodeInstances.setMatrixAt(index, matrix);
+        this.nodeInstances.instanceMatrix.needsUpdate = true;
+        
+        return true;
     }
 }
