@@ -7,9 +7,11 @@ use rand::Rng;
 use std::io::{Error, ErrorKind};
 use serde_json;
 use std::pin::Pin;
+use std::time::{Duration, Instant};
 use futures::Future;
 use log::{info, warn, error, debug};
 
+use tokio::fs::File as TokioFile;
 use crate::models::graph::GraphData;
 use crate::utils::socket_flow_messages::Node;
 use crate::models::edge::Edge;
@@ -23,11 +25,18 @@ use crate::models::pagination::PaginatedGraphData;
 // Static flag to prevent multiple simultaneous graph rebuilds
 static GRAPH_REBUILD_IN_PROGRESS: AtomicBool = AtomicBool::new(false);
 
+// Cache configuration
+const NODE_POSITION_CACHE_TTL_MS: u64 = 50; // 50ms cache time
+const METADATA_FILE_WAIT_TIMEOUT_MS: u64 = 5000; // 5 second wait timeout
+const METADATA_FILE_CHECK_INTERVAL_MS: u64 = 100; // Check every 100ms
+
 #[derive(Clone)]
 pub struct GraphService {
     graph_data: Arc<RwLock<GraphData>>,
     node_map: Arc<RwLock<HashMap<String, Node>>>,
     gpu_compute: Option<Arc<RwLock<GPUCompute>>>,
+    node_positions_cache: Arc<RwLock<Option<(Vec<Node>, Instant)>>>,
+    cache_enabled: bool,
 }
 
 impl GraphService {
@@ -43,15 +52,20 @@ impl GraphService {
             warn!("[GraphService] GPU compute is NOT enabled - physics simulation will not run");
         }
 
+        // Create the GraphService with caching enabled 
+        let _cache = Arc::new(RwLock::new(Option::<(Vec<Node>, Instant)>::None));
         let graph_service = Self {
             graph_data: Arc::new(RwLock::new(GraphData::default())),
             node_map: node_map.clone(),
             gpu_compute,
+            node_positions_cache: Arc::new(RwLock::new(None)),
+            cache_enabled: true,
             // Node position randomization is now handled entirely by the client side
         };
         
         // Start simulation loop
         let graph_data = Arc::clone(&graph_service.graph_data);
+        let node_positions_cache = Arc::clone(&graph_service.node_positions_cache);
         let gpu_compute = graph_service.gpu_compute.clone();
         
         tokio::spawn(async move {
@@ -82,7 +96,13 @@ impl GraphService {
                             debug!("[Graph] Successfully calculated layout for {} nodes", graph.nodes.len());
                         }
                     } else {
-                        warn!("[Graph] Physics enabled but GPU compute not available - skipping physics calculation");
+                        // Use CPU fallback when GPU is not available
+                        debug!("[Graph] GPU compute not available - using CPU fallback for physics calculation");
+                        if let Err(e) = Self::calculate_layout_cpu(&mut graph, &mut node_map, &params) {
+                            error!("[Graph] Error updating positions with CPU fallback: {}", e);
+                        } else {
+                            debug!("[Graph] Successfully calculated layout with CPU fallback for {} nodes", graph.nodes.len());
+                        }
                     }
                 } else {
                     debug!("[Graph] Physics disabled in settings - skipping physics calculation");
@@ -91,10 +111,62 @@ impl GraphService {
                 drop(node_map);
                 // Sleep for ~16ms (60fps)
                 tokio::time::sleep(tokio::time::Duration::from_millis(16)).await;
+                // Clear cache after updates to ensure freshness
+                let mut cache = node_positions_cache.write().await;
+                *cache = None;
             }
-        });
+        }); 
 
         graph_service
+    }
+    
+    /// Wait for metadata file to be available (mounted by Docker)
+    pub async fn wait_for_metadata_file() -> bool {
+        info!("Checking for metadata file from Docker volume mount...");
+        
+        // Path to metadata file
+        let metadata_path = std::path::Path::new("/app/data/metadata/metadata.json");
+        
+        // Start timer
+        let start_time = Instant::now();
+        let timeout = Duration::from_millis(METADATA_FILE_WAIT_TIMEOUT_MS);
+        
+        // Loop until timeout
+        while start_time.elapsed() < timeout {
+            // Check if file exists and is not empty
+            match tokio::fs::metadata(&metadata_path).await {
+                Ok(metadata) => {
+                    if metadata.is_file() && metadata.len() > 0 {
+                        // Try to open and validate the file
+                        match TokioFile::open(&metadata_path).await {
+                            Ok(_) => {
+                                let elapsed = start_time.elapsed();
+                                info!("Metadata file found and accessible after {:?}", elapsed);
+                                return true;
+                            }
+                            Err(e) => {
+                                debug!("Metadata file exists but couldn't be opened: {}", e);
+                                // Continue waiting - might still be being written to
+                            }
+                        }
+                    } else {
+                        debug!("Metadata file exists but is empty or not a regular file");
+                    }
+                }
+                Err(e) => {
+                    debug!("Waiting for metadata file to be mounted: {}", e);
+                }
+            }
+            
+            // Sleep before checking again
+            tokio::time::sleep(Duration::from_millis(METADATA_FILE_CHECK_INTERVAL_MS)).await;
+        }
+        
+        // Timeout reached
+        warn!("Timed out waiting for metadata file after {:?}", timeout);
+        
+        // Timeout reached, file not found or accessible
+        false
     }
 
     pub async fn build_graph_from_metadata(metadata: &MetadataStore) -> Result<GraphData, Box<dyn std::error::Error + Send + Sync>> {
@@ -436,7 +508,8 @@ impl GraphService {
         params: &SimulationParams,
     ) -> std::io::Result<()> {
         {
-            info!("[calculate_layout] Starting GPU physics calculation for {} nodes", graph.nodes.len());
+            info!("[calculate_layout] Starting GPU physics calculation for {} nodes, {} edges", 
+                  graph.nodes.len(), graph.edges.len());
             
             // Get current timestamp for performance tracking
             let start_time = std::time::Instant::now();
@@ -445,7 +518,12 @@ impl GraphService {
             
             // Update data and parameters
             if let Err(e) = gpu_compute.update_graph_data(graph) {
-                error!("[calculate_layout] Failed to update graph data in GPU: {}", e);
+                error!("[calculate_layout] Failed to update graph data in GPU: {}, node count: {}", 
+                      e, graph.nodes.len());
+                // Log more details about the graph for debugging
+                if !graph.nodes.is_empty() {
+                    debug!("First node: id={}, position=[{:.3},{:.3},{:.3}]", graph.nodes[0].id, graph.nodes[0].data.position.x, graph.nodes[0].data.position.y, graph.nodes[0].data.position.z);
+                }
                 return Err(e);
             }
             
@@ -456,7 +534,8 @@ impl GraphService {
             
             // Perform computation step
             if let Err(e) = gpu_compute.step() {
-                error!("[calculate_layout] Failed to execute physics step: {}", e);
+                error!("[calculate_layout] Failed to execute physics step: {}, graph has {} nodes and {} edges", 
+                       e, graph.nodes.len(), graph.edges.len());
                 return Err(e);
             }
             
@@ -494,11 +573,215 @@ impl GraphService {
             
             // Log performance info
             let elapsed = start_time.elapsed();
-            info!("[calculate_layout] Updated positions for {}/{} nodes in {:?}", 
-                  nodes_updated, graph.nodes.len(), elapsed);
+            
+                // Log sample positions for debugging (first 2 nodes)
+                let sample_positions = if graph.nodes.len() >= 2 {
+                    format!("[{:.2},{:.2},{:.2}], [{:.2},{:.2},{:.2}]", 
+                        graph.nodes[0].data.position.x, graph.nodes[0].data.position.y, graph.nodes[0].data.position.z,
+                        graph.nodes[1].data.position.x, graph.nodes[1].data.position.y, graph.nodes[1].data.position.z)
+                } else if graph.nodes.len() == 1 {
+                    format!("[{:.2},{:.2},{:.2}]", graph.nodes[0].data.position.x, graph.nodes[0].data.position.y, graph.nodes[0].data.position.z)
+                } else { "no nodes".to_string() };
+            
+                info!("[calculate_layout] Updated positions for {}/{} nodes in {:?}. Sample positions: {}", nodes_updated, graph.nodes.len(), elapsed, sample_positions);
             
             Ok(())
         }
+    }
+
+    /// CPU fallback implementation of force-directed graph layout
+    pub fn calculate_layout_cpu(
+        graph: &mut GraphData,
+        node_map: &mut HashMap<String, Node>,
+        params: &SimulationParams,
+    ) -> std::io::Result<()> {
+        // Get current timestamp for performance tracking
+        let start_time = std::time::Instant::now();
+        
+        // Early return if there are no nodes to process
+        if graph.nodes.is_empty() {
+            debug!("[calculate_layout_cpu] No nodes to process");
+            return Ok(());
+        }
+        
+        // Convert the simulation parameters to local variables for easier access
+        let spring_strength = params.spring_strength;
+        let repulsion = params.repulsion;
+        let damping = params.damping;
+        let max_repulsion_distance = params.max_repulsion_distance;
+        let time_step = params.time_step;
+        let enable_bounds = params.enable_bounds;
+        let bounds_size = params.viewport_bounds;
+        let boundary_damping = params.boundary_damping;
+        let mass_scale = params.mass_scale;
+        
+        // Create a copy of nodes for thread safety during force calculation
+        let nodes_copy: Vec<Node> = graph.nodes.clone();
+        
+        // Initialize force accumulators for each node
+        let mut forces: Vec<(f32, f32, f32)> = vec![(0.0, 0.0, 0.0); graph.nodes.len()];
+        
+        // Calculate repulsive forces between all pairs of nodes
+        // This is an O(n²) operation - the most expensive part of the algorithm
+        for i in 0..nodes_copy.len() {
+            for j in (i+1)..nodes_copy.len() {
+                let node_i = &nodes_copy[i];
+                let node_j = &nodes_copy[j];
+                
+                // Calculate distance between nodes
+                let dx = node_j.data.position.x - node_i.data.position.x;
+                let dy = node_j.data.position.y - node_i.data.position.y;
+                let dz = node_j.data.position.z - node_i.data.position.z;
+                
+                let distance_squared = dx * dx + dy * dy + dz * dz;
+                
+                // Avoid division by zero and limit maximum repulsion distance
+                if distance_squared < 0.0001 {
+                    continue;
+                }
+                
+                let distance = distance_squared.sqrt();
+                
+                // Only apply repulsion within max_repulsion_distance
+                if distance > max_repulsion_distance {
+                    continue;
+                }
+                
+                // Use inverse-square law for repulsion (like gravity/electrostatic)
+                // Calculate repulsion strength based on node masses (stored in data.mass) and distance
+                let mass_i = (node_i.data.mass as f32 / 255.0) * 10.0 * mass_scale;
+                let mass_j = (node_j.data.mass as f32 / 255.0) * 10.0 * mass_scale;
+                
+                // Normalize the repulsion to be between 0 and 1 based on max distance
+                let _normalized_distance = distance / max_repulsion_distance;
+                let repulsion_factor = repulsion * mass_i * mass_j / distance_squared;
+                
+                // Normalize direction
+                let nx = dx / distance;
+                let ny = dy / distance;
+                let nz = dz / distance;
+                
+                // Apply repulsive force (nodes push each other away)
+                let fx = nx * repulsion_factor;
+                let fy = ny * repulsion_factor;
+                let fz = nz * repulsion_factor;
+                
+                // Add forces (equal and opposite for each node)
+                forces[i].0 -= fx;
+                forces[i].1 -= fy;
+                forces[i].2 -= fz;
+                
+                forces[j].0 += fx;
+                forces[j].1 += fy;
+                forces[j].2 += fz;
+            }
+        }
+        
+        // Calculate attractive forces for edges (spring forces)
+        for edge in &graph.edges {
+            // Find indices of source and target nodes
+            let source_idx = graph.nodes.iter().position(|n| n.id == edge.source);
+            let target_idx = graph.nodes.iter().position(|n| n.id == edge.target);
+            
+            if let (Some(i), Some(j)) = (source_idx, target_idx) {
+                let node_i = &nodes_copy[i];
+                let node_j = &nodes_copy[j];
+                
+                // Calculate distance between nodes
+                let dx = node_j.data.position.x - node_i.data.position.x;
+                let dy = node_j.data.position.y - node_i.data.position.y;
+                let dz = node_j.data.position.z - node_i.data.position.z;
+                
+                let distance_squared = dx * dx + dy * dy + dz * dz;
+                
+                // Avoid division by zero
+                if distance_squared < 0.0001 {
+                    continue;
+                }
+                
+                let distance = distance_squared.sqrt();
+                
+                // Spring force increases with distance and edge weight
+                let spring_factor = spring_strength * edge.weight * distance;
+                
+                // Normalize direction
+                let nx = dx / distance;
+                let ny = dy / distance;
+                let nz = dz / distance;
+                
+                // Apply spring force (edges pull nodes together)
+                let fx = nx * spring_factor;
+                let fy = ny * spring_factor;
+                let fz = nz * spring_factor;
+                
+                // Add forces (pulling both nodes toward each other)
+                forces[i].0 += fx;
+                forces[i].1 += fy;
+                forces[i].2 += fz;
+                
+                forces[j].0 -= fx;
+                forces[j].1 -= fy;
+                forces[j].2 -= fz;
+            }
+        }
+        
+        // Update velocities and positions based on calculated forces
+        for (i, node) in graph.nodes.iter_mut().enumerate() {
+            // Apply force to velocity with damping
+            node.set_vx(node.data.velocity.x * damping + forces[i].0 * time_step);
+            node.set_vy(node.data.velocity.y * damping + forces[i].1 * time_step);
+            node.set_vz(node.data.velocity.z * damping + forces[i].2 * time_step);
+            
+            // Update position based on velocity
+            node.set_x(node.data.position.x + node.data.velocity.x * time_step);
+            node.set_y(node.data.position.y + node.data.velocity.y * time_step);
+            node.set_z(node.data.position.z + node.data.velocity.z * time_step);
+            
+            // Apply boundary constraints if enabled
+            if enable_bounds {
+                let half_bounds = bounds_size / 2.0;
+                
+                // For each axis, if position exceeds boundary:
+                // 1. Clamp position to boundary
+                // 2. Reverse velocity with damping
+                
+                if node.data.position.x > half_bounds {
+                    node.set_x(half_bounds);
+                    node.set_vx(-node.data.velocity.x * boundary_damping);
+                } else if node.data.position.x < -half_bounds {
+                    node.set_x(-half_bounds);
+                    node.set_vx(-node.data.velocity.x * boundary_damping);
+                }
+                
+                if node.data.position.y > half_bounds {
+                    node.set_y(half_bounds);
+                    node.set_vy(-node.data.velocity.y * boundary_damping);
+                } else if node.data.position.y < -half_bounds {
+                    node.set_y(-half_bounds);
+                    node.set_vy(-node.data.velocity.y * boundary_damping);
+                }
+                
+                if node.data.position.z > half_bounds {
+                    node.set_z(half_bounds);
+                    node.set_vz(-node.data.velocity.z * boundary_damping);
+                } else if node.data.position.z < -half_bounds {
+                    node.set_z(-half_bounds);
+                    node.set_vz(-node.data.velocity.z * boundary_damping);
+                }
+            }
+            
+            // Update node_map as well
+            if let Some(map_node) = node_map.get_mut(&node.id) {
+                map_node.data = node.data.clone();
+            }
+        }
+        
+        // Log performance info
+        let elapsed = start_time.elapsed();
+        info!("[calculate_layout_cpu] Updated positions for {} nodes in {:?}", 
+              graph.nodes.len(), elapsed);
+        
+        Ok(())
     }
 
     pub async fn get_paginated_graph_data(
@@ -544,21 +827,57 @@ impl GraphService {
             current_page: page as u32,
         })
     }
+    
+    // Clear position cache to force a refresh on next request
+    pub async fn clear_position_cache(&self) {
+        let mut cache = self.node_positions_cache.write().await;
+        *cache = None;
+    }
 
     pub async fn get_node_positions(&self) -> Vec<Node> {
-        let graph = self.graph_data.read().await;
-        
-        // Only log node position data in debug level
-        log::debug!("get_node_positions: returning {} nodes", graph.nodes.len());
-        
-        if log::log_enabled!(log::Level::Debug) {
-            // Log first 5 nodes only when debug is enabled
-            let sample_size = std::cmp::min(5, graph.nodes.len());
-            if sample_size > 0 {
-                log::debug!("Node position sample: {} samples of {} nodes", sample_size, graph.nodes.len());
+        let start_time = Instant::now();
+
+        // First check if we have a valid cached result
+        if self.cache_enabled {
+            let cache = self.node_positions_cache.read().await;
+            if let Some((cached_nodes, timestamp)) = &*cache {
+                let age = start_time.duration_since(*timestamp);
+                
+                // If cache is still fresh, use it
+                if age < Duration::from_millis(NODE_POSITION_CACHE_TTL_MS) {
+                    debug!("Using cached node positions ({} nodes, age: {:?})", 
+                           cached_nodes.len(), age);
+                    return cached_nodes.clone();
+                }
             }
         }
-        graph.nodes.clone()
+
+        // No valid cache, fetch from graph data
+        let nodes = {
+            let graph = self.graph_data.read().await;
+            
+            // Only log node position data in debug level
+            debug!("get_node_positions: reading {} nodes from graph (cache miss)", graph.nodes.len());
+            
+            // Clone the nodes vector 
+            graph.nodes.clone()
+        };
+
+        // Update cache with new result
+        if self.cache_enabled {
+            let mut cache = self.node_positions_cache.write().await;
+            *cache = Some((nodes.clone(), start_time));
+        }
+
+        let elapsed = start_time.elapsed();
+        debug!("Node position fetch completed in {:?} for {} nodes", elapsed, nodes.len());
+        
+        // Log first 5 nodes only when debug is enabled
+        let sample_size = std::cmp::min(5, nodes.len());
+        if sample_size > 0 && log::log_enabled!(log::Level::Debug) {
+            debug!("Node position sample: {} samples of {} nodes", sample_size, nodes.len());
+        }
+        nodes
     }
 
     pub async fn get_graph_data_mut(&self) -> tokio::sync::RwLockWriteGuard<'_, GraphData> {

@@ -646,6 +646,30 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
                                         node.data.flags = original_flags; // Restore flags after updating
                                     }
                                 }
+
+                                // Trigger force calculation after updating node positions
+                                if let Some(gpu_compute) = &app_state.gpu_compute {
+                                    let settings = app_state.settings.read().await;
+                                    let physics_settings = settings.visualization.physics.clone();
+                                    let params = crate::models::simulation_params::SimulationParams {
+                                        iterations: physics_settings.iterations,
+                                        spring_strength: physics_settings.spring_strength,
+                                        repulsion: physics_settings.repulsion_strength,
+                                        damping: physics_settings.damping,
+                                        max_repulsion_distance: physics_settings.repulsion_distance,
+                                        viewport_bounds: physics_settings.bounds_size,
+                                        mass_scale: physics_settings.mass_scale,
+                                        boundary_damping: physics_settings.boundary_damping,
+                                        enable_bounds: physics_settings.enable_bounds,
+                                        time_step: 0.016, // Fixed time step
+                                        phase: crate::models::simulation_params::SimulationPhase::Dynamic,
+                                        mode: crate::models::simulation_params::SimulationMode::Remote,
+                                    };
+                                    info!("Recalculating layout with params: {:?}", params);
+                                    if let Err(e) = crate::services::graph_service::GraphService::calculate_layout(gpu_compute, &mut graph, &mut node_map, &params).await {
+                                        error!("Error calculating layout: {}", e);
+                                    }
+                                }
                             };
 
                             let fut = fut.into_actor(self);

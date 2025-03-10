@@ -1,5 +1,5 @@
 use crate::app_state::AppState;
-use crate::models::protected_settings::{ApiKeys, NostrUser};
+use crate::models::protected_settings::ApiKeys;
 use crate::services::nostr_service::{NostrService, AuthEvent, NostrError};
 use crate::config::feature_access::FeatureAccess;
 use actix_web::{web, Error, HttpRequest, HttpResponse};
