@@ -77,28 +77,29 @@ impl NostrService {
     pub async fn verify_auth_event(&self, event: AuthEvent) -> Result<NostrUser, NostrError> {
         // Convert to Nostr Event for verification
         // Convert to JSON string and parse as Nostr Event
-        debug!("Verifying auth event: {:?}", event);
+        debug!("Verifying auth event with id: {} and pubkey: {}", event.id, event.pubkey);
 
         let json_str = match serde_json::to_string(&event) {
             Ok(s) => s,
             Err(e) => {
-                error!("Failed to serialize auth event: {}", e);
+                error!("Failed to serialize auth event with id {}: {}", event.id, e);
                 return Err(NostrError::JsonError(e));
             }
         };
 
-        debug!("Event JSON for verification: {}", json_str);
+        debug!("Event JSON for verification (truncated): {}...", 
+               if json_str.len() > 100 { &json_str[0..100] } else { &json_str });
 
         let nostr_event = match Event::from_json(&json_str) {
             Ok(e) => e,
             Err(e) => {
-                error!("Failed to parse Nostr event: {}", e);
-                return Err(NostrError::InvalidEvent(format!("Parse error: {}", e)));
+                error!("Failed to parse Nostr event for pubkey {}: {}", event.pubkey, e);
+                return Err(NostrError::InvalidEvent(format!("Parse error for event {}: {}", event.id, e)));
             }
         };
 
         if let Err(e) = nostr_event.verify() {
-            error!("Signature verification failed: {}", e);
+            error!("Signature verification failed for pubkey {}: {}", event.pubkey, e);
             return Err(NostrError::InvalidSignature);
         }
 
@@ -123,6 +124,9 @@ impl NostrService {
             last_seen: now.timestamp(),
             session_token: Some(session_token),
         };
+
+        // Log successful user creation
+        info!("Created/updated user: pubkey={}, is_power_user={}", user.pubkey, user.is_power_user);
 
         // Store or update user
         let mut users = self.users.write().await;

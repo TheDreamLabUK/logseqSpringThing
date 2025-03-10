@@ -418,7 +418,7 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
                                 // First check if we should log this update
                                 let should_log = self.should_log_update();
                                 
-                                ctx.run_later(initial_interval, move |act, ctx| {
+                                ctx.run_later(initial_interval, move |_act, ctx| {
                                     // Wrap the async function in an actor future
                                     let fut = fetch_nodes(app_state.clone(), settings_clone.clone());
                                     let fut = actix::fut::wrap_future::<_, Self>(fut);
@@ -511,8 +511,8 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
                                                 let next_interval = act.get_current_update_interval();
                                                 
                                                 // Use a simple recursive approach to restart the cycle
-                                                let app_state = act.app_state.clone();
-                                                let settings_clone = act.settings.clone();
+                                                let _app_state = act.app_state.clone();
+                    let _settings_clone = act.settings.clone();
                                                 ctx.run_later(next_interval, move |act, ctx| {
                                                     // Recursively call the handler to restart the cycle
                                                     act.handle(Ok(ws::Message::Text("{\"type\":\"requestInitialData\"}".to_string().into())), ctx);

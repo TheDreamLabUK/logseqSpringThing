@@ -22,23 +22,39 @@ export class SettingsManager {
         this.store = SettingsStore.getInstance();
     }
 
-    private useDefaultSettings(): void {
-        // Reset to default settings
-        this.settings = { ...defaultSettings };
-        this.initialized = true;
-    }
-
     public async initialize(): Promise<void> {
         if (this.initialized) return;
 
+        // Initialize with default settings
+        this.settings = { ...defaultSettings };
+        
+        // Initialize the store but don't load server settings yet
         try {
             await this.store.initialize();
-            this.settings = this.store.get('') as Settings;
-            this.initialized = true;
-            logger.info('Settings initialized from server');
+            
+            // If the user is already logged in (session restored), we might have server settings
+            if (this.store.isUserLoggedIn()) {
+                this.settings = this.store.get('') as Settings;
+                logger.info('Settings initialized from server (user logged in)');
+            } else {
+                logger.info('Settings initialized with defaults (user not logged in)');
+            }
         } catch (error) {
-            logger.error('Failed to initialize settings from server:', createErrorMetadata(error));
-            this.useDefaultSettings();
+            logger.error('Failed to initialize settings store:', createErrorMetadata(error));
+            // Already using default settings
+        }
+        
+        this.initialized = true;
+    }
+
+    /**
+     * Called when user logs in with Nostr to update settings
+     */
+    public updateSettingsFromServer(): void {
+        if (this.store.isUserLoggedIn()) {
+            // Get the latest settings from the store which should have loaded them from server
+            this.settings = this.store.get('') as Settings;
+            logger.info('Settings updated from server after user login');
         }
     }
 
@@ -56,6 +72,9 @@ export class SettingsManager {
             setSettingValue(this.settings, path, value);
             if (this.initialized) {
                 await this.store.set(path, value);
+                if (!this.store.isUserLoggedIn()) {
+                    logger.warn(`Setting ${path} updated, but won't be saved to server until user logs in`);
+                }
             } else {
                 logger.warn(`Setting ${path} updated in memory only - store not initialized`);
             }
@@ -141,6 +160,9 @@ export class SettingsManager {
                 await Promise.all(
                     updates.map(({ path, value }) => this.store.set(path, value))
                 );
+                if (!this.store.isUserLoggedIn()) {
+                    logger.warn(`Settings batch updated, but won't be saved to server until user logs in`);
+                }
             } else {
                 logger.warn('Settings updated in memory only - store not initialized');
             }

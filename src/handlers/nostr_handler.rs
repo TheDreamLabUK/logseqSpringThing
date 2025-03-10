@@ -1,5 +1,5 @@
 use crate::app_state::AppState;
-use crate::models::protected_settings::{NostrUser, ApiKeys};
+use crate::models::protected_settings::{ApiKeys, NostrUser};
 use crate::services::nostr_service::{NostrService, AuthEvent, NostrError};
 use crate::config::feature_access::FeatureAccess;
 use actix_web::{web, Error, HttpRequest, HttpResponse};
@@ -9,17 +9,26 @@ use serde_json::json;
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AuthResponse {
-    pub user: NostrUser,
+    pub user: UserResponseDTO,
     pub token: String,
     pub expires_at: i64,
     pub features: Vec<String>,
+}
+
+// Data transfer object for user response that matches client expectations
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UserResponseDTO {
+    pub pubkey: String,
+    pub npub: Option<String>,
+    pub is_power_user: bool,
 }
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct VerifyResponse {
     pub valid: bool,
-    pub user: Option<NostrUser>,
+    pub user: Option<UserResponseDTO>,
     pub features: Vec<String>,
 }
 
@@ -131,8 +140,15 @@ async fn login(
             // Get available features for the user
             let features = feature_access.get_available_features(&user.pubkey);
 
+            // Create simplified user DTO for response
+            let user_dto = UserResponseDTO {
+                pubkey: user.pubkey.clone(),
+                npub: Some(user.npub.clone()),
+                is_power_user: user.is_power_user,
+            };
+
             Ok(HttpResponse::Ok().json(AuthResponse {
-                user,
+                user: user_dto,
                 token,
                 expires_at,
                 features,
@@ -180,6 +196,11 @@ async fn verify(
     let is_valid = nostr_service.validate_session(&req.pubkey, &req.token).await;
     let user = if is_valid {
         nostr_service.get_user(&req.pubkey).await
+                .map(|u| UserResponseDTO {
+                    pubkey: u.pubkey,
+                    npub: Some(u.npub),
+                    is_power_user: u.is_power_user,
+                })
     } else {
         None
     };
@@ -221,7 +242,11 @@ async fn refresh(
 let features = feature_access.get_available_features(&req.pubkey);
 
 Ok(HttpResponse::Ok().json(AuthResponse {
-    user,
+    user: UserResponseDTO {
+        pubkey: user.pubkey.clone(),
+        npub: Some(user.npub.clone()),
+        is_power_user: user.is_power_user,
+    },
     token: new_token,
     expires_at,
     features,
@@ -250,7 +275,14 @@ async fn update_api_keys(
     };
 
     match nostr_service.update_user_api_keys(&pubkey, api_keys).await {
-        Ok(user) => Ok(HttpResponse::Ok().json(user)),
+        Ok(user) => {
+            let user_dto = UserResponseDTO {
+                pubkey: user.pubkey.clone(),
+                npub: Some(user.npub.clone()),
+                is_power_user: user.is_power_user,
+            };
+            Ok(HttpResponse::Ok().json(user_dto))
+        },
         Err(NostrError::UserNotFound) => {
             Ok(HttpResponse::NotFound().json(json!({
                 "error": "User not found"

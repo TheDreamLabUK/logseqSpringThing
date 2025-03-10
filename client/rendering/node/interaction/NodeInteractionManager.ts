@@ -9,8 +9,9 @@ import {
 import { XRHandWithHaptics, HapticActuator } from '../../../types/xr';
 import { NodeInstanceManager } from '../instance/NodeInstanceManager'; 
 import { graphDataManager } from '../../../state/graphData';
-import { createLogger } from '../../../core/logger';
+import { createLogger, createErrorMetadata } from '../../../core/logger';
 import { WebSocketService } from '../../../websocket/websocketService';
+import { SceneManager } from '../../scene';
 
 const logger = createLogger('NodeInteractionManager');
 
@@ -36,6 +37,7 @@ export class NodeInteractionManager {
     private lastUpdateTime: number = 0;
     private updateThrottleMs: number = 100; // throttle updates to 10fps
     private nodeInstanceManager: NodeInstanceManager | null = null;
+    private sceneManager: SceneManager | null = null;
     
     private constructor(instanceMesh: InstancedMesh) {
         this.instanceMesh = instanceMesh;
@@ -81,6 +83,13 @@ export class NodeInteractionManager {
         canvas.addEventListener('mousemove', this.handleMouseMove.bind(this));
         canvas.addEventListener('click', this.handleClick.bind(this));
         canvas.addEventListener('dblclick', this.handleDoubleClick.bind(this));
+        
+        // Get the SceneManager instance
+        try {
+            this.sceneManager = SceneManager.getInstance(canvas);
+        } catch(e) {
+            logger.warn('Failed to get SceneManager instance', createErrorMetadata(e));
+        }
         
         logger.info('Desktop interaction initialized');
     }
@@ -312,6 +321,13 @@ export class NodeInteractionManager {
         if (!this.camera || !this.nodeInstanceManager) return;
 
         this.isDragging = true;
+
+        // Disable orbit controls while dragging to lock the viewpoint
+        if (this.sceneManager) {
+            const controls = this.sceneManager.getControls();
+            controls.enabled = false;
+            logger.info('Orbit controls disabled for dragging');
+        }
         
         // Get the node's current position
         const nodePosition = this.getNodePosition(nodeId);
@@ -380,6 +396,13 @@ export class NodeInteractionManager {
      */
     private endDrag(): void {
         if (!this.selectedNodeId || !this.isDragging) return;
+        
+        // Re-enable orbit controls after dragging
+        if (this.sceneManager) {
+            const controls = this.sceneManager.getControls();
+            controls.enabled = true;
+            logger.info('Orbit controls re-enabled after dragging');
+        }
         
         // Get final position
         const finalPosition = this.getNodePosition(this.selectedNodeId);

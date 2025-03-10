@@ -19,12 +19,12 @@ export class SettingsStore {
     private initializationPromise: Promise<void> | null = null;
     private subscribers: Map<string, SettingsChangeCallback[]> = new Map();
     private validationSubscribers: ValidationErrorCallback[] = [];
-    private settingsInitialized: boolean = false;
     private logger: Logger;
     private retryCount: number = 0;
     private readonly MAX_RETRIES: number = 3;
     private readonly RETRY_DELAY: number = 1000;
     private settingsOrigin: 'server' | 'default' = 'default';
+    private _isUserLoggedIn: boolean = false;
 
     private constructor() {
         this.settings = { ...defaultSettings };
@@ -39,6 +39,20 @@ export class SettingsStore {
         return SettingsStore.instance;
     }
 
+    /**
+     * Set user login status for settings authorization
+     */
+    public setUserLoggedIn(isLoggedIn: boolean): void {
+        this._isUserLoggedIn = isLoggedIn;
+    }
+
+    /**
+     * Check if settings are loaded from server
+     */
+    public isUserLoggedIn(): boolean {
+        return this._isUserLoggedIn;
+    }
+
     public async initialize(): Promise<void> {
         if (this.initialized) {
             return Promise.resolve();
@@ -48,85 +62,25 @@ export class SettingsStore {
         }
 
         this.initializationPromise = (async () => {
-            // Start a timeout to ensure we don't wait forever for server settings
-            const timeoutPromise = new Promise<void>((_, reject) => {
-                setTimeout(() => {
-                    if (!this.settingsInitialized) {
-                        reject(new Error('Settings initialization timed out'));
-                    }
-                }, 5000); // 5 second timeout
-            });
-
             try {
                 // Start with default settings immediately to avoid waiting for server
                 this.settings = { ...defaultSettings };
                 this.settingsOrigin = 'default';
                 
-                // Initialize logger with default settings right away
+                // Initialize logger with default settings
                 if (this.settings.system?.debug) {
                     LoggerConfig.setGlobalDebug(this.settings.system.debug.enabled);
                     LoggerConfig.setFullJson(this.settings.system.debug.logFullJson);
                 }
                 
                 // Mark as initialized with defaults
-                this.settingsInitialized = true;
                 this.initialized = true;
-                logger.info('SettingsStore initialized with defaults, will update from server asynchronously');
-                
-                // Create a promise for fetching server settings
-                const fetchServerSettings = async () => {
-                    const settingsUrl = buildApiUrl(API_ENDPOINTS.SETTINGS_ROOT);
-                    logger.info('Fetching settings from:', createMessageMetadata(settingsUrl));
-                    const response = await fetch(settingsUrl);
-                    logger.info('Server response status:', createMessageMetadata(response.status));
-                    
-                    if (response.ok) {
-                        const serverSettings = await response.json();
-                        logger.info('Received server settings:', createDataMetadata(serverSettings));
-                        
-                        // Convert snake_case to camelCase
-                        const camelCaseSettings = convertObjectKeysToCamelCase(serverSettings);
-                        
-                        // Validate server settings
-                        const serverValidation = validateSettings(camelCaseSettings);
-                        if (!serverValidation.isValid) {
-                            throw new Error(`Invalid server settings: ${JSON.stringify(serverValidation.errors)}`);
-                        }
-                        
-                        // Use server settings as base, filling in any missing fields with defaults
-                        this.settings = this.deepMerge(this.settings, camelCaseSettings);
-                        this.settingsOrigin = 'server';
-                        
-                        // Initialize logger configuration from settings
-                        if (this.settings.system?.debug) {
-                            LoggerConfig.setGlobalDebug(this.settings.system.debug.enabled);
-                            LoggerConfig.setFullJson(this.settings.system.debug.logFullJson);
-                        }
-                        logger.info('Updated settings from server');
-                    } else {
-                        const errorText = await response.text();
-                        logger.error('Response text:', createMessageMetadata(errorText));
-                        throw new Error(`Failed to fetch server settings: ${response.statusText}. Details: ${errorText}`);
-                    }
-                };
-
-                // Try to fetch settings from server in the background, but don't block initialization
-                // Race the fetch against a timeout to ensure we don't wait forever
-                Promise.race([fetchServerSettings(), timeoutPromise])
-                    .catch(error => {
-                        // If server settings fail, fall back to defaults
-                        if (error instanceof Error) {
-                            logger.error('Full error:', createErrorMetadata(error));
-                        }
-                        logger.warn('Error loading server settings, falling back to defaults:', createErrorMetadata(error));
-                        // We already initialized with defaults, so just log the error
-                        logger.info('Continuing with default settings');
-                    });
+                logger.info('SettingsStore initialized with defaults');
 
                 this.initialized = true;
-                logger.info('SettingsStore initialized with origin:', createMessageMetadata(this.settingsOrigin));
+                logger.info('SettingsStore initialized with defaults, server settings will be loaded on login');
             } catch (error) {
-                logger.error('Critical initialization failure:', createErrorMetadata(error));
+                logger.error('Settings initialization failure:', createErrorMetadata(error));
                 // Last resort: use defaults without validation
                 this.settings = { ...defaultSettings };
                 this.settingsOrigin = 'default';
@@ -139,6 +93,58 @@ export class SettingsStore {
 
     public isInitialized(): boolean {
         return this.initialized;
+    }
+
+    /**
+     * Load settings from server
+     * This should be called after user logs in with Nostr
+     */
+    public async loadServerSettings(): Promise<boolean> {
+        if (!this._isUserLoggedIn) {
+            logger.warn('Attempting to load server settings without user login');
+            return false;
+        }
+        
+        try {
+            logger.info('Loading settings from server after user login');
+            const settingsUrl = buildApiUrl(API_ENDPOINTS.SETTINGS_ROOT);
+            const response = await fetch(settingsUrl, {
+                headers: getAuthHeaders()
+            });
+            
+            if (!response.ok) {
+                const errorText = await response.text();
+                logger.error('Failed to load server settings:', createMessageMetadata(errorText));
+                return false;
+            }
+            
+            const serverSettings = await response.json();
+            logger.info('Received server settings:', createDataMetadata(serverSettings));
+            
+            // Convert snake_case to camelCase
+            const camelCaseSettings = convertObjectKeysToCamelCase(serverSettings);
+            
+            // Validate server settings
+            const serverValidation = validateSettings(camelCaseSettings);
+            if (!serverValidation.isValid) {
+                throw new Error(`Invalid server settings: ${JSON.stringify(serverValidation.errors)}`);
+            }
+            
+            // Use server settings as base, filling in any missing fields with defaults
+            this.settings = this.deepMerge(this.settings, camelCaseSettings);
+            this.settingsOrigin = 'server';
+            
+            // Update logger configuration from settings
+            if (this.settings.system?.debug) {
+                LoggerConfig.setGlobalDebug(this.settings.system.debug.enabled);
+                LoggerConfig.setFullJson(this.settings.system.debug.logFullJson);
+            }
+            logger.info('Updated settings from server after login');
+            return true;
+        } catch (error) {
+            logger.error('Error loading server settings:', createErrorMetadata(error));
+            return false;
+        }
     }
 
     public get(path: string): unknown {
@@ -320,8 +326,8 @@ export class SettingsStore {
 
     private async syncWithServer(isInitialSync: boolean = false): Promise<void> {
         // Don't sync to server during initialization if we got settings from server
-        if (isInitialSync && this.settingsOrigin === 'server') {
-            this.logger.debug('Skipping initial sync as settings came from server');
+        if (!this._isUserLoggedIn) {
+            this.logger.debug('Skipping sync to server - user not logged in');
             return;
         }
 

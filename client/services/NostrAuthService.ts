@@ -1,6 +1,7 @@
 import { SettingsEventEmitter, SettingsEventType } from './SettingsEventEmitter';
 import { SettingsStore } from '../state/SettingsStore';
 import { SettingsPersistenceService } from './SettingsPersistenceService';
+import { settingsManager } from '../state/settings';
 import { createLogger, createErrorMetadata, createDataMetadata } from '../core/logger';
 import { buildApiUrl } from '../core/api';
 import { API_ENDPOINTS } from '../core/constants';
@@ -45,6 +46,7 @@ interface AuthResponse {
     };
     token: string;
     features: string[];
+    expires_at?: number;
     valid?: boolean;
     error?: string;
 }
@@ -179,9 +181,60 @@ export class NostrAuthService {
 
             const authData = await response.json() as AuthResponse;
             
+            // More detailed logging to diagnose the issue
+            logger.debug('Raw auth response data:', createDataMetadata({
+                hasUser: !!authData.user,
+                isPowerUserDefined: authData.user ? (typeof authData.user.is_power_user !== 'undefined') : false,
+                isPowerUserType: authData.user ? typeof authData.user.is_power_user : 'undefined',
+                hasToken: !!authData.token,
+                hasFeatures: !!authData.features,
+                responseKeys: Object.keys(authData)
+            }));
+            
             // Validate response data
-            if (!authData || !authData.user || typeof authData.user.is_power_user !== 'boolean' || !authData.token) {
-                throw new Error('Invalid authentication response from server');
+            if (!authData) {
+                throw new Error('Empty authentication response from server');
+            }
+            
+            if (!authData.user) {
+                throw new Error('Missing user data in authentication response');
+            }
+            
+            if (typeof authData.user.is_power_user !== 'boolean') {
+                // Fix the type if needed - sometimes JSON serialization can convert booleans to strings
+                if (authData.user.is_power_user === 'true') {
+                    authData.user.is_power_user = true;
+                } else if (authData.user.is_power_user === 'false') {
+                    authData.user.is_power_user = false;
+                } else if (authData.user.is_power_user === '1' || authData.user.is_power_user === 1) {
+                    authData.user.is_power_user = true;
+                } else if (authData.user.is_power_user === '0' || authData.user.is_power_user === 0) {
+                    authData.user.is_power_user = false;
+                } else if (authData.user.is_power_user === null || authData.user.is_power_user === undefined) {
+                    // Default to false if the value is null or undefined
+                    authData.user.is_power_user = false;
+                    logger.warn('Power user status was null or undefined, defaulting to false');
+                } else {
+                    // Instead of failing, log the issue and default to false
+                    logger.error(`Unexpected power user status value: ${typeof authData.user.is_power_user} - ${JSON.stringify(authData.user.is_power_user)}`);
+                    authData.user.is_power_user = false;
+                }
+            }
+            
+            if (!authData.token) {
+                throw new Error('Missing token in authentication response');
+            }
+
+            if (!Array.isArray(authData.features)) {
+                // If features is missing or not an array, initialize it as an empty array
+                authData.features = [];
+                logger.warn('Features missing in auth response, using empty array');
+            }
+
+            // Check if the response has a valid format structure overall
+            if (!this.isValidAuthResponse(authData)) {
+                logger.error('Invalid authentication response format:', createDataMetadata(authData));
+                throw new Error('Invalid authentication response structure from server');
             }
 
             // Log successful auth data for debugging
@@ -202,6 +255,20 @@ export class NostrAuthService {
             
             // Update both services
             this.settingsPersistence.setCurrentUser(pubkey, authData.user.is_power_user);
+            
+            // Update settings store and load server settings
+            this.settingsStore.setUserLoggedIn(true);
+            const settingsLoaded = await this.settingsStore.loadServerSettings();
+            
+            // Update settings manager with server settings
+            settingsManager.updateSettingsFromServer();
+            
+            if (!settingsLoaded) {
+                logger.warn('Failed to load server settings after login, using defaults');
+            } else {
+                logger.info('Successfully loaded server settings after login');
+            }
+            
             this.eventEmitter.emit(SettingsEventType.AUTH_STATE_CHANGED, {
                 authState: {
                     isAuthenticated: true,
@@ -223,11 +290,53 @@ export class NostrAuthService {
     }
 
     /**
+     * Validate the authentication response structure
+     */
+    private isValidAuthResponse(response: any): boolean {
+        try {
+            // Verify core required structure for a valid auth response
+            if (!response || typeof response !== 'object') return false;
+            
+            // Check if we have the required fields
+            const hasRequiredFields = 
+                response.user && 
+                typeof response.user === 'object' &&
+                typeof response.user.pubkey === 'string' &&
+                (
+                    typeof response.user.is_power_user === 'boolean' || 
+                    // Allow these variants that we can convert
+                    response.user.is_power_user === 'true' ||
+                    response.user.is_power_user === 'false' ||
+                    response.user.is_power_user === '1' ||
+                    response.user.is_power_user === '0' ||
+                    response.user.is_power_user === 1 ||
+                    response.user.is_power_user === 0 ||
+                    response.user.is_power_user === null ||
+                    response.user.is_power_user === undefined
+                ) &&
+                typeof response.token === 'string';
+            
+            if (!hasRequiredFields) return false;
+            
+            // Features should be an array if present
+            if (response.features !== undefined && !Array.isArray(response.features)) {
+                return false;
+            }
+            
+            return true;
+        } catch (error) {
+            logger.error('Error validating auth response:', createErrorMetadata(error));
+            return false;
+        }
+    }
+
+    /**
      * Log out the current user
      */
     public async logout(): Promise<void> {
         const currentPubkey = this.currentUser?.pubkey;
         const token = localStorage.getItem('nostr_token');
+        const wasLoggedIn = this.isAuthenticated();
         
         if (currentPubkey && token) {
             try {
@@ -250,6 +359,9 @@ export class NostrAuthService {
         localStorage.removeItem('nostr_token');
         this.currentUser = null;
         
+        // Update settings store login status
+        this.settingsStore.setUserLoggedIn(false);
+        
         this.settingsPersistence.setCurrentUser(null, false);
         this.eventEmitter.emit(SettingsEventType.AUTH_STATE_CHANGED, {
             authState: {
@@ -258,7 +370,7 @@ export class NostrAuthService {
         });
 
         // If user was using server settings, revert to local settings
-        if (currentPubkey) {
+        if (wasLoggedIn) {
             await this.settingsPersistence.loadSettings();
             await this.settingsStore.initialize(); // Reinitialize UI store
         }
@@ -298,6 +410,7 @@ export class NostrAuthService {
     private async checkAuthStatus(pubkey: string): Promise<void> {
         const token = localStorage.getItem('nostr_token');
         if (!token) {
+            // No token, so logout
             await this.logout();
             return;
         }
@@ -354,6 +467,19 @@ export class NostrAuthService {
             
             // Update persistence service with verified user
             this.settingsPersistence.setCurrentUser(pubkey, verifyData.user.is_power_user);
+            
+            // Load server settings since user is authenticated
+            this.settingsStore.setUserLoggedIn(true);
+            const settingsLoaded = await this.settingsStore.loadServerSettings();
+            
+            // Update settings manager with server settings
+            settingsManager.updateSettingsFromServer();
+            
+            if (!settingsLoaded) {
+                logger.warn('Failed to load server settings after auth check, using defaults');
+            } else {
+                logger.info('Successfully loaded server settings after auth check');
+            }
         } catch (error) {
             logger.error('Auth check failed:', createErrorMetadata(error));
             await this.logout();

@@ -253,16 +253,27 @@ export class SceneManager {
     if (this.visualizationController) {
       const nodeFacade = this.visualizationController.getNodeManagerFacade();
       if (nodeFacade) {
+        // Get the instanced mesh from the node facade
         const instanceMesh = nodeFacade.getInstancedMesh();
+        
+        // Create the NodeInteractionManager directly instead of getting it from facade
         this.nodeInteractionManager = NodeInteractionManager.getInstance(instanceMesh);
         
         // Connect to the instance manager
         const nodeInstanceManager = nodeFacade.getNodeInstanceManager();
-        this.nodeInteractionManager.setNodeInstanceManager(nodeInstanceManager);
         
-        // Initialize desktop interactions
-        this.nodeInteractionManager.initializeDesktopInteraction(this.canvas, this.camera);
-        logger.info('Desktop node interactions initialized');
+        // Initialize with the node instance manager if available
+        if (this.nodeInteractionManager && nodeInstanceManager) {
+          this.nodeInteractionManager.setNodeInstanceManager(nodeInstanceManager);
+          
+          // Initialize desktop interactions with the canvas and camera
+          this.nodeInteractionManager.initializeDesktopInteraction(this.canvas, this.camera);
+          
+          logger.info('Desktop node interactions initialized');
+        } else {
+          logger.warn('Could not initialize NodeInteractionManager - missing dependencies');
+        }
+        
       }
     }
     
