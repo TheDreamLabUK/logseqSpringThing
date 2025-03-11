@@ -329,7 +329,10 @@ export class MetadataVisualizer {
         }));
         
         // Create text for name
-        const displayName = nodeLabel || metadata.name;
+        // First priority should be the explicitly passed nodeLabel (from Node object)
+        // Second priority is metadata.name if available
+        // Fallback to metadata.id if nothing else is available
+        const displayName = nodeLabel || metadata.name || metadata.id || "Unknown";
         const nameMesh = await this.createTextMesh(displayName);
         if (nameMesh) {
             nameMesh.position.y = 1.2;
@@ -340,7 +343,8 @@ export class MetadataVisualizer {
         }
         
         // Create text for file size
-        const fileSize = metadata.fileSize || this.DEFAULT_FILE_SIZE;
+        // Access fileSize directly from the metadata object
+        const fileSize = metadata.fileSize !== undefined ? metadata.fileSize : this.DEFAULT_FILE_SIZE;
         const fileSizeText = `Size: ${this.formatFileSize(fileSize)}`;
         const fileSizeMesh = await this.createTextMesh(fileSizeText);
         if (fileSizeMesh) {
