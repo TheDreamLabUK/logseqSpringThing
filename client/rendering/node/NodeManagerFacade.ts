@@ -15,6 +15,7 @@ import { XRHandWithHaptics } from '../../types/xr';
 import { debugState } from '../../core/debugState';
 import { createLogger, createErrorMetadata, createDataMetadata } from '../../core/logger';
 import { UpdateThrottler } from '../../core/utils';
+import { Settings } from '../../types/settings';
 
 const logger = createLogger('NodeManagerFacade');
 
@@ -35,6 +36,7 @@ export class NodeManagerFacade implements NodeManagerInterface {
     private instanceManager: NodeInstanceManager;
     private metadataManager: NodeMetadataManager;
     private interactionManager: NodeInteractionManager;
+    private settings: Settings;
     private isInitialized: boolean = false;
     private frameCount: number = 0;
     private nodeIndices: Map<string, string> = new Map();
@@ -45,6 +47,7 @@ export class NodeManagerFacade implements NodeManagerInterface {
 
     private constructor(scene: Scene, camera: Camera, material: Material) {
         this.camera = camera;
+        this.settings = {} as Settings; // Initialize with empty settings
         
         logger.info('NodeManagerFacade constructor called', createDataMetadata({
             timestamp: Date.now(),
@@ -62,7 +65,7 @@ export class NodeManagerFacade implements NodeManagerInterface {
             this.instanceManager = NodeInstanceManager.getInstance(scene, material);
             
             logger.info('INITIALIZATION ORDER: NodeManagerFacade - Step 3: Creating NodeMetadataManager');
-            this.metadataManager = NodeMetadataManager.getInstance(scene);
+            this.metadataManager = NodeMetadataManager.getInstance(scene, this.settings);
             
             // Initialize interaction manager with instance mesh
             logger.info('INITIALIZATION ORDER: NodeManagerFacade - Step 4: Creating NodeInteractionManager');
@@ -118,16 +121,20 @@ export class NodeManagerFacade implements NodeManagerInterface {
         }
     }
 
-    public handleSettingsUpdate(settings: any): void {
+    public handleSettingsUpdate(settings: Settings): void {
         if (!this.isInitialized) return;
 
         try {
+            this.settings = settings; // Store the settings
             // Update metadata visibility threshold if needed
             if (settings.visualization?.labels?.visibilityThreshold) {
                 this.metadataManager.updateVisibilityThreshold(
                     settings.visualization.labels.visibilityThreshold
                 );
             }
+            
+            // Pass settings to the metadata manager
+            this.metadataManager.handleSettingsUpdate(settings);
         } catch (error) {
             logger.error('Failed to update settings:', createErrorMetadata(error));
         }

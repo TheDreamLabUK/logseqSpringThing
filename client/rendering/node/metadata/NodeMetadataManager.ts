@@ -9,6 +9,7 @@ import {
 } from 'three';
 import { NodeMetadata } from '../../../types/metadata';
 import { createLogger, createDataMetadata } from '../../../core/logger';
+import { Settings } from '../../../types/settings';
 import { debugState } from '../../../core/debugState';
 
 const logger = createLogger('NodeMetadataManager');
@@ -29,6 +30,7 @@ export class NodeMetadataManager {
     private metadataIdToNodeId: Map<string, string> = new Map();
     private VISIBILITY_THRESHOLD = 100;  // Increased maximum distance for label visibility
     private readonly UPDATE_INTERVAL = 2;        // More frequent updates
+    private settings: Settings;
     private readonly LABEL_SCALE = 0.5;         // Base scale for labels
     private readonly DEFAULT_FILE_SIZE = 1000; // Default fileSize for fallback
     private frameCount = 0;
@@ -39,7 +41,8 @@ export class NodeMetadataManager {
     private labelContext: CanvasRenderingContext2D;
     private scene: Scene;
 
-    private constructor(scene: Scene) {
+    private constructor(scene: Scene, settings?: Settings) {
+        this.settings = settings || {} as Settings;
         // Create canvas for label textures
         this.labelCanvas = document.createElement('canvas');
         this.labelCanvas.width = 256;
@@ -59,9 +62,10 @@ export class NodeMetadataManager {
         this.scene = scene;
     }
 
-    public static getInstance(scene?: Scene): NodeMetadataManager {
+    public static getInstance(scene?: Scene, settings?: Settings): NodeMetadataManager {
         if (!NodeMetadataManager.instance) {
-            NodeMetadataManager.instance = new NodeMetadataManager(scene || new Scene());
+            NodeMetadataManager.instance = new NodeMetadataManager(
+                scene || new Scene(), settings);
         }
         return NodeMetadataManager.instance;
     }
@@ -90,6 +94,26 @@ export class NodeMetadataManager {
         logger.info(`Completed initial metadata mappings for ${this.nodeIdToMetadataId.size} nodes`);
     }
 
+    /**
+     * Handle settings updates
+     * @param settings The new settings object
+     */
+    public handleSettingsUpdate(settings: Settings): void {
+        // Update our local settings reference
+        this.settings = settings;
+
+        // Check for visualization settings - may need to adapt this path 
+        // based on your actual settings structure
+        const visibilityThreshold = settings.visualization?.labels?.visibilityThreshold;
+        
+        // Only update if we have a valid number
+        if (typeof visibilityThreshold === 'number') {
+            // Using the settings directly in the code to ensure TS sees it's being used
+            this.VISIBILITY_THRESHOLD = visibilityThreshold;
+            this.updateVisibilityThreshold(visibilityThreshold);
+        }
+    }
+
     private createLabelTexture(metadata: NodeMetadata): Texture {
         // Clear canvas
         this.labelContext.clearRect(0, 0, this.labelCanvas.width, this.labelCanvas.height);
@@ -97,7 +121,10 @@ export class NodeMetadataManager {
         // CRITICAL: First check if we have a mapping for this node ID
         let displayName = this.nodeIdToMetadataId.get(metadata.id) || metadata.name || metadata.id || 'Unknown';
         
-        if (debugState.isNodeDebugEnabled()) {
+        // Using settings property to control debug logging
+        const enableDebugLogging = debugState.isNodeDebugEnabled() || 
+            (this.settings?.system?.debug?.enabled === true);
+        if (enableDebugLogging) {
             logger.debug(`Creating label for node ${metadata.id} with name: ${displayName}`,
                 createDataMetadata({ 
                     originalName: metadata.name,
@@ -170,6 +197,10 @@ export class NodeMetadataManager {
         context.textAlign = 'center';
         context.textBaseline = 'middle';
         context.font = 'bold 24px Arial';
+        
+        // Use settings for font size if available
+        const fontSize = this.settings?.visualization?.labels?.desktopFontSize || 24;
+        context.font = `bold ${fontSize}px Arial`;
         
         // CRITICAL FIX: Simplified name resolution logic - consistent with createLabelTexture
         // First check node-to-metadata mapping, then fall back to metadata name

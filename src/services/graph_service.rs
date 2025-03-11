@@ -799,11 +799,11 @@ impl GraphService {
         let start = page * page_size;
         let end = std::cmp::min((page + 1) * page_size, total_nodes);
 
-        let page_nodes: Vec<Node> = graph.nodes
+        let mut page_nodes: Vec<Node> = graph.nodes
             .iter()
             .skip(start)
             .take(end - start)
-            .cloned()
+            .cloned() 
             .collect();
 
         // Get edges that connect to these nodes
