@@ -61,7 +61,9 @@ if [ "$START_WEBXR" = true ]; then
     else
         log "nvidia-smi not available"
     fi
-    exec /app/webxr
+    # Always enable GPU debugging to ensure physics simulation runs
+    log "Starting webxr with GPU compute enabled"
+    exec /app/webxr --gpu-debug
 else
     log "Skipping webxr execution (debug mode)"
     # Keep the container running

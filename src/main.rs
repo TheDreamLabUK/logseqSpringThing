@@ -147,9 +147,14 @@ async fn main() -> std::io::Result<()> {
                         info!("Graph service reinitialized with GPU compute");
                     },
                     Err(e) => {
-                        error!("Failed to initialize GPU compute: {}", e);
-                        return Err(std::io::Error::new(std::io::ErrorKind::Other, 
-                            format!("GPU initialization failed: {}", e)));
+                        warn!("Failed to initialize GPU compute: {}. Continuing with CPU fallback.", e);
+                        // Initialize graph service with None as GPU compute (will use CPU fallback)
+                        app_state.graph_service = GraphService::new(
+                            settings.clone(), 
+                            None
+                        ).await;
+                        
+                        info!("Graph service initialized with CPU fallback");
                     }
                 }
             }

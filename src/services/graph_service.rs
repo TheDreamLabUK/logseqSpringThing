@@ -49,7 +49,7 @@ impl GraphService {
         if gpu_compute.is_some() {
             info!("[GraphService] GPU compute is enabled - physics simulation will run");
         } else {
-            warn!("[GraphService] GPU compute is NOT enabled - physics simulation will not run");
+            warn!("[GraphService] GPU compute is NOT enabled - physics simulation will use CPU fallback");
         }
 
         // Create the GraphService with caching enabled 

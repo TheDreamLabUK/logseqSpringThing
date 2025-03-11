@@ -654,10 +654,17 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
                                 }
 
                                 // Trigger force calculation after updating node positions
-                                if let Some(gpu_compute) = &app_state.gpu_compute {
+                                info!("Preparing to recalculate layout after client-side node position update");
+                                
+                                // Get the GPU compute from GraphService
+                                let gpu_compute = app_state.graph_service.get_gpu_compute().await;
+                                
+                                if let Some(gpu_compute) = &gpu_compute {
+                                    // Read settings outside the GraphService lock to avoid deadlocks
                                     let settings = app_state.settings.read().await;
-                                        info!("Preparing to recalculate layout after client-side node position update");
                                     let physics_settings = settings.visualization.physics.clone();
+                                    drop(settings); // Release the read lock
+                                    
                                     let params = crate::models::simulation_params::SimulationParams {
                                         iterations: physics_settings.iterations,
                                         spring_strength: physics_settings.spring_strength,
@@ -672,18 +679,18 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
                                         phase: crate::models::simulation_params::SimulationPhase::Dynamic,
                                         mode: crate::models::simulation_params::SimulationMode::Remote,
                                     };
-                                    info!("Recalculating layout with params: {:?}", params);
-                                    match crate::services::graph_service::GraphService::calculate_layout(gpu_compute, &mut graph, &mut node_map, &params).await {
-                                            Ok(_) => {
-                                                info!("Successfully recalculated layout after node position update");
-                                            },
-                                            Err(e) => {
-                                            error!("Error calculating layout after node position update: {}", e);
-                                        }
-                                        }
+                                    info!("Recalculating layout with params: spring_strength={:.3}, repulsion={:.3}, damping={:.3}", 
+                                        params.spring_strength, params.repulsion, params.damping);
+                                    
+                                    if let Err(e) = crate::services::graph_service::GraphService::calculate_layout(gpu_compute, &mut graph, &mut node_map, &params).await {
+                                        error!("Error calculating layout after node position update: {}", e);
                                     }
-                                    else {
-                                        warn!("GPU compute not available, cannot recalculate layout after node position update");
+                                    else { 
+                                        info!("Successfully recalculated layout after node position update");
+                                    }
+                                }
+                                else {
+                                    warn!("GPU compute not available, cannot recalculate layout after node position update");
                                 }
                             };
 

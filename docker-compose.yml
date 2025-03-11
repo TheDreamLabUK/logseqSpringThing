@@ -54,7 +54,7 @@ services:
     user: "${UID:-1000}:${GID:-1000}"  # Use host user's UID/GID or default to 1000
     restart: unless-stopped
     stop_grace_period: 30s
-    command: sh -c '[ "$DEBUG_MODE" = "true" ] && exec /app/start.sh --no-webxr || exec /app/start.sh'  # Only pass --no-webxr if DEBUG_MODE=true
+    command: sh -c 'exec /app/start.sh'  # Always start WebXR with GPU enabled (via modified start.sh)
     init: true
     logging:
       driver: "json-file"
