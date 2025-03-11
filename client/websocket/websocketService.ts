@@ -688,6 +688,11 @@ export class WebSocketService {
     
     
     public sendNodeUpdates(updates: NodeUpdate[]): void {
+        // Add detailed logging to see if updates are being sent
+        if (debugState.isWebsocketDebugEnabled()) {
+            logger.debug(`WebSocketService.sendNodeUpdates called with ${updates.length} updates:`, updates);
+        }
+
         if (debugState.isWebsocketDebugEnabled()) {
             logger.debug(`Sending ${updates.length} node updates. Binary updates enabled: ${debugState.isBinaryProtocolEnabled()}`);
         }
@@ -824,7 +829,7 @@ export class WebSocketService {
     private processNodeUpdateQueue(): void {
         if (!this.ws || this.ws.readyState !== WebSocket.OPEN || this.nodeUpdateQueue.length === 0) {
             if (this.nodeUpdateQueue.length > 0) {
-                logger.warn(`Discarding ${this.nodeUpdateQueue.length} updates because WebSocket is not open`);
+                logger.warn(`Discarding ${this.nodeUpdateQueue.length} updates because WebSocket is not open (state: ${this.ws?.readyState})`);
                 debugState.setBinaryProtocolStatus('error');
             }
             this.nodeUpdateQueue = [];
@@ -842,6 +847,11 @@ export class WebSocketService {
         
         // Get the most recent updates for each node ID (to avoid sending outdated positions)
         const latestUpdates = new Map<string, NodeUpdate>();
+        
+        if (debugState.isWebsocketDebugEnabled()) {
+            logger.debug('Node update queue contents:', this.nodeUpdateQueue);
+        }
+        
         for (const update of this.nodeUpdateQueue) {
             latestUpdates.set(update.id, update);
         }
@@ -867,6 +877,9 @@ export class WebSocketService {
         
         if (debugState.isWebsocketDebugEnabled()) {
             logger.debug(`Processing ${updates.length}/${originalCount} node updates`);
+            if (updates.length > 0) {
+                logger.debug('Sample node update:', updates[0]);
+            }
         }
 
         // Calculate buffer size based on node count (26 bytes per node)
@@ -915,6 +928,10 @@ export class WebSocketService {
 
         const finalBuffer = this.compressIfNeeded(buffer);
         this.ws.send(finalBuffer);
+        
+        if (debugState.isWebsocketDebugEnabled()) {
+            logger.debug(`Sent binary message with ${updates.length} nodes (${finalBuffer.byteLength} bytes)`);
+        }
     }
 
     public onConnectionStatusChange(handler: (status: boolean) => void): void {

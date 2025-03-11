@@ -9,7 +9,7 @@ import {
 import { XRHandWithHaptics, HapticActuator } from '../../../types/xr';
 import { NodeInstanceManager } from '../instance/NodeInstanceManager'; 
 import { graphDataManager } from '../../../state/graphData';
-import { createLogger, createErrorMetadata } from '../../../core/logger';
+import { createLogger, createErrorMetadata, createDataMetadata } from '../../../core/logger';
 import { WebSocketService } from '../../../websocket/websocketService';
 import { SceneManager } from '../../scene';
 
@@ -474,6 +474,18 @@ export class NodeInteractionManager {
             logger.warn('Cannot send node update: Invalid node ID');
             return;
         }
+
+        // Add debug logging to track node updates being sent for dragging operations
+        logger.info('Sending node position update to server', createDataMetadata({
+            nodeId,
+            position: {
+                x: parseFloat(position.x.toFixed(3)),
+                y: parseFloat(position.y.toFixed(3)),
+                z: parseFloat(position.z.toFixed(3))
+            },
+            operation: this.isDragging ? 'dragging' : 'end-drag',
+            timestamp: Date.now()
+        }));
 
         // Send the update to the WebSocket service
         this.webSocketService.sendNodeUpdates([{

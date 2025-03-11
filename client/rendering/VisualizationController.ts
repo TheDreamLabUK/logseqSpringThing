@@ -109,6 +109,7 @@ export class VisualizationController {
                     // Only apply this filter for a few seconds after randomization starts
                     if (now - this.randomizationStartTime < 5000) {
                         updates = updates.filter(update => !this.randomizedNodeIds.has(update.id));
+                    logger.debug(`Filtering updates during randomization, elapsed: ${Math.round(now - this.randomizationStartTime)}ms, filtering ${nodes.length - updates.length} nodes`);
                         
                         // If we're filtering out updates, it means the server has acknowledged our data
                         if (updates.length < nodes.length) {
@@ -118,11 +119,16 @@ export class VisualizationController {
                         }
                     } else {
                         // Time's up - end randomization mode
+                    logger.info('Randomization time limit reached (5000ms). Resetting isRandomizationInProgress flag and clearing randomizedNodeIds.');
                         this.isRandomizationInProgress = false;
                         this.randomizedNodeIds.clear();
                         logger.info('Randomization sync period ended');
                     }
-                }
+                } else if (this.randomizedNodeIds.size > 0) {
+                // Clean up if flag is reset but node IDs are still present
+                logger.info('Cleaning up stale randomizedNodeIds set with size: ' + this.randomizedNodeIds.size);
+                this.randomizedNodeIds.clear();
+            }
                 
                 // Check if we haven't created metadata labels yet, and have received binary data
                 // This ensures we have proper positions before creating labels
@@ -683,7 +689,8 @@ export class VisualizationController {
                 // Also explicitly request force calculation to begin
                 this.websocketService.sendMessage({
                     type: 'applyForces',
-                    timestamp: Date.now()
+                    timestamp: Date.now(),
+                    forceCalculation: true
                 });
                 }
                 

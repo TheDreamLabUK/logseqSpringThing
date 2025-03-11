@@ -508,13 +508,16 @@ impl GraphService {
         params: &SimulationParams,
     ) -> std::io::Result<()> {
         {
-            info!("[calculate_layout] Starting GPU physics calculation for {} nodes, {} edges", 
-                  graph.nodes.len(), graph.edges.len());
+            info!("[calculate_layout] Starting GPU physics calculation for {} nodes, {} edges with mode {:?}", 
+                  graph.nodes.len(), graph.edges.len(), params.mode);
             
             // Get current timestamp for performance tracking
             let start_time = std::time::Instant::now();
 
             let mut gpu_compute = gpu_compute.write().await;
+
+            info!("[calculate_layout] params: iterations={}, spring_strength={:.3}, repulsion={:.3}, damping={:.3}",
+                 params.iterations, params.spring_strength, params.repulsion, params.damping);
             
             // Update data and parameters
             if let Err(e) = gpu_compute.update_graph_data(graph) {

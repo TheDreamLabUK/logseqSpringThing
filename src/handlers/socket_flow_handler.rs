@@ -579,6 +579,7 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
                 }
             }
             Ok(ws::Message::Binary(data)) => {
+                // Enhanced logging for binary message reception
                 info!("Received binary message, length: {}", data.len());
                 self.last_activity = std::time::Instant::now();
                 
@@ -593,7 +594,10 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
                 
                 match binary_protocol::decode_node_data(&data) {
                     Ok(nodes) => {
-                        if nodes.len() <= 2 {
+                        info!("Decoded {} nodes from binary message", nodes.len());
+                        // CRITICAL FIX: Remove node count limitation to allow processing batches from randomization
+                        // Previous code only allowed 2 nodes maximum, which blocked randomization batches
+                        {
                             let app_state = self.app_state.clone();
                             let nodes_vec: Vec<_> = nodes.into_iter().collect();
 
@@ -622,6 +626,8 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
                                         node.data.position = node_data.position;
                                         node.data.velocity = node_data.velocity;
                                         // Explicitly restore mass and flags after updating position/velocity
+                                        debug!("Updated position for node ID {} to [{:.3}, {:.3}, {:.3}]", 
+                                             node_id_str, node_data.position.x, node_data.position.y, node_data.position.z);
                                         node.data.mass = original_mass;
                                         node.data.flags = original_flags; // Restore flags needed for GPU code
                                     // Mass, flags, and padding are not overwritten as they're only 
@@ -650,6 +656,7 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
                                 // Trigger force calculation after updating node positions
                                 if let Some(gpu_compute) = &app_state.gpu_compute {
                                     let settings = app_state.settings.read().await;
+                                        info!("Preparing to recalculate layout after client-side node position update");
                                     let physics_settings = settings.visualization.physics.clone();
                                     let params = crate::models::simulation_params::SimulationParams {
                                         iterations: physics_settings.iterations,
@@ -666,23 +673,22 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
                                         mode: crate::models::simulation_params::SimulationMode::Remote,
                                     };
                                     info!("Recalculating layout with params: {:?}", params);
-                                    if let Err(e) = crate::services::graph_service::GraphService::calculate_layout(gpu_compute, &mut graph, &mut node_map, &params).await {
-                                        error!("Error calculating layout: {}", e);
+                                    match crate::services::graph_service::GraphService::calculate_layout(gpu_compute, &mut graph, &mut node_map, &params).await {
+                                            Ok(_) => {
+                                                info!("Successfully recalculated layout after node position update");
+                                            },
+                                            Err(e) => {
+                                            error!("Error calculating layout after node position update: {}", e);
+                                        }
+                                        }
                                     }
+                                    else {
+                                        warn!("GPU compute not available, cannot recalculate layout after node position update");
                                 }
                             };
 
                             let fut = fut.into_actor(self);
                             ctx.spawn(fut.map(|_, _, _| ()));
-                        } else {
-                            warn!("Received update for too many nodes: {}", nodes.len());
-                            let error_msg = serde_json::json!({
-                                "type": "error",
-                                "message": format!("Too many nodes in update: {}", nodes.len())
-                            });
-                            if let Ok(msg_str) = serde_json::to_string(&error_msg) {
-                                ctx.text(msg_str);
-                            }
                         }
                     }
                     Err(e) => {
