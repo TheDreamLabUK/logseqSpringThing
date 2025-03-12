@@ -10,10 +10,11 @@ import { NodeInstanceManager } from './instance/NodeInstanceManager';
 import { NodeMetadataManager } from './metadata/NodeMetadataManager';
 import { NodeInteractionManager } from './interaction/NodeInteractionManager'; 
 import { NodeManagerInterface, NodeManagerError, NodeManagerErrorType } from './NodeManagerInterface'; 
+import { NodeIdentityManager } from './identity/NodeIdentityManager';
 import { NodeData } from '../../core/types';
 import { XRHandWithHaptics } from '../../types/xr';
 import { debugState } from '../../core/debugState';
-import { createLogger, createErrorMetadata, createDataMetadata } from '../../core/logger';
+import { createLogger, createDataMetadata, createErrorMetadata } from '../../core/logger';
 import { UpdateThrottler } from '../../core/utils';
 import { Settings } from '../../types/settings';
 
@@ -36,15 +37,13 @@ export class NodeManagerFacade implements NodeManagerInterface {
     private instanceManager: NodeInstanceManager;
     private metadataManager: NodeMetadataManager;
     private interactionManager: NodeInteractionManager;
+    private identityManager: NodeIdentityManager;
     private settings: Settings;
     private isInitialized: boolean = false;
     private frameCount: number = 0;
-    private nodeIndices: Map<string, string> = new Map();
-    private nodeIdToMetadataId: Map<string, string> = new Map();
     private tempVector = new Vector3();
     private metadataUpdateThrottler = new UpdateThrottler(100); // Update at most every 100ms
     private readonly MAX_POSITION = 1000.0; // Reasonable limit for safe positions
-    private readonly NODE_ID_REGEX = /^\d+$/;
 
     private constructor(scene: Scene, camera: Camera, material: Material) {
         this.camera = camera;
@@ -56,6 +55,9 @@ export class NodeManagerFacade implements NodeManagerInterface {
                 {x: camera.position.x, y: camera.position.y, z: camera.position.z} : 
                 'undefined'
         }));
+
+        // Get the identity manager instance first
+        this.identityManager = NodeIdentityManager.getInstance();
 
         try {
             logger.info('INITIALIZATION ORDER: NodeManagerFacade - Step 1: Creating NodeGeometryManager');
@@ -76,6 +78,7 @@ export class NodeManagerFacade implements NodeManagerInterface {
             this.isInitialized = true;
             logger.info('NodeManagerFacade initialized');
         } catch (error) {
+            logger.error('Failed to initialize NodeManagerFacade:', createErrorMetadata(error));
             throw new NodeManagerError(
                 NodeManagerErrorType.INITIALIZATION_FAILED,
                 'Failed to initialize NodeManagerFacade',
@@ -105,9 +108,8 @@ export class NodeManagerFacade implements NodeManagerInterface {
      * @returns True if the ID is valid (numeric string), false otherwise
      */
     private validateNodeId(nodeId: string): boolean {
-        if (!nodeId || typeof nodeId !== 'string') return false;
-        // Ensure it's a numeric string (server-side generated ID)
-        return this.NODE_ID_REGEX.test(nodeId);
+        // Ensure boolean return and handle null/undefined
+        return !!nodeId && this.identityManager.isValidNumericId(nodeId);
     }
 
     public setXRMode(enabled: boolean): void {
@@ -162,13 +164,12 @@ export class NodeManagerFacade implements NodeManagerInterface {
         
         if (!this.isInitialized) return;
 
-        // Set the initial count on NodeInstanceManager
         logger.info(`Updating ${nodes.length} nodes in NodeManagerFacade`, createDataMetadata({
             timestamp: Date.now(),
             nodeCount: nodes.length,
             firstNodeId: nodes.length > 0 ? nodes[0].id : 'none',
             hasInstanceManager: !!this.instanceManager,
-            hasMetadataManager: !!this.metadataManager
+            hasMetadataManager: !!this.metadataManager,
         }));
 
         const shouldDebugLog = debugState.isEnabled() && debugState.isNodeDebugEnabled();
@@ -176,75 +177,46 @@ export class NodeManagerFacade implements NodeManagerInterface {
         // Filter out any nodes with invalid IDs before processing
         const validNodes = nodes.filter(node => {
             if (!this.validateNodeId(node.id)) {
-                logger.warn(`Skipping node with invalid ID format: ${node.id}. Node IDs must be numeric strings.`);
+                logger.warn(`Skipping node with invalid ID format: ${node.id}`);
                 return false;
             }
             return true;
         });
 
         if (validNodes.length < nodes.length) {
-            logger.warn(`Filtered out ${nodes.length - validNodes.length} nodes with invalid IDs`);
+            logger.warn(`Filtered out ${nodes.length - validNodes.length} nodes with invalid IDs (not numeric strings)`);
         }
 
-        // Create dedicated ID set to ensure unique handling
-        // Initialize the node-to-metadata ID mappings FIRST
-        // This ensures labels are correct from the beginning
+        // Process nodes through the identity manager to detect duplicates
+        const { duplicateLabels } = this.identityManager.processNodes(validNodes);
         
-        const mappingNodes = validNodes.map(node => ({
+        // Log duplicate labels
+        if (duplicateLabels.size > 0) {
+            logger.warn(`Found ${duplicateLabels.size} duplicate labels`, createDataMetadata({
+                duplicateLabelsCount: duplicateLabels.size
+            }));
+        }
+        
+        // Prepare metadata mappings for the metadata manager
+        const metadataMappings = validNodes.map(node => ({
             id: node.id,
-            // Prioritize metadataId from the node if available (this comes from the server)
-            metadataId: typeof (node as any).metadataId === 'string' && (node as any).metadataId 
-                ? (node as any).metadataId 
-                // Fall back to metadata.name if available
-                : (node.data.metadata?.name || ''),
-                
-            // Prioritize user-friendly labels but fall back to metadataId or numeric id
-            label: typeof (node as any).label === 'string' ? (node as any).label : 
-                  (typeof (node as any).metadataId === 'string' ? (node as any).metadataId : node.id)
+            metadataId: this.identityManager.getLabel(node.id),
+            label: this.identityManager.getLabel(node.id)
         }));
         
-        this.metadataManager.initializeMappings(mappingNodes);
-        const processedIds = new Set<string>();
+        this.metadataManager.initializeMappings(metadataMappings);
         
-        // Track node IDs and handle metadata mapping
+        // Process nodes for visualization
+        const processedIds = new Set<string>();
         validNodes.forEach((node, index) => {
             if (shouldDebugLog && index < 3) {
-                // Log the first few nodes to help debug
-                logger.debug(`Processing node ${index}: id=${node.id}, ` +
-                             `metadataId=${(node as any).metadataId || 'undefined'}, ` +
-                             `label=${(node as any).label || 'undefined'}`, 
-                              createDataMetadata({
-                                 hasMetadata: !!node.data.metadata,
-                                 metadata: node.data.metadata,
-                                 fileSize: node.data.metadata?.fileSize
-                              }));
-            }
-            
-            // *** CRITICAL: Set the label correctly ***  
-            // Use type assertion to safely add the label property
-            const oldLabel = (node as any).label;
-            
-            // Don't override existing labels with IDs if they're already set properly
-            if (typeof oldLabel === 'string' && oldLabel && oldLabel !== node.id && !/^\d+$/.test(oldLabel)) {
-                // Keep the existing label as it's already meaningful
-                // No need to change it
-                if (shouldDebugLog) {
-                    logger.debug(`Preserving existing meaningful label: ${oldLabel} for node ${node.id}`);
-                }
-            } else {
-                // Set the label based on priority: label -> metadataId -> numeric ID
-                (node as any).label = typeof (node as any).label === 'string' && !/^\d+$/.test((node as any).label)
-                   ? (node as any).label
-                    : typeof (node as any).metadataId === 'string'
-                        ? (node as any).metadataId
-                        : node.id;
-            }
-            
-            if (shouldDebugLog) {
-                logger.debug(`Setting node label: ${oldLabel || 'undefined'} -> ${(node as any).label}, id=${node.id}`, createDataMetadata({
-                    metadataId: (node as any).metadataId || 'undefined',
-                    hasMappedId: this.nodeIdToMetadataId.has(node.id)
-                }));
+                // Get the best label from our identity manager
+                const bestLabel = this.identityManager.getLabel(node.id);
+                logger.debug(`Processing node ${index}: id=${node.id}, label=${bestLabel}`, 
+                    createDataMetadata({
+                        hasMetadata: !!node.data.metadata,
+                        fileSize: node.data.metadata?.fileSize
+                    }));
             }
             
             // Skip if this node ID has already been processed in this batch
@@ -254,21 +226,13 @@ export class NodeManagerFacade implements NodeManagerInterface {
                 return;
             }
             processedIds.add(node.id);
-
-            // Store the node ID in our index map
-            this.nodeIndices.set(node.id, node.id);
             
             if (node.data.metadata) {
-                // Extract the proper metadata name/ID from the node
-                // This could be the file name without the .md extension
-                let metadataId: string = node.id; // Default to node ID
-
                 // Log position information to help diagnose issues
                 if (node.data.position && 
                     (node.data.position.x === 0 && node.data.position.y === 0 && node.data.position.z === 0)) {
                     logger.warn(`Node ${node.id} has ZERO position during updateNodes`, createDataMetadata({
-                        metadataId: (node as any).metadataId || 'undefined',
-                        label: (node as any).label || 'undefined',
+                        label: this.identityManager.getLabel(node.id),
                         position: `x:0, y:0, z:0`
                     }));
                 } else if (node.data.position) {
@@ -279,31 +243,6 @@ export class NodeManagerFacade implements NodeManagerInterface {
                 } else {
                     logger.warn(`Node ${node.id} has NO position during updateNodes`);
                 }
-                
-                // First, try using any server-provided label
-                if ('metadataId' in node && typeof node['metadataId'] === 'string') {
-                    // Prefer explicit metadataId if available (this is the filename)
-                    metadataId = node['metadataId'] as string;
-                } else if ('label' in node && typeof node['label'] === 'string') {
-                    metadataId = node['label'] as string;
-                } else if ('metadata_id' in node && typeof node['metadata_id'] === 'string') {
-                    // Next, check for a specific metadata_id property if it exists
-                    metadataId = node['metadata_id'] as string;
-                } else if (node.data.metadata.name) {
-                    // Finally, fallback to metadata name
-                    metadataId = node.data.metadata.name;
-                }
-                
-                if (metadataId && metadataId !== node.id) {
-                    this.nodeIdToMetadataId.set(node.id, metadataId);
-                    this.metadataManager.mapNodeIdToMetadataId(node.id, metadataId);
-                    if (shouldDebugLog) {
-                        logger.debug(`Mapped node ID ${node.id} to metadata ID ${metadataId}`);
-                    }
-                } 
-            }
-            if (shouldDebugLog) {
-                logger.debug('Tracking node', createDataMetadata({ nodeId: node.id }));
             }
         });
 
@@ -328,56 +267,20 @@ export class NodeManagerFacade implements NodeManagerInterface {
                         ? node.data.metadata.fileSize 
                         : DEFAULT_FILE_SIZE;
                     
-                    // Use the metadata ID from our mapping, or fall back to node.id
-                    const metadataId = this.nodeIdToMetadataId.get(node.id) || node.id;
+                    // Get the best label from our identity manager
+                    const displayName = this.identityManager.getLabel(node.id);
                     
                     if (shouldDebugLog) {
                         logger.debug('Updating node metadata', createDataMetadata({ 
                             nodeId: node.id, 
-                            metadataId,
-                            fileSize: node.data.metadata.fileSize,
-                            hyperlinkCount: node.data.metadata.hyperlinkCount || 0
+                            displayName,
+                            fileSize: node.data.metadata.fileSize
                         }));
-                    }
-                    
-                    // Check if node has a label (from server)
-                    let displayName: string = metadataId;
-                    if ('metadataId' in node && typeof node['metadataId'] === 'string') {
-                        // If label and metadataId both exist and differ, prioritize label over metadataId
-                        // as it's likely to be more human-readable
-                        if ('label' in node && 
-                            typeof node.label === 'string' && 
-                            node['label'] !== node['metadataId'] &&
-                            !this.NODE_ID_REGEX.test(node['label'])) {
-                            // Use label if it exists and is not just a numeric ID
-                            displayName = node['label'] as string;
-                            logger.debug(`Using label (${displayName}) instead of metadataId (${node['metadataId']})`);
-                        } else {
-                            // Otherwise use metadataId if label doesn't exist or is a numeric ID
-                            displayName = ('label' in node && typeof node.label === 'string' && !this.NODE_ID_REGEX.test(node.label)) ? 
-                                      node.label : node.metadataId;
-                        }
-                    } else if ('label' in node && typeof node['label'] === 'string') {
-                        displayName = node['label'] as string;
-                    } else if ('metadata_id' in node && typeof node['metadata_id'] === 'string') {
-                        displayName = node['metadata_id'] as string;
-                    } 
-                    
-                    // Verify that we're using the correct metadata ID for the displayName
-                    if (this.NODE_ID_REGEX.test(displayName)) {
-                        // If displayName is still the numeric ID, try to get a better name from our mapping
-                        const mappedLabel = this.metadataManager.getLabel(node.id) || this.nodeIdToMetadataId.get(node.id);
-                        if (mappedLabel && mappedLabel !== node.id && !this.NODE_ID_REGEX.test(mappedLabel)) {
-                            displayName = mappedLabel;
-            if (debugState.isNodeDebugEnabled()) {
-                logger.debug(`Using mapped label for node ${node.id}: ${displayName}`);
-            }
-                        }
                     }
                     
                     this.metadataManager.updateMetadata(node.id, {
                         id: node.id,
-                        name: displayName || metadataId, // Use the best name available
+                        name: displayName, // Use the best name available
                         position: node.data.position,
                         // Ensure proper metadata is set with appropriate defaults
                         commitAge: node.data.metadata.lastModified !== undefined 
@@ -397,8 +300,8 @@ export class NodeManagerFacade implements NodeManagerInterface {
         const updateElapsedTime = performance.now() - updateStartTime;
         logger.info(`Node updates completed in ${updateElapsedTime.toFixed(2)}ms`, createDataMetadata({
             nodeCount: nodes.length,
+            validNodeCount: validNodes.length,
             processedCount: processedIds.size,
-            uniqueMetadataIdCount: this.nodeIdToMetadataId.size,
             elapsedTimeMs: updateElapsedTime.toFixed(2)
         }));
     }
@@ -565,13 +468,17 @@ export class NodeManagerFacade implements NodeManagerInterface {
         // Update metadata positions to match instances
         try {
             // Only update positions every few frames for performance
-            const nodeCount = this.nodeIndices.size;
+            // Use a simple array of node IDs that we maintain in this class
+            // This avoids dependencies on internal implementation details
+            const nodeIds = this.identityManager.getAllNodeIds();
+            const nodeCount = nodeIds.length;
             
-            this.nodeIndices.forEach((id) => {
-                // Skip nodes with invalid IDs
+            // Process each node ID
+            let processedCount = 0;
+            
+            nodeIds.forEach(id => {
                 if (!this.validateNodeId(id)) {
-                    logger.warn(`Skipping metadata position update for node with invalid ID: ${id}`);
-                    return;
+                    return; // Skip invalid IDs silently during routine updates
                 }
 
                 const position = this.instanceManager.getNodePosition(id);
@@ -583,7 +490,7 @@ export class NodeManagerFacade implements NodeManagerInterface {
                 // Check for zero positions
                 if (position.x === 0 && position.y === 0 && position.z === 0) {
                     zeroPositionCount++;
-                    if (shouldLogDetail && Math.random() < 0.2) { // Only log 20% of zero positions
+                    if (shouldLogDetail && Math.random() < 0.2) {
                         logger.warn(`Node ${id} has ZERO position during metadata position update`);
                     }
                 }
@@ -597,6 +504,7 @@ export class NodeManagerFacade implements NodeManagerInterface {
                 this.tempVector.y += nodeSize * 0.03; // Drastically reduced offset for much closer label positioning
                 // Update individual label position
                 this.metadataManager.updatePosition(id, this.tempVector.clone());
+                processedCount++;
             });
             this.frameCount++;
             
@@ -605,7 +513,7 @@ export class NodeManagerFacade implements NodeManagerInterface {
                 logger.info(`Metadata position update frame ${this.frameCount}`, createDataMetadata({
                     totalNodes: nodeCount,
                     nodesWithoutPosition: noPositionCount,
-                    nodesWithZeroPosition: zeroPositionCount,
+                    processedNodes: processedCount,
                     elapsedTimeMs: updateFrameElapsedTime.toFixed(2)
                 }));
             }
@@ -628,8 +536,9 @@ export class NodeManagerFacade implements NodeManagerInterface {
             this.instanceManager.dispose();
             this.metadataManager.dispose();
             this.interactionManager.dispose();
-            this.nodeIdToMetadataId.clear();
-            this.nodeIndices.clear();
+            
+            // Dispose the identity manager
+            this.identityManager.dispose();
 
             NodeManagerFacade.instance = null!;
             this.isInitialized = false;
@@ -684,6 +593,6 @@ export class NodeManagerFacade implements NodeManagerInterface {
      * @returns Metadata ID (filename) or undefined if not found
      */
     public getMetadataId(nodeId: string): string | undefined {
-        return this.nodeIdToMetadataId.get(nodeId);
+        return this.identityManager.getLabel(nodeId);
     }
 }

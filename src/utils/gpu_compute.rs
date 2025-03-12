@@ -12,12 +12,17 @@ use crate::utils::socket_flow_messages::{BinaryNodeData, vec3data_to_array, arra
 use std::path::Path;
 use std::env;
 use tokio::sync::RwLock;
+use std::time::Duration;
+use tokio::time::sleep;
 
 // Constants for GPU computation
 const BLOCK_SIZE: u32 = 256;
 const MAX_NODES: u32 = 1_000_000;
 const NODE_SIZE: u32 = std::mem::size_of::<BinaryNodeData>() as u32;
 const SHARED_MEM_SIZE: u32 = BLOCK_SIZE * NODE_SIZE;
+// Constants for retry mechanism
+const MAX_GPU_INIT_RETRIES: u32 = 3;
+const RETRY_DELAY_MS: u64 = 500; // 500ms delay between retries
 
 // Note: CPU fallback code has been removed as we're always using GPU now
 
@@ -84,7 +89,7 @@ impl GPUCompute {
 
     pub async fn new(graph: &GraphData) -> Result<Arc<RwLock<Self>>, Error> {
         let num_nodes = graph.nodes.len() as u32;
-        info!("Initializing GPU compute with {} nodes", num_nodes);
+        info!("Initializing GPU compute with {} nodes (with retry mechanism)", num_nodes);
 
         // Check node count limit
         if num_nodes > MAX_NODES {
@@ -94,40 +99,10 @@ impl GPUCompute {
             ));
         }
 
-        // Check device capabilities
-        Self::test_gpu_capabilities()?;
-
-        info!("Attempting to create CUDA device");
-        let device = match Self::create_cuda_device() {
-            Ok(dev) => {
-                info!("CUDA device created successfully");
-                let max_threads = dev.as_ref().attribute(CUdevice_attribute_enum::CU_DEVICE_ATTRIBUTE_MAX_THREADS_PER_BLOCK as _)
-                    .map_err(|e| Error::new(ErrorKind::Other, e.to_string()))?;
-                let compute_mode = dev.as_ref().attribute(CUdevice_attribute_enum::CU_DEVICE_ATTRIBUTE_COMPUTE_MODE as _)
-                    .map_err(|e| Error::new(ErrorKind::Other, e.to_string()))?;
-                let multiprocessor_count = dev.as_ref().attribute(CUdevice_attribute_enum::CU_DEVICE_ATTRIBUTE_MULTIPROCESSOR_COUNT as _)
-                    .map_err(|e| Error::new(ErrorKind::Other, e.to_string()))?;
-                info!("GPU Device detected:");
-                info!("  Max threads per MP: {}", max_threads);
-                info!("  Multiprocessor count: {}", multiprocessor_count);
-                info!("  Compute mode: {}", compute_mode);
-                
-                if max_threads < 256 {
-                    return Err(Error::new(ErrorKind::Other, 
-                        format!("GPU capability too low. Device supports only {} threads per multiprocessor, minimum required is 256", 
-                            max_threads)));
-                }
-                dev
-            },
-            Err(e) => {
-                error!("Failed to create CUDA device: {}. Make sure CUDA drivers are installed and working.", e);
-                Self::diagnostic_cuda_info()?;
-                return Err(Error::new(ErrorKind::Other, 
-                   format!("Failed to create CUDA device: {}. See logs for diagnostic information.", e)));
-            }
-        };
-
-        Self::load_compute_kernel(device, num_nodes, graph).await
+        // Use retry mechanism for GPU initialization
+        Self::with_retry(MAX_GPU_INIT_RETRIES, RETRY_DELAY_MS, |attempt| async move {
+            Self::initialize_gpu(graph, num_nodes, attempt).await
+        }).await
     }
     
     fn test_gpu_capabilities() -> Result<(), Error> {
@@ -177,6 +152,107 @@ impl GPUCompute {
         }
         
         Ok(())
+    }
+    
+    async fn initialize_gpu(graph: &GraphData, num_nodes: u32, attempt: u32) -> Result<Arc<RwLock<Self>>, Error> {
+        info!("GPU initialization attempt {}/{}", attempt + 1, MAX_GPU_INIT_RETRIES);
+        
+        // Check device capabilities
+        match Self::test_gpu_capabilities() {
+            Ok(_) => info!("GPU capabilities check passed"),
+            Err(e) => {
+                warn!("GPU capabilities check failed on attempt {}: {}", attempt + 1, e);
+                return Err(e);
+            }
+        }
+
+        info!("Attempting to create CUDA device (attempt {}/{})", attempt + 1, MAX_GPU_INIT_RETRIES);
+        let device = match Self::create_cuda_device() {
+            Ok(dev) => {
+                info!("CUDA device created successfully");
+                let max_threads = match dev.as_ref().attribute(CUdevice_attribute_enum::CU_DEVICE_ATTRIBUTE_MAX_THREADS_PER_BLOCK as _) {
+                    Ok(val) => val,
+                    Err(e) => {
+                        warn!("Failed to get max threads attribute: {} (attempt {}/{})", e, attempt + 1, MAX_GPU_INIT_RETRIES);
+                        return Err(Error::new(ErrorKind::Other, e.to_string()));
+                    }
+                };
+                
+                let compute_mode = match dev.as_ref().attribute(CUdevice_attribute_enum::CU_DEVICE_ATTRIBUTE_COMPUTE_MODE as _) {
+                    Ok(val) => val,
+                    Err(e) => {
+                        warn!("Failed to get compute mode attribute: {} (attempt {}/{})", e, attempt + 1, MAX_GPU_INIT_RETRIES);
+                        return Err(Error::new(ErrorKind::Other, e.to_string()));
+                    }
+                };
+                
+                let multiprocessor_count = match dev.as_ref().attribute(CUdevice_attribute_enum::CU_DEVICE_ATTRIBUTE_MULTIPROCESSOR_COUNT as _) {
+                    Ok(val) => val,
+                    Err(e) => {
+                        warn!("Failed to get multiprocessor count attribute: {} (attempt {}/{})", e, attempt + 1, MAX_GPU_INIT_RETRIES);
+                        return Err(Error::new(ErrorKind::Other, e.to_string()));
+                    }
+                };
+                
+                info!("GPU Device detected:");
+                info!("  Max threads per MP: {}", max_threads);
+                info!("  Multiprocessor count: {}", multiprocessor_count);
+                info!("  Compute mode: {}", compute_mode);
+                
+                if max_threads < 256 {
+                    let err = Error::new(ErrorKind::Other, 
+                        format!("GPU capability too low. Device supports only {} threads per multiprocessor, minimum required is 256", 
+                            max_threads));
+                    warn!("GPU capability check failed: {}", err);
+                    return Err(err);
+                }
+                dev
+            },
+            Err(e) => {
+                error!("Failed to create CUDA device (attempt {}/{}): {}", attempt + 1, MAX_GPU_INIT_RETRIES, e);
+                Self::diagnostic_cuda_info()?;
+                return Err(Error::new(ErrorKind::Other, 
+                   format!("Failed to create CUDA device: {}. See logs for diagnostic information.", e)));
+            }
+        };
+
+        info!("Proceeding to load compute kernel (attempt {}/{})", attempt + 1, MAX_GPU_INIT_RETRIES);
+        Self::load_compute_kernel(device, num_nodes, graph).await
+    }
+    
+    /// Helper function to retry an operation with exponential backoff
+    async fn with_retry<F, Fut, T>(max_attempts: u32, base_delay_ms: u64, operation: F) -> Result<T, Error>
+    where
+        F: Fn(u32) -> Fut,
+        Fut: std::future::Future<Output = Result<T, Error>>,
+    {
+        let mut last_error: Option<Error> = None;
+        
+        for attempt in 0..max_attempts {
+            match operation(attempt).await {
+                Ok(result) => {
+                    if attempt > 0 {
+                        info!("Operation succeeded after {} retries", attempt);
+                    }
+                    return Ok(result);
+                }
+                Err(e) => {
+                    let delay = base_delay_ms * (1 << attempt); // Exponential backoff
+                    warn!("Operation failed (attempt {}/{}): {}. Retrying in {}ms...", 
+                          attempt + 1, max_attempts, e, delay);
+                    last_error = Some(e);
+                    
+                    if attempt + 1 < max_attempts {
+                        sleep(Duration::from_millis(delay)).await;
+                    }
+                }
+            }
+        }
+        
+        // If we get here, all attempts failed
+        error!("Operation failed after {} attempts", max_attempts);
+        Err(last_error.unwrap_or_else(|| Error::new(ErrorKind::Other, 
+            format!("All {} retry attempts failed", max_attempts))))
     }
     
     async fn load_compute_kernel(
@@ -362,7 +438,7 @@ impl GPUCompute {
     pub fn step(&mut self) -> Result<(), Error> {
         info!("Executing physics step (iteration {})", self.iteration_count);
         self.compute_forces()?;
-        
+
         if self.iteration_count % 60 == 0 {
             // Log detailed information every 60 iterations
             info!("Physics simulation status:");

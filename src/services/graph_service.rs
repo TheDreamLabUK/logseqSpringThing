@@ -29,6 +29,9 @@ static GRAPH_REBUILD_IN_PROGRESS: AtomicBool = AtomicBool::new(false);
 const NODE_POSITION_CACHE_TTL_MS: u64 = 50; // 50ms cache time
 const METADATA_FILE_WAIT_TIMEOUT_MS: u64 = 5000; // 5 second wait timeout
 const METADATA_FILE_CHECK_INTERVAL_MS: u64 = 100; // Check every 100ms
+// Constants for GPU retry mechanism
+const MAX_GPU_CALCULATION_RETRIES: u32 = 3;
+const GPU_RETRY_DELAY_MS: u64 = 500; // 500ms delay between retries
 
 #[derive(Clone)]
 pub struct GraphService {
@@ -90,7 +93,7 @@ impl GraphService {
                 let mut node_map = node_map.write().await;
                 if physics_settings.enabled {
                     if let Some(gpu) = &gpu_compute {
-                        if let Err(e) = Self::calculate_layout(gpu, &mut graph, &mut node_map, &params).await {
+                        if let Err(e) = Self::calculate_layout_with_retry(gpu, &mut graph, &mut node_map, &params).await {
                             error!("[Graph] Error updating positions: {}", e);
                         } else {
                             debug!("[Graph] Successfully calculated layout for {} nodes", graph.nodes.len());
@@ -529,6 +532,54 @@ impl GraphService {
                      node.data.position.x, 
                      node.data.position.y, 
                      node.data.position.z);
+            }
+        }
+    }
+
+    /// Helper function to retry GPU layout calculation with exponential backoff
+    pub async fn calculate_layout_with_retry(
+        gpu_compute: &Arc<RwLock<GPUCompute>>,
+        graph: &mut GraphData,
+        node_map: &mut HashMap<String, Node>, 
+        params: &SimulationParams,
+    ) -> std::io::Result<()> {
+        let mut last_error: Option<Error> = None;
+        
+        for attempt in 0..MAX_GPU_CALCULATION_RETRIES {
+            match Self::calculate_layout(gpu_compute, graph, node_map, params).await {
+                Ok(()) => {
+                    if attempt > 0 {
+                        info!("[calculate_layout] Succeeded after {} retries", attempt);
+                    }
+                    return Ok(());
+                }
+                Err(e) => {
+                    let delay = GPU_RETRY_DELAY_MS * (1 << attempt); // Exponential backoff
+                    warn!("[calculate_layout] Failed (attempt {}/{}): {}. Retrying in {}ms...", 
+                          attempt + 1, MAX_GPU_CALCULATION_RETRIES, e, delay);
+                    last_error = Some(e);
+                    
+                    if attempt + 1 < MAX_GPU_CALCULATION_RETRIES {
+                        tokio::time::sleep(Duration::from_millis(delay)).await;
+                    }
+                }
+            }
+        }
+        
+        // If we get here, all attempts failed
+        error!("[calculate_layout] Failed after {} attempts, falling back to CPU", MAX_GPU_CALCULATION_RETRIES);
+        
+        // As a fallback, try CPU calculation when GPU fails repeatedly
+        match Self::calculate_layout_cpu(graph, node_map, params) {
+            Ok(()) => {
+                info!("[calculate_layout] Successfully fell back to CPU calculation");
+                Ok(())
+            }
+            Err(cpu_err) => {
+                error!("[calculate_layout] CPU fallback also failed: {}", cpu_err);
+                // Return the last GPU error as it's likely more relevant
+                Err(last_error.unwrap_or_else(|| Error::new(ErrorKind::Other, 
+                    format!("All {} GPU retry attempts failed and CPU fallback failed", MAX_GPU_CALCULATION_RETRIES))))
             }
         }
     }
