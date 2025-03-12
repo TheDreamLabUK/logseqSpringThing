@@ -473,7 +473,8 @@ export class NodeMetadataManager {
 
         // Update metadata position
         label.metadata.position = { x: position.x, y: position.y, z: position.z };
-        // Update sprite position
+        
+        // Update sprite position directly, using settings from labels
         label.container.position.copy(position);
     }
 

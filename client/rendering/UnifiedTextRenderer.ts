@@ -49,6 +49,8 @@ export class UnifiedTextRenderer {
     private currentInstanceCount: number;
     private logger = createLogger('UnifiedTextRenderer');
     private fontAtlasGenerator: SDFFontAtlasGenerator;
+    // Reduced LABEL_SCALE by 10x
+    private readonly LABEL_SCALE = 0.05; // Was 0.5 previously
     
     constructor(camera: Camera, scene: Scene, settings: LabelSettings) {
         this.scene = scene;
@@ -293,7 +295,7 @@ export class UnifiedTextRenderer {
                 colors.set(colorArray, index * 4);
                 colors[index * 4 + 3] = 1.0;
                 
-                scales[index] = label.scale;
+                scales[index] = label.scale * this.LABEL_SCALE; // Apply LABEL_SCALE here
                 index++;
             }
         });

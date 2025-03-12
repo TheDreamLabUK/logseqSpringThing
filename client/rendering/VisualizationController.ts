@@ -26,7 +26,7 @@ import { GraphData } from '../core/types';
 import { WebSocketService } from '../websocket/websocketService';
 import { NodeMetadata } from '../types/metadata';
 import { MaterialFactory } from './factories/MaterialFactory';
-// import { SettingsStore } from '../state/SettingsStore'; // Commented out as it's unused
+import { SettingsStore } from '../state/SettingsStore';
 // import { debugState } from '../core/debugState'; // Commented out as it's unused
 import { GraphDataManager } from '../state/graphData';
 import { Node } from '../core/types';
@@ -58,6 +58,15 @@ export class VisualizationController {
     private constructor() {
         // Initialize with complete default settings
         this.currentSettings = defaultSettings;
+        
+        // Subscribe to the SettingsStore for updates
+        const settingsStore = SettingsStore.getInstance();
+        settingsStore.subscribe('', (_, value) => {
+            if (value && typeof value === 'object') {
+                this.refreshSettings(value as Settings);
+            }
+        });
+        
         this.websocketService = WebSocketService.getInstance();
         
         // Subscribe to graph data updates
@@ -230,6 +239,32 @@ export class VisualizationController {
             VisualizationController.instance = new VisualizationController();
         }
         return VisualizationController.instance;
+    }
+
+    /**
+     * Refresh all visualization settings with new settings object
+     * @param newSettings Complete settings object from the server
+     */
+    public refreshSettings(newSettings: Settings): void {
+        logger.info('Refreshing visualization settings from server');
+        
+        if (!newSettings || !newSettings.visualization) {
+            logger.warn('Invalid settings object provided to refreshSettings');
+            return;
+        }
+        
+        // Update the entire settings object
+        this.currentSettings = newSettings;
+        
+        // Apply all settings to each component
+        if (this.isInitialized) {
+            logger.info('Applying refreshed settings to visualization components');
+            this.applyVisualizationUpdates();
+            this.updatePhysicsSimulation();
+            this.updateRenderingQuality();
+        } else {
+            logger.debug('Visualization not initialized yet, settings will be applied when initialized');
+        }
     }
 
     public updateSetting(path: string, value: any): void {

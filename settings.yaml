@@ -23,19 +23,19 @@ visualization:
     - 0.01
     quality: high
   physics:
-    attraction_strength: 0.1      # Further increased for better cohesion
-    bounds_size: 10.0             # Reduced to match MAX_DISTANCE in socket_flow_constants
-    collision_radius: 0.25        # Increased to prevent nodes from getting too close
-    damping: 0.97                 # Higher damping to reduce oscillation and improve stability
+    attraction_strength: 0.2      # Increased for stronger cohesion
+    bounds_size: 8.0              # Reduced to keep nodes closer together
+    collision_radius: 0.5         # Increased to prevent nodes from getting too close
+    damping: 0.98                 # Higher damping to reduce oscillation and improve stability
     enable_bounds: true
     enabled: true
     iterations: 100
-    max_velocity: 0.02            # Further reduced to match MAX_VELOCITY in compute shader
-    repulsion_strength: 0.04      # Slightly reduced relative to attraction for better cohesion
-    spring_strength: 0.12         # Increased to improve node cohesion
-    repulsion_distance: 1.25      # Reduced to limit repulsion effects
+    max_velocity: 0.01            # Reduced to prevent nodes from moving too quickly
+    repulsion_strength: 0.03      # Reduced relative to attraction for better cohesion
+    spring_strength: 0.15         # Increased to improve node cohesion
+    repulsion_distance: 1.0       # Reduced to limit repulsion effects
     mass_scale: 1.0
-    boundary_damping: 0.95        # Further increased for better containment
+    boundary_damping: 0.98        # Increased for better containment and stability
   rendering:
     ambient_light_intensity: 0.41
     background_color: '#1a1a2e'
@@ -54,13 +54,13 @@ visualization:
     pulse_strength: 0.6
     wave_speed: 0.5
   labels:
-    desktop_font_size: 14
+    desktop_font_size: 5
     enable_labels: true
     text_color: '#000000'
     text_outline_color: '#ffffff'
     text_outline_width: 0.1
     text_resolution: 16
-    text_padding: 2
+    text_padding: 1
     billboard_mode: camera
   bloom:
     edge_bloom_strength: 0.4
@@ -73,20 +73,20 @@ visualization:
     ring_count: 2
     ring_color: '#c2a200'
     ring_opacity: 0.001
-    sphere_sizes:
-    - 0.8
-    - 1.6
+    sphere_sizes: # Reduced by factor of 10 to match default scale
+    - 8
+    - 10
     ring_rotation_speed: 10.0
-    enable_buckminster: false
-    buckminster_size: 0.0
-    buckminster_opacity: 0.0
-    enable_geodesic: false
-    geodesic_size: 0.0
-    geodesic_opacity: 0.0
+    enable_buckminster: true
+    buckminster_size: 15
+    buckminster_opacity: 0.3
+    enable_geodesic: true
+    geodesic_size: 20
+    geodesic_opacity: 0.3
     enable_triangle_sphere: true
-    triangle_sphere_size: 1.6
+    triangle_sphere_size: 30 # Reduced by factor of 10 to match default scale
     triangle_sphere_opacity: 0.15
-    global_rotation_speed: 0.03
+    global_rotation_speed: 3
 system:
   network:
     bind_address: 0.0.0.0

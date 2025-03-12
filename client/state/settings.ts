@@ -10,6 +10,7 @@ import {
     setSettingValue,
     isValidSettingPath
 } from '../types/settings/utils';
+import { VisualizationController } from '../rendering/VisualizationController';
 
 const logger = createLogger('SettingsManager');
 
@@ -55,6 +56,16 @@ export class SettingsManager {
             // Get the latest settings from the store which should have loaded them from server
             this.settings = this.store.get('') as Settings;
             logger.info('Settings updated from server after user login');
+
+            // Force refresh of visualization with new settings
+            try {
+                const visualizationController = VisualizationController.getInstance();
+                // Pass the complete settings object to the visualization controller
+                logger.info('Forcing visualization refresh with updated server settings');
+                visualizationController.refreshSettings(this.settings);
+            } catch (error) {
+                logger.warn('Failed to refresh visualization from settings manager:', createErrorMetadata(error));
+            }
         }
     }
 

@@ -134,18 +134,20 @@ export class EdgeManager {
             sourcePos.x, sourcePos.y, sourcePos.z,
             targetPos.x, targetPos.y, targetPos.z
         ]);
+        
         geometry.setAttribute('position', new BufferAttribute(positions, 3));
         
+        // Create LineBasicMaterial with higher opacity for better visibility
         const material = new LineBasicMaterial({
-            color: this.settings.visualization.edges.color,
-            transparent: true,
-            opacity: this.settings.visualization.edges.opacity
+            color: this.settings.visualization.edges.color || "#888888", 
+            transparent: true, 
+            // Use settings opacity directly instead of multiplying
+            opacity: this.settings.visualization.edges.opacity || 0.8
         });
 
-        // Create a Mesh for line rendering
-        // Note: We're using Mesh but with a line-like geometry
+        // Use Mesh with line geometry for rendering
         const line = new Mesh(geometry, material);
-        line.renderOrder = 1; // Ensure lines render on top of nodes
+        line.renderOrder = 5; // Increased to render on top of nodes
 
         // Store the edge ID in userData for identification
         line.userData = { edgeId };
@@ -217,7 +219,8 @@ export class EdgeManager {
         
         line.geometry.dispose();
         const geometry = new BufferGeometry();
-        geometry.setAttribute('position', new BufferAttribute(positions, 3));
+        geometry.setAttribute('position', new BufferAttribute(positions, 3)); 
+        
         line.geometry = geometry;
         
         logger.debug(`Edge updated: ${edgeId}`);

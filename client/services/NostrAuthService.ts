@@ -4,6 +4,8 @@ import { SettingsPersistenceService } from './SettingsPersistenceService';
 import { settingsManager } from '../state/settings';
 import { createLogger, createErrorMetadata, createDataMetadata } from '../core/logger';
 import { buildApiUrl } from '../core/api';
+import { Settings } from '../types/settings/base';
+import { VisualizationController } from '../rendering/VisualizationController';
 import { API_ENDPOINTS } from '../core/constants';
 
 const logger = createLogger('NostrAuthService');
@@ -262,6 +264,16 @@ export class NostrAuthService {
             
             // Update settings manager with server settings
             settingsManager.updateSettingsFromServer();
+
+            // Force refresh of visualization with new settings
+            try {
+                const visualizationController = VisualizationController.getInstance();
+                const currentSettings = this.settingsStore.get('') as Settings;
+                logger.info('Refreshing visualization with server settings after login');
+                visualizationController.refreshSettings(currentSettings);
+            } catch (error) {
+                logger.warn('Failed to refresh visualization settings:', createErrorMetadata(error));
+            }
             
             if (!settingsLoaded) {
                 logger.warn('Failed to load server settings after login, using defaults');
@@ -474,6 +486,16 @@ export class NostrAuthService {
             
             // Update settings manager with server settings
             settingsManager.updateSettingsFromServer();
+
+            // Force refresh of visualization with new settings
+            try {
+                const visualizationController = VisualizationController.getInstance();
+                const currentSettings = this.settingsStore.get('') as Settings;
+                logger.info('Refreshing visualization with server settings after auth check');
+                visualizationController.refreshSettings(currentSettings);
+            } catch (error) {
+                logger.warn('Failed to refresh visualization settings:', createErrorMetadata(error));
+            }
             
             if (!settingsLoaded) {
                 logger.warn('Failed to load server settings after auth check, using defaults');

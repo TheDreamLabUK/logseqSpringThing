@@ -15,12 +15,14 @@ import { platformManager } from '../platform/platformManager';
 import { createLogger, Logger } from '../core/logger';
 import { debugState } from '../core/debugState';
 import { UnifiedTextRenderer } from './UnifiedTextRenderer';
+import { NodeIdentityManager } from './node/identity/NodeIdentityManager';
 
 interface MetadataLabelGroup extends Group {
     name: string;
     userData: {
         isMetadata: boolean;
         nodeId?: string;
+        metadataName?: string;
     };
 }
 
@@ -36,6 +38,8 @@ export class MetadataVisualizer {
     private logger: Logger;
     private debugHelpers: Map<string, Object3D>;
     private labelUpdateCount: number = 0;
+    private nodeMetadataCache: Map<string, string> = new Map(); // Cache to store node ID to metadata name mapping
+    private nodeIdentityManager: NodeIdentityManager; // Add NodeIdentityManager reference
     private lastClearTime: number = 0;
     private visibilityThreshold: number = 50; // Default visibility threshold
 
@@ -45,6 +49,7 @@ export class MetadataVisualizer {
         this.metadataGroups = new Map();
         this.logger = createLogger('MetadataVisualizer');
         this.debugEnabled = debugState.isEnabled();
+        this.nodeIdentityManager = NodeIdentityManager.getInstance(); // Initialize NodeIdentityManager
         
         this.debugHelpers = new Map();
         this.visibilityThreshold = settings.visualization.labels.visibilityThreshold || 50;
@@ -87,6 +92,37 @@ export class MetadataVisualizer {
         });
     }
 
+    /**
+     * Resolve a display name for a node based on metadata
+     * This ensures we get unique names for each node
+     */
+    private resolveDisplayName(metadata: NodeMetadata, nodeId: string): string {
+        // First, check if we already have a cached name for this node
+        if (this.nodeMetadataCache.has(nodeId)) {
+            return this.nodeMetadataCache.get(nodeId) || nodeId;
+        }
+        
+        // Check if NodeIdentityManager already has a name for this node
+        const identityName = this.nodeIdentityManager.getLabel(nodeId);
+        if (identityName && identityName !== nodeId) {
+            // Update our cache with the identity manager's name
+            this.nodeMetadataCache.set(nodeId, identityName);
+            return identityName;
+        }
+        
+        // Otherwise, create a new mapping
+        const displayName = metadata.name || `Node ${nodeId}`;
+        
+        // Update the NodeIdentityManager with this name
+        if (displayName && displayName !== nodeId) {
+            this.nodeIdentityManager.setLabel(nodeId, displayName);
+        }
+        
+        // Cache this mapping for future use
+        this.nodeMetadataCache.set(nodeId, displayName);
+        return displayName;
+    }
+
     public async createMetadataLabel(metadata: NodeMetadata, nodeId: string): Promise<MetadataLabelGroup> {
         // Track how many labels we've created
         this.labelUpdateCount++;
@@ -110,7 +146,8 @@ export class MetadataVisualizer {
         group.userData = { 
             isMetadata: true,
             // Ensure we're storing the correct nodeId for position updates
-            nodeId
+            nodeId,
+            metadataName: metadata.name
         };
 
         // Format file size
@@ -140,7 +177,7 @@ export class MetadataVisualizer {
 
         // Use metadata name, ensuring we show a properly formatted name
         // Prefer the name from metadata, then fall back to ID if needed
-        const displayName = metadata.name || nodeId;
+        const displayName = this.resolveDisplayName(metadata, nodeId);
         
         // Log if we're displaying a numeric ID as the label
         if (/^\d+$/.test(displayName) && debugState.isNodeDebugEnabled()) {
@@ -167,7 +204,8 @@ export class MetadataVisualizer {
             `${metadata.hyperlinkCount || 0} links`  // Link count
         ];
 
-        const yOffsets = [0.05, 0.03, 0.01]; // Drastically reduced Y positions to keep labels almost at node position
+        // Make the yOffsets 10x smaller
+        const yOffsets = [0.005, 0.003, 0.001]; // Reduced from [0.05, 0.03, 0.01]
 
         labelTexts.forEach(async (text, index) => {
             const position = new Vector3(nodePosition.x, nodePosition.y + yOffsets[index], nodePosition.z);
@@ -238,8 +276,8 @@ export class MetadataVisualizer {
         if (group) {
             group.position.copy(position);
             
-            // Update text positions
-            const labelPositions = [0.05, 0.03, 0.01]; // Drastically reduced offsets to match createMetadataLabel
+            // Update text positions - use smaller offsets
+            const labelPositions = [0.005, 0.003, 0.001]; // Reduced from [0.05, 0.03, 0.01]
             labelPositions.forEach((yOffset, index) => {
                 const labelId = `${nodeId}-label-${index}`;
                 // Create relative position to the node with y-offset
@@ -335,6 +373,9 @@ export class MetadataVisualizer {
         });
         this.metadataGroups.clear();
         // Don't dispose the text renderer itself, as we'll reuse it
+        
+        // Clear our metadata cache when disposing
+        this.nodeMetadataCache.clear();
         // this.textRenderer.dispose();
         if (this.labelGroup.parent) {
             // Clean up debug helpers
@@ -371,6 +412,7 @@ export class MetadataVisualizer {
         });
         
         this.metadataGroups.clear();
+        this.nodeMetadataCache.clear();
         this.debugHelpers.clear();
         
         this.logger.info(`Cleared ${nodeIds.length} metadata labels`);
