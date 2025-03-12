@@ -1,5 +1,4 @@
 import { NodeIdentityManager } from '../rendering/node/identity/NodeIdentityManager';
-import { debugState } from '../core/debugState';
 import { createLogger, createDataMetadata, createErrorMetadata } from '../core/logger';
 
 const logger = createLogger('NodeLabelDiagnostics');

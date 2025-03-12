@@ -3496,6 +3496,7 @@ dependencies = [
  "rand",
  "regex",
  "reqwest",
+ "scopeguard",
  "serde",
  "serde_json",
  "serde_yaml",

@@ -180,7 +180,7 @@ export class NodeMetadataManager {
     public async createMetadataLabel(metadata: NodeMetadata): Promise<Object3D> {
         // The problem: We were using a shared canvas instance for all node labels
         // Create a unique texture for each node with its own canvas instance
-        logger.info(`Creating metadata label for node ID: ${metadata.id}, metadata name: ${metadata.name}`, 
+        logger.info(`Creating metadata label for node ID: ${metadata.id}, metadata name: ${metadata.name || 'undefined'}`, 
             createDataMetadata({ nodeId: metadata.id, name: metadata.name }));
         
         // Create a dedicated canvas for this label
@@ -204,8 +204,17 @@ export class NodeMetadataManager {
         
         // CRITICAL FIX: Simplified name resolution logic - consistent with createLabelTexture
         // First check node-to-metadata mapping, then fall back to metadata name
-        let displayName = this.nodeIdToMetadataId.get(metadata.id) || 
-                         (metadata.name && metadata.name !== 'undefined' ? metadata.name : metadata.id) || 'Unknown';
+        // Generate a unique display name for each node
+        let displayName: string;
+        if (this.nodeIdToMetadataId.has(metadata.id)) {
+            displayName = this.nodeIdToMetadataId.get(metadata.id) || `Node ${metadata.id}`;
+        } else if (metadata.name && metadata.name !== 'undefined') {
+            displayName = metadata.name;
+            this.mapNodeIdToMetadataId(metadata.id, metadata.name);
+        } else {
+            displayName = `Node ${metadata.id}`;
+            this.mapNodeIdToMetadataId(metadata.id, displayName);
+        }
 
         // Log the name resolution process for debugging
         if (debugState.isNodeDebugEnabled()) {
@@ -220,7 +229,7 @@ export class NodeMetadataManager {
         // Draw background
         context.fillStyle = 'rgba(0, 0, 0, 0.5)';
         context.fillRect(0, 0, canvas.width, canvas.height);
-        
+
         // Draw main label (filename)
         context.fillStyle = 'white';
         context.font = 'bold 20px Arial';
@@ -229,12 +238,12 @@ export class NodeMetadataManager {
         if (displayText.length > 30) {
             displayText = displayText.substring(0, 27) + '...';
         }
-        context.fillText(displayText, canvas.width / 2, 30);
+        context.fillText(displayText || "Unknown", canvas.width / 2, 30);
         
         // Draw subtext lines
         context.font = '14px Arial';
         context.fillStyle = '#dddddd';
-        
+
         // Add file size if available
         if (metadata.fileSize !== undefined && metadata.fileSize > 0) {
             const fileSizeText = this.formatFileSize(metadata.fileSize);
@@ -266,7 +275,7 @@ export class NodeMetadataManager {
         // Create a unique texture from this canvas instance
         const texture = new Texture(canvas);
         texture.needsUpdate = true;
-        
+
         const material = new SpriteMaterial({
             map: texture,
             color: 0xffffff,
@@ -302,13 +311,15 @@ export class NodeMetadataManager {
         this.scene.add(container);
 
         // If this node has a numeric ID, map it to the display name
-        if (displayName && displayName !== metadata.id) {
-            // Add or update the mapping
-            const existingMapping = this.nodeIdToMetadataId.get(metadata.id);
-            if (!existingMapping || existingMapping !== displayName) {
-                this.mapNodeIdToMetadataId(metadata.id, displayName);
-                logger.info(`Updated mapping: node ID ${metadata.id} -> "${displayName}"`);
-            }
+        // Always ensure we have a mapping, even if it's just the ID
+        // This ensures each node has its own label
+        const existingMapping = this.nodeIdToMetadataId.get(metadata.id);
+        if (!existingMapping) {
+            // If no mapping exists yet, create one
+            this.mapNodeIdToMetadataId(metadata.id, displayName);
+            logger.info(`Created new mapping: node ID ${metadata.id} -> "${displayName}"`);
+        } else if (existingMapping !== displayName) {
+            logger.info(`Note: Mapping exists but differs - ID ${metadata.id}: "${existingMapping || 'undefined'}" vs "${displayName}"`);
         }
 
         this.labels.set(metadata.id, label);
@@ -404,11 +415,14 @@ export class NodeMetadataManager {
      */
     public mapNodeIdToMetadataId(nodeId: string, metadataId: string): void {
         // Don't map empty metadata IDs
-        if (!metadataId || metadataId === 'undefined' || metadataId === 'Unknown') {
+        if (!metadataId || metadataId === 'undefined') {
             if (debugState.isNodeDebugEnabled()) {
                 logger.debug(`Skipping invalid metadata ID mapping for node ${nodeId}: "${metadataId}"`);
             }
-            return;
+            // Even for invalid metadata, create a unique fallback name
+            // This ensures each node gets a unique label
+            metadataId = `Node ${nodeId}`;
+            logger.info(`Created fallback mapping for node ${nodeId}: "${metadataId}"`);
         }
         
         // Log previous mapping if it exists and is different

@@ -10,6 +10,7 @@ use std::pin::Pin;
 use std::time::{Duration, Instant};
 use futures::Future;
 use log::{info, warn, error, debug};
+use scopeguard;
 
 use tokio::fs::File as TokioFile;
 use crate::models::graph::GraphData;
@@ -24,6 +25,9 @@ use crate::models::pagination::PaginatedGraphData;
 
 // Static flag to prevent multiple simultaneous graph rebuilds
 static GRAPH_REBUILD_IN_PROGRESS: AtomicBool = AtomicBool::new(false);
+
+// Static flag to track if a simulation loop is already running
+static SIMULATION_LOOP_RUNNING: AtomicBool = AtomicBool::new(false);
 
 // Cache configuration
 const NODE_POSITION_CACHE_TTL_MS: u64 = 50; // 50ms cache time
@@ -71,6 +75,13 @@ impl GraphService {
         let node_positions_cache = Arc::clone(&graph_service.node_positions_cache);
         let gpu_compute = graph_service.gpu_compute.clone();
         
+        // Check if a simulation loop is already running
+        if SIMULATION_LOOP_RUNNING.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_err() {
+            warn!("[GraphService] Simulation loop already running, skipping duplicate initialization");
+            return graph_service;
+        }
+        info!("[GraphService] Starting physics simulation loop");
+        
         tokio::spawn(async move {
             let params = SimulationParams {
                 iterations: physics_settings.iterations,
@@ -87,8 +98,11 @@ impl GraphService {
                 mode: SimulationMode::Remote,
             };
             
+            // Create a guard to reset the flag when the loop exits
+            let _guard = scopeguard::guard((), |_| { SIMULATION_LOOP_RUNNING.store(false, Ordering::SeqCst); });
             loop {
                 // Update positions
+                debug!("[Graph] Starting physics calculation iteration");
                 let mut graph = graph_data.write().await;
                 let mut node_map = node_map.write().await;
                 if physics_settings.enabled {
@@ -96,6 +110,7 @@ impl GraphService {
                         if let Err(e) = Self::calculate_layout_with_retry(gpu, &mut graph, &mut node_map, &params).await {
                             error!("[Graph] Error updating positions: {}", e);
                         } else {
+                            debug!("[Graph] GPU calculation completed successfully");
                             debug!("[Graph] Successfully calculated layout for {} nodes", graph.nodes.len());
                         }
                     } else {
@@ -104,6 +119,7 @@ impl GraphService {
                         if let Err(e) = Self::calculate_layout_cpu(&mut graph, &mut node_map, &params) {
                             error!("[Graph] Error updating positions with CPU fallback: {}", e);
                         } else {
+                            debug!("[Graph] CPU calculation completed successfully");
                             debug!("[Graph] Successfully calculated layout with CPU fallback for {} nodes", graph.nodes.len());
                         }
                     }
@@ -111,6 +127,7 @@ impl GraphService {
                     debug!("[Graph] Physics disabled in settings - skipping physics calculation");
                 }
                 drop(graph); // Release locks
+                debug!("[Graph] Released locks after physics calculation");
                 drop(node_map);
                 // Sleep for ~16ms (60fps)
                 tokio::time::sleep(tokio::time::Duration::from_millis(16)).await;
@@ -543,6 +560,7 @@ impl GraphService {
         node_map: &mut HashMap<String, Node>, 
         params: &SimulationParams,
     ) -> std::io::Result<()> {
+        debug!("[calculate_layout_with_retry] Starting GPU calculation with retry mechanism");
         let mut last_error: Option<Error> = None;
         
         for attempt in 0..MAX_GPU_CALCULATION_RETRIES {
@@ -550,6 +568,7 @@ impl GraphService {
                 Ok(()) => {
                     if attempt > 0 {
                         info!("[calculate_layout] Succeeded after {} retries", attempt);
+                        debug!("[calculate_layout_with_retry] GPU calculation succeeded after retries");
                     }
                     return Ok(());
                 }
@@ -567,6 +586,7 @@ impl GraphService {
         }
         
         // If we get here, all attempts failed
+        debug!("[calculate_layout_with_retry] All GPU attempts failed, falling back to CPU");
         error!("[calculate_layout] Failed after {} attempts, falling back to CPU", MAX_GPU_CALCULATION_RETRIES);
         
         // As a fallback, try CPU calculation when GPU fails repeatedly
@@ -681,6 +701,7 @@ impl GraphService {
         node_map: &mut HashMap<String, Node>,
         params: &SimulationParams,
     ) -> std::io::Result<()> {
+        debug!("[calculate_layout_cpu] Starting CPU calculation with {} nodes", graph.nodes.len());
         // Get current timestamp for performance tracking
         let start_time = std::time::Instant::now();
         
@@ -865,7 +886,7 @@ impl GraphService {
         // Log performance info
         let elapsed = start_time.elapsed();
         info!("[calculate_layout_cpu] Updated positions for {} nodes in {:?}", 
-              graph.nodes.len(), elapsed);
+             graph.nodes.len(), elapsed);
         
         Ok(())
     }

@@ -1,5 +1,4 @@
 import { createLogger, createDataMetadata } from '../../../core/logger';
-import { debugState } from '../../../core/debugState';
 
 const logger = createLogger('NodeIdentityManager');
 
