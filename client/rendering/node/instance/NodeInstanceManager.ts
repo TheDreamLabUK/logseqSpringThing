@@ -73,7 +73,7 @@ export class NodeInstanceManager {
     private settingsStore: SettingsStore;
     private nodeSettings: NodeSettings;
     private readonly MAX_POSITION = 1000.0; // Reasonable limit for graph visualization
-    private readonly MAX_VELOCITY = 0.05;   // Reduced to align with server's MAX_VELOCITY (0.02)
+    private readonly MAX_VELOCITY = 0.5;    // Increased to allow more movement for simulation settling
     private isReady: boolean = false;
     private positionUpdateCount: number = 0;
     private lastPositionLog: number = 0;
@@ -355,39 +355,32 @@ export class NodeInstanceManager {
         updates.forEach(update => {
             const index = this.nodeIndices.get(update.id);
             
-            // Validate and clamp position
-            position.copy(update.position); // Using Three.js Vector3 copy
-            
-            const isValid = this.validateVector3(position, this.MAX_POSITION);
-            if (!isValid) {
-                logger.warn('Position validation failed, attempting recovery', createDataMetadata({
-                    nodeId: update.id,
-                    component: 'position',
-                    maxAllowed: this.MAX_POSITION,
-                    originalPosition: { x: position.x, y: position.y, z: position.z }
-                }));
-                
-                position.x = Math.max(-this.MAX_POSITION, Math.min(this.MAX_POSITION, position.x));
-                position.y = Math.max(-this.MAX_POSITION, Math.min(this.MAX_POSITION, position.y));
-                position.z = Math.max(-this.MAX_POSITION, Math.min(this.MAX_POSITION, position.z));
-            }
+            // CRITICAL FIX: Use server position directly with minimal validation
+            // Just copy the position from the update without excessive validation
+            position.copy(update.position);
 
-            // Validate and clamp velocity if present
+            // Only check for NaN or infinite values in position, but don't aggressively clamp
+            if (isNaN(position.x) || !isFinite(position.x)) position.x = 0;
+            if (isNaN(position.y) || !isFinite(position.y)) position.y = 0;
+            if (isNaN(position.z) || !isFinite(position.z)) position.z = 0;
+            
+            // Handle velocity with less clamping to allow faster settling
             if (update.velocity) {
-                velocity.copy(update.velocity); // Using Three.js Vector3 copy
-                if (!this.validateAndLogVector3(velocity, this.MAX_VELOCITY, 'velocity', update.id)) {
-                    if (debugState.isNodeDebugEnabled()) {
-                        logger.node('Velocity validation failed, attempting recovery', createDataMetadata({
-                            nodeId: update.id,
+                velocity.copy(update.velocity);
+                
+                // Only fix NaN/infinite values in velocity, but don't clamp magnitude
+                if (isNaN(velocity.x) || !isFinite(velocity.x) || 
+                    isNaN(velocity.y) || !isFinite(velocity.y) ||
+                    isNaN(velocity.z) || !isFinite(velocity.z)) {
+                    logger.warn('Invalid velocity value detected', createDataMetadata({
+                            nodeId: update.id, 
                             originalVelocity: { x: velocity.x, y: velocity.y, z: velocity.z }
-                        }));
-                    }
-                    if (debugState.isEnabled()) {
-                        logger.warn(`Invalid velocity for node ${update.id}, clamping to valid range`);
-                    }
-                    velocity.x = Math.max(-this.MAX_VELOCITY, Math.min(this.MAX_VELOCITY, velocity.x));
-                    velocity.y = Math.max(-this.MAX_VELOCITY, Math.min(this.MAX_VELOCITY, velocity.y));
-                    velocity.z = Math.max(-this.MAX_VELOCITY, Math.min(this.MAX_VELOCITY, velocity.z));
+                    }));
+                    
+                    // Only fix NaN values, not clamp magnitudes
+                    if (isNaN(velocity.x) || !isFinite(velocity.x)) velocity.x = 0;
+                    if (isNaN(velocity.y) || !isFinite(velocity.y)) velocity.y = 0;
+                    if (isNaN(velocity.z) || !isFinite(velocity.z)) velocity.z = 0;
                 }
                 
                 // Log velocity data for the first few nodes to help debug node movement

@@ -869,10 +869,11 @@ export class GraphDataManager {
 
         // Only update if the position changed significantly
         const existingNode = this.nodes.get(nodeId);
-        const distance = existingNode ? nodePosition.distanceTo(existingNode.data.position) : 0;
-        if (existingNode && distance * distance > 0.001) { // Square the distance manually
-          // Buffer this update
-          this.positionUpdateBuffer.set(nodeId, nodePosition);
+        
+        // CRITICAL FIX: Don't apply deadband filtering on server physics updates
+        // Always accept position updates from the server's physics simulation
+        if (existingNode) {
+            this.positionUpdateBuffer.set(nodeId, nodePosition);
         }
       } catch (error) {
         logger.warn(`Error processing position for node index ${i}:`, error);
