@@ -25,6 +25,17 @@ export class EdgeManager {
         this.settings = settings;
         this.nodeInstanceManager = nodeInstanceManager;
         logger.info('EdgeManager initialized');
+        
+        // Add constructor validation
+        if (!this.scene) {
+            logger.error("Scene is null or undefined in EdgeManager constructor");
+        }
+        if (!this.settings) {
+            logger.error("Settings are null or undefined in EdgeManager constructor");
+        }
+        if (!this.nodeInstanceManager) {
+            logger.error("NodeInstanceManager is null or undefined in EdgeManager constructor");
+        }
     }
 
     /**
@@ -38,14 +49,17 @@ export class EdgeManager {
     }
 
     public updateEdges(edges: Edge[]): void {
-        logger.info(`Updating ${edges.length} edges`);
+        logger.info(`Updating ${edges.length} edges, current edge count: ${this.edges.size}`);
 
         const newEdges: Edge[] = [];
         const existingEdges: Edge[] = [];
 
+        const currentEdgeIds = new Set(edges.map(edge => `${edge.source}-${edge.target}`));
         for (const edge of edges) {
             // Use numeric IDs for edge identification
             const edgeId = `${edge.source}-${edge.target}`;
+
+            logger.debug(`Checking edge: ${edgeId}`);
 
             if (this.edges.has(edgeId)) {
                 existingEdges.push(edge);
@@ -54,18 +68,21 @@ export class EdgeManager {
             }
         }
 
+        logger.debug(`Found ${newEdges.length} new edges and ${existingEdges.length} existing edges`);
+
         // Add new edges
         for (const edge of newEdges) {
+            logger.debug(`Creating edge: ${edge.source}-${edge.target}`);
             this.createEdge(edge);
         }
 
         // Update existing edges (positions might have changed)
         for (const edge of existingEdges) {
+            logger.debug(`Updating edge: ${edge.source}-${edge.target}`);
             this.updateEdge(edge);
         }
 
         // Remove old edges (not in the new set)
-        const currentEdgeIds = new Set(edges.map(edge => `${edge.source}-${edge.target}`));
         for (const edgeId of this.edges.keys()) {
             if (!currentEdgeIds.has(edgeId)) {
                 this.removeEdge(edgeId);
@@ -79,16 +96,30 @@ export class EdgeManager {
         // Get node positions from NodeInstanceManager using numeric IDs
         const sourcePos = this.nodeInstanceManager.getNodePosition(edge.source);
         const targetPos = this.nodeInstanceManager.getNodePosition(edge.target);
+        
+        logger.debug(`Creating edge ${edgeId}`, { 
+            source: edge.source,
+            target: edge.target,
+            sourcePos: sourcePos ? [sourcePos.x, sourcePos.y, sourcePos.z] : null,
+            targetPos: targetPos ? [targetPos.x, targetPos.y, targetPos.z] : null
+        });
 
         if (!sourcePos || !targetPos) {
-            // Handle cases where node positions might not be available yet
-            logger.warn(`Skipping edge creation for ${edgeId} due to missing node positions`);
+            logger.warn(`Skipping edge creation for ${edgeId} due to missing node positions. Source exists: ${!!sourcePos}, Target exists: ${!!targetPos}`);
             return;
         }
 
-        // Validate positions
-        if (!this.validateVector3(sourcePos) || !this.validateVector3(targetPos)) {
-            logger.warn(`Skipping edge creation for ${edgeId} due to invalid node positions`);
+        const isSourceValid = this.validateVector3(sourcePos);
+        const isTargetValid = this.validateVector3(targetPos);
+
+        if (!isSourceValid || !isTargetValid) {
+            logger.warn(`Skipping edge creation for ${edgeId} due to invalid node positions. Source valid: ${isSourceValid}, Target valid: ${isTargetValid}`);
+            if (!isSourceValid) {
+                logger.warn(`Invalid source position: [${sourcePos.x}, ${sourcePos.y}, ${sourcePos.z}]`);
+            }
+            if (!isTargetValid) {
+                logger.warn(`Invalid target position: [${targetPos.x}, ${targetPos.y}, ${targetPos.z}]`);
+            }
             return;
         }
 
@@ -119,7 +150,16 @@ export class EdgeManager {
         line.layers.enable(1);
         
         this.edges.set(edgeId, line);
+        
+        // Add to scene and check
         this.scene.add(line);
+        
+        // Verify the edge was added to the scene
+        logger.debug(`Edge created: ${edgeId}, visible: ${line.visible}, layers: ${line.layers.mask}`);
+        
+        // Log the material properties
+        const mat = line.material as LineBasicMaterial;
+        logger.debug(`Edge material: color=${mat.color.toString()}, opacity=${mat.opacity}, transparent=${mat.transparent}`);
     }
 
     private updateEdge(edge: Edge): void {
@@ -136,11 +176,19 @@ export class EdgeManager {
         const targetPos = this.nodeInstanceManager.getNodePosition(edge.target);
 
         if (!sourcePos || !targetPos) {
+            logger.warn(`Cannot update edge ${edgeId}: missing node positions`);
             return;
         }
 
         // Validate positions
-        if (!this.validateVector3(sourcePos) || !this.validateVector3(targetPos)) {
+        const isSourceValid = this.validateVector3(sourcePos);
+        const isTargetValid = this.validateVector3(targetPos);
+        
+        if (!isSourceValid || !isTargetValid) {
+            logger.warn(`Skipping edge update for ${edgeId} due to invalid node positions. ` + 
+                        `Source valid: ${isSourceValid}, Target valid: ${isTargetValid}`);
+            if (!isSourceValid) logger.warn(`Invalid source position: [${sourcePos.x}, ${sourcePos.y}, ${sourcePos.z}]`);
+            if (!isTargetValid) logger.warn(`Invalid target position: [${targetPos.x}, ${targetPos.y}, ${targetPos.z}]`);
             return;
         }
 
@@ -154,19 +202,26 @@ export class EdgeManager {
         const geometry = new BufferGeometry();
         geometry.setAttribute('position', new BufferAttribute(positions, 3));
         line.geometry = geometry;
+        
+        logger.debug(`Edge updated: ${edgeId}`);
     }
 
     private removeEdge(edgeId: string): void {
         const edge = this.edges.get(edgeId);
         if (edge) {
+            logger.debug(`Removing edge: ${edgeId}`);
             this.scene.remove(edge);
             edge.geometry.dispose();
             if (Array.isArray(edge.material)) {
+                logger.debug(`Disposing ${edge.material.length} materials for edge ${edgeId}`);
                 edge.material.forEach((m: Material) => m.dispose());
             } else {
+                logger.debug(`Disposing material for edge ${edgeId}`);
                 edge.material.dispose();
             }
             this.edges.delete(edgeId);
+        } else {
+            logger.warn(`Attempted to remove non-existent edge: ${edgeId}`);
         }
     }
 
@@ -187,6 +242,7 @@ export class EdgeManager {
      */
     public setXRMode(enabled: boolean): void {
         // Set appropriate layer visibility for all edges
+        logger.info(`Setting XR mode for ${this.edges.size} edges: ${enabled ? 'enabled' : 'disabled'}`);
         this.edges.forEach(edge => {
             if (enabled) {
                 // In XR mode, only show on layer 1

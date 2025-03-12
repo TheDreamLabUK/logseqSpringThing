@@ -171,10 +171,13 @@ impl GraphService {
 
     pub async fn build_graph_from_metadata(metadata: &MetadataStore) -> Result<GraphData, Box<dyn std::error::Error + Send + Sync>> {
         // Check if a rebuild is already in progress
+        info!("Building graph from {} metadata entries", metadata.len());
+        debug!("Building graph from {} metadata entries", metadata.len());
+        
         if GRAPH_REBUILD_IN_PROGRESS.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_err() {
             warn!("Graph rebuild already in progress, skipping duplicate rebuild");
             return Err("Graph rebuild already in progress".into());
-        }
+        }      
         
         // Create a guard struct to ensure the flag is reset when this function returns
         struct RebuildGuard;
@@ -192,10 +195,12 @@ impl GraphService {
 
         // First pass: Create nodes from files in metadata
         let mut valid_nodes = HashSet::new();
+        debug!("Creating nodes from {} metadata entries", metadata.len());
         for file_name in metadata.keys() {
             let node_id = file_name.trim_end_matches(".md").to_string();
             valid_nodes.insert(node_id);
         }
+        debug!("Created valid_nodes set with {} nodes", valid_nodes.len());
 
         // Create nodes for all valid node IDs
         for node_id in &valid_nodes {
@@ -261,8 +266,9 @@ impl GraphService {
         }
 
         // Store metadata in graph
+        debug!("Storing {} metadata entries in graph", metadata.len());
         graph.metadata = metadata.clone();
-
+        debug!("Created {} nodes in graph", graph.nodes.len());
         // Second pass: Create edges from topic counts
         for (source_file, metadata) in metadata.iter() {
             let source_id = source_file.trim_end_matches(".md").to_string();
@@ -273,6 +279,7 @@ impl GraphService {
             }
             let source_numeric_id = source_node.unwrap().id.clone();
             
+            debug!("Processing edges for source: {} (ID: {})", source_id, source_numeric_id);
             for (target_file, count) in &metadata.topic_counts {
                 let target_id = target_file.trim_end_matches(".md").to_string();
                 // Find the node with this metadata_id to get its numeric ID
@@ -281,7 +288,9 @@ impl GraphService {
                     continue; // Skip if node not found
                 }
                 let target_numeric_id = target_node.unwrap().id.clone();
-                
+
+                debug!("  Edge: {} -> {} (weight: {})", source_numeric_id, target_numeric_id, count);
+
                 // Only create edge if both nodes exist and they're different
                 if source_numeric_id != target_numeric_id {
                     let edge_key = if source_numeric_id < target_numeric_id {
@@ -298,6 +307,12 @@ impl GraphService {
         }
 
         // Convert edge map to edges
+        debug!("Edge map contains {} unique connections", edge_map.len());
+        for ((source, target), weight) in &edge_map {
+            debug!("Edge map entry: {} -- {} (weight: {})", source, target, weight);
+        }
+
+        debug!("Converting edge map to {} edges", edge_map.len());
         graph.edges = edge_map.into_iter()
             .map(|((source, target), weight)| {
                 Edge::new(source, target, weight)
@@ -308,10 +323,12 @@ impl GraphService {
         Self::initialize_random_positions(&mut graph);
 
         info!("Built graph with {} nodes and {} edges", graph.nodes.len(), graph.edges.len());
+        debug!("Completed graph build: {} nodes, {} edges", graph.nodes.len(), graph.edges.len());
         Ok(graph)
     }
 
     pub async fn build_graph(state: &web::Data<AppState>) -> Result<GraphData, Box<dyn std::error::Error + Send + Sync>> {
+        info!("Building graph from app state");
         // Check if a rebuild is already in progress
         if GRAPH_REBUILD_IN_PROGRESS.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_err() {
             warn!("Graph rebuild already in progress, skipping duplicate rebuild");
@@ -331,10 +348,12 @@ impl GraphService {
         let current_graph = state.graph_service.get_graph_data_mut().await;
         let mut graph = GraphData::new();
         let mut node_map = HashMap::new();
+        debug!("Starting graph build process");
 
         // Copy metadata from current graph
         graph.metadata = current_graph.metadata.clone();
-
+        debug!("Copied {} metadata entries from current graph", graph.metadata.len());
+        
         let mut edge_map = HashMap::new();
 
         // Create nodes from metadata entries
@@ -343,6 +362,7 @@ impl GraphService {
             let node_id = file_name.trim_end_matches(".md").to_string();
             valid_nodes.insert(node_id);
         }
+        debug!("Created valid_nodes set with {} nodes", valid_nodes.len());
 
         // Create nodes for all valid node IDs
         for node_id in &valid_nodes {
@@ -410,6 +430,7 @@ impl GraphService {
         // Create edges from metadata topic counts
         for (source_file, metadata) in graph.metadata.iter() {
             let source_id = source_file.trim_end_matches(".md").to_string();
+            debug!("Processing edges for source file: {}", source_file);
             // Find the node with this metadata_id to get its numeric ID
             let source_node = graph.nodes.iter().find(|n| n.metadata_id == source_id);
             if source_node.is_none() {
@@ -422,11 +443,13 @@ impl GraphService {
                 let target_id = target_file.trim_end_matches(".md").to_string();
                 // Find the node with this metadata_id to get its numeric ID
                 let target_node = graph.nodes.iter().find(|n| n.metadata_id == target_id);
+                debug!("  Processing potential edge: {} -> {} (count: {})", source_id, target_id, count);
                 if target_node.is_none() {
                     continue; // Skip if node not found
                 }
                 let target_numeric_id = target_node.unwrap().id.clone();
-                
+                debug!("  Found target node: {} (ID: {})", target_id, target_numeric_id);
+
                 // Only create edge if both nodes exist and they're different
                 if source_numeric_id != target_numeric_id {
                     let edge_key = if source_numeric_id < target_numeric_id {
@@ -435,6 +458,7 @@ impl GraphService {
                         (target_numeric_id.clone(), source_numeric_id.clone())
                     };
 
+                    debug!("  Creating/updating edge: {:?} with weight {}", edge_key, count);
                     // Sum the weights for bi-directional references
                     edge_map.entry(edge_key)
                         .and_modify(|w| *w += *count as f32)
@@ -443,7 +467,14 @@ impl GraphService {
             }
         }
 
+        // Log edge_map contents before transformation
+        debug!("Edge map contains {} unique connections", edge_map.len());
+        for ((source, target), weight) in &edge_map {
+            debug!("Edge map entry: {} -- {} (weight: {})", source, target, weight);
+        }
+
         // Convert edge map to edges
+        debug!("Converting edge map to {} edges", edge_map.len());
         graph.edges = edge_map.into_iter()
             .map(|((source, target), weight)| {
                 Edge::new(source, target, weight)
@@ -454,6 +485,7 @@ impl GraphService {
         Self::initialize_random_positions(&mut graph);
 
         info!("Built graph with {} nodes and {} edges", graph.nodes.len(), graph.edges.len());
+        debug!("Completed graph build: {} nodes, {} edges", graph.nodes.len(), graph.edges.len());
         Ok(graph)
     }
 

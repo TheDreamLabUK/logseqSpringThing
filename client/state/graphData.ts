@@ -497,7 +497,7 @@ export class GraphDataManager {
   updateGraphData(data: any): void {
     // Transform and validate incoming data
     const transformedData = transformGraphData(data);
-    throttledDebugLog(`Updating graph data. Incoming: ${transformedData.nodes.length} nodes, ${transformedData.edges?.length || 0} edges. First 3 node IDs: ${transformedData.nodes.slice(0, 3).map(n => n.id).join(', ')}`);
+    logger.info(`Updating graph data. Incoming: ${transformedData.nodes.length} nodes, ${transformedData.edges?.length || 0} edges. First 3 node IDs: ${transformedData.nodes.slice(0, 3).map(n => n.id).join(', ')}`);
     
     // Debug edge source/target IDs
     if (transformedData.edges && transformedData.edges.length > 0) {
@@ -554,9 +554,18 @@ export class GraphDataManager {
     });
 
     // Store edges in Map with generated IDs
+    if (debugState.isDataDebugEnabled()) {
+      logger.debug(`Processing ${transformedData.edges?.length || 0} edges. Current edge count: ${this.edges.size}`);
+    }
+    
     if (Array.isArray(transformedData.edges)) {
+      let edgesAdded = 0;
+      let edgesSkipped = 0;
+      
       transformedData.edges.forEach((edge: Edge) => {
         const edgeId = this.createEdgeId(edge.source, edge.target);
+        if (debugState.isDataDebugEnabled())
+          logger.debug(`Processing edge: ${edge.source}->${edge.target} (ID: ${edgeId})`);
         
         // Check if source and target nodes exist
         if (!this.nodes.has(edge.source) || !this.nodes.has(edge.target)) {
@@ -566,8 +575,10 @@ export class GraphDataManager {
           // We'll log this condition to help debug pagination issues
           if (this.nodes.size > 0 && debugState.isNodeDebugEnabled()) {
           }
-          throttledDebugLog(`Skipping edge ${edge.source}->${edge.target} due to missing node(s)`);
+          logger.warn(`Skipping edge ${edge.source}->${edge.target} due to missing node(s). Source exists: ${this.nodes.has(edge.source)}, Target exists: ${this.nodes.has(edge.target)}`);
+          edgesSkipped++;
           return;
+          
         }
         
         const edgeWithId: EdgeWithId = {
@@ -575,7 +586,16 @@ export class GraphDataManager {
           id: edgeId
         };
         this.edges.set(edgeId, edgeWithId);
+        edgesAdded++;
+        
+        if (debugState.isDataDebugEnabled()) {
+          logger.debug(`Added edge ${edgeId}: ${edge.source}->${edge.target}`);
+        }
       });
+      
+      if (edgesAdded > 0 || edgesSkipped > 0) {
+        logger.info(`Edge processing complete: ${edgesAdded} edges added, ${edgesSkipped} edges skipped. Total edges: ${this.edges.size}`);
+      }
     }
 
     // Update metadata, including pagination info if available
@@ -591,7 +611,7 @@ export class GraphDataManager {
 
     // Notify listeners
     this.notifyUpdateListeners();
-    throttledDebugLog(`Updated graph data: ${this.nodes.size} nodes, ${this.edges.size} edges`);
+    logger.info(`Updated graph data: ${this.nodes.size} nodes, ${this.edges.size} edges`);
   }
 
   /**
