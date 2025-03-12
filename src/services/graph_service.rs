@@ -3,6 +3,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use tokio::sync::RwLock;
 use std::collections::{HashMap, HashSet};
 use actix_web::web;
+use rand::distributions::{Alphanumeric, DistString};
 use rand::Rng;
 use std::io::{Error, ErrorKind};
 use serde_json;
@@ -22,12 +23,19 @@ use crate::config::Settings;
 use crate::utils::gpu_compute::GPUCompute;
 use crate::models::simulation_params::{SimulationParams, SimulationPhase, SimulationMode};
 use crate::models::pagination::PaginatedGraphData;
+use tokio::sync::Mutex;
+use once_cell::sync::Lazy;
 
 // Static flag to prevent multiple simultaneous graph rebuilds
 static GRAPH_REBUILD_IN_PROGRESS: AtomicBool = AtomicBool::new(false);
 
-// Static flag to track if a simulation loop is already running
+// Static flag to track if a simulation loop is already running and current simulation ID
 static SIMULATION_LOOP_RUNNING: AtomicBool = AtomicBool::new(false);
+
+// A mutex to synchronize simulation loop creation and shutdown
+// This is necessary to avoid race conditions when a new GraphService is created
+// while an old one is being shut down
+static SIMULATION_MUTEX: Lazy<Mutex<String>> = Lazy::new(|| Mutex::new(String::new()));
 
 // Cache configuration
 const NODE_POSITION_CACHE_TTL_MS: u64 = 50; // 50ms cache time
@@ -44,21 +52,42 @@ pub struct GraphService {
     gpu_compute: Option<Arc<RwLock<GPUCompute>>>,
     node_positions_cache: Arc<RwLock<Option<(Vec<Node>, Instant)>>>,
     cache_enabled: bool,
+    simulation_id: String,
+    shutdown_requested: Arc<AtomicBool>,
 }
 
 impl GraphService {
     pub async fn new(settings: Arc<RwLock<Settings>>, gpu_compute: Option<Arc<RwLock<GPUCompute>>>) -> Self {
         // Get physics settings
         let physics_settings = settings.read().await.visualization.physics.clone();
+
+        // Generate a unique ID for this GraphService instance
+        let simulation_id = Alphanumeric.sample_string(&mut rand::thread_rng(), 8);
+        info!("[GraphService::new] Creating new GraphService instance with ID: {}", simulation_id);
+        
+        // Acquire the mutex to ensure exclusive access during initialization
+        let mut guard = SIMULATION_MUTEX.lock().await;
+        
+        // Check if there's already an instance running
+        let is_running = SIMULATION_LOOP_RUNNING.load(Ordering::SeqCst);
+        if is_running {
+            error!("[GraphService::new] 🚨 CRITICAL: A simulation loop is already running with ID: {}! Creating a new GraphService without shutting down the previous one may cause dual simulation loops.", *guard);
+            warn!("[GraphService::new] Current simulation ID: {} will replace previous ID: {}", simulation_id, *guard);
+        }
+        
+        // Create the shared node map
         let node_map = Arc::new(RwLock::new(HashMap::new()));
 
-        // Log GPU compute status for debugging
         if gpu_compute.is_some() {
             info!("[GraphService] GPU compute is enabled - physics simulation will run");
+            info!("[GraphService] Testing GPU compute functionality at startup");
+            tokio::spawn(Self::test_gpu_at_startup(gpu_compute.clone()));
         } else {
-            warn!("[GraphService] GPU compute is NOT enabled - physics simulation will use CPU fallback");
+            error!("[GraphService] GPU compute is NOT enabled - physics simulation will use CPU fallback");
         }
 
+        // Create shutdown signal
+        let shutdown_requested = Arc::new(AtomicBool::new(false));
         // Create the GraphService with caching enabled 
         let _cache = Arc::new(RwLock::new(Option::<(Vec<Node>, Instant)>::None));
         let graph_service = Self {
@@ -67,21 +96,46 @@ impl GraphService {
             gpu_compute,
             node_positions_cache: Arc::new(RwLock::new(None)),
             cache_enabled: true,
-            // Node position randomization is now handled entirely by the client side
+            simulation_id: simulation_id.clone(),
+            shutdown_requested: shutdown_requested.clone(),
         };
         
-        // Start simulation loop
+        // Prepare for simulation loop
         let graph_data = Arc::clone(&graph_service.graph_data);
         let node_positions_cache = Arc::clone(&graph_service.node_positions_cache);
         let gpu_compute = graph_service.gpu_compute.clone();
+        let loop_simulation_id = simulation_id.clone();
         
-        // Check if a simulation loop is already running
-        if SIMULATION_LOOP_RUNNING.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_err() {
-            warn!("[GraphService] Simulation loop already running, skipping duplicate initialization");
-            return graph_service;
+        // Log more detailed information about the GPU compute status
+        if gpu_compute.is_some() {
+            info!("[GraphService] 🔹 GPU compute is enabled and will be used for physics simulation (ID: {})", simulation_id);
+            // Try to gather device information
+            if let Some(gpu) = &gpu_compute {
+                if let Ok(gpu_lock) = gpu.try_read() {
+                    info!("[GraphService] GPU device information: iterations={} (ID: {})", gpu_lock.iteration_count, simulation_id);
+                }
+            }
+        } else {
+            warn!("[GraphService] 🔸 GPU compute is NOT available - will use CPU fallback for physics (ID: {})", simulation_id);
         }
-        info!("[GraphService] Starting physics simulation loop");
         
+        // Update the current simulation ID in the shared mutex
+        *guard = simulation_id.clone();
+        
+        // Check if a simulation loop is already running and attempt to replace it
+        if SIMULATION_LOOP_RUNNING.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_err() {
+            warn!("[GraphService] Simulation loop already running, attempting to replace it (new ID: {})", simulation_id);
+            // We're replacing an existing simulation, wait for the flag to be reset
+            // by forcing a reset ourselves since we have the mutex
+            SIMULATION_LOOP_RUNNING.store(false, Ordering::SeqCst);
+            // Then set it again for our new loop
+            SIMULATION_LOOP_RUNNING.store(true, Ordering::SeqCst);
+        }
+        
+        // Release the mutex before spawning the task
+        drop(guard);
+        
+        info!("[GraphService] Starting physics simulation loop (ID: {})", loop_simulation_id);
         tokio::spawn(async move {
             let params = SimulationParams {
                 iterations: physics_settings.iterations,
@@ -98,46 +152,146 @@ impl GraphService {
                 mode: SimulationMode::Remote,
             };
             
-            // Create a guard to reset the flag when the loop exits
-            let _guard = scopeguard::guard((), |_| { SIMULATION_LOOP_RUNNING.store(false, Ordering::SeqCst); });
+            // Create a guard to reset the flag when the task exits
+            let loop_guard = scopeguard::guard((), |_| { 
+                info!("[Graph] Physics simulation loop exiting, resetting SIMULATION_LOOP_RUNNING flag (ID: {})", loop_simulation_id);
+                SIMULATION_LOOP_RUNNING.store(false, Ordering::SeqCst); 
+            });
+            
             loop {
-                // Update positions
-                debug!("[Graph] Starting physics calculation iteration");
+                // Check if shutdown was requested
+                if shutdown_requested.load(Ordering::SeqCst) {
+                    info!("[Graph] Shutdown requested for simulation loop (ID: {})", loop_simulation_id);
+                    break;
+                }
+                
+                // Update positions - using loop ID in logs to track which loop is running
+                debug!("[Graph:{}] Starting physics calculation iteration", loop_simulation_id);
                 let mut graph = graph_data.write().await;
                 let mut node_map = node_map.write().await;
+
+                let gpu_status = if gpu_compute.is_some() { "available" } else { "NOT available" };
+                debug!("[Graph:{}] GPU compute status: {}, physics enabled: {}", 
+                       loop_simulation_id, gpu_status, physics_settings.enabled);
+                       
                 if physics_settings.enabled {
                     if let Some(gpu) = &gpu_compute {
                         if let Err(e) = Self::calculate_layout_with_retry(gpu, &mut graph, &mut node_map, &params).await {
-                            error!("[Graph] Error updating positions: {}", e);
+                            error!("[Graph:{}] Error updating positions: {}", loop_simulation_id, e);
                         } else {
-                            debug!("[Graph] GPU calculation completed successfully");
-                            debug!("[Graph] Successfully calculated layout for {} nodes", graph.nodes.len());
+                            debug!("[Graph:{}] GPU calculation completed successfully", loop_simulation_id);
+                            debug!("[Graph:{}] Successfully calculated layout for {} nodes", loop_simulation_id, graph.nodes.len());
                         }
                     } else {
                         // Use CPU fallback when GPU is not available
-                        debug!("[Graph] GPU compute not available - using CPU fallback for physics calculation");
+                        debug!("[Graph:{}] GPU compute not available - using CPU fallback for physics calculation", loop_simulation_id);
                         if let Err(e) = Self::calculate_layout_cpu(&mut graph, &mut node_map, &params) {
-                            error!("[Graph] Error updating positions with CPU fallback: {}", e);
+                            error!("[Graph:{}] Error updating positions with CPU fallback: {}", loop_simulation_id, e);
                         } else {
-                            debug!("[Graph] CPU calculation completed successfully");
-                            debug!("[Graph] Successfully calculated layout with CPU fallback for {} nodes", graph.nodes.len());
+                            debug!("[Graph:{}] CPU calculation completed successfully", loop_simulation_id);
+                            debug!("[Graph:{}] Successfully calculated layout with CPU fallback for {} nodes", loop_simulation_id, graph.nodes.len());
                         }
                     }
                 } else {
-                    debug!("[Graph] Physics disabled in settings - skipping physics calculation");
+                    debug!("[Graph:{}] Physics disabled in settings - skipping physics calculation", loop_simulation_id);
                 }
-                drop(graph); // Release locks
-                debug!("[Graph] Released locks after physics calculation");
+                drop(graph); // Release locks before sleep
                 drop(node_map);
-                // Sleep for ~16ms (60fps)
                 tokio::time::sleep(tokio::time::Duration::from_millis(16)).await;
-                // Clear cache after updates to ensure freshness
                 let mut cache = node_positions_cache.write().await;
                 *cache = None;
             }
+            drop(loop_guard); // Explicitly drop the guard to trigger the cleanup
         }); 
 
         graph_service
+    }
+    
+    /// Shutdown the simulation loop to allow creating a new instance
+    pub async fn shutdown(&self) {
+        info!("[GraphService] Shutting down simulation loop (ID: {})", self.simulation_id);
+        
+        // Acquire the mutex to ensure we don't have race conditions during shutdown
+        let guard = SIMULATION_MUTEX.lock().await;
+        
+        // Check if this is the currently running simulation
+        if *guard != self.simulation_id {
+            warn!("[GraphService] Cannot shutdown simulation - current running loop has different ID: {} (this instance ID: {})", 
+                  *guard, self.simulation_id);
+            return;
+        }
+        
+        // Signal the loop to stop by setting the shutdown flag
+        self.shutdown_requested.store(true, Ordering::SeqCst);
+        info!("[GraphService] Set shutdown flag for simulation loop (ID: {})", self.simulation_id);
+        
+        // Wait for the loop to observe the flag and exit
+        for _ in 0..10 {
+            if !SIMULATION_LOOP_RUNNING.load(Ordering::SeqCst) {
+                info!("[GraphService] Simulation loop successfully stopped (ID: {})", self.simulation_id);
+                return;
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+    }
+    
+    /// Get diagnostic information about the simulation status
+    pub async fn get_simulation_diagnostics(&self) -> String {
+        // Get the current simulation ID from the mutex
+        let current_id = match SIMULATION_MUTEX.try_lock() {
+            Ok(guard) => {
+                let id = guard.clone();
+                // Drop the guard immediately to avoid holding it
+                drop(guard);
+                id
+            },
+            Err(_) => "Unable to acquire mutex".to_string(),
+        };
+        
+        // Check if this is the active simulation
+        let is_active = current_id == self.simulation_id;
+        
+        // Check the global running flag
+        let is_running = SIMULATION_LOOP_RUNNING.load(Ordering::SeqCst);
+        
+        // Check if shutdown has been requested for this instance
+        let shutdown_requested = self.shutdown_requested.load(Ordering::SeqCst);
+        
+        format!(
+            "Simulation Diagnostics:\n- This instance ID: {}\n- Current active ID: {}\n- Is this instance active: {}\n- Global running flag: {}\n- Shutdown requested: {}\n- Has GPU compute: {}",
+            self.simulation_id,
+            current_id,
+            is_active,
+            is_running,
+            shutdown_requested,
+            self.gpu_compute.is_some()
+        )
+    }
+    
+    /// Test GPU compute at startup to verify it's working
+    async fn test_gpu_at_startup(gpu_compute: Option<Arc<RwLock<GPUCompute>>>) {
+        // Add a small delay to let other initialization complete
+        tokio::time::sleep(Duration::from_millis(1000)).await;
+        
+        info!("[GraphService] Running GPU startup test");
+        
+        if let Some(gpu) = &gpu_compute {
+            match gpu.read().await.test_compute() {
+                Ok(_) => {
+                    info!("[GraphService] ✅ GPU test computation succeeded - GPU physics is working");
+                },
+                Err(e) => {
+                    error!("[GraphService] ❌ GPU test computation failed: {}", e);
+                    error!("[GraphService] The system will fall back to CPU physics which may be slower");
+                    
+                    // Try initializing a new GPU instance
+                    info!("[GraphService] Attempting to reinitialize GPU...");
+                    let _new_gpu = GPUCompute::new(&GraphData::default()).await; // Using _ to avoid unused warning
+                }
+            }
+        } else {
+            error!("[GraphService] ❌ No GPU compute instance available for testing");
+        }
     }
     
     /// Wait for metadata file to be available (mounted by Docker)
@@ -906,7 +1060,7 @@ impl GraphService {
         let start = page * page_size;
         let end = std::cmp::min((page + 1) * page_size, total_nodes);
 
-        let mut page_nodes: Vec<Node> = graph.nodes
+        let page_nodes: Vec<Node> = graph.nodes
             .iter()
             .skip(start)
             .take(end - start)
@@ -1070,6 +1224,42 @@ impl GraphService {
                 Err(Error::new(ErrorKind::Other, format!("GPU initialization failed: {}", e)))
             }
         }
+    }
+
+    /// Helper method to check GPU availability and print detailed diagnostics
+    pub fn diagnose_gpu_status(gpu_compute: Option<Arc<RwLock<GPUCompute>>>) -> Pin<Box<dyn Future<Output = bool> + Send>> {
+        Box::pin(async move {
+            info!("[GraphService] Diagnosing GPU status...");
+            
+            match gpu_compute {
+                Some(gpu) => {
+                    info!("[GraphService] GPU compute is available in service");
+                    // Try a test computation 
+                    if let Ok(gpu_lock) = gpu.try_read() {
+                        match gpu_lock.test_compute() {
+                            Ok(_) => {
+                                info!("[GraphService] GPU test computation succeeded");
+                                true
+                            },
+                            Err(e) => {
+                                error!("[GraphService] GPU test computation failed: {}", e);
+                                false
+                            }
+                        }
+                    } else {
+                        info!("[GraphService] Could not acquire GPU lock for diagnostics");
+                        false
+                    }
+                },
+                None => {
+                    error!("[GraphService] GPU compute is NOT available in service");
+                    
+                    // Try to initialize it
+                    info!("[GraphService] Attempting to initialize GPU on demand...");
+                    false
+                }
+            }
+        })
     }
 
     // Development test function to verify metadata transfer

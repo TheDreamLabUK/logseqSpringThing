@@ -453,6 +453,25 @@ impl GPUCompute {
         }
         Ok(())
     }
+    
+    /// Run a minimal test computation to verify that the GPU instance is working properly
+    pub fn test_compute(&self) -> Result<(), Error> {
+        info!("Running test computation on GPU instance");
+
+        // Try to run a simple operation on the device
+        match self.device.synchronize() {
+            Ok(_) => {
+                info!("GPU device access test passed");
+            },
+            Err(e) => {
+                error!("GPU device access test failed: {}", e);
+                return Err(Error::new(ErrorKind::Other, format!("GPU device access test failed: {}", e)));            }
+        }
+        
+        // If we got here, the GPU instance is working
+        info!("GPU test computation successful");
+        Ok(())
+    }
 }
 
 #[cfg(test)]

@@ -1,8 +1,10 @@
 use std::sync::{Arc, atomic::{AtomicUsize, Ordering}};
 use tokio::sync::RwLock;
 use actix_web::web;
+use log::{info, warn, error};
 
 use crate::config::Settings;
+use tokio::time::Duration;
 use crate::config::feature_access::FeatureAccess;
 use crate::models::metadata::MetadataStore;
 use crate::models::protected_settings::{ProtectedSettings, ApiKeys, NostrUser};
@@ -40,8 +42,14 @@ impl AppState {
         gpu_compute: Option<Arc<RwLock<GPUCompute>>>,
         ragflow_conversation_id: String,
     ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
-        // Initialize GraphService with settings
+        // Initialize GraphService with settings - log this as a major step
+        info!("[AppState::new] Initializing GraphService");
+        
+        // Add a short delay to ensure any previous physics loops have time to detect shutdown flags
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        
         let graph_service = GraphService::new(settings.clone(), gpu_compute.clone()).await;
+        info!("[AppState::new] GraphService initialization complete");
         
         Ok(Self {
             graph_service,

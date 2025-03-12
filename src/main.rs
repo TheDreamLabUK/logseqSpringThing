@@ -126,7 +126,7 @@ async fn main() -> std::io::Result<()> {
     }
 
     // Build initial graph from metadata and initialize GPU compute
-    info!("Building initial graph from existing metadata");
+    info!("Building initial graph from existing metadata for physics simulation");
     match GraphService::build_graph_from_metadata(&metadata_store).await {
         Ok(graph_data) => {            
             // Initialize GPU compute if not already done
@@ -138,17 +138,30 @@ async fn main() -> std::io::Result<()> {
                         // Update app_state with new GPU compute instance
                         app_state.gpu_compute = Some(gpu_instance);
                         
+                        // Shut down the existing GraphService before creating a new one
+                        info!("Shutting down existing graph service before reinitializing with GPU");
+                        let shutdown_start = std::time::Instant::now();
+                        app_state.graph_service.shutdown().await;
+                        info!("Graph service shutdown completed in {:?}", shutdown_start.elapsed());
+                        
+                        // Add a small delay to ensure clean shutdown
+                        tokio::time::sleep(Duration::from_millis(100)).await;
+                        
                         // Reinitialize graph service with GPU compute
+                        info!("Reinitializing graph service with GPU compute");
                         app_state.graph_service = GraphService::new(
                             settings.clone(), 
                             app_state.gpu_compute.clone()
                         ).await;
                         
-                        info!("Graph service reinitialized with GPU compute");
+                        info!("Graph service successfully reinitialized with GPU compute");
                     },
                     Err(e) => {
                         warn!("Failed to initialize GPU compute: {}. Continuing with CPU fallback.", e);
-                        // Initialize graph service with None as GPU compute (will use CPU fallback)
+                                        // Shut down the existing GraphService before creating a new one
+                        app_state.graph_service.shutdown().await;
+                        
+        // Initialize graph service with None as GPU compute (will use CPU fallback)
                         app_state.graph_service = GraphService::new(
                             settings.clone(), 
                             None
@@ -183,7 +196,7 @@ async fn main() -> std::io::Result<()> {
     }
 
     // Add a delay to allow GPU computation to run before accepting client connections
-    info!("Waiting for initial GPU layout calculation...");
+    info!("Waiting for initial physics layout calculation to complete...");
     tokio::time::sleep(Duration::from_millis(500)).await;
     info!("Initial delay complete. Starting HTTP server...");
 
