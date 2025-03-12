@@ -111,7 +111,7 @@ export class MetadataVisualizer {
         }
         
         // Otherwise, create a new mapping
-        const displayName = metadata.name || `Node ${nodeId}`;
+        const displayName = metadata.file_name || metadata.name || `Node ${nodeId}`;
         
         // Update the NodeIdentityManager with this name
         if (displayName && displayName !== nodeId) {
@@ -132,6 +132,7 @@ export class MetadataVisualizer {
             name: metadata.name,
             id: metadata.id,
             fileSize: metadata.fileSize,
+            file_name: metadata.file_name,
             hyperlinkCount: metadata.hyperlinkCount,
             originalNodeId: nodeId
         });

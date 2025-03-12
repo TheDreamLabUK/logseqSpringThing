@@ -1,6 +1,7 @@
 export interface NodeMetadata {
     id: string;
     name: string;
+    file_name?: string;       // Filename from server
     commitAge: number;        // Age in days
     hyperlinkCount: number;   // Number of hyperlinks
     fileSize: number;         // Size in bytes

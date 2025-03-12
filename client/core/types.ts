@@ -10,6 +10,7 @@ export interface Vector3 extends ThreeVector3 {
 
 export interface NodeMetadata {
   name?: string;
+  file_name?: string;
   lastModified?: number;
   links?: string[];
   references?: string[];
@@ -32,6 +33,7 @@ export interface Node {
     velocity: Vector3;
     metadata?: {
       name?: string;
+      file_name?: string;
       lastModified?: number;
       links?: string[];
       references?: string[];
@@ -457,10 +459,11 @@ export function transformGraphData(data: RawGraphData): GraphData {
 export function transformNodeData(node: any): Node {
   // For debugging
   if (debugState.isNodeDebugEnabled()) {
-    logger.debug(`Transforming node with ID: ${node.id}, metadata_id: ${node.metadata_id || 'undefined'}, label: ${node.label || 'undefined'}`,
+    logger.debug(`Transforming node with ID: ${node.id}, metadata_id: ${node.metadata_id || 'undefined'}, label: ${node.label || 'undefined'}, file_name: ${node.data?.metadata?.file_name || 'undefined'}`,
                 createDataMetadata({ 
                   hasMetadata: !!node.data?.metadata,
                   metadata_name: node.data?.metadata?.name || 'undefined',
+                  file_name: node.data?.metadata?.file_name || 'undefined',
                   fileSize: node.data?.metadata?.fileSize || 'undefined',
                   hyperlinkCount: node.data?.metadata?.hyperlinkCount || 'undefined'
                 }));
@@ -472,7 +475,8 @@ export function transformNodeData(node: any): Node {
   // binding between the node's position/velocity data and its metadata.
 
   const nodeId = node.id;
-  const metadataId = node.metadata_id || node.label || node.id;
+  // CRITICAL: Get the file name from metadata as the primary metadata identifier
+  const metadataId = node.data?.metadata?.file_name || node.metadata_id || node.label || node.id;
   
   // Build metadata (additional information)
   const metadata = {
@@ -499,10 +503,17 @@ export function transformNodeData(node: any): Node {
         0
   };
   
+  // Extract file_name from metadata if available (this is the actual label we want to display)
+  const fileName = node.data?.metadata?.file_name || node.metadata_id || node.label;
+  
   // Important: Make sure to log when we have a numeric ID with a metadata name
-  if (/^\d+$/.test(node.id) && (node.metadata_id || node.label)) {
-    logger.info(`Node ${node.id} has metadata_id: ${node.metadata_id || 'N/A'}, label: ${node.label || 'N/A'}`,
+  if (/^\d+$/.test(node.id)) {
+    logger.info(`Node ${node.id} has metadata_id: ${node.metadata_id || 'N/A'}, label: ${node.label || 'N/A'}, file_name: ${node.data?.metadata?.file_name || 'N/A'}`,
                createDataMetadata({
+                 fileName,
+                 metadataId,
+                 nodeLabel: node.label,
+                 finalLabel: fileName || node.label || node.metadata_id || metadata.name,
                  fileSize: metadata.fileSize,
                  hyperlinkCount: metadata.hyperlinkCount
                }));
@@ -513,7 +524,7 @@ export function transformNodeData(node: any): Node {
     metadataId: node.metadata_id || node.label || metadata.name, // Preserve server-provided metadata ID
     // CRITICAL: Consistent label handling - use provided label or fallback to metadataId
     // This ensures we always have a correct human-readable label for display
-    label: node.label || node.metadata_id || metadata.name, 
+    label: fileName || node.label || node.metadata_id || metadata.name,
 
     data: {
       // Always create new Vector3 objects to ensure proper type and consistent behavior
