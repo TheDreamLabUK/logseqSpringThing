@@ -38,12 +38,20 @@ interface EdgeWithId extends Edge {
 // Update NodePosition type to use THREE.Vector3
 type NodePosition = Vector3;
 
+// Interface for pending edges that need to be processed after node loading
+interface PendingEdge {
+  edge: Edge;
+  retryCount: number;
+}
+
 export class GraphDataManager {
   private static instance: GraphDataManager;
   private nodes: Map<string, Node>;
   private edges: Map<string, EdgeWithId>;
   private wsService!: InternalWebSocketService;  // Use definite assignment assertion
   private nodeIdToMetadataId: Map<string, string> = new Map();
+  private pendingEdges: PendingEdge[] = [];
+  private graphDataComplete: boolean = false;
   private metadata: Record<string, any>;
   private updateListeners: Set<(data: GraphData) => void>;
   private positionUpdateListeners: Set<(positions: Float32Array) => void>;
@@ -104,6 +112,9 @@ export class GraphDataManager {
       // This ensures we show something to the user quickly
       this.notifyUpdateListeners();
       
+      // Initialize graphDataComplete as false when starting to fetch data
+      this.graphDataComplete = false;
+      
       // Get total pages from metadata
       const totalPages = this.metadata.pagination?.totalPages || 1;
       const totalItems = this.metadata.pagination?.totalItems || 0;
@@ -163,6 +174,9 @@ export class GraphDataManager {
     // All pages are now loaded, enable randomization
     try {
       const websocketService = WebSocketServiceClass.getInstance();
+      // Signal that all graph data has been loaded
+      this.graphDataComplete = true;
+      this.processPendingEdges(); // Process any pending edges now that all nodes are loaded
       logger.info(`Finished loading all ${totalPages} pages. Enabling server-side randomization.`);
       websocketService.enableRandomization(true);
     } catch (error) {
@@ -281,6 +295,8 @@ export class GraphDataManager {
         websocketService.enableRandomization(true);
       }
       
+      // Signal that graph data is complete after loading single page
+      this.graphDataComplete = true;
       logger.info('Initial graph data loaded successfully');
     } catch (error) {
       logger.error('Failed to fetch graph data:', error);
@@ -303,6 +319,9 @@ export class GraphDataManager {
         // Update listeners after each chunk
         throttledDebugLog(`Loaded chunk ${i}-${Math.min(i + chunkSize - 1, totalPages)}. Current nodes: ${this.nodes.size}, edges: ${this.edges.size}`);
         this.notifyUpdateListeners(); 
+
+        // Process any pending edges after each chunk 
+        this.processPendingEdges();
       }
     } catch (error) {
       logger.error('Error loading remaining pages:', error);
@@ -497,6 +516,8 @@ export class GraphDataManager {
   updateGraphData(data: any): void {
     // Transform and validate incoming data
     const transformedData = transformGraphData(data);
+    // Process nodes before edges
+    this.processNodeData(transformedData.nodes);
     logger.info(`Updating graph data. Incoming: ${transformedData.nodes.length} nodes, ${transformedData.edges?.length || 0} edges. First 3 node IDs: ${transformedData.nodes.slice(0, 3).map(n => n.id).join(', ')}`);
     
     // Debug edge source/target IDs
@@ -504,11 +525,49 @@ export class GraphDataManager {
       throttledDebugLog(`First 3 edge source/target IDs: ${transformedData.edges.slice(0, 3).map(e => `${e.source}->${e.target}`).join(', ')}`);
     }
     
+    // Process edges after nodes
+    if (Array.isArray(transformedData.edges)) {
+      this.processEdgeData(transformedData.edges);
+    }
+
+    // Update metadata, including pagination info if available
+    this.metadata = {
+      ...transformedData.metadata,
+      pagination: data.totalPages ? {
+        totalPages: data.totalPages,
+        currentPage: data.currentPage,
+        totalItems: data.totalItems,
+        pageSize: data.pageSize
+      } : undefined
+    };
+
+    // If this is a "complete" signal, process any remaining pending edges
+    if (data.complete === true) {
+      this.graphDataComplete = true;
+      this.processPendingEdges();
+      logger.info("Received graph complete signal. All data loaded.");
+    }
+
+    // Notify listeners
+    this.notifyUpdateListeners();
+    logger.info(`Updated graph data: ${this.nodes.size} nodes, ${this.edges.size} edges`);
+  }
+
+  /**
+   * Process node data from incoming updates
+   * @param nodes The array of nodes to process
+   */
+  private processNodeData(nodes: Node[]): void {
     // Update nodes with proper position and velocity
-    transformedData.nodes.forEach((node: Node) => {
+    nodes.forEach((node: Node) => {
+      // Validate the numeric node id
+      if (!node.id || !/^\d+$/.test(node.id)) {
+        logger.warn(`Received node with invalid ID format: ${node.id}. Node IDs must be numeric strings.`);
+        return;
+      }
+
       // Check if we already have this node
       const existingNode = this.nodes.get(node.id);
-      
       
       if (existingNode) {
         // Update position and velocity
@@ -552,66 +611,134 @@ export class GraphDataManager {
         this.nodes.set(node.id, node);
       }
     });
+  }
 
+  /**
+   * Process edge data, queueing edges that reference missing nodes
+   * @param edges The array of edges to process
+   */
+  private processEdgeData(edges: Edge[]): void {
     // Store edges in Map with generated IDs
     if (debugState.isDataDebugEnabled()) {
-      logger.debug(`Processing ${transformedData.edges?.length || 0} edges. Current edge count: ${this.edges.size}`);
+      logger.debug(`Processing ${edges.length || 0} edges. Current edge count: ${this.edges.size}`);
     }
-    
-    if (Array.isArray(transformedData.edges)) {
-      let edgesAdded = 0;
-      let edgesSkipped = 0;
+
+    let edgesAdded = 0;
+    let edgesBuffered = 0;
       
-      transformedData.edges.forEach((edge: Edge) => {
-        const edgeId = this.createEdgeId(edge.source, edge.target);
-        if (debugState.isDataDebugEnabled())
-          logger.debug(`Processing edge: ${edge.source}->${edge.target} (ID: ${edgeId})`);
-        
-        // Check if source and target nodes exist
-        if (!this.nodes.has(edge.source) || !this.nodes.has(edge.target)) {
-          // It's possible we're seeing edges before their nodes due to pagination
-          // Let's try to get node IDs from node-to-metadata mapping
+    edges.forEach((edge: Edge) => {
+      // Validate that edge source and target are numeric IDs
+      if (!edge.source || !edge.target || !/^\d+$/.test(edge.source) || !/^\d+$/.test(edge.target)) {
+        logger.warn(`Invalid edge: source or target is not a valid numeric ID. Source: ${edge.source}, Target: ${edge.target}`);
+        return;
+      }
+
+      const edgeId = this.createEdgeId(edge.source, edge.target);
+      if (debugState.isDataDebugEnabled())
+        logger.debug(`Processing edge: ${edge.source}->${edge.target} (ID: ${edgeId})`);
+
+      // Check if this edge already exists
+      if (this.edges.has(edgeId)) {
+        // Edge already exists, just log and skip
+        logger.debug(`Skipping duplicate edge ${edgeId}`);
+        return;
+      }
+      
+      // Check if source and target nodes exist
+      if (!this.nodes.has(edge.source) || !this.nodes.has(edge.target)) {
+        // If graph is still loading, buffer this edge for later processing
+        if (!this.graphDataComplete) {
+          this.pendingEdges.push({ edge, retryCount: 0 });
+          edgesBuffered++;
           
-          // We'll log this condition to help debug pagination issues
-          if (this.nodes.size > 0 && debugState.isNodeDebugEnabled()) {
+          if (debugState.isDataDebugEnabled()) {
+            logger.debug(`Buffering edge ${edgeId} due to missing node(s). Source exists: ${this.nodes.has(edge.source)}, Target exists: ${this.nodes.has(edge.target)}`);
           }
+        } else {
+          // Graph is complete but nodes still missing - log error
           logger.warn(`Skipping edge ${edge.source}->${edge.target} due to missing node(s). Source exists: ${this.nodes.has(edge.source)}, Target exists: ${this.nodes.has(edge.target)}`);
-          edgesSkipped++;
-          return;
-          
         }
-        
+        return;
+      }
+      
+      const edgeWithId: EdgeWithId = {
+        ...edge,
+        id: edgeId
+      };
+      this.edges.set(edgeId, edgeWithId);
+      edgesAdded++;
+      
+      if (debugState.isDataDebugEnabled()) {
+        logger.debug(`Added edge ${edgeId}: ${edge.source}->${edge.target}`);
+      }
+    });
+    
+    if (edgesAdded > 0 || edgesBuffered > 0) {
+      logger.info(`Edge processing complete: ${edgesAdded} edges added, ${edgesBuffered} edges buffered. Total edges: ${this.edges.size}, Pending: ${this.pendingEdges.length}`);
+    }
+  }
+
+  /**
+   * Process any pending edges that were waiting for nodes to be loaded
+   */
+  private processPendingEdges(): void {
+    if (this.pendingEdges.length === 0) return;
+
+    logger.info(`Processing ${this.pendingEdges.length} pending edges`);
+    
+    // Track which edges we processed successfully
+    const processedIndices: number[] = [];
+    let edgesAdded = 0;
+
+    // Try to process each pending edge
+    this.pendingEdges.forEach((pendingEdge, index) => {
+      const { edge, retryCount } = pendingEdge;
+      const edgeId = this.createEdgeId(edge.source, edge.target);
+
+      // Check if source and target nodes now exist
+      if (this.nodes.has(edge.source) && this.nodes.has(edge.target)) {
+        // Both nodes exist, we can add the edge
         const edgeWithId: EdgeWithId = {
           ...edge,
           id: edgeId
         };
         this.edges.set(edgeId, edgeWithId);
+        processedIndices.push(index);
         edgesAdded++;
         
         if (debugState.isDataDebugEnabled()) {
-          logger.debug(`Added edge ${edgeId}: ${edge.source}->${edge.target}`);
+          logger.debug(`Added pending edge ${edgeId}: ${edge.source}->${edge.target} after ${retryCount} retries`);
         }
-      });
-      
-      if (edgesAdded > 0 || edgesSkipped > 0) {
-        logger.info(`Edge processing complete: ${edgesAdded} edges added, ${edgesSkipped} edges skipped. Total edges: ${this.edges.size}`);
+      } else if (retryCount >= 3 || this.graphDataComplete) {
+        // We've retried too many times or the graph is complete, log and discard
+        logger.warn(`Discarding pending edge ${edge.source}->${edge.target} after ${retryCount} retries. Source exists: ${this.nodes.has(edge.source)}, Target exists: ${this.nodes.has(edge.target)}`);
+        processedIndices.push(index);
+      } else {
+        // Increment retry count
+        pendingEdge.retryCount++;
       }
+    });
+
+    // Remove processed edges (in reverse order to maintain correct indices)
+    processedIndices.sort((a, b) => b - a).forEach(index => {
+      this.pendingEdges.splice(index, 1);
+    });
+
+    if (edgesAdded > 0) {
+      logger.info(`Processed ${edgesAdded} pending edges. ${this.pendingEdges.length} still pending.`);
+      this.notifyUpdateListeners();
     }
+  }
 
-    // Update metadata, including pagination info if available
-    this.metadata = {
-      ...transformedData.metadata,
-      pagination: data.totalPages ? {
-        totalPages: data.totalPages,
-        currentPage: data.currentPage,
-        totalItems: data.totalItems,
-        pageSize: data.pageSize
-      } : undefined
-    };
-
+  /**
+   * Receive a graph complete signal from the server
+   */
+  public signalGraphComplete(): void {
+    logger.info("Received graph complete signal from server");
+    this.graphDataComplete = true;
+    this.processPendingEdges();
     // Notify listeners
     this.notifyUpdateListeners();
-    logger.info(`Updated graph data: ${this.nodes.size} nodes, ${this.edges.size} edges`);
   }
 
   /**
@@ -627,8 +754,9 @@ export class GraphDataManager {
 
   /**
    * Get a specific node by ID
+   * Strictly uses the primary node ID (numeric ID)
    */
-  getNode(id: string): Node | undefined {
+  getNode(id: string): Node | undefined {    
     return this.nodes.get(id);
   }
 

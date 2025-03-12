@@ -44,6 +44,7 @@ export class NodeManagerFacade implements NodeManagerInterface {
     private tempVector = new Vector3();
     private metadataUpdateThrottler = new UpdateThrottler(100); // Update at most every 100ms
     private readonly MAX_POSITION = 1000.0; // Reasonable limit for safe positions
+    private readonly NODE_ID_REGEX = /^\d+$/;
 
     private constructor(scene: Scene, camera: Camera, material: Material) {
         this.camera = camera;
@@ -95,6 +96,18 @@ export class NodeManagerFacade implements NodeManagerInterface {
         const normalizedSize = Math.log(Math.min(fileSize, MAX_FILE_SIZE)) / Math.log(MAX_FILE_SIZE);
         // Map to metadata node size range (0-50)
         return MIN_NODE_SIZE + normalizedSize * (MAX_NODE_SIZE - MIN_NODE_SIZE);
+    }
+
+    /**
+     * Validates that a node ID is a numeric string
+     * This ensures we're using the correct server-generated IDs
+     * @param nodeId The node ID to validate
+     * @returns True if the ID is valid (numeric string), false otherwise
+     */
+    private validateNodeId(nodeId: string): boolean {
+        if (!nodeId || typeof nodeId !== 'string') return false;
+        // Ensure it's a numeric string (server-side generated ID)
+        return this.NODE_ID_REGEX.test(nodeId);
     }
 
     public setXRMode(enabled: boolean): void {
@@ -160,19 +173,36 @@ export class NodeManagerFacade implements NodeManagerInterface {
 
         const shouldDebugLog = debugState.isEnabled() && debugState.isNodeDebugEnabled();
         
+        // Filter out any nodes with invalid IDs before processing
+        const validNodes = nodes.filter(node => {
+            if (!this.validateNodeId(node.id)) {
+                logger.warn(`Skipping node with invalid ID format: ${node.id}. Node IDs must be numeric strings.`);
+                return false;
+            }
+            return true;
+        });
+
+        if (validNodes.length < nodes.length) {
+            logger.warn(`Filtered out ${nodes.length - validNodes.length} nodes with invalid IDs`);
+        }
+
         // Create dedicated ID set to ensure unique handling
-        // CRITICAL FIX: Initialize the node-to-metadata ID mappings FIRST
-        // This ensures labels are correct from the very beginning
-        const mappingNodes = nodes.map(node => ({
+        // Initialize the node-to-metadata ID mappings FIRST
+        // This ensures labels are correct from the beginning
+        const mappingNodes = validNodes.map(node => ({
             id: node.id,
-            metadataId: (node as any).metadataId,
-            label: (node as any).label || (node as any).metadataId
+            // Ensure we're using strings for these properties
+            metadataId: typeof (node as any).metadataId === 'string' ? (node as any).metadataId : '',
+            // Prioritize user-friendly labels but fall back to metadataId or numeric id
+            label: typeof (node as any).label === 'string' ? (node as any).label : 
+                  (typeof (node as any).metadataId === 'string' ? (node as any).metadataId : node.id)
         }));
+        
         this.metadataManager.initializeMappings(mappingNodes);
         const processedIds = new Set<string>();
         
         // Track node IDs and handle metadata mapping
-        nodes.forEach((node, index) => {
+        validNodes.forEach((node, index) => {
             if (shouldDebugLog && index < 3) {
                 // Log the first few nodes to help debug
                 logger.debug(`Processing node ${index}: id=${node.id}, ` +
@@ -189,7 +219,8 @@ export class NodeManagerFacade implements NodeManagerInterface {
             // Use type assertion to safely add the label property
             const oldLabel = (node as any).label;
             // This ensures we have a consistent label for each node
-            (node as any).label = (node as any).label || (node as any).metadataId || node.id;
+            (node as any).label = typeof (node as any).label === 'string' ? (node as any).label : 
+                                 (typeof (node as any).metadataId === 'string' ? (node as any).metadataId : node.id);
             
             if (shouldDebugLog) {
                 logger.debug(`Setting node label: ${oldLabel || 'undefined'} -> ${(node as any).label}, id=${node.id}`, createDataMetadata({
@@ -260,7 +291,7 @@ export class NodeManagerFacade implements NodeManagerInterface {
 
         // Update instance positions
         // Important: Use fresh map to avoid modifying the original nodes
-        const nodePositionUpdates = nodes.map(node => ({
+        const nodePositionUpdates = validNodes.map(node => ({
             // Extract just what's needed for position update
             id: node.id,
             metadata: node.data.metadata || {},
@@ -272,7 +303,7 @@ export class NodeManagerFacade implements NodeManagerInterface {
         // Only update metadata if the throttler allows it
         if (this.metadataUpdateThrottler.shouldUpdate()) {
             // Update metadata for each node
-            nodes.forEach(node => {
+            validNodes.forEach(node => {
                 if (node.data.metadata) {
                     // Ensure we have valid file size
                     const fileSize = node.data.metadata.fileSize && node.data.metadata.fileSize > 0 
@@ -304,7 +335,7 @@ export class NodeManagerFacade implements NodeManagerInterface {
                     } 
                     
                     // Verify that we're using the correct metadata ID for the displayName
-                    if (/^\d+$/.test(node.id) && displayName === node.id) {
+                    if (this.NODE_ID_REGEX.test(node.id) && displayName === node.id) {
                         // If displayName is still the numeric ID, try to get a better name from our mapping
                         displayName = this.metadataManager.getLabel(node.id);
                     }
@@ -388,6 +419,12 @@ export class NodeManagerFacade implements NodeManagerInterface {
         
         if (!this.isInitialized) return;
         
+        // Validate all node IDs in the update
+        const validNodeIds = nodes.every(update => this.validateNodeId(update.id));
+        if (!validNodeIds) {
+            logger.warn("Some node IDs in position update are invalid (non-numeric). This may cause rendering issues.");
+        }
+        
         logger.info(`Updating positions for ${nodes.length} nodes`, createDataMetadata({
             timestamp: Date.now(),
             nodeCount: nodes.length
@@ -400,6 +437,12 @@ export class NodeManagerFacade implements NodeManagerInterface {
         try {
             // Handle NaN values and validate positions before passing to instance manager
             const validatedNodes = nodes.map(node => {
+                // Skip nodes with invalid IDs
+                if (!this.validateNodeId(node.id)) {
+                    logger.warn(`Skipping node with invalid ID format: ${node.id} from position update`);
+                    return null;
+                }
+
                 // Check for zero positions
                 if (node.data.position.x === 0 && node.data.position.y === 0 && node.data.position.z === 0) {
                     zeroPositionCount++;
@@ -438,7 +481,11 @@ export class NodeManagerFacade implements NodeManagerInterface {
                 }
                 
                 return { id: node.id, position: node.data.position, velocity: node.data.velocity };
-            });
+            }).filter(node => node !== null) as { 
+                id: string, 
+                position: Vector3, 
+                velocity: Vector3 
+            }[];
             
             this.instanceManager.updateNodePositions(validatedNodes);
             
@@ -491,6 +538,12 @@ export class NodeManagerFacade implements NodeManagerInterface {
             const nodeCount = this.nodeIndices.size;
             
             this.nodeIndices.forEach((id) => {
+                // Skip nodes with invalid IDs
+                if (!this.validateNodeId(id)) {
+                    logger.warn(`Skipping metadata position update for node with invalid ID: ${id}`);
+                    return;
+                }
+
                 const position = this.instanceManager.getNodePosition(id);
                 if (!position) {
                     noPositionCount++;
@@ -575,6 +628,15 @@ export class NodeManagerFacade implements NodeManagerInterface {
      */
     public getNodeId(index: number): string | undefined {
         return this.instanceManager.getNodeId(index);
+    }
+
+    /**
+     * Get instance index from node ID
+     * @param nodeId Numeric node ID
+     * @returns Instance index or undefined if not found
+     */
+    public getInstanceIndex(nodeId: string): number | undefined {
+        return this.instanceManager.getInstanceId(nodeId);
     }
 
     /**

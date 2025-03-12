@@ -54,10 +54,10 @@ export class EdgeManager {
         const newEdges: Edge[] = [];
         const existingEdges: Edge[] = [];
 
-        const currentEdgeIds = new Set(edges.map(edge => `${edge.source}-${edge.target}`));
+        const currentEdgeIds = new Set(edges.map(edge => this.createEdgeId(edge.source, edge.target)));
         for (const edge of edges) {
             // Use numeric IDs for edge identification
-            const edgeId = `${edge.source}-${edge.target}`;
+            const edgeId = this.createEdgeId(edge.source, edge.target);
 
             logger.debug(`Checking edge: ${edgeId}`);
 
@@ -91,8 +91,13 @@ export class EdgeManager {
     }
   
     private createEdge(edge: Edge): void {
-        const edgeId = `${edge.source}-${edge.target}`;
+        const edgeId = this.createEdgeId(edge.source, edge.target);
 
+        // Validate source and target IDs - they should be numeric strings
+        if (!this.validateNodeId(edge.source) || !this.validateNodeId(edge.target)) {
+            logger.warn(`Skipping edge creation with invalid node IDs: source=${edge.source}, target=${edge.target}`);
+            return;
+        }
         // Get node positions from NodeInstanceManager using numeric IDs
         const sourcePos = this.nodeInstanceManager.getNodePosition(edge.source);
         const targetPos = this.nodeInstanceManager.getNodePosition(edge.target);
@@ -162,8 +167,20 @@ export class EdgeManager {
         logger.debug(`Edge material: color=${mat.color.toString()}, opacity=${mat.opacity}, transparent=${mat.transparent}`);
     }
 
+    /**
+     * Creates a consistent edge ID by sorting source and target IDs
+     * This ensures the same ID regardless of edge direction
+     */
+    private createEdgeId(source: string, target: string): string {
+        return [source, target].sort().join('_');
+    }
+
+    private validateNodeId(id: string): boolean {
+        return id !== undefined && id !== null && /^\d+$/.test(id);
+    }
+
     private updateEdge(edge: Edge): void {
-        const edgeId = `${edge.source}-${edge.target}`;
+        const edgeId = this.createEdgeId(edge.source, edge.target);
         const line = this.edges.get(edgeId);
         
         if (!line) {

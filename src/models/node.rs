@@ -42,18 +42,10 @@ impl Node {
     pub fn new(metadata_id: String) -> Self {
         Self::new_with_id(metadata_id, None)
     }
-    
+
     pub fn new_with_id(metadata_id: String, provided_id: Option<String>) -> Self {
-        // Use provided ID if available, otherwise generate a new one
-        let id = match provided_id {
-            Some(id) if !id.is_empty() && id != "0" => {
-                // Use the provided ID from metadata
-                id
-            },
-            _ => {
-                NEXT_NODE_ID.fetch_add(1, Ordering::SeqCst).to_string()
-            }
-        };
+        // Always generate a new ID on the server side
+        let id = NEXT_NODE_ID.fetch_add(1, Ordering::SeqCst).to_string();
         
         Self {
             id,
