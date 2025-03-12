@@ -45,7 +45,16 @@ impl Node {
 
     pub fn new_with_id(metadata_id: String, provided_id: Option<String>) -> Self {
         // Always generate a new ID on the server side
-        let id = NEXT_NODE_ID.fetch_add(1, Ordering::SeqCst).to_string();
+        // Use provided ID only if it's a valid numeric string (from a previous session)
+        let id = match provided_id {
+            Some(id) if !id.is_empty() && id != "0" && id.parse::<u32>().is_ok() => {
+                // Use the provided ID only if it's a valid numeric ID
+                id
+            },
+            _ => {
+                NEXT_NODE_ID.fetch_add(1, Ordering::SeqCst).to_string()
+            }
+        };
         
         Self {
             id,

@@ -367,11 +367,23 @@ export class WebSocketService {
     private handleBinaryMessage(buffer: ArrayBuffer): void {
         try {
             if (buffer.byteLength === 0) {
-                logger.warn('Received empty binary message, ignoring');
+                logger.warn('Received empty binary message, ignoring (0 bytes)');
                 return;
             }
             
             const decompressedBuffer = this.tryDecompress(buffer);
+
+            // Check if buffer is empty or too small after decompression
+            if (!decompressedBuffer || decompressedBuffer.byteLength === 0) {
+                logger.error('Empty binary message after decompression');
+                return;
+            }
+
+            // Check if there's enough data for at least one node
+            if (decompressedBuffer.byteLength < BYTES_PER_NODE) {
+                logger.error(`Failed to decode binary message: Data too small to contain any nodes (${decompressedBuffer.byteLength} bytes, need at least ${BYTES_PER_NODE})`);
+                return;
+            }
             
             // Throttled debug logging for binary messages
             debugLog('Binary data processed:', createDataMetadata({ 
@@ -382,19 +394,7 @@ export class WebSocketService {
             }));
             logger.debug(`Received binary update with ${Math.floor(decompressedBuffer.byteLength / BYTES_PER_NODE)} nodes`);
             
-            // Check if buffer is empty
-            if (!decompressedBuffer || decompressedBuffer.byteLength === 0) {
-                logger.error('Empty binary message after decompression');
-                return;
-            }
-            
             const dataView = new DataView(decompressedBuffer);
-            
-            // Check if there's enough data for at least one node
-            if (decompressedBuffer.byteLength < BYTES_PER_NODE) {
-                logger.error('Binary message too small to contain any nodes');
-                return;
-            }
             
             // Calculate how many complete nodes we can read
             const nodeCount = Math.floor(decompressedBuffer.byteLength / BYTES_PER_NODE);
@@ -402,11 +402,11 @@ export class WebSocketService {
             // If there's a remainder, log it but continue processing the complete nodes
             const remainder = decompressedBuffer.byteLength % BYTES_PER_NODE;
             if (remainder > 0) {
-                // Only log at debug level to reduce noise - this is expected behavior
-                // The extra bytes are likely padding or alignment in the binary protocol
-                if (debugState.isWebsocketDebugEnabled()) {
-                    logger.debug(`Binary message has ${remainder} extra bytes that don't form a complete node. ` +
-                                `Processing ${nodeCount} complete nodes.`);
+                // This shouldn't happen as the server should send complete node data
+                logger.warn(`Binary message has ${remainder} extra bytes that don't form a complete node. ` +
+                          `Processing ${nodeCount} complete nodes.`);
+                if (debugState.isDataDebugEnabled()) {
+                    logger.debug(`Buffer size: ${decompressedBuffer.byteLength}, Node size: ${BYTES_PER_NODE}, Nodes: ${nodeCount}, Remainder: ${remainder}`);
                 }
             }
 
@@ -425,16 +425,11 @@ export class WebSocketService {
                 offset += 2;
 
                 // Skip nodes with invalid IDs
-                if (id === 0 || id === 65535) { // 0 and 65535 are often used as sentinel values
+                if (id === 0 || id === 65535 || id > MAX_U16_VALUE) { // 0 and 65535 are often used as sentinel values
                     if (debugState.isNodeDebugEnabled()) {
                         logger.debug(`Skipping node with reserved ID: ${id}`);
                     }
-                    continue;
-                }
-                
-                // Check if this is a valid node ID
-                if (id > MAX_U16_VALUE) {
-                    logger.error(`Invalid node ID: ${id} exceeds maximum u16 value`);
+                    offset += 24; // Skip position and velocity (2×12 bytes)
                     continue;
                 }
                 
@@ -450,6 +445,10 @@ export class WebSocketService {
                 // to maintain proper mapping with node metadata
                 const position = validateAndFixVector3(rawPosition, 1000);
 
+                // Update offset after reading position vector (12 bytes: 3×4 bytes)
+                offset += 12;
+
+                // Now read velocity with the updated offset
                 const rawVelocity = new Vector3(
                     dataView.getFloat32(offset, true),      // x
                     dataView.getFloat32(offset + 4, true),  // y
@@ -457,9 +456,8 @@ export class WebSocketService {
                 );
                 const velocity = validateAndFixVector3(rawVelocity, 0.05);
                 
-                // Update offsets after reading all data
-                offset += 12; // position (3 * 4 bytes)
-                offset += 12; // velocity (3 * 4 bytes)
+                // Update offset after reading velocity (12 bytes: 3×4 bytes)
+                offset += 12;
 
                 // Convert the numeric ID to a string to match our node ID storage format
                 const nodeId = id.toString();

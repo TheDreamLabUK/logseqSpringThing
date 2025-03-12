@@ -560,7 +560,7 @@ export class GraphDataManager {
   private processNodeData(nodes: Node[]): void {
     // Update nodes with proper position and velocity
     nodes.forEach((node: Node) => {
-      // Validate the numeric node id
+      // Validate that the node ID is present and properly formatted
       if (!node.id || !/^\d+$/.test(node.id)) {
         logger.warn(`Received node with invalid ID format: ${node.id}. Node IDs must be numeric strings.`);
         return;
@@ -577,15 +577,16 @@ export class GraphDataManager {
         }
 
         // Track relationship between node ID and metadata ID (filename)
-        if (node.data.metadata?.name && 
-            node.data.metadata.name !== node.id && 
-            node.data.metadata.name.length > 0) {
-          // Store mapping from numeric ID to metadata ID (filename)
-          this.nodeIdToMetadataId.set(node.id, node.data.metadata.name);
-
+        const metadataId = node.data.metadata?.name || (node as any).metadataId;
+        if (metadataId && metadataId !== node.id && metadataId.length > 0) {
+          // Store mapping from numeric ID to metadata ID (filename or label)
+          this.nodeIdToMetadataId.set(node.id, metadataId);
+          
+          // Log the mapping if debug is enabled
           if (debugState.isNodeDebugEnabled()) {
-            throttledDebugLog(`Updated metadata mapping: ${node.id} -> ${node.data.metadata.name}`);
+            throttledDebugLog(`Updated metadata mapping: ${node.id} -> ${metadataId}`);
           }
+
         }
         
         // Only update metadata if the new node has valid metadata that's better than what we have
@@ -599,13 +600,14 @@ export class GraphDataManager {
           };
         }
       } else {
-        // Store mapping from numeric ID to metadata ID (filename) for new nodes
-        if (node.data.metadata?.name && 
-            node.data.metadata.name !== node.id && 
-            node.data.metadata.name.length > 0) {
-          this.nodeIdToMetadataId.set(node.id, node.data.metadata.name);
+        // Store mapping for new nodes, prioritizing explicit metadataId if available
+        const metadataId = node.data.metadata?.name || (node as any).metadataId;
+        if (metadataId && metadataId !== node.id && metadataId.length > 0) {
+          // Store mapping from numeric ID to metadata ID
+          this.nodeIdToMetadataId.set(node.id, metadataId);
+          
           if (debugState.isNodeDebugEnabled()) {
-            throttledDebugLog(`New metadata mapping: ${node.id} -> ${node.data.metadata.name}`);
+            throttledDebugLog(`New metadata mapping: ${node.id} -> ${metadataId}`);
           }
         }
         this.nodes.set(node.id, node);

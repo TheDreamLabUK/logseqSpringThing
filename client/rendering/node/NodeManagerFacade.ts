@@ -189,10 +189,15 @@ export class NodeManagerFacade implements NodeManagerInterface {
         // Create dedicated ID set to ensure unique handling
         // Initialize the node-to-metadata ID mappings FIRST
         // This ensures labels are correct from the beginning
+        
         const mappingNodes = validNodes.map(node => ({
             id: node.id,
-            // Ensure we're using strings for these properties
-            metadataId: typeof (node as any).metadataId === 'string' ? (node as any).metadataId : '',
+            // Prioritize metadataId from the node if available (this comes from the server)
+            metadataId: typeof (node as any).metadataId === 'string' && (node as any).metadataId 
+                ? (node as any).metadataId 
+                // Fall back to metadata.name if available
+                : (node.data.metadata?.name || ''),
+                
             // Prioritize user-friendly labels but fall back to metadataId or numeric id
             label: typeof (node as any).label === 'string' ? (node as any).label : 
                   (typeof (node as any).metadataId === 'string' ? (node as any).metadataId : node.id)
@@ -218,9 +223,22 @@ export class NodeManagerFacade implements NodeManagerInterface {
             // *** CRITICAL: Set the label correctly ***  
             // Use type assertion to safely add the label property
             const oldLabel = (node as any).label;
-            // This ensures we have a consistent label for each node
-            (node as any).label = typeof (node as any).label === 'string' ? (node as any).label : 
-                                 (typeof (node as any).metadataId === 'string' ? (node as any).metadataId : node.id);
+            
+            // Don't override existing labels with IDs if they're already set properly
+            if (typeof oldLabel === 'string' && oldLabel && oldLabel !== node.id && !/^\d+$/.test(oldLabel)) {
+                // Keep the existing label as it's already meaningful
+                // No need to change it
+                if (shouldDebugLog) {
+                    logger.debug(`Preserving existing meaningful label: ${oldLabel} for node ${node.id}`);
+                }
+            } else {
+                // Set the label based on priority: label -> metadataId -> numeric ID
+                (node as any).label = typeof (node as any).label === 'string' && !/^\d+$/.test((node as any).label)
+                   ? (node as any).label
+                    : typeof (node as any).metadataId === 'string'
+                        ? (node as any).metadataId
+                        : node.id;
+            }
             
             if (shouldDebugLog) {
                 logger.debug(`Setting node label: ${oldLabel || 'undefined'} -> ${(node as any).label}, id=${node.id}`, createDataMetadata({
@@ -325,9 +343,20 @@ export class NodeManagerFacade implements NodeManagerInterface {
                     // Check if node has a label (from server)
                     let displayName: string = metadataId;
                     if ('metadataId' in node && typeof node['metadataId'] === 'string') {
-                        // Check if label exists before trying to use it
-                        displayName = ('label' in node && typeof node['label'] === 'string') ? 
-                                      node['label'] as string : node['metadataId'] as string;
+                        // If label and metadataId both exist and differ, prioritize label over metadataId
+                        // as it's likely to be more human-readable
+                        if ('label' in node && 
+                            typeof node.label === 'string' && 
+                            node['label'] !== node['metadataId'] &&
+                            !this.NODE_ID_REGEX.test(node['label'])) {
+                            // Use label if it exists and is not just a numeric ID
+                            displayName = node['label'] as string;
+                            logger.debug(`Using label (${displayName}) instead of metadataId (${node['metadataId']})`);
+                        } else {
+                            // Otherwise use metadataId if label doesn't exist or is a numeric ID
+                            displayName = ('label' in node && typeof node.label === 'string' && !this.NODE_ID_REGEX.test(node.label)) ? 
+                                      node.label : node.metadataId;
+                        }
                     } else if ('label' in node && typeof node['label'] === 'string') {
                         displayName = node['label'] as string;
                     } else if ('metadata_id' in node && typeof node['metadata_id'] === 'string') {
@@ -335,14 +364,15 @@ export class NodeManagerFacade implements NodeManagerInterface {
                     } 
                     
                     // Verify that we're using the correct metadata ID for the displayName
-                    if (this.NODE_ID_REGEX.test(node.id) && displayName === node.id) {
+                    if (this.NODE_ID_REGEX.test(displayName)) {
                         // If displayName is still the numeric ID, try to get a better name from our mapping
-                        displayName = this.metadataManager.getLabel(node.id);
-                    }
-                    
-                    // Make sure to map the node ID to the proper metadata ID for labels
-                    if (displayName && displayName !== node.id && metadataId !== displayName) {
-                        this.metadataManager.mapNodeIdToMetadataId(node.id, displayName);
+                        const mappedLabel = this.metadataManager.getLabel(node.id) || this.nodeIdToMetadataId.get(node.id);
+                        if (mappedLabel && mappedLabel !== node.id && !this.NODE_ID_REGEX.test(mappedLabel)) {
+                            displayName = mappedLabel;
+            if (debugState.isNodeDebugEnabled()) {
+                logger.debug(`Using mapped label for node ${node.id}: ${displayName}`);
+            }
+                        }
                     }
                     
                     this.metadataManager.updateMetadata(node.id, {
