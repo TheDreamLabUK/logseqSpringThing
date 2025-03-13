@@ -1,6 +1,7 @@
 use webxr::{
     AppState,
     config::Settings,
+    models::graph::GraphData,
     handlers::{
         api_handler,
         health_handler,
@@ -10,8 +11,9 @@ use webxr::{
     },
     services::{
         file_service::FileService,
-        graph_service::GraphService,
+        file_service::{GRAPH_CACHE_PATH, LAYOUT_CACHE_PATH}, // Added import for cache paths
         github::{GitHubClient, ContentAPI, GitHubConfig},
+        graph_service::GraphService,
     },
     utils::gpu_compute::GPUCompute
 };
@@ -21,7 +23,6 @@ use actix_cors::Cors;
 use actix_files::Files;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use tokio::time::Duration;
 use dotenvy::dotenv;
 use log::{error, info, debug, warn};
 use webxr::utils::logging::{init_logging_with_config, LogConfig};
@@ -117,6 +118,23 @@ async fn main() -> std::io::Result<()> {
     }
 
     info!("Loaded {} items from metadata store", metadata_store.len());
+    
+    // Ensure metadata directories are properly set up
+    if let Err(e) = tokio::fs::create_dir_all("/app/data/metadata/files").await {
+        warn!("Failed to create metadata directory: {}", e);
+    }
+    
+    // Ensure parent directories for cache files exist
+    if let Err(e) = tokio::fs::create_dir_all(std::path::Path::new(GRAPH_CACHE_PATH).parent().unwrap()).await {
+        warn!("Failed to create directory for graph cache: {}", e);
+    }
+    if let Err(e) = tokio::fs::create_dir_all(std::path::Path::new(LAYOUT_CACHE_PATH).parent().unwrap()).await {
+        warn!("Failed to create directory for layout cache: {}", e);
+    }
+    
+    if tokio::fs::metadata("/app/data/metadata").await.is_ok() {
+        info!("Verified metadata directory exists");
+    }
 
     // Update metadata in app state
     {
@@ -126,82 +144,60 @@ async fn main() -> std::io::Result<()> {
     }
 
     // Build initial graph from metadata and initialize GPU compute
-    info!("Building initial graph from existing metadata for physics simulation");
-    match GraphService::build_graph_from_metadata(&metadata_store).await {
-        Ok(graph_data) => {            
-            // Initialize GPU compute if not already done
-            if app_state.gpu_compute.is_none() {
-                info!("No GPU compute instance found, initializing one now");
-                match GPUCompute::new(&graph_data).await {
-                    Ok(gpu_instance) => {
-                        info!("GPU compute initialized successfully");
-                        // Update app_state with new GPU compute instance
-                        app_state.gpu_compute = Some(gpu_instance);
-                        
-                        // Shut down the existing GraphService before creating a new one
-                        info!("Shutting down existing graph service before reinitializing with GPU");
-                        let shutdown_start = std::time::Instant::now();
-                        app_state.graph_service.shutdown().await;
-                        info!("Graph service shutdown completed in {:?}", shutdown_start.elapsed());
-                        
-                        // Add a small delay to ensure clean shutdown
-                        tokio::time::sleep(Duration::from_millis(100)).await;
-                        
-                        // Reinitialize graph service with GPU compute
-                        info!("Reinitializing graph service with GPU compute");
-                        app_state.graph_service = GraphService::new(
-                            settings.clone(), 
-                            app_state.gpu_compute.clone()
-                        ).await;
-                        
-                        info!("Graph service successfully reinitialized with GPU compute");
-                    },
-                    Err(e) => {
-                        warn!("Failed to initialize GPU compute: {}. Continuing with CPU fallback.", e);
-                                        // Shut down the existing GraphService before creating a new one
-                        app_state.graph_service.shutdown().await;
-                        
-        // Initialize graph service with None as GPU compute (will use CPU fallback)
-                        app_state.graph_service = GraphService::new(
-                            settings.clone(), 
-                            None
-                        ).await;
-                        
-                        info!("Graph service initialized with CPU fallback");
-                    }
-                }
-            }
-
-            // Update graph data after GPU is initialized
-            let mut graph = app_state.graph_service.get_graph_data_mut().await;
-            let mut node_map = app_state.graph_service.get_node_map_mut().await;
-            *graph = graph_data;
-            
-            // Update node_map with new graph nodes
-            node_map.clear();
-            for node in &graph.nodes {
-                node_map.insert(node.id.clone(), node.clone());
-            }
-            
-            drop(graph);
-            drop(node_map);
-
-            info!("Built initial graph from metadata");
-            
+    // LAZY INITIALIZATION: We don't build the graph on startup anymore
+    // Instead, we'll build it when the first client request comes in
+    info!("LAZY INITIALIZATION ENABLED: Deferring graph building until first client request");
+    
+    // Initialize the GraphService with the settings, but don't build the graph yet
+    // GraphService will try to load from cache when first requested
+    info!("Initializing graph service with lazy loading");
+    
+    // Initialize GPU compute instance but don't populate it with data yet
+    match GPUCompute::new(&GraphData::default()).await {
+        Ok(gpu_instance) => {
+            info!("GPU compute initialized (empty) successfully for lazy loading");
+            app_state.gpu_compute = Some(gpu_instance);
         },
-        Err(e) => {
-            error!("Failed to build initial graph: {}", e);
-            return Err(std::io::Error::new(std::io::ErrorKind::Other, format!("Failed to build initial graph: {}", e)));
-        }
+        Err(e) => warn!("Failed to initialize GPU compute: {}. Will use CPU fallback when needed.", e)
     }
-
-    // Add a delay to allow GPU computation to run before accepting client connections
-    info!("Waiting for initial physics layout calculation to complete...");
-    tokio::time::sleep(Duration::from_millis(500)).await;
-    info!("Initial delay complete. Starting HTTP server...");
+    
+    info!("Starting HTTP server with lazy graph initialization...");
 
     // Create web::Data after all initialization is complete
     let app_state_data = web::Data::new(app_state);
+
+    // Pre-build graph to ensure cache files are created on startup
+    if metadata_store.len() > 0 {
+        info!("Pre-building graph to ensure cache files are created on startup");
+        match GraphService::build_graph_from_metadata(&metadata_store).await {
+            Ok(graph) => {
+                info!("Successfully pre-built graph with {} nodes, {} edges", graph.nodes.len(), graph.edges.len());
+                
+                // Update the app state's graph service with the built graph
+                let mut app_graph = app_state_data.graph_service.get_graph_data_mut().await;
+                *app_graph = graph.clone();
+                drop(app_graph);
+                
+                // Update the node map too
+                let mut node_map = app_state_data.graph_service.get_node_map_mut().await;
+                node_map.clear();
+                for node in &graph.nodes {
+                    node_map.insert(node.id.clone(), node.clone());
+                }
+                drop(node_map);
+                
+                // Explicitly verify the cache files were created
+                if let Err(e) = tokio::fs::metadata(GRAPH_CACHE_PATH).await {
+                    warn!("Graph cache file was not created: {}", e);
+                }
+                if let Err(e) = tokio::fs::metadata(LAYOUT_CACHE_PATH).await {
+                    warn!("Layout cache file was not created: {}", e);
+                }
+            },
+            Err(e) => warn!("Failed to pre-build graph: {}. Cache files may not be created until first request", e)
+        }
+        info!("Pre-build process completed");
+    }
 
     // Start the server
     let bind_address = {

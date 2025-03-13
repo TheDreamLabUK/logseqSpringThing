@@ -18,6 +18,7 @@ use crate::types::speech::{SpeechError, SpeechCommand, TTSProvider};
 pub struct SpeechService {
     sender: Arc<Mutex<mpsc::Sender<SpeechCommand>>>,
     settings: Arc<RwLock<Settings>>,
+    #[allow(dead_code)]
     tts_provider: Arc<RwLock<TTSProvider>>,
 }
 

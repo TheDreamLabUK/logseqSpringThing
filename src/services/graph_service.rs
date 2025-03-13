@@ -11,7 +11,7 @@ use std::pin::Pin;
 use std::time::{Duration, Instant};
 use futures::Future;
 use log::{info, warn, error, debug};
-use scopeguard;
+use scopeguard; 
 
 use tokio::fs::File as TokioFile;
 use crate::models::graph::GraphData;
@@ -23,8 +23,11 @@ use crate::config::Settings;
 use crate::utils::gpu_compute::GPUCompute;
 use crate::models::simulation_params::{SimulationParams, SimulationPhase, SimulationMode};
 use crate::models::pagination::PaginatedGraphData;
+use tokio::io::AsyncReadExt;
 use tokio::sync::Mutex;
 use once_cell::sync::Lazy;
+use crate::services::file_service::GRAPH_CACHE_PATH;
+use crate::services::file_service::LAYOUT_CACHE_PATH;
 
 // Static flag to prevent multiple simultaneous graph rebuilds
 static GRAPH_REBUILD_IN_PROGRESS: AtomicBool = AtomicBool::new(false);
@@ -134,6 +137,9 @@ impl GraphService {
         
         // Release the mutex before spawning the task
         drop(guard);
+        
+        // Try to load cached graph data
+        let _ = Self::try_load_cached_graph_data(Arc::clone(&graph_service.graph_data)).await;
         
         info!("[GraphService] Starting physics simulation loop (ID: {})", loop_simulation_id);
         tokio::spawn(async move {
@@ -346,6 +352,35 @@ impl GraphService {
     pub async fn build_graph_from_metadata(metadata: &MetadataStore) -> Result<GraphData, Box<dyn std::error::Error + Send + Sync>> {
         // Check if a rebuild is already in progress
         info!("Building graph from {} metadata entries", metadata.len());
+        
+        // Try to load from cache first if metadata has not changed
+        if let Ok(cached_graph) = Self::load_graph_cache().await {
+            // Check if cached graph matches current metadata
+            info!("Checking if cached graph is valid: {} cache entries vs {} metadata entries", cached_graph.metadata.len(), metadata.len());
+            if cached_graph.metadata.len() == metadata.len() {
+                // Simple check: count metadata items
+                let mut needs_rebuild = false;
+                
+                // More detailed check: compare sha1 hashes
+                for (file_name, meta) in metadata.iter() {
+                    if !cached_graph.metadata.contains_key(file_name) || 
+                       cached_graph.metadata[file_name].sha1 != meta.sha1 {
+                        needs_rebuild = true;
+                        break;
+                    }
+                }
+
+                if !needs_rebuild {
+                    info!("Cached graph is valid (all SHA1 hashes match), using it");
+                    let mut cloned_graph = cached_graph.clone();
+                    
+                    // Ensure timestamp is updated to show it was validated
+                    cloned_graph.last_validated = chrono::Utc::now();
+                    
+                    return Ok(cloned_graph);
+                }
+            }
+        }
         debug!("Building graph from {} metadata entries", metadata.len());
         
         if GRAPH_REBUILD_IN_PROGRESS.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_err() {
@@ -494,10 +529,23 @@ impl GraphService {
             .collect();
 
         // Initialize random positions
-        Self::initialize_random_positions(&mut graph);
+        // Try to use cached layout positions first, fall back to random if not available
+        if let Err(e) = Self::initialize_positions(&mut graph).await {
+            warn!("Failed to initialize positions from cache: {}, using random positions", e);
+            Self::initialize_random_positions(&mut graph);
+        }
 
-        info!("Built graph with {} nodes and {} edges", graph.nodes.len(), graph.edges.len());
+        // Record validation timestamp
+        graph.last_validated = chrono::Utc::now();
+        
+        info!("Built graph with {} nodes and {} edges (validated at {})",
+              graph.nodes.len(), graph.edges.len(), graph.last_validated);
         debug!("Completed graph build: {} nodes, {} edges", graph.nodes.len(), graph.edges.len());
+        
+        // Cache the graph data to disk
+        if let Err(e) = Self::save_graph_cache(&graph).await {
+            warn!("Failed to cache graph data: {}", e);
+        }
         Ok(graph)
     }
 
@@ -656,10 +704,19 @@ impl GraphService {
             .collect();
 
         // Initialize random positions for all nodes
-        Self::initialize_random_positions(&mut graph);
+        // Try to use cached layout positions first, fall back to random if not available
+        if let Err(e) = Self::initialize_positions(&mut graph).await {
+            warn!("Failed to initialize positions from cache: {}", e);
+            Self::initialize_random_positions(&mut graph);
+        }
 
         info!("Built graph with {} nodes and {} edges", graph.nodes.len(), graph.edges.len());
         debug!("Completed graph build: {} nodes, {} edges", graph.nodes.len(), graph.edges.len());
+        
+        // Cache the graph data to disk
+        if let Err(e) = Self::save_graph_cache(&graph).await {
+            warn!("Failed to cache graph data: {}", e);
+        }
         Ok(graph)
     }
 
@@ -703,6 +760,34 @@ impl GraphService {
                      node.data.position.x, 
                      node.data.position.y, 
                      node.data.position.z);
+            }
+        }
+    }
+    
+    // Initialize positions using cached values or random positions as fallback
+    pub async fn initialize_positions(graph: &mut GraphData) -> Result<(), std::io::Error> {
+        // Try to load positions from cache first
+        match Self::load_layout_cache().await {
+            Ok(position_map) => {
+                debug!("Applying cached positions to {} nodes", position_map.len());
+                let mut applied_count = 0;
+                
+                for node in &mut graph.nodes {
+                    if let Some(&(x, y, z)) = position_map.get(&node.id) {
+                        node.set_x(x);
+                        node.set_y(y);
+                        node.set_z(z);
+                        applied_count += 1;
+                    }
+                }
+                
+                info!("Applied cached positions to {}/{} nodes", applied_count, graph.nodes.len());
+                Ok(())
+            },
+            Err(e) => {
+                info!("No cached positions available, using random initialization: {}", e);
+                Self::initialize_random_positions(graph);
+                Ok(())
             }
         }
     }
@@ -766,7 +851,7 @@ impl GraphService {
     ) -> std::io::Result<()> {
         {
             info!("[calculate_layout] Starting GPU physics calculation for {} nodes, {} edges with mode {:?}", 
-                  graph.nodes.len(), graph.edges.len(), params.mode);
+                graph.nodes.len(), graph.edges.len(), params.mode);
             
             // Get current timestamp for performance tracking
             let start_time = std::time::Instant::now();
@@ -774,7 +859,7 @@ impl GraphService {
             let mut gpu_compute = gpu_compute.write().await;
 
             info!("[calculate_layout] params: iterations={}, spring_strength={:.3}, repulsion={:.3}, damping={:.3}",
-                 params.iterations, params.spring_strength, params.repulsion, params.damping);
+                params.iterations, params.spring_strength, params.repulsion, params.damping);
             
             // Update data and parameters
             if let Err(e) = gpu_compute.update_graph_data(graph) {
@@ -843,11 +928,19 @@ impl GraphService {
                     format!("[{:.2},{:.2},{:.2}]", graph.nodes[0].data.position.x, graph.nodes[0].data.position.y, graph.nodes[0].data.position.z)
                 } else { "no nodes".to_string() };
             
-                info!("[calculate_layout] Updated positions for {}/{} nodes in {:?}. Sample positions: {}", nodes_updated, graph.nodes.len(), elapsed, sample_positions);
+            info!("[calculate_layout] Updated positions for {}/{} nodes in {:?}. Sample positions: {}", nodes_updated, graph.nodes.len(), elapsed, sample_positions);
             
-            Ok(())
-        }
-    }
+            // Return success
+            Ok::<(), std::io::Error>(())
+        };
+        
+        // Cache the layout positions (outside the block to avoid syntax error)
+        // We use spawn to avoid blocking and handle errors internally
+        tokio::spawn(Self::save_layout_cache(graph.clone()));
+        
+        // Return success
+        Ok(())
+   }
 
     /// CPU fallback implementation of force-directed graph layout
     pub fn calculate_layout_cpu(
@@ -1041,7 +1134,11 @@ impl GraphService {
         let elapsed = start_time.elapsed();
         info!("[calculate_layout_cpu] Updated positions for {} nodes in {:?}", 
              graph.nodes.len(), elapsed);
+             
+        // Cache layout in a non-blocking way
+        tokio::spawn(Self::save_layout_cache(graph.clone()));
         
+        // Return success
         Ok(())
     }
 
@@ -1153,6 +1250,241 @@ impl GraphService {
     pub async fn get_gpu_compute(&self) -> Option<Arc<RwLock<GPUCompute>>> {
         self.gpu_compute.clone()
     }
+
+    /// Save graph data to cache file
+    pub async fn save_graph_cache(graph: &GraphData) -> Result<(), std::io::Error> {
+        info!("Attempting to cache graph data to {}", GRAPH_CACHE_PATH);
+        let start_time = std::time::Instant::now();
+        info!("Graph contains {} nodes and {} edges", graph.nodes.len(), graph.edges.len());
+        
+        // Ensure the directory exists
+        if let Some(dir) = std::path::Path::new(GRAPH_CACHE_PATH).parent() {
+            if !dir.exists() {
+                info!("Creating directory: {:?}", dir);
+                match std::fs::create_dir_all(dir) {
+                    Ok(_) => {
+                        info!("Successfully created directory: {:?}", dir);
+                        
+                        // Set directory permissions explicitly on Unix systems
+                        #[cfg(unix)]
+                        {
+                            use std::os::unix::fs::PermissionsExt;
+                            if let Err(e) = std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o777)) {
+                                warn!("Could not set permissions on cache directory: {}", e);
+                            }
+                        }
+                    },
+                    Err(e) => {
+                        error!("Failed to create directory {:?}: {}", dir, e);
+                        // Continue anyway since the directory might already exist with different permissions
+                    }
+                }
+            }
+        }
+        
+        // Serialize graph to JSON with pretty formatting for easier debugging
+        let json = match serde_json::to_string_pretty(graph) {
+            Ok(json) => json,
+            Err(e) => {
+                error!("Failed to serialize graph data: {}", e);
+                return Err(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()));
+            }
+        };
+
+        // First try using standard file system functions, which might be more reliable
+        info!("Writing {} bytes to file {} using std::fs", json.len(), GRAPH_CACHE_PATH);
+        match std::fs::write(GRAPH_CACHE_PATH, json.as_bytes()) {
+            Ok(_) => {
+                let elapsed = start_time.elapsed();
+                info!("Successfully cached graph data ({} bytes) to {} in {:?} using std::fs", 
+                      json.len(), GRAPH_CACHE_PATH, elapsed);
+                return Ok(());
+            }
+            Err(e) => {
+                warn!("Failed to write graph cache using std::fs, falling back to tokio::fs: {}", e);
+                // Fall through to tokio version below
+            }
+        }
+        
+        // Fall back to tokio's async fs
+        info!("Writing {} bytes to file {} using tokio::fs", json.len(), GRAPH_CACHE_PATH);
+        match tokio::fs::write(GRAPH_CACHE_PATH, json.as_bytes()).await {
+            Ok(_) => {
+                info!("Successfully cached graph data ({} bytes) to {}", json.len(), GRAPH_CACHE_PATH);
+                Ok(())
+            },
+            Err(e) => {
+                error!("Failed to write graph cache file {}: {}", GRAPH_CACHE_PATH, e);
+                Err(e)
+            }
+        }
+    }
+    
+    /// Load graph data from cache file
+    pub async fn load_graph_cache() -> Result<GraphData, std::io::Error> {
+        info!("Attempting to load graph data from cache: {}", GRAPH_CACHE_PATH);
+        debug!("GRAPH_CACHE_PATH = {}", GRAPH_CACHE_PATH);
+        
+        // Check if cache file exists
+        if !tokio::fs::metadata(GRAPH_CACHE_PATH).await.is_ok() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::NotFound, 
+                "Graph cache file not found"
+            ));
+        }
+        
+        // Read file content
+        let mut file = tokio::fs::File::open(GRAPH_CACHE_PATH).await?;
+        let mut content = String::new();
+        
+        // Read the file content
+        file.read_to_string(&mut content).await?;
+        
+        // Deserialize JSON
+        let graph = serde_json::from_str::<GraphData>(&content)
+            .map_err(|e| std::io::Error::new(
+                std::io::ErrorKind::InvalidData, 
+                format!("Failed to parse graph cache: {}", e)
+            ))?;
+        
+        info!("Successfully loaded graph data from cache ({} nodes, {} edges), last validated: {}", 
+              graph.nodes.len(), graph.edges.len(), graph.last_validated);
+              
+        // Return the loaded graph
+        Ok(graph) 
+    }
+    
+    /// Try to load cached graph data into the provided graph_data RwLock
+    pub async fn try_load_cached_graph_data(graph_data: Arc<RwLock<GraphData>>) -> Result<(), std::io::Error> {
+        match Self::load_graph_cache().await {
+            Ok(cached_graph) => {
+                info!("Initializing graph service with cached graph data");
+                let mut graph = graph_data.write().await;
+                *graph = cached_graph;
+                info!("Graph service initialized with {} nodes and {} edges from cache",
+                     graph.nodes.len(), graph.edges.len());
+                Ok(())
+            },
+            Err(e) => {
+                info!("No valid graph cache found: {}", e);
+                Err(e)
+            }
+        }
+    }
+    
+    /// Save layout positions to cache file
+    pub async fn save_layout_cache(graph: GraphData) -> Result<(), std::io::Error> {
+        info!("Attempting to cache node layout positions to {}", LAYOUT_CACHE_PATH);
+        let start_time = std::time::Instant::now();
+        
+        // Ensure the directory exists
+        if let Some(dir) = std::path::Path::new(LAYOUT_CACHE_PATH).parent() {
+            if !dir.exists() {
+                info!("Creating directory: {:?}", dir);
+                match std::fs::create_dir_all(dir) {
+                    Ok(_) => {
+                        info!("Successfully created directory: {:?}", dir);
+                        
+                        // Set directory permissions explicitly on Unix systems
+                        #[cfg(unix)]
+                        {
+                            use std::os::unix::fs::PermissionsExt;
+                            if let Err(e) = std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o777)) {
+                                warn!("Could not set permissions on cache directory: {}", e);
+                            }
+                        }
+                    },
+                    Err(e) => {
+                        error!("Failed to create directory {:?}: {}", dir, e);
+                        // Continue anyway since the directory might already exist with different permissions
+                    }
+                }
+            }
+        }
+        
+        // Create a serializable structure with just the necessary position information
+        info!("Building position data array for {} nodes", graph.nodes.len());
+        let positions: Vec<(String, f32, f32, f32)> = graph.nodes.iter()
+            .map(|node| (
+                node.id.clone(),
+                node.data.position.x,
+                node.data.position.y,
+                node.data.position.z
+            ))
+            .collect();
+        
+        // Serialize positions to JSON with pretty formatting for easier debugging
+        let json = match serde_json::to_string_pretty(&positions) {
+            Ok(json) => json,
+            Err(e) => {
+                error!("Failed to serialize layout positions: {}", e);
+                return Err(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()));
+            }
+        };
+
+        // First try using standard file system functions, which might be more reliable
+        info!("Writing {} bytes to file {} using std::fs", json.len(), LAYOUT_CACHE_PATH);
+        match std::fs::write(LAYOUT_CACHE_PATH, json.as_bytes()) {
+            Ok(_) => {
+                let elapsed = start_time.elapsed();
+                info!("Successfully cached layout data for {} nodes to {} in {:?} using std::fs", 
+                      positions.len(), LAYOUT_CACHE_PATH, elapsed);
+                return Ok(());
+            }
+            Err(e) => {
+                warn!("Failed to write layout cache using std::fs, falling back to tokio::fs: {}", e);
+                // Fall through to tokio version below
+            }
+        }
+        
+        // Fall back to tokio's async fs 
+        info!("Writing {} bytes to file {} using tokio::fs", json.len(), LAYOUT_CACHE_PATH);
+        match tokio::fs::write(LAYOUT_CACHE_PATH, json.as_bytes()).await {
+            Ok(_) => {
+                info!("Successfully cached layout data for {} nodes to {}", positions.len(), LAYOUT_CACHE_PATH);
+                Ok(())
+            },
+            Err(e) => {
+                error!("Failed to write layout cache file {}: {}", LAYOUT_CACHE_PATH, e);
+                Err(e)
+            }
+        }
+    }
+    
+    /// Load layout positions from cache file
+    pub async fn load_layout_cache() -> Result<HashMap<String, (f32, f32, f32)>, std::io::Error> {
+        info!("Attempting to load layout from cache: {}", LAYOUT_CACHE_PATH);
+        
+        // Check if cache file exists
+        if !tokio::fs::metadata(LAYOUT_CACHE_PATH).await.is_ok() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::NotFound, 
+                "Layout cache file not found"
+            ));
+        }
+        
+        // Read file content
+        let mut file = tokio::fs::File::open(LAYOUT_CACHE_PATH).await?;
+        let mut content = String::new();
+        file.read_to_string(&mut content).await?;
+        
+        // Deserialize JSON
+        let positions = serde_json::from_str::<Vec<(String, f32, f32, f32)>>(&content)
+            .map_err(|e| std::io::Error::new(
+                std::io::ErrorKind::InvalidData, 
+                format!("Failed to parse layout cache: {}", e)
+            ))?;
+        
+        // Convert to HashMap
+        let position_map: HashMap<String, (f32, f32, f32)> = positions.into_iter()
+            .map(|(id, x, y, z)| (id, (x, y, z)))
+            .collect();
+        
+        info!("Successfully loaded layout positions for {} nodes from cache", 
+              position_map.len());
+        Ok(position_map)
+    }
+
 
     pub async fn update_node_positions(&self, updates: Vec<(u16, Node)>) -> Result<(), Error> {
         let mut graph = self.graph_data.write().await;

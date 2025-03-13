@@ -1,123 +1,71 @@
-# Application Initialization
+# Application Initialization Process
+
+This document describes the initialization process of the application, which has been optimized for speed and efficiency through lazy loading techniques.
 
 ## Overview
-The application initialization process handles service startup, configuration loading, and resource management in a specific order to ensure proper dependency resolution and error handling.
 
-## Startup Sequence
+The application initialization has been restructured to be non-blocking and to defer expensive operations until they're actually needed. This significantly improves startup time and responsiveness.
 
-### 1. Environment Setup
-```rust
-fn main() -> std::io::Result<()> {
-    dotenv().ok();
-    init_logging_with_config(LogConfig::default())?;
-}
+## Initialization Sequence
+
+1. **Settings Loading**: The first step is loading settings from the configuration file
+2. **Logging Setup**: Configure logging based on settings
+3. **GitHub Client Initialization**: Initialize the GitHub client for content access
+4. **App State Creation**: Create the application state with minimal initial services
+5. **Metadata Loading**: Load existing metadata from cache (without processing files)
+6. **Lazy Graph Initialization**: Defer graph building until it's requested by a client
+7. **HTTP Server Start**: Begin accepting connections
+
+## Lazy Loading Implementation
+
+### Graph Service
+
+The GraphService now implements a lazy initialization pattern:
+
+- No graph is built during server startup
+- The graph is created only when requested by a client
+- When requested, it first attempts to load from cache
+- Only if the cache is invalid or missing, the full graph is rebuilt
+- Position layout caching preserves node positions between sessions
+
+### GraphService Initialization Flow
+
+```mermaid
+graph TD
+    A[Client Requests Graph] --> B{Cache Valid?}
+    B -->|Yes| C[Load from Cache]
+    B -->|No| D[Build Graph from Metadata]
+    D --> E[Initialize Positions]
+    E -->|Cache Available?| F[Load Positions from Cache]
+    E -->|No Cache| G[Generate Random Positions]
+    C --> H[Return Graph to Client]
+    F --> H
+    G --> H
 ```
-- Environment variable loading
-- Logging configuration
-- Basic validation
 
-### 2. Configuration Loading
-```rust
-let settings = Arc::new(RwLock::new(Settings::load()?));
-let settings_data = web::Data::new(settings.clone());
-```
-- Settings initialization
-- Configuration validation
-- Shared state setup
+### Metadata Processing
 
-### 3. Service Initialization
+- Metadata is loaded during startup, but file processing is deferred
+- SHA1 hash validation ensures only changed files are reprocessed
+- Individual file metadata is stored separately for incremental updates
 
-#### GitHub Services
-```rust
-let github_config = GitHubConfig::from_env()?;
-let github_client = Arc::new(GitHubClient::new(github_config, settings.clone()).await?);
-let content_api = Arc::new(ContentAPI::new(github_client.clone()));
-```
-- GitHub client setup
-- Content API initialization
-- Configuration validation
+## Benefits
 
-#### Application State
-```rust
-let mut app_state = AppState::new(
-    settings.clone(),
-    github_client.clone(),
-    content_api.clone(),
-    None,
-    None,
-    None,
-    "default_conversation".to_string(),
-).await?;
-```
-- Core state initialization
-- Service dependency injection
-- Error handling
+1. **Faster Startup**: The server starts much more quickly
+2. **Immediate Responsiveness**: The server can handle requests immediately
+3. **Resource Efficiency**: Resources are only used when needed
+4. **Consistent Experience**: Caching preserves user context between sessions
 
-### 4. Graph System Setup
+## Important Notes for Developers
 
-#### Metadata Loading
-```rust
-let metadata_store = FileService::load_or_create_metadata()?;
-```
-- Initial metadata loading
-- Store validation
-- Error handling
+- First client graph request may take longer than subsequent requests
+- When making code changes that affect graph building, ensure the cache invalidation logic is updated
+- The GraphService will handle cache loading failures gracefully, falling back to full rebuilds
+- The position caching system automatically updates when the graph changes
 
-#### Graph Initialization
-```rust
-match GraphService::build_graph_from_metadata(&metadata_store).await {
-    Ok(graph_data) => {
-        // GPU initialization
-        // Graph service setup
-    },
-    Err(e) => {
-        // Error handling
-    }
-}
-```
-- Graph construction
-- GPU compute setup
-- Fallback handling
+## Configuration
 
-### 5. Server Setup
-```rust
-HttpServer::new(move || {
-    App::new()
-        .wrap(middleware::Logger::default())
-        .wrap(cors)
-        .wrap(middleware::Compress::default())
-        // ... configuration
-})
-```
-- HTTP server configuration
-- Middleware setup
-- Route configuration
+Caching behavior can be adjusted through the following settings:
 
-## Error Handling
-
-### Initialization Errors
-- Configuration errors
-- Service startup failures
-- Resource allocation failures
-
-### Recovery Procedures
-- Graceful degradation
-- Service fallbacks
-- Error reporting
-
-## Monitoring
-
-### Startup Logging
-```rust
-info!("Starting WebXR application...");
-debug!("Successfully loaded settings");
-warn!("Failed to initialize GPU compute: {}", e);
-```
-- Progress tracking
-- Error logging
-- Performance monitoring
-
-### Health Checks
-- Service availability
-- Resource status
-- Configuration validation
+- Cache paths are defined in `src/services/file_service.rs` as constants
+- The physics simulation parameters are still configurable in settings.yaml

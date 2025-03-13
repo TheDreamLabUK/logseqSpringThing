@@ -1,8 +1,8 @@
 use crate::AppState;
 use actix_web::{post, web, HttpResponse, Responder};
 use serde::{Deserialize, Serialize};
-use serde_json::json;
-use log::{error, info};
+use serde_json::json; 
+use log::info;
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -25,7 +25,7 @@ pub async fn handle_perplexity(
 ) -> impl Responder {
     info!("Received perplexity request: {:?}", request);
 
-    let perplexity_service = match &state.perplexity_service {
+    let _perplexity_service = match &state.perplexity_service {
         Some(service) => service,
         None => return HttpResponse::ServiceUnavailable().json(json!({
             "error": "Perplexity service is not available"
@@ -33,17 +33,26 @@ pub async fn handle_perplexity(
     };
 
     let conversation_id = state.ragflow_conversation_id.clone();
-    match perplexity_service.query(&request.query, &conversation_id).await {
-        Ok(answer) => {
-            let response = PerplexityResponse {
-                answer,
-                conversation_id,
-            };
-            HttpResponse::Ok().json(response)
-        }
-        Err(e) => {
-            error!("Error processing perplexity request: {}", e);
-            HttpResponse::InternalServerError().json(format!("Error: {}", e))
-        }
-    }
+    
+    // TEMPORARILY COMMENTED OUT: Perplexity API call as per optimization requirements
+    // match perplexity_service.query(&request.query, &conversation_id).await {
+    //     Ok(answer) => {
+    //         let response = PerplexityResponse {
+    //             answer,
+    //             conversation_id,
+    //         };
+    //         HttpResponse::Ok().json(response)
+    //     }
+    //     Err(e) => {
+    //         error!("Error processing perplexity request: {}", e);
+    //         HttpResponse::InternalServerError().json(format!("Error: {}", e))
+    //     }
+    // }
+    
+    // Return a default response while the perplexity service is disabled
+    let response = PerplexityResponse {
+        answer: "The Perplexity service is temporarily disabled for performance optimization.".to_string(),
+        conversation_id,
+    };
+    HttpResponse::Ok().json(response)
 }

@@ -1,13 +1,14 @@
 use std::sync::{Arc, atomic::{AtomicUsize, Ordering}};
 use tokio::sync::RwLock;
 use actix_web::web;
-use log::{info, warn, error};
+use log::info;
 
 use crate::config::Settings;
 use tokio::time::Duration;
 use crate::config::feature_access::FeatureAccess;
 use crate::models::metadata::MetadataStore;
 use crate::models::protected_settings::{ProtectedSettings, ApiKeys, NostrUser};
+use crate::models::graph::GraphUpdateStatus;
 use crate::services::graph_service::GraphService;
 use crate::services::github::{GitHubClient, ContentAPI};
 use crate::services::perplexity_service::PerplexityService;
@@ -30,6 +31,8 @@ pub struct AppState {
     pub feature_access: web::Data<FeatureAccess>,
     pub ragflow_conversation_id: String,
     pub active_connections: Arc<AtomicUsize>,
+    // Track graph updates for websocket clients
+    pub graph_update_status: Arc<RwLock<GraphUpdateStatus>>,
 }
 
 impl AppState {
@@ -65,6 +68,7 @@ impl AppState {
             feature_access: web::Data::new(FeatureAccess::from_env()),
             ragflow_conversation_id,
             active_connections: Arc::new(AtomicUsize::new(0)),
+            graph_update_status: Arc::new(RwLock::new(GraphUpdateStatus::default())),
         })
     }
 
