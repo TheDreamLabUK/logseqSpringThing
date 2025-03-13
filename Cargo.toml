@@ -12,13 +12,13 @@ actix-cors = "=0.7.0"
 actix-files = "=0.6.5"
 actix = "=0.13.1"
 actix-web-actors = "=4.3.0"
-tungstenite = "0.21"
-tokio-tungstenite = { version = "0.21" }
+tungstenite = "0.22"
+tokio-tungstenite = { version = "0.22" }
 
 # Async runtime
 tokio = { version = "1.43", features = ["full"] }
 futures = "0.3"
-async-trait = "0.1"
+async-trait = "0.1.86"
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
@@ -45,21 +45,23 @@ cudarc = { version = "0.11", features = ["driver", "cuda-12040"] }
 
 # HTTP client and API
 reqwest = { version = "0.11", features = ["json", "stream"] }
-async-openai = "0.14"
-backoff = { version = "0.4", features = ["tokio"] }
-nostr-sdk = "0.25"
+async-openai = "0.14.3"
+# Even though backoff is unmaintained (RUSTSEC-2025-0012), we'll use the latest version
+# since it's used transitively by async-openai and our code doesn't directly import it
+backoff = { version = "0.4.0", features = ["tokio"] }
+nostr-sdk = "0.26"
 
 # Utilities
 uuid = { version = "1.12", features = ["v4", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }
-base64 = "0.21"
+base64 = "0.22"
 rand = "0.8"
 regex = "1.11"
 lazy_static = "1.5"
 once_cell = "1.19"
-sha1 = "0.10"
+sha1 = "0.10.6"
 scopeguard = "1.2"
-url = "2.5"
+url = "2.5.0"
 flate2 = "1.0"
 byteorder = "1.5"
 urlencoding = "2.1"
@@ -93,6 +95,3 @@ opt-level = 1
 [package.metadata.rust-version]
 min = "1.70.0"
 
-[package.metadata.docs.rs]
-all-features = true
-rustdoc-args = ["--cfg", "docsrs"]
