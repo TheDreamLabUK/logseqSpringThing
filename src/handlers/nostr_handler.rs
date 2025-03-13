@@ -4,6 +4,7 @@ use crate::services::nostr_service::{NostrService, AuthEvent, NostrError};
 use crate::config::feature_access::FeatureAccess;
 use actix_web::{web, Error, HttpRequest, HttpResponse};
 use serde::{Deserialize, Serialize};
+use log::{debug, error, info};
 use serde_json::json;
 
 #[derive(Debug, Serialize)]
@@ -66,12 +67,15 @@ async fn check_power_user_status(
     req: HttpRequest,
     feature_access: web::Data<FeatureAccess>,
 ) -> Result<HttpResponse, Error> {
-    let pubkey = req.headers()
+    let pubkey_raw = req.headers()
         .get("X-Nostr-Pubkey")
         .and_then(|h| h.to_str().ok())
         .unwrap_or("");
+        
+    let pubkey = pubkey_raw.trim();
+    debug!("Checking power user status for pubkey: '{}'", pubkey);
 
-    if pubkey.is_empty() {
+    if pubkey.is_empty() { 
         return Ok(HttpResponse::BadRequest().json(json!({
             "error": "Missing Nostr pubkey"
         })));
@@ -86,12 +90,15 @@ async fn get_available_features(
     req: HttpRequest,
     feature_access: web::Data<FeatureAccess>,
 ) -> Result<HttpResponse, Error> {
-    let pubkey = req.headers()
+    let pubkey_raw = req.headers()
         .get("X-Nostr-Pubkey")
         .and_then(|h| h.to_str().ok())
         .unwrap_or("");
+        
+    let pubkey = pubkey_raw.trim();
+    debug!("Getting available features for pubkey: '{}'", pubkey);
 
-    if pubkey.is_empty() {
+    if pubkey.is_empty() { 
         return Ok(HttpResponse::BadRequest().json(json!({
             "error": "Missing Nostr pubkey"
         })));
@@ -108,12 +115,15 @@ async fn check_feature_access(
     feature_access: web::Data<FeatureAccess>,
     feature: web::Path<String>,
 ) -> Result<HttpResponse, Error> {
-    let pubkey = req.headers()
+    let pubkey_raw = req.headers()
         .get("X-Nostr-Pubkey")
         .and_then(|h| h.to_str().ok())
         .unwrap_or("");
+        
+    let pubkey = pubkey_raw.trim();
+    debug!("Checking access to feature '{}' for pubkey: '{}'", feature, pubkey);
 
-    if pubkey.is_empty() {
+    if pubkey.is_empty() { 
         return Ok(HttpResponse::BadRequest().json(json!({
             "error": "Missing Nostr pubkey"
         })));
@@ -129,7 +139,9 @@ async fn login(
     nostr_service: web::Data<NostrService>,
     feature_access: web::Data<FeatureAccess>,
 ) -> Result<HttpResponse, Error> {
+    info!("Handling login request for pubkey: {}", event.pubkey.trim());
     match nostr_service.verify_auth_event(event.into_inner()).await {
+        
         Ok(user) => {
             let token = user.session_token.clone().unwrap_or_default();
             let expires_at = user.last_seen + std::env::var("AUTH_TOKEN_EXPIRY")
@@ -146,6 +158,9 @@ async fn login(
                 npub: Some(user.npub.clone()),
                 is_power_user: user.is_power_user,
             };
+            
+            debug!("Login successful for pubkey: {}, is_power_user: {}, features: {:?}", 
+                user.pubkey.trim(), user.is_power_user, features);
 
             Ok(HttpResponse::Ok().json(AuthResponse {
                 user: user_dto,
@@ -160,7 +175,8 @@ async fn login(
             })))
         }
         Err(e) => {
-            Ok(HttpResponse::InternalServerError().json(json!({
+            error!("Authentication error: {}", e);
+            Ok(HttpResponse::InternalServerError().json(json!({ 
                 "error": format!("Authentication error: {}", e)
             })))
         }
@@ -171,14 +187,17 @@ async fn logout(
     req: web::Json<ValidateRequest>,
     nostr_service: web::Data<NostrService>,
 ) -> Result<HttpResponse, Error> {
+    let pubkey = req.pubkey.trim();
+    debug!("Handling logout request for pubkey: '{}'", pubkey);
+    
     // Validate session before logout
-    if !nostr_service.validate_session(&req.pubkey, &req.token).await {
+    if !nostr_service.validate_session(pubkey, &req.token).await {
         return Ok(HttpResponse::Unauthorized().json(json!({
             "error": "Invalid session"
         })));
     }
 
-    match nostr_service.logout(&req.pubkey).await {
+    match nostr_service.logout(pubkey).await {
         Ok(_) => Ok(HttpResponse::Ok().json(json!({
             "message": "Logged out successfully"
         }))),
@@ -193,13 +212,18 @@ async fn verify(
     nostr_service: web::Data<NostrService>,
     feature_access: web::Data<FeatureAccess>,
 ) -> Result<HttpResponse, Error> {
-    let is_valid = nostr_service.validate_session(&req.pubkey, &req.token).await;
+    let pubkey = req.pubkey.trim();
+    debug!("Verifying session for pubkey: '{}'", pubkey);
+    
+    let is_valid = nostr_service.validate_session(pubkey, &req.token).await;
     let user = if is_valid {
-        nostr_service.get_user(&req.pubkey).await
+        debug!("Session is valid, getting user info");
+        nostr_service.get_user(pubkey).await
                 .map(|u| UserResponseDTO {
                     pubkey: u.pubkey,
                     npub: Some(u.npub),
                     is_power_user: u.is_power_user,
+                    
                 })
     } else {
         None
@@ -207,7 +231,7 @@ async fn verify(
 
     // Get available features if session is valid
     let features = if is_valid {
-        feature_access.get_available_features(&req.pubkey)
+        feature_access.get_available_features(pubkey)
     } else {
         Vec::new()
     };
@@ -224,22 +248,24 @@ async fn refresh(
     nostr_service: web::Data<NostrService>,
     feature_access: web::Data<FeatureAccess>,
 ) -> Result<HttpResponse, Error> {
+    let pubkey = req.pubkey.trim();
+    debug!("Refreshing session for pubkey: '{}'", pubkey);
     // First validate the current session
-    if !nostr_service.validate_session(&req.pubkey, &req.token).await {
+    if !nostr_service.validate_session(pubkey, &req.token).await {
         return Ok(HttpResponse::Unauthorized().json(json!({
             "error": "Invalid session"
         })));
     }
 
-    match nostr_service.refresh_session(&req.pubkey).await {
+    match nostr_service.refresh_session(pubkey).await {
         Ok(new_token) => {
-            if let Some(user) = nostr_service.get_user(&req.pubkey).await {
+            if let Some(user) = nostr_service.get_user(pubkey).await {
                 let expires_at = user.last_seen + std::env::var("AUTH_TOKEN_EXPIRY")
                     .unwrap_or_else(|_| "3600".to_string())
                     .parse::<i64>()
                     .unwrap_or(3600);
 // Get available features for the refreshed session
-let features = feature_access.get_available_features(&req.pubkey);
+let features = feature_access.get_available_features(pubkey);
 
 Ok(HttpResponse::Ok().json(AuthResponse {
     user: UserResponseDTO {
@@ -268,13 +294,16 @@ async fn update_api_keys(
     nostr_service: web::Data<NostrService>,
     pubkey: web::Path<String>,
 ) -> Result<HttpResponse, Error> {
+    let trimmed_pubkey = pubkey.trim().to_string();
     let api_keys = ApiKeys {
         perplexity: req.perplexity.clone(),
         openai: req.openai.clone(),
         ragflow: req.ragflow.clone(),
     };
+    
+    debug!("Updating API keys for pubkey: '{}'", trimmed_pubkey);
 
-    match nostr_service.update_user_api_keys(&pubkey, api_keys).await {
+    match nostr_service.update_user_api_keys(&trimmed_pubkey, api_keys).await {
         Ok(user) => {
             let user_dto = UserResponseDTO {
                 pubkey: user.pubkey.clone(),
@@ -303,9 +332,12 @@ async fn update_api_keys(
 
 async fn get_api_keys(
     state: web::Data<AppState>,
-    pubkey: web::Path<String>,
+    pubkey_param: web::Path<String>,
 ) -> Result<HttpResponse, Error> {
+    let pubkey = pubkey_param.trim();
+    debug!("Getting API keys for pubkey: '{}'", pubkey);
     let protected_settings = state.protected_settings.read().await;
+    
     let api_keys = protected_settings.get_api_keys(&pubkey);
     
     Ok(HttpResponse::Ok().json(api_keys))

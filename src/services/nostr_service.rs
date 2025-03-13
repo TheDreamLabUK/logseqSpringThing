@@ -10,7 +10,7 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use chrono::Utc;
 use thiserror::Error;
-use log::{debug, error, info};
+use log::{debug, error, info, warn};
 use uuid::Uuid;
 
 #[derive(Debug, Error)]
@@ -57,7 +57,11 @@ impl NostrService {
         let power_users = std::env::var("POWER_USER_PUBKEYS")
             .unwrap_or_default()
             .split(',')
-            .map(|s| s.trim().to_string())
+            .map(|s| {
+                let trimmed = s.trim().to_string();
+                debug!("Loaded power user pubkey: '{}'", trimmed);
+                trimmed
+            })
             .collect();
 
         let token_expiry = std::env::var("AUTH_TOKEN_EXPIRY")
@@ -110,7 +114,12 @@ impl NostrService {
         }
 
         let now = Utc::now();
-        let is_power_user = self.power_user_pubkeys.contains(&event.pubkey);
+        let trimmed_pubkey = event.pubkey.trim().to_string();
+        let is_power_user = self.power_user_pubkeys.iter().any(|p| p.trim() == trimmed_pubkey);
+        
+        debug!("Checking power user status for pubkey '{}', result: {}", trimmed_pubkey, is_power_user);
+        debug!("Power users list: {:?}", self.power_user_pubkeys);
+        debug!("Is pubkey in list with exact match: {}", self.power_user_pubkeys.contains(&trimmed_pubkey));
 
         // Generate session token
         let session_token = Uuid::new_v4().to_string();
@@ -136,14 +145,16 @@ impl NostrService {
     }
 
     pub async fn get_user(&self, pubkey: &str) -> Option<NostrUser> {
+        let trimmed_pubkey = pubkey.trim();
         let users = self.users.read().await;
-        users.get(pubkey).cloned()
+        users.get(trimmed_pubkey).cloned()
     }
 
     pub async fn update_user_api_keys(&self, pubkey: &str, api_keys: ApiKeys) -> Result<NostrUser, NostrError> {
+        let trimmed_pubkey = pubkey.trim();
         let mut users = self.users.write().await;
-        
-        if let Some(user) = users.get_mut(pubkey) {
+        debug!("Updating API keys for pubkey: '{}'", trimmed_pubkey);
+        if let Some(user) = users.get_mut(trimmed_pubkey) {
             if user.is_power_user {
                 return Err(NostrError::PowerUserOperation);
             }
@@ -156,7 +167,9 @@ impl NostrService {
     }
 
     pub async fn validate_session(&self, pubkey: &str, token: &str) -> bool {
-        if let Some(user) = self.get_user(pubkey).await {
+        let trimmed_pubkey = pubkey.trim();
+        debug!("Validating session for pubkey: '{}'", trimmed_pubkey);
+        if let Some(user) = self.get_user(trimmed_pubkey).await {
             if let Some(session_token) = user.session_token {
                 let now = Utc::now().timestamp();
                 if now - user.last_seen <= self.token_expiry {
@@ -168,9 +181,10 @@ impl NostrService {
     }
 
     pub async fn refresh_session(&self, pubkey: &str) -> Result<String, NostrError> {
+        let trimmed_pubkey = pubkey.trim();
         let mut users = self.users.write().await;
-        
-        if let Some(user) = users.get_mut(pubkey) {
+        debug!("Refreshing session for pubkey: '{}'", trimmed_pubkey);
+        if let Some(user) = users.get_mut(trimmed_pubkey) {
             let now = Utc::now().timestamp();
             let new_token = Uuid::new_v4().to_string();
             user.session_token = Some(new_token.clone());
@@ -182,9 +196,10 @@ impl NostrService {
     }
 
     pub async fn logout(&self, pubkey: &str) -> Result<(), NostrError> {
+        let trimmed_pubkey = pubkey.trim();
         let mut users = self.users.write().await;
-        
-        if let Some(user) = users.get_mut(pubkey) {
+        debug!("Logging out pubkey: '{}'", trimmed_pubkey);
+        if let Some(user) = users.get_mut(trimmed_pubkey) {
             user.session_token = None;
             user.last_seen = Utc::now().timestamp();
             Ok(())
@@ -204,7 +219,9 @@ impl NostrService {
     }
 
     pub async fn is_power_user(&self, pubkey: &str) -> bool {
-        if let Some(user) = self.get_user(pubkey).await {
+        let trimmed_pubkey = pubkey.trim();
+        debug!("Checking service-level power user status for: '{}'", trimmed_pubkey);
+        if let Some(user) = self.get_user(trimmed_pubkey).await {
             user.is_power_user
         } else {
             false

@@ -1,7 +1,7 @@
 use std::env;
 use std::fs;
 use std::path::PathBuf;
-use log::{info, warn};
+use log::{info, warn, debug};
 
 /// Represents the access control configuration for various features and user roles
 pub struct FeatureAccess {
@@ -41,7 +41,11 @@ impl FeatureAccess {
         env::var(var_name)
             .unwrap_or_default()
             .split(',')
-            .map(|s| s.trim().to_string())
+            .map(|s| {
+                let trimmed = s.trim().to_string();
+                debug!("Loaded pubkey from env {}: '{}'", var_name, trimmed);
+                trimmed
+            })
             .filter(|s| !s.is_empty())
             .collect()
     }
@@ -102,33 +106,48 @@ impl FeatureAccess {
 
     /// Checks if a pubkey has basic access
     pub fn has_access(&self, pubkey: &str) -> bool {
-        self.approved_pubkeys.contains(&pubkey.to_string())
+        let pubkey_str = pubkey.trim();
+        debug!("Checking access for pubkey: '{}'", pubkey_str);
+        debug!("Approved pubkeys: {:?}", self.approved_pubkeys);
+        self.approved_pubkeys.iter().any(|p| p.trim() == pubkey_str)
     }
 
     /// Checks if a pubkey has access to Perplexity features
     pub fn has_perplexity_access(&self, pubkey: &str) -> bool {
-        self.perplexity_enabled.contains(&pubkey.to_string())
+        let pubkey_str = pubkey.trim();
+        debug!("Checking Perplexity access for pubkey: '{}'", pubkey_str);
+        self.perplexity_enabled.iter().any(|p| p.trim() == pubkey_str)
     }
 
     /// Checks if a pubkey has access to OpenAI features
     pub fn has_openai_access(&self, pubkey: &str) -> bool {
-        self.openai_enabled.contains(&pubkey.to_string())
+        let pubkey_str = pubkey.trim();
+        debug!("Checking OpenAI access for pubkey: '{}'", pubkey_str);
+        self.openai_enabled.iter().any(|p| p.trim() == pubkey_str)
     }
 
     /// Checks if a pubkey has access to RagFlow features
     pub fn has_ragflow_access(&self, pubkey: &str) -> bool {
-        self.ragflow_enabled.contains(&pubkey.to_string())
+        let pubkey_str = pubkey.trim();
+        debug!("Checking RagFlow access for pubkey: '{}'", pubkey_str);
+        self.ragflow_enabled.iter().any(|p| p.trim() == pubkey_str)
     }
 
     /// Checks if a pubkey has power user status
-    pub fn is_power_user(&self, pubkey: &str) -> bool {
-        self.power_users.contains(&pubkey.to_string())
+    pub fn is_power_user(&self, pubkey: &str) -> bool {       
+        let pubkey_str = pubkey.trim();
+        debug!("Checking power user status for pubkey: '{}'", pubkey_str);
+        debug!("Power users: {:?}", self.power_users);
+        self.power_users.iter().any(|p| p.trim() == pubkey_str)
     }
 
     /// Checks if a pubkey has settings sync access
     pub fn can_sync_settings(&self, pubkey: &str) -> bool {
         // Power users automatically get settings sync access
-        self.is_power_user(pubkey) || self.settings_sync_enabled.contains(&pubkey.to_string())
+        if self.is_power_user(pubkey) {
+            return true;
+        }
+        self.settings_sync_enabled.iter().any(|p| p.trim() == pubkey.trim())
     }
 
     /// Checks if a pubkey has access to a specific feature
