@@ -6,12 +6,8 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use crate::models::metadata::Metadata;
 use crate::utils::socket_flow_messages::Node;
-use tokio::fs::{create_dir_all, File, metadata};
 use crate::services::file_service::FileService;
 use crate::services::graph_service::GraphService;
-use std::io::Error;
-use std::path::Path;
-use crate::services::file_service::{GRAPH_CACHE_PATH, LAYOUT_CACHE_PATH};
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -43,158 +39,8 @@ pub struct GraphQuery {
     pub filter: Option<String>,
 }
 
-/// Explicitly verify and report on cache file status
-pub async fn verify_cache_files() -> (bool, bool) {
-    info!("Verifying cache files existence and permissions");
-    let graph_exists = Path::new(GRAPH_CACHE_PATH).exists();
-    let layout_exists = Path::new(LAYOUT_CACHE_PATH).exists();
-    
-    if graph_exists {
-        match metadata(GRAPH_CACHE_PATH).await {
-            Ok(md) => {
-                info!("Graph cache file exists: {} bytes, is_file={}", 
-                      md.len(), md.is_file());
-                
-                // Try opening the file to verify permissions
-                match File::open(GRAPH_CACHE_PATH).await {
-                    Ok(_) => info!("Graph cache file is readable"),
-                    Err(e) => error!("Graph cache file exists but can't be opened: {}", e)
-                }
-            },
-            Err(e) => error!("Failed to get metadata for graph cache: {}", e)
-        }
-    } else {
-        error!("Graph cache file does not exist at {}", GRAPH_CACHE_PATH);
-    }
-    
-    if layout_exists {
-        match metadata(LAYOUT_CACHE_PATH).await {
-            Ok(md) => {
-                info!("Layout cache file exists: {} bytes, is_file={}", 
-                      md.len(), md.is_file());
-                match File::open(LAYOUT_CACHE_PATH).await {
-                    Ok(_) => info!("Layout cache file is readable"),
-                    Err(e) => error!("Layout cache file exists but can't be opened: {}", e)
-                }
-            },
-            Err(e) => error!("Failed to get metadata for layout cache: {}", e)
-        }
-    } else {
-        error!("Layout cache file does not exist at {}", LAYOUT_CACHE_PATH);
-    }
-    (graph_exists, layout_exists)
-}
-
 pub async fn get_graph_data(state: web::Data<AppState>) -> impl Responder {
     info!("Received request for graph data");
-
-    // Check if metadata directory exists and create if necessary
-    if let Err(e) = create_dir_all("/app/data/metadata").await {
-        error!("Failed to create metadata directory: {}", e);
-    } else {
-        info!("Metadata directory exists or was created successfully");
-    }
-    
-    // Get metadata from the app state
-    let metadata = state.metadata.read().await.clone();
-    if metadata.is_empty() {
-        error!("Metadata store is empty - no files to process");
-        return HttpResponse::ServiceUnavailable().json(serde_json::json!({
-            "error": "No metadata available to build graph"
-        }));
-    }
-    
-    // Check if the graph_service already has graph data
-    let graph_size = {
-        let graph = state.graph_service.get_graph_data_mut().await;
-        graph.nodes.len()
-        // Don't drop graph lock here to avoid race conditions with validation
-    };
-    
-    // If the graph is empty, we need to build it first
-    if graph_size == 0 {
-        info!("Graph data is empty, building graph from {} metadata entries", metadata.len());
-        match GraphService::build_graph_from_metadata(&metadata).await {
-            Ok(built_graph) => {
-                // Update the app state's graph data
-                let mut app_graph = state.graph_service.get_graph_data_mut().await;
-                *app_graph = built_graph.clone();
-                drop(app_graph);
-                
-                // Update node map
-                let mut node_map = state.graph_service.get_node_map_mut().await;
-                node_map.clear();
-                for node in &built_graph.nodes {
-                    node_map.insert(node.id.clone(), node.clone());
-                }
-                drop(node_map);
-                
-                info!("Successfully built and updated graph with {} nodes, {} edges",
-                      built_graph.nodes.len(), built_graph.edges.len());
-            },
-            Err(e) => error!("Failed to build graph: {}", e)
-        }
-    } else {
-        info!("Graph already contains {} nodes, using existing data for hot start", graph_size);
-        
-        // Clone what we need for the background task
-        let app_state = state.clone();
-        let metadata_clone = metadata.clone();
-        
-        // Spawn background validation and update task
-        tokio::spawn(async move {
-            info!("Starting background validation of cached graph data against metadata");
-            
-            // Try to validate and update the graph
-            match GraphService::build_graph_from_metadata(&metadata_clone).await {
-                Ok(validated_graph) => {
-                    // Check if the validated graph is different from what we have
-                    let current_size = {
-                        let graph = app_state.graph_service.get_graph_data_mut().await;
-                        graph.nodes.len()
-                    };
-                    
-                    let validated_size = validated_graph.nodes.len();
-                    
-                    if current_size != validated_size {
-                        info!("Background validation found graph size difference: {} vs {}. Updating...", 
-                              current_size, validated_size);
-                        
-                        // Update app state with the validated graph
-                        let mut app_graph = app_state.graph_service.get_graph_data_mut().await;
-                        *app_graph = validated_graph.clone();
-                        drop(app_graph);
-                        
-                        // Update node map
-                        let mut node_map = app_state.graph_service.get_node_map_mut().await;
-                        node_map.clear();
-                        for node in &validated_graph.nodes {
-                            node_map.insert(node.id.clone(), node.clone());
-                        }
-
-                        // Update the graph update status so WebSocket clients can check for changes
-                        let update_diff = validated_graph.nodes.len() as i32 - current_size as i32;
-                        let mut update_status = app_state.graph_update_status.write().await;
-                        
-                        // Only mark as updated if there were actual changes
-                        if update_diff != 0 {
-                            info!("Background validation completed - found {} node changes", update_diff);
-                            update_status.last_update = chrono::Utc::now();
-                            update_status.update_available = true;
-                            update_status.nodes_changed = update_diff;
-                        } else {
-                            // Still update check time even if no changes
-                            info!("Background validation completed - graph is already up to date");
-                            update_status.last_check = chrono::Utc::now();
-                            update_status.update_available = false;
-                        }
-                        
-                    }
-                },
-                Err(e) => error!("Background graph validation failed: {}", e)
-            }
-        });
-    }
     
     // Make sure the GPU layout is calculated before sending data
     if let Some(gpu_compute) = &state.graph_service.get_gpu_compute().await {
@@ -236,39 +82,17 @@ pub async fn get_graph_data(state: web::Data<AppState>) -> impl Responder {
         info!("GPU compute not available, sending graph without GPU processing");
     }
     
-    // Take a single layout snapshot for client to load at init
-    info!("Taking layout snapshot for client initialization");
-    if let Err(e) = state.graph_service.take_layout_snapshot().await {
-        warn!("Failed to take layout snapshot: {}", e);
-    } else {
-        info!("Layout snapshot saved successfully");
-    }
-
-    // Verify if cache files were created and provide details
-    let (graph_cached, layout_cached) = verify_cache_files().await;
-    info!("Cache file verification complete: graph={}, layout={}", graph_cached, layout_cached);
-    
     let graph = state.graph_service.get_graph_data_mut().await;
     
     // Log position data to debug zero positions
-    if graph.nodes.is_empty() {
-        error!("Graph is still empty after build attempt. This should not happen if there is valid metadata.");
-        
-        // Return an empty response with an error indicator
-        return HttpResponse::Ok().json(serde_json::json!({
-            "nodes": [],
-            "edges": [],
-            "metadata": {},
-            "error": "Failed to build graph data"
-        }));
-    } else {
+    if !graph.nodes.is_empty() {
         // Log a few nodes for debugging
         for (i, node) in graph.nodes.iter().take(5).enumerate() {
             debug!("Node {}: id={}, label={}, pos=[{:.3},{:.3},{:.3}]", 
                 i, node.id, node.label, node.data.position[0], node.data.position[1], node.data.position[2]);
         }
     }
-
+    
     // Log edge data
     if !graph.edges.is_empty() {
         for (i, edge) in graph.edges.iter().take(5).enumerate() {
@@ -294,35 +118,7 @@ pub async fn get_graph_data(state: web::Data<AppState>) -> impl Responder {
 pub async fn get_paginated_graph_data(
     state: web::Data<AppState>,
     query: web::Query<GraphQuery>,
-) -> impl Responder {    
-    // Ensure metadata directory exists
-    if let Err(e) = create_dir_all("/app/data/metadata").await {
-        error!("Failed to create metadata directory: {}", e);
-    }
-    
-    // Get metadata and explicitly build graph with caching if this is the first page
-    if query.page.unwrap_or(1) == 1 {
-        info!("First page requested - verifying cache files");
-        // Verify cache files when first page is requested
-        let (graph_cached, layout_cached) = verify_cache_files().await;
-        
-        // Get the current graph size
-        let graph_size = {
-            let graph = state.graph_service.get_graph_data_mut().await;
-            graph.nodes.len()
-        };
-        
-        // If the graph is empty, rebuild it
-        if graph_size == 0 {
-            info!("Graph data is empty when paginated view requested, rebuilding graph");
-            let metadata = state.metadata.read().await.clone();
-            if !metadata.is_empty() {
-                let _ = get_graph_data(state.clone()).await;
-            }
-        }
-        
-        info!("Cache status for first page: graph={}, layout={}", graph_cached, layout_cached);
-    }
+) -> impl Responder {
     info!("Received request for paginated graph data with params: {:?}", query);
     
     // Ensure GPU layout is calculated before sending first page of data
@@ -440,10 +236,9 @@ pub async fn get_paginated_graph_data(
 
 // Rebuild graph from existing metadata
 pub async fn refresh_graph(state: web::Data<AppState>) -> impl Responder {
-    info!("Received request to refresh graph and rebuild caches");
+    info!("Received request to refresh graph");
     
     let metadata = state.metadata.read().await.clone();
-    info!("Building graph from {} metadata entries", metadata.len());
     debug!("Building graph from {} metadata entries", metadata.len());
     
     match GraphService::build_graph_from_metadata(&metadata).await {
@@ -476,23 +271,11 @@ pub async fn refresh_graph(state: web::Data<AppState>) -> impl Responder {
             for node in &graph.nodes {
                 node_map.insert(node.id.clone(), node.clone());
             }
-
-            // Take a layout snapshot after refreshing the graph
-            info!("Taking layout snapshot after graph refresh");
-            if let Err(e) = state.graph_service.take_layout_snapshot().await {
-                warn!("Failed to take layout snapshot: {}", e);
-            } else {
-                info!("Layout snapshot saved successfully after refresh");
-            }
-
-            // Verify the cache files after rebuilding the graph
-            let (graph_cached, layout_cached) = verify_cache_files().await;
             
             info!("Graph refreshed successfully with {} nodes and {} edges", 
                 graph.nodes.len(), 
                 graph.edges.len()
             );
-            info!("Cache files after refresh: graph={}, layout={}", graph_cached, layout_cached);
             
             HttpResponse::Ok().json(serde_json::json!({
                 "success": true,
@@ -575,14 +358,6 @@ pub async fn update_graph(state: web::Data<AppState>) -> impl Responder {
                     node_map.clear();
                     for node in &graph.nodes {
                         node_map.insert(node.id.clone(), node.clone());
-                    }
-
-                    // Take a layout snapshot after updating the graph
-                    info!("Taking layout snapshot after graph update");
-                    if let Err(e) = state.graph_service.take_layout_snapshot().await {
-                        warn!("Failed to take layout snapshot: {}", e);
-                    } else {
-                        info!("Layout snapshot saved successfully after update");
                     }
                     
                     debug!("Graph updated successfully");

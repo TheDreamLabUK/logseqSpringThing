@@ -28,7 +28,7 @@ pub async fn fetch_and_process_files(state: web::Data<AppState>) -> HttpResponse
     match file_service.fetch_and_process_files(&state.content_api, state.settings.clone(), &mut metadata_store).await {
         Ok(processed_files) => {
             let file_names: Vec<String> = processed_files.iter()
-                .map(|pf| pf.file_name.clone()) 
+                .map(|pf| pf.file_name.clone())
                 .collect();
 
             info!("Successfully processed {} public markdown files", processed_files.len());

@@ -1,5 +1,6 @@
 use tokio::sync::{mpsc, Mutex, RwLock};
-use tokio_tungstenite::{connect_async, WebSocketStream, MaybeTlsStream, tungstenite::Message};
+use tokio_tungstenite::{connect_async, WebSocketStream, MaybeTlsStream};
+use tungstenite::protocol::Message;
 use tungstenite::http::Request;
 use serde_json::json;
 use std::sync::Arc;
@@ -17,7 +18,6 @@ use crate::types::speech::{SpeechError, SpeechCommand, TTSProvider};
 pub struct SpeechService {
     sender: Arc<Mutex<mpsc::Sender<SpeechCommand>>>,
     settings: Arc<RwLock<Settings>>,
-    #[allow(dead_code)]
     tts_provider: Arc<RwLock<TTSProvider>>,
 }
 

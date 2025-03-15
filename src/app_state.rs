@@ -1,14 +1,13 @@
 use std::sync::{Arc, atomic::{AtomicUsize, Ordering}};
 use tokio::sync::RwLock;
 use actix_web::web;
-use log::{info, warn};
+use log::{info, warn, error};
 
 use crate::config::Settings;
 use tokio::time::Duration;
 use crate::config::feature_access::FeatureAccess;
 use crate::models::metadata::MetadataStore;
 use crate::models::protected_settings::{ProtectedSettings, ApiKeys, NostrUser};
-use crate::models::graph::GraphUpdateStatus;
 use crate::services::graph_service::GraphService;
 use crate::services::github::{GitHubClient, ContentAPI};
 use crate::services::perplexity_service::PerplexityService;
@@ -31,10 +30,6 @@ pub struct AppState {
     pub feature_access: web::Data<FeatureAccess>,
     pub ragflow_conversation_id: String,
     pub active_connections: Arc<AtomicUsize>,
-    // Track graph updates for websocket clients
-    // Track GPU availability for diagnostics
-    pub gpu_available: Arc<RwLock<bool>>,
-    pub graph_update_status: Arc<RwLock<GraphUpdateStatus>>,
 }
 
 impl AppState {
@@ -70,8 +65,6 @@ impl AppState {
             feature_access: web::Data::new(FeatureAccess::from_env()),
             ragflow_conversation_id,
             active_connections: Arc::new(AtomicUsize::new(0)),
-            gpu_available: Arc::new(RwLock::new(false)),
-            graph_update_status: Arc::new(RwLock::new(GraphUpdateStatus::default())),
         })
     }
 
@@ -133,37 +126,5 @@ impl AppState {
 
     pub fn get_available_features(&self, pubkey: &str) -> Vec<String> {
         self.feature_access.get_available_features(pubkey)
-    }
-    
-    /// Check GPU availability and update status
-    pub async fn check_gpu_status(&self) -> bool {
-        let status = if let Some(gpu) = &self.gpu_compute {
-            // Try to get a read lock on the GPU compute
-            match gpu.try_read() {
-                Ok(gpu_lock) => {
-                    // Try to run a simple test computation
-                    match gpu_lock.test_compute() {
-                        Ok(_) => {
-                            info!("GPU compute test successful - GPU is AVAILABLE");
-                            true
-                        },
-                        Err(e) => {
-                            warn!("GPU compute test failed: {} - GPU is NOT AVAILABLE", e);
-                            false
-                        }
-                    }
-                },
-                Err(_) => {
-                    warn!("Could not acquire GPU lock for testing - GPU is NOT AVAILABLE");
-                    false
-                }
-            }
-        } else {
-            warn!("No GPU compute instance found - GPU is NOT AVAILABLE");
-            false
-        };
-        
-        *self.gpu_available.write().await = status;
-        status
     }
 }

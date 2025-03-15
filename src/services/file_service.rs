@@ -2,7 +2,7 @@ use crate::models::metadata::{Metadata, MetadataStore, MetadataOps};
 use crate::models::graph::GraphData;
 use crate::config::Settings;
 use serde::{Deserialize, Serialize};
-use log::{info, debug, error, warn};
+use log::{info, debug, error};
 use std::sync::atomic::{AtomicU32, Ordering};
 use regex::Regex;
 use std::fs;
@@ -20,11 +20,7 @@ use std::io::Error;
 use super::github::{GitHubClient, ContentAPI, GitHubConfig};
 
 // Constants
-pub const METADATA_PATH: &str = "/app/data/metadata/metadata.json"; // Legacy combined metadata path
-pub const METADATA_DIR: &str = "/app/data/metadata";
-pub const FILE_METADATA_DIR: &str = "/app/data/metadata/files"; // Directory for individual file metadata
-pub const GRAPH_CACHE_PATH: &str = "/app/data/metadata/graph.json"; // Path for cached graph data
-pub const LAYOUT_CACHE_PATH: &str = "/app/data/metadata/layout.json"; // Path for cached layout data
+const METADATA_PATH: &str = "/app/data/metadata/metadata.json";
 pub const MARKDOWN_DIR: &str = "/app/data/markdown";
 const GITHUB_API_DELAY: Duration = Duration::from_millis(500);
 
@@ -37,7 +33,6 @@ pub struct ProcessedFile {
 }
 
 pub struct FileService {
-    #[allow(dead_code)]
     settings: Arc<RwLock<Settings>>,
     // Counter for assigning node IDs, initialized based on existing metadata
     node_id_counter: AtomicU32,
@@ -189,31 +184,8 @@ impl FileService {
     /// Load metadata from file or create new if not exists
     pub fn load_or_create_metadata() -> Result<MetadataStore, String> {
         // Ensure metadata directory exists
-        std::fs::create_dir_all(METADATA_DIR)
+        std::fs::create_dir_all("/app/data/metadata")
             .map_err(|e| format!("Failed to create metadata directory: {}", e))?;
-            
-        // Explicitly set permissions on metadata directory to ensure it's writable
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            if let Err(e) = std::fs::set_permissions(METADATA_DIR, std::fs::Permissions::from_mode(0o777)) {
-                warn!("Could not set permissions on metadata directory: {}", e);
-                // Continue anyway, as this is not critical
-            } else {
-                info!("Successfully set permissions on metadata directory");
-            }
-        }
-            
-        // Ensure file metadata directory exists
-        std::fs::create_dir_all(FILE_METADATA_DIR)
-            .map_err(|e| format!("Failed to create file metadata directory: {}", e))?;
-
-        // Also set permissions on the file metadata directory
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let _ = std::fs::set_permissions(FILE_METADATA_DIR, std::fs::Permissions::from_mode(0o777));
-        }
         
         let metadata_path = "/app/data/metadata/metadata.json";
         
@@ -292,10 +264,6 @@ impl FileService {
     pub async fn initialize_local_storage(
         settings: Arc<RwLock<Settings>>,
     ) -> Result<(), Box<dyn StdError + Send + Sync>> {
-        // First ensure directories exist with proper permissions
-        info!("Ensuring metadata directories exist with proper permissions");
-        Self::ensure_directories()?;
-        
         // Create GitHub client using environment variables
         let github_config = GitHubConfig::from_env()
             .map_err(|e| Box::new(e) as Box<dyn StdError + Send + Sync>)?;
@@ -310,6 +278,9 @@ impl FileService {
         }
 
         info!("Initializing local storage with files from GitHub");
+
+        // Ensure directories exist and have proper permissions
+        Self::ensure_directories()?;
 
         // Get all markdown files from GitHub
         let github_files = content_api.list_markdown_files("").await?;
@@ -496,97 +467,13 @@ impl FileService {
             }
         }
     }
-    
-    /// Load metadata for a single file
-    pub fn load_file_metadata(file_name: &str) -> Result<Option<Metadata>, Error> {
-        let file_path = format!("{}/{}.json", FILE_METADATA_DIR, file_name);
-        let metadata_path = Path::new(&file_path);
-        
-        if !metadata_path.exists() {
-            return Ok(None);
-        }
-        
-        match fs::read_to_string(metadata_path) {
-            Ok(content) => {
-                match serde_json::from_str::<Metadata>(&content) {
-                    Ok(metadata) => Ok(Some(metadata)),
-                    Err(e) => Err(Error::new(std::io::ErrorKind::InvalidData, 
-                        format!("Failed to parse metadata for {}: {}", file_name, e)))
-                }
-            },
-            Err(e) => Err(Error::new(std::io::ErrorKind::Other, 
-                format!("Failed to read metadata file for {}: {}", file_name, e)))
-        }
-    }
-    
-    /// Save metadata for a single file
-    pub fn save_file_metadata(file_name: &str, metadata: &Metadata) -> Result<(), Error> {
-        let file_path = format!("{}/{}.json", FILE_METADATA_DIR, file_name);
-        
-        // Serialize the metadata to JSON
-        let json = serde_json::to_string_pretty(metadata)
-            .map_err(|e| Error::new(std::io::ErrorKind::Other, e.to_string()))?;
-            
-        // Write to file
-        fs::write(&file_path, json)
-            .map_err(|e| Error::new(std::io::ErrorKind::Other, 
-                format!("Failed to write metadata for {}: {}", file_name, e)))
-    }
-    
-    /// Check if a file has changed by comparing SHA1 hashes
-    pub fn has_file_changed(file_name: &str, content: &str) -> Result<bool, Error> {
-        // Calculate the SHA1 hash of the current content
-        let current_hash = Self::calculate_sha1(content);
-        
-        // Try to load the existing metadata
-        match Self::load_file_metadata(file_name)? {
-            Some(metadata) => {
-                // If we have metadata, compare the SHA1 hashes
-                Ok(metadata.sha1 != current_hash)
-            },
-            None => {
-                // If we don't have metadata, the file is considered changed
-                Ok(true)
-            }
-        }
-    }
-    
-    /// Load metadata from individual files
-    pub fn load_all_file_metadata() -> Result<MetadataStore, Error> {
-        let mut metadata_store = MetadataStore::new();
-        
-        // Read all .json files in the file metadata directory
-        if let Ok(entries) = fs::read_dir(FILE_METADATA_DIR) {
-            for entry in entries.filter_map(Result::ok) {
-                if let Some(file_name) = entry.file_name().to_str().map(|s| s.to_owned()) {
-                    if file_name.ends_with(".json") {
-                        let base_name = file_name.trim_end_matches(".json");
-                        if let Ok(Some(metadata)) = Self::load_file_metadata(base_name) {
-                            metadata_store.insert(base_name.to_owned(), metadata);
-                        }
-                    }
-                }
-            }
-        }
-        
-        Ok(metadata_store)
-    }
 
     /// Save metadata to file
     pub fn save_metadata(metadata: &MetadataStore) -> Result<(), Error> {
-        // Save combined metadata for backward compatibility
         let json = serde_json::to_string_pretty(metadata)
             .map_err(|e| Error::new(std::io::ErrorKind::Other, e.to_string()))?;
         fs::write(METADATA_PATH, json)
             .map_err(|e| Error::new(std::io::ErrorKind::Other, e.to_string()))?;
-        
-        // Save individual file metadata
-        for (file_name, metadata) in metadata {
-            if let Err(e) = Self::save_file_metadata(file_name, metadata) {
-                error!("Failed to save individual metadata for {}: {}", file_name, e);
-            }
-        }
-        
         Ok(())
     }
 
@@ -607,14 +494,12 @@ impl FileService {
     /// Fetch and process files from GitHub
     pub async fn fetch_and_process_files(
         &self,
-        content_api: &Arc<ContentAPI>,
+        content_api: Arc<ContentAPI>,
         _settings: Arc<RwLock<Settings>>,
         metadata_store: &mut MetadataStore,
     ) -> Result<Vec<ProcessedFile>, Box<dyn StdError + Send + Sync>> {
         let mut processed_files = Vec::new();
-        
-        info!("Starting optimized file processing with hash-based invalidation");
-        
+
         // Get all markdown files from GitHub
         let github_files = content_api.list_markdown_files("").await?;
         info!("Found {} markdown files in GitHub", github_files.len());
@@ -639,67 +524,35 @@ impl FileService {
 
                             // Only fetch full content for public files
                             match content_api.fetch_file_content(&file_meta.download_url).await {
-                                Ok(content) => {                                
+                                Ok(content) => {
                                     let file_path = format!("{}/{}", MARKDOWN_DIR, file_meta.name);
-                                    // Calculate the SHA1 hash of the content
-                                    let new_sha1 = Self::calculate_sha1(&content);
-                                    
-                                    // Check if the file has changed by comparing SHA1 hashes
-                                    let file_changed = match Self::load_file_metadata(&file_meta.name) {
-                                        Ok(Some(existing_metadata)) => {
-                                            let changed = existing_metadata.sha1 != new_sha1;
-                                            if !changed {
-                                                debug!("File {} unchanged (SHA1 match), skipping processing", file_meta.name);
-                                            } else {
-                                                debug!("File {} has changed, reprocessing", file_meta.name);
-                                            }
-                                            changed
-                                        },
-                                        _ => {
-                                            debug!("No existing metadata for {}, processing as new file", file_meta.name);
-                                            true
-                                        }
-                                    };
-                                    
-                                    // Only process the file if it has changed or if we don't have metadata for it
-                                    if file_changed {
-                                        // Write the content to the file
-                                        if let Err(e) = fs::write(&file_path, &content) {
-                                            error!("Failed to write file {}: {}", file_path, e);
-                                            return Err(e.into());
-                                        }
-
-                                        let file_size = content.len();
-                                        let node_size = Self::calculate_node_size(file_size);
-
-                                        // Create new metadata or update existing
-                                        let mut metadata = Self::load_file_metadata(&file_meta.name)
-                                            .unwrap_or_default()
-                                            .unwrap_or_default();
-                                            
-                                        // Update metadata fields
-                                        metadata.file_name = file_meta.name.clone();
-                                        metadata.file_size = file_size;
-                                        metadata.node_size = node_size;
-                                        metadata.hyperlink_count = Self::count_hyperlinks(&content);
-                                        metadata.sha1 = new_sha1;
-                                        metadata.last_modified = file_meta.last_modified.unwrap_or_else(|| Utc::now());
-                                        
-                                        // Keep existing values for these fields if present
-                                        if metadata.node_id == "0" || metadata.node_id.is_empty() {
-                                            metadata.node_id = "0".to_string(); // Will be assigned properly later
-                                        }
-
-                                        Ok(Some(ProcessedFile {
-                                            file_name: file_meta.name.clone(),
-                                            content,
-                                            is_public: true,
-                                            metadata,
-                                        }))
-                                    } else {
-                                        // If the file hasn't changed, return None so we don't process it again
-                                        Ok(None)
+                                    if let Err(e) = fs::write(&file_path, &content) {
+                                        error!("Failed to write file {}: {}", file_path, e);
+                                        return Err(e.into());
                                     }
+
+                                    let file_size = content.len();
+                                    let node_size = Self::calculate_node_size(file_size);
+
+                                    let metadata = Metadata {
+                                        file_name: file_meta.name.clone(),
+                                        file_size,
+                                        node_size,
+                                        node_id: "0".to_string(), // Will be assigned properly later
+                                        hyperlink_count: Self::count_hyperlinks(&content),
+                                        sha1: Self::calculate_sha1(&content),
+                                        last_modified: file_meta.last_modified.unwrap_or_else(|| Utc::now()),
+                                        perplexity_link: String::new(),
+                                        last_perplexity_process: None,
+                                        topic_counts: HashMap::new(), // Will be updated later
+                                    };
+
+                                    Ok(Some(ProcessedFile {
+                                        file_name: file_meta.name.clone(),
+                                        content,
+                                        is_public: true,
+                                        metadata,
+                                    }))
                                 }
                                 Err(e) => {
                                     error!("Failed to fetch content for {}: {}", file_meta.name, e);
@@ -721,17 +574,7 @@ impl FileService {
             for result in results {
                 match result {
                     Ok(Some(processed_file)) => {
-                        // Save individual file metadata
-                        if let Err(e) = Self::save_file_metadata(
-                            &processed_file.file_name, 
-                            &processed_file.metadata
-                        ) {
-                            error!("Failed to save metadata for {}: {}", 
-                                processed_file.file_name, e);
-                        }
-                        
                         processed_files.push(processed_file);
-                        info!("Processed file: {}", processed_files.last().unwrap().file_name);
                     }
                     Ok(None) => continue, // Skipped non-public file
                     Err(e) => {

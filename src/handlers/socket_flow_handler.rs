@@ -1,7 +1,6 @@
 use actix::prelude::*;
 use actix_web::{web, Error, HttpRequest, HttpResponse};
 use actix_web_actors::ws;
-use futures::future::{self, Future};
 use flate2::{write::ZlibEncoder, Compression};
 use log::{debug, error, info, warn};
 use std::io::Write;
@@ -14,9 +13,6 @@ use crate::app_state::AppState;
 use crate::utils::binary_protocol;
 use crate::types::vec3::Vec3Data;
 use crate::utils::socket_flow_messages::{BinaryNodeData, PingMessage, PongMessage};
-
-// Initialize node ID counter when module is loaded
-use crate::models::node::Node;
 
 // Constants for throttling debug logs
 const DEBUG_LOG_SAMPLE_RATE: usize = 10; // Only log 1 in 10 updates
@@ -31,10 +27,6 @@ const DEFAULT_MIN_UPDATE_RATE: u32 = 5;   // Min 5 updates per second when stabl
 const BATCH_UPDATE_WINDOW_MS: u64 = 200;  // Check motion every 200ms
 const DEFAULT_MAX_UPDATE_RATE: u32 = 60;  // Max 60 updates per second when active
 const DEFAULT_MOTION_THRESHOLD: f32 = 0.05;  // 5% of nodes need to be moving
-
-// Graph update check interval (check every 10 seconds)
-const GRAPH_UPDATE_CHECK_INTERVAL: std::time::Duration = std::time::Duration::from_secs(10);
-
 const DEFAULT_MOTION_DAMPING: f32 = 0.9;  // Smooth transitions in rate
 
 // Maximum value for u16 node IDs
@@ -70,9 +62,6 @@ pub struct SocketFlowServer {
     nodes_in_motion: usize,    // Counter for nodes currently in motion
     total_node_count: usize,   // Total node count for percentage calculation
     last_motion_check: Instant, // Last time we checked motion percentage
-    
-    // Graph update check
-    last_graph_update_check: Instant, // Last time we checked for graph updates
 }
 
 impl SocketFlowServer {
@@ -131,7 +120,6 @@ impl SocketFlowServer {
             nodes_in_motion: 0,
             total_node_count: 0,
             last_motion_check: Instant::now(),
-            last_graph_update_check: Instant::now(),
         }
     }
 
@@ -257,7 +245,7 @@ impl SocketFlowServer {
 
     // New method to mark a batch as sent
     fn mark_batch_sent(&mut self) { self.last_batch_time = Instant::now(); }
-
+    
     // New method to collect nodes that have changed position
     fn collect_changed_nodes(&mut self) -> Vec<(u16, BinaryNodeData)> {
         let mut changed_nodes = Vec::new();
@@ -290,48 +278,6 @@ impl Actor for SocketFlowServer {
                 act.last_activity = std::time::Instant::now();
             });
         }
-        
-        // Set up periodic graph update check
-        ctx.run_interval(GRAPH_UPDATE_CHECK_INTERVAL, |act, ctx| {
-            // Get current time and check if we should perform an update check
-            let now = Instant::now();
-            let elapsed = now.duration_since(act.last_graph_update_check);
-            
-            // Only check periodically to reduce overhead
-            if elapsed < GRAPH_UPDATE_CHECK_INTERVAL {
-                return;
-            }
-            
-            // Update timestamp first to prevent repeated checks
-            act.last_graph_update_check = now;
-            
-            // Clone what we need to avoid borrowing issues
-            let app_state_clone = act.app_state.clone();
-            
-            // Use a separate future for the async work, properly wrapped
-            let fut = async move { 
-                let status = app_state_clone.graph_update_status.read().await;
-                (status.update_available, status.nodes_changed)
-            };
-            
-            // Wrap the future and handle the result with proper actor context
-            let wrapped_fut = actix::fut::wrap_future::<_, Self>(fut);
-            ctx.spawn(wrapped_fut.map(|(update_available, nodes_changed), _act, ctx| {
-                // If an update is available, send notification to client
-                if update_available {
-                    let message = serde_json::json!({
-                        "type": "graphUpdateAvailable",
-                        "timestamp": chrono::Utc::now().timestamp_millis(),
-                        "nodesChanged": nodes_changed
-                    });
-                    
-                    if let Ok(msg_str) = serde_json::to_string(&message) {
-                        ctx.text(msg_str);
-                        info!("Notified client of available graph update with {} node changes", nodes_changed);
-                    }
-                }
-            }));
-        });
 
         // Send simple connection established message
         let response = serde_json::json!({
@@ -566,7 +512,7 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
                                                 
                                                 // Use a simple recursive approach to restart the cycle
                                                 let _app_state = act.app_state.clone();
-                                                let _settings_clone = act.settings.clone();
+                    let _settings_clone = act.settings.clone();
                                                 ctx.run_later(next_interval, move |act, ctx| {
                                                     // Recursively call the handler to restart the cycle
                                                     act.handle(Ok(ws::Message::Text("{\"type\":\"requestInitialData\"}".to_string().into())), ctx);
@@ -599,22 +545,6 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
                                     self.last_activity = std::time::Instant::now();
                                     ctx.text(msg_str);
                                 }
-                            }
-                            
-                            Some("fetchUpdatedGraph") => {
-                                // Client is requesting to fetch updated graph data
-                                info!("Client requesting to fetch updated graph data");
-                                
-                                // Reset the update flag in AppState
-                                let app_state = self.app_state.clone();
-                                let fut = async move {
-                                    let mut update_status = app_state.graph_update_status.write().await;
-                                    update_status.update_available = false;
-                                };
-                                
-                                // Run as actor future
-                                let fut = fut.into_actor(self);
-                                ctx.spawn(fut.map(|_, _, _| ()));
                             }
                             Some("enableRandomization") => {
                                 if let Ok(enable_msg) = serde_json::from_value::<serde_json::Value>(msg.clone()) {
@@ -806,9 +736,6 @@ pub async fn socket_flow_handler(
     app_state: web::Data<AppState>,
     settings: web::Data<Arc<RwLock<crate::config::Settings>>>,
 ) -> Result<HttpResponse, Error> {
-    // Initialize node ID counter from persistent storage
-    Node::initialize_id_counter();
-    
     let should_debug = settings.try_read().map(|s| {
         s.system.debug.enabled && s.system.debug.enable_websocket_debug
     }).unwrap_or(false);

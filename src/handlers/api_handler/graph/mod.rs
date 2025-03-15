@@ -198,7 +198,7 @@ pub async fn update_graph(state: web::Data<AppState>) -> impl Responder {
     };
     
     let file_service = FileService::new(Arc::clone(&state.settings));
-    match file_service.fetch_and_process_files(&state.content_api, Arc::clone(&state.settings), &mut metadata).await {
+    match file_service.fetch_and_process_files(state.content_api.clone(), Arc::clone(&state.settings), &mut metadata).await {
         Ok(processed_files) => {
             if processed_files.is_empty() {
                 debug!("No new files to process");

@@ -1,19 +1,11 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicU32, Ordering, AtomicBool};
+use std::sync::atomic::{AtomicU32, Ordering};
 use crate::utils::socket_flow_messages::BinaryNodeData;
 use crate::types::vec3::Vec3Data;
-use std::path::Path;
-use std::fs;
-use log::{info, warn};
 
 // Static counter for generating unique numeric IDs
 static NEXT_NODE_ID: AtomicU32 = AtomicU32::new(1);  // Start from 1 (0 could be reserved)
-static ID_INITIALIZED: AtomicBool = AtomicBool::new(false);
-
-// Constants for ID management
-const MAX_NODE_ID_FILE: &str = "data/metadata/max_node_id.txt";
-const MAX_U16_VALUE: u32 = 65535; // Maximum value for u16 to ensure compatibility with binary protocol
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -47,122 +39,20 @@ pub struct Node {
 }
 
 impl Node {
-    /// Initialize the NEXT_NODE_ID counter from stored max ID
-    pub fn initialize_id_counter() {
-        // Only initialize once to prevent race conditions
-        if ID_INITIALIZED.swap(true, Ordering::SeqCst) {
-            return;
-        }
-
-        let max_id = Node::load_max_id_from_storage();
-        
-        // Update the counter if we found a valid ID
-        if max_id > 0 {
-            // Add 1 to ensure next ID is unique
-            let next_id = max_id + 1;
-            
-            // Ensure we don't exceed u16 limit for binary protocol compatibility
-            if next_id > MAX_U16_VALUE {
-                warn!("Loaded max node ID {} exceeds u16 limit. Resetting to 1.", max_id);
-                NEXT_NODE_ID.store(1, Ordering::SeqCst);
-            } else {
-                info!("Initialized node ID counter with value {} (loaded max ID: {})", next_id, max_id);
-                NEXT_NODE_ID.store(next_id, Ordering::SeqCst);
-            }
-        } else {
-            info!("No valid max node ID found, starting from 1");
-            NEXT_NODE_ID.store(1, Ordering::SeqCst);
-        }
-    }
-    
-    /// Load the maximum node ID from storage
-    fn load_max_id_from_storage() -> u32 {
-        // Check if the file exists
-        if !Path::new(MAX_NODE_ID_FILE).exists() {
-            return 0;
-        }
-        
-        // Try to read the file
-        match fs::read_to_string(MAX_NODE_ID_FILE) {
-            Ok(content) => {
-                // Try to parse the content as u32
-                match content.trim().parse::<u32>() {
-                    Ok(id) => {
-                        if id > 0 && id <= MAX_U16_VALUE {
-                            return id;
-                        } else {
-                            warn!("Invalid node ID in storage: {}, must be between 1 and {}", id, MAX_U16_VALUE);
-                        }
-                    },
-                    Err(e) => warn!("Failed to parse node ID from storage: {}", e)
-                }
-            },
-            Err(e) => warn!("Failed to read max node ID file: {}", e)
-        }
-        
-        0 // Return 0 if loading failed
-    }
-    
-    /// Save the current maximum node ID to storage
-    fn save_max_id_to_storage(id: u32) {
-        // Create parent directory if it doesn't exist
-        if let Some(parent) = Path::new(MAX_NODE_ID_FILE).parent() {
-            if !parent.exists() {
-                if let Err(e) = fs::create_dir_all(parent) {
-                    warn!("Failed to create directory for max node ID: {}", e);
-                    return;
-                }
-            }
-        }
-        
-        // Write the ID to the file
-        if let Err(e) = fs::write(MAX_NODE_ID_FILE, id.to_string()) {
-            warn!("Failed to save max node ID to storage: {}", e);
-        }
-    }
-    
     pub fn new(metadata_id: String) -> Self {
-        // Ensure ID counter is initialized
-        if !ID_INITIALIZED.load(Ordering::SeqCst) {
-            Node::initialize_id_counter();
-        }
-        
         Self::new_with_id(metadata_id, None)
     }
 
     pub fn new_with_id(metadata_id: String, provided_id: Option<String>) -> Self {
-        // Ensure ID counter is initialized
-        if !ID_INITIALIZED.load(Ordering::SeqCst) {
-            Node::initialize_id_counter();
-        }
-        
         // Always generate a new ID on the server side
         // Use provided ID only if it's a valid numeric string (from a previous session)
         let id = match provided_id {
             Some(id) if !id.is_empty() && id != "0" && id.parse::<u32>().is_ok() => {
-                let parsed_id = id.parse::<u32>().unwrap();
-                
-                // Ensure we update our counter if this ID is higher
-                if parsed_id > NEXT_NODE_ID.load(Ordering::SeqCst) {
-                    NEXT_NODE_ID.store(parsed_id + 1, Ordering::SeqCst);
-                    // Save the new maximum ID
-                    Node::save_max_id_to_storage(parsed_id);
-                }
-                
-                // Return the provided ID
-                id.clone()
+                // Use the provided ID only if it's a valid numeric ID
+                id
             },
             _ => {
-                // Generate a new unique ID and save it
-                let new_id = NEXT_NODE_ID.fetch_add(1, Ordering::SeqCst);
-                
-                // Save the new maximum ID periodically (every 10 IDs)
-                if new_id % 10 == 0 {
-                    Node::save_max_id_to_storage(new_id);
-                }
-                
-                // Return the new ID as string
-                new_id.to_string()
+                NEXT_NODE_ID.fetch_add(1, Ordering::SeqCst).to_string()
             }
         };
         

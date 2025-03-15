@@ -10,13 +10,10 @@ use webxr::{
     },
     services::{
         file_service::FileService,
-        file_service::{GRAPH_CACHE_PATH, LAYOUT_CACHE_PATH}, // Added import for cache paths
-        github::{GitHubClient, ContentAPI, GitHubConfig},
         graph_service::GraphService,
+        github::{GitHubClient, ContentAPI, GitHubConfig},
     },
-    utils::gpu_compute::GPUCompute,
-    models::node::Node,
-    utils::gpu_diagnostics
+    utils::gpu_compute::GPUCompute
 };
 
 use actix_web::{web, App, HttpServer, middleware};
@@ -24,8 +21,8 @@ use actix_cors::Cors;
 use actix_files::Files;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use dotenvy::dotenv;
 use tokio::time::Duration;
+use dotenvy::dotenv;
 use log::{error, info, debug, warn};
 use webxr::utils::logging::{init_logging_with_config, LogConfig};
 
@@ -120,23 +117,6 @@ async fn main() -> std::io::Result<()> {
     }
 
     info!("Loaded {} items from metadata store", metadata_store.len());
-    
-    // Ensure metadata directories are properly set up
-    if let Err(e) = tokio::fs::create_dir_all("/app/data/metadata/files").await {
-        warn!("Failed to create metadata directory: {}", e);
-    }
-    
-    // Ensure parent directories for cache files exist
-    if let Err(e) = tokio::fs::create_dir_all(std::path::Path::new(GRAPH_CACHE_PATH).parent().unwrap()).await {
-        warn!("Failed to create directory for graph cache: {}", e);
-    }
-    if let Err(e) = tokio::fs::create_dir_all(std::path::Path::new(LAYOUT_CACHE_PATH).parent().unwrap()).await {
-        warn!("Failed to create directory for layout cache: {}", e);
-    }
-    
-    if tokio::fs::metadata("/app/data/metadata").await.is_ok() {
-        info!("Verified metadata directory exists");
-    }
 
     // Update metadata in app state
     {
@@ -146,127 +126,82 @@ async fn main() -> std::io::Result<()> {
     }
 
     // Build initial graph from metadata and initialize GPU compute
-    
-    // CRITICAL: Initialize Node ID counter at startup to ensure consistent IDs across all processes
-    // This MUST be done before any graph building or GPU operations 
-    info!("CRITICAL: Initializing Node ID counter for consistent IDs across all worker processes");
-    Node::initialize_id_counter();
-    
-    // LAZY INITIALIZATION: We don't build the graph on startup anymore
-    // Instead, we'll build it when the first client request comes in
-    info!("Initializing graph with cache files and GPU setup");
-
-    // Build graph ONCE and initialize GPU 
-    // This eliminates the redundant second build that was happening before
+    info!("Building initial graph from existing metadata for physics simulation");
     match GraphService::build_graph_from_metadata(&metadata_store).await {
-        Ok(new_graph) => {
-                info!("Successfully built graph with {} nodes, {} edges", new_graph.nodes.len(), new_graph.edges.len());
-                
-                // Update app state with the new graph
-                let mut app_graph = app_state.graph_service.get_graph_data_mut().await;
-                *app_graph = new_graph.clone();
-                drop(app_graph);
-                
-                // Update the node map too
-                let mut node_map = app_state.graph_service.get_node_map_mut().await;
-                node_map.clear();
-                for node in &new_graph.nodes {
-                    node_map.insert(node.id.clone(), node.clone());
-                }
-                drop(node_map);
-                
-                // Explicitly verify the cache files were created
-                if let Err(e) = tokio::fs::metadata(GRAPH_CACHE_PATH).await {
-                    warn!("Graph cache file was not created: {}", e);
-                }
-                if let Err(e) = tokio::fs::metadata(LAYOUT_CACHE_PATH).await {
-                    warn!("Layout cache file was not created: {}", e);
-                }
-                
-                // Run GPU diagnostics before attempting to initialize
-                info!("Running GPU diagnostics before initialization");
-                let gpu_diag_report = gpu_diagnostics::run_gpu_diagnostics();
-                info!("GPU diagnostics complete: \n{}", gpu_diag_report);
-                
-                // Try to fix CUDA environment if there might be issues
-                if let Err(e) = gpu_diagnostics::fix_cuda_environment() {
-                    warn!("Could not fix CUDA environment: {}", e);
-                }
-                
-                // Initialize GPU with the populated graph
-                info!("Attempting to initialize GPU compute with populated graph data");
-                let gpu_init_start = std::time::Instant::now();
-                match GPUCompute::new(&new_graph).await {
+        Ok(graph_data) => {            
+            // Initialize GPU compute if not already done
+            if app_state.gpu_compute.is_none() {
+                info!("No GPU compute instance found, initializing one now");
+                match GPUCompute::new(&graph_data).await {
                     Ok(gpu_instance) => {
-                        info!("✅ GPU compute initialized successfully");
-                        
-                        // CRITICAL FIX: Test GPU and update flag in a separate scope to avoid borrow issues
-                        {
-                            let gpu_lock = gpu_instance.read().await;
-                            if gpu_lock.test_compute().is_ok() {
-                                GraphService::update_global_gpu_status(true);
-                            }
-                        }
+                        info!("GPU compute initialized successfully");
+                        // Update app_state with new GPU compute instance
                         app_state.gpu_compute = Some(gpu_instance);
                         
-                        // CRITICAL: Check GPU status after initialization to verify it's fully operational
-                        tokio::time::sleep(Duration::from_millis(500)).await; // Longer delay for GPU stabilization
+                        // Shut down the existing GraphService before creating a new one
+                        info!("Shutting down existing graph service before reinitializing with GPU");
+                        let shutdown_start = std::time::Instant::now();
+                        app_state.graph_service.shutdown().await;
+                        info!("Graph service shutdown completed in {:?}", shutdown_start.elapsed());
                         
-                        // Run a thorough check
-                        // Check GPU status with a longer timeout
-                        tokio::time::timeout(Duration::from_secs(5), app_state.check_gpu_status())
-                            .await
-                            .unwrap_or(false);
-                            
-                        let gpu_status = *app_state.gpu_available.read().await;
-                        if gpu_status {
-                            info!("🎉 GPU COMPUTE IS VERIFIED AND AVAILABLE FOR PHYSICS SIMULATION ({:?})", 
-                                  gpu_init_start.elapsed());
-                            
-                            // Try an actual physics calculation to confirm it's fully working
-                            if let Some(gpu) = &app_state.gpu_compute {
-                                let mut graph_data = app_state.graph_service.get_graph_data_mut().await;
-                                let mut node_map = app_state.graph_service.get_node_map_mut().await;
-                                
-                                match GraphService::calculate_layout_with_retry(
-                                    gpu, 
-                                    Some(&web::Data::new(app_state.clone())), 
-                                    &mut graph_data, 
-                                    &mut node_map, 
-                                    &webxr::models::simulation_params::SimulationParams::default()
-                                ).await {
-                                    Ok(_) => {
-                                        info!("🔥 GPU PHYSICS TEST CALCULATION SUCCESSFUL - SYSTEM READY FOR GPU ACCELERATION");
-                                        GraphService::update_global_gpu_status(true);
-                                        // Force GPU status to true after successful test
-                                        *app_state.gpu_available.write().await = true;
-                                    },
-                                    Err(e) => {
-                                        warn!("⚠️ GPU test calculation failed: {} - will fall back to CPU physics", e);
-                                        *app_state.gpu_available.write().await = false;
-                                    }
-                                }
-                            }
-                        } else {
-                            warn!("⚠️ GPU compute failed verification check after {:?} - falling back to CPU physics", gpu_init_start.elapsed());
-                        }
+                        // Add a small delay to ensure clean shutdown
+                        tokio::time::sleep(Duration::from_millis(100)).await;
                         
-                        // Run one final diagnostic if we didn't get GPU working
-                        if !(*app_state.gpu_available.read().await) {
-                            error!("Final GPU diagnosis after unsuccessful initialization: \n{}", gpu_diagnostics::run_gpu_diagnostics());
-                        }
+                        // Reinitialize graph service with GPU compute
+                        info!("Reinitializing graph service with GPU compute");
+                        app_state.graph_service = GraphService::new(
+                            settings.clone(), 
+                            app_state.gpu_compute.clone()
+                        ).await;
+                        
+                        info!("Graph service successfully reinitialized with GPU compute");
                     },
-                    Err(e) => error!("❌ Failed to initialize GPU compute: {}. Will use CPU fallback.", e)
+                    Err(e) => {
+                        warn!("Failed to initialize GPU compute: {}. Continuing with CPU fallback.", e);
+                                        // Shut down the existing GraphService before creating a new one
+                        app_state.graph_service.shutdown().await;
+                        
+        // Initialize graph service with None as GPU compute (will use CPU fallback)
+                        app_state.graph_service = GraphService::new(
+                            settings.clone(), 
+                            None
+                        ).await;
+                        
+                        info!("Graph service initialized with CPU fallback");
+                    }
                 }
-            },
-            Err(e) => warn!("Failed to pre-build graph: {}. Cache files may not be created until first request", e)
+            }
+
+            // Update graph data after GPU is initialized
+            let mut graph = app_state.graph_service.get_graph_data_mut().await;
+            let mut node_map = app_state.graph_service.get_node_map_mut().await;
+            *graph = graph_data;
+            
+            // Update node_map with new graph nodes
+            node_map.clear();
+            for node in &graph.nodes {
+                node_map.insert(node.id.clone(), node.clone());
+            }
+            
+            drop(graph);
+            drop(node_map);
+
+            info!("Built initial graph from metadata");
+            
+        },
+        Err(e) => {
+            error!("Failed to build initial graph: {}", e);
+            return Err(std::io::Error::new(std::io::ErrorKind::Other, format!("Failed to build initial graph: {}", e)));
         }
-    
-    info!("Starting HTTP server with graph initialization complete...");
+    }
+
+    // Add a delay to allow GPU computation to run before accepting client connections
+    info!("Waiting for initial physics layout calculation to complete...");
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    info!("Initial delay complete. Starting HTTP server...");
 
     // Create web::Data after all initialization is complete
     let app_state_data = web::Data::new(app_state);
-    info!("Pre-build process completed");
 
     // Start the server
     let bind_address = {

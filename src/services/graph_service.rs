@@ -11,7 +11,7 @@ use std::pin::Pin;
 use std::time::{Duration, Instant};
 use futures::Future;
 use log::{info, warn, error, debug};
-use scopeguard; 
+use scopeguard;
 
 use tokio::fs::File as TokioFile;
 use crate::models::graph::GraphData;
@@ -23,11 +23,8 @@ use crate::config::Settings;
 use crate::utils::gpu_compute::GPUCompute;
 use crate::models::simulation_params::{SimulationParams, SimulationPhase, SimulationMode};
 use crate::models::pagination::PaginatedGraphData;
-use tokio::io::AsyncReadExt;
 use tokio::sync::Mutex;
 use once_cell::sync::Lazy;
-use crate::services::file_service::GRAPH_CACHE_PATH;
-use crate::services::file_service::LAYOUT_CACHE_PATH;
 
 // Static flag to prevent multiple simultaneous graph rebuilds
 static GRAPH_REBUILD_IN_PROGRESS: AtomicBool = AtomicBool::new(false);
@@ -40,9 +37,6 @@ static SIMULATION_LOOP_RUNNING: AtomicBool = AtomicBool::new(false);
 // while an old one is being shut down
 static SIMULATION_MUTEX: Lazy<Mutex<String>> = Lazy::new(|| Mutex::new(String::new()));
 
-// Static flag to track GPU availability across threads
-static GPU_AVAILABLE: AtomicBool = AtomicBool::new(false);
-
 // Cache configuration
 const NODE_POSITION_CACHE_TTL_MS: u64 = 50; // 50ms cache time
 const METADATA_FILE_WAIT_TIMEOUT_MS: u64 = 5000; // 5 second wait timeout
@@ -50,7 +44,6 @@ const METADATA_FILE_CHECK_INTERVAL_MS: u64 = 100; // Check every 100ms
 // Constants for GPU retry mechanism
 const MAX_GPU_CALCULATION_RETRIES: u32 = 3;
 const GPU_RETRY_DELAY_MS: u64 = 500; // 500ms delay between retries
-const GPU_INIT_WAIT_MS: u64 = 1000; // 1 second wait before GPU test
 
 #[derive(Clone)]
 pub struct GraphService {
@@ -85,18 +78,16 @@ impl GraphService {
         // Create the shared node map
         let node_map = Arc::new(RwLock::new(HashMap::new()));
 
-        // Create shutdown signal
-        let shutdown_requested = Arc::new(AtomicBool::new(false));
-
         if gpu_compute.is_some() {
             info!("[GraphService] GPU compute is enabled - physics simulation will run");
             info!("[GraphService] Testing GPU compute functionality at startup");
-            
-            // CRITICAL FIX: Wait for GPU initialization to complete instead of spawning task
-            Self::test_gpu_at_startup(gpu_compute.clone(), None, simulation_id.clone()).await;
+            tokio::spawn(Self::test_gpu_at_startup(gpu_compute.clone()));
         } else {
             error!("[GraphService] GPU compute is NOT enabled - physics simulation will use CPU fallback");
         }
+
+        // Create shutdown signal
+        let shutdown_requested = Arc::new(AtomicBool::new(false));
         // Create the GraphService with caching enabled 
         let _cache = Arc::new(RwLock::new(Option::<(Vec<Node>, Instant)>::None));
         let graph_service = Self {
@@ -144,9 +135,6 @@ impl GraphService {
         // Release the mutex before spawning the task
         drop(guard);
         
-        // Try to load cached graph data
-        let _ = Self::try_load_cached_graph_data(Arc::clone(&graph_service.graph_data)).await;
-        
         info!("[GraphService] Starting physics simulation loop (ID: {})", loop_simulation_id);
         tokio::spawn(async move {
             let params = SimulationParams {
@@ -182,20 +170,15 @@ impl GraphService {
                 let mut graph = graph_data.write().await;
                 let mut node_map = node_map.write().await;
 
-                // CRITICAL FIX: Check the global GPU availability flag directly
-                // This ensures we use consistent state across components 
-                let is_gpu_available = GPU_AVAILABLE.load(Ordering::SeqCst);
-                
-                let gpu_status = if is_gpu_available { "available" } else { "NOT available" };
-                
-                debug!("[Graph:{}] GPU compute status: {}, is available flag: {}, physics enabled: {}", 
-                       loop_simulation_id, gpu_status, is_gpu_available, physics_settings.enabled);
+                let gpu_status = if gpu_compute.is_some() { "available" } else { "NOT available" };
+                debug!("[Graph:{}] GPU compute status: {}, physics enabled: {}", 
+                       loop_simulation_id, gpu_status, physics_settings.enabled);
                        
                 if physics_settings.enabled {
                     if let Some(gpu) = &gpu_compute {
-                        if let Err(e) = Self::calculate_layout_with_retry(gpu, None, &mut graph, &mut node_map, &params).await {
+                        if let Err(e) = Self::calculate_layout_with_retry(gpu, &mut graph, &mut node_map, &params).await {
                             error!("[Graph:{}] Error updating positions: {}", loop_simulation_id, e);
-                        } else if is_gpu_available {
+                        } else {
                             debug!("[Graph:{}] GPU calculation completed successfully", loop_simulation_id);
                             debug!("[Graph:{}] Successfully calculated layout for {} nodes", loop_simulation_id, graph.nodes.len());
                         }
@@ -286,69 +269,29 @@ impl GraphService {
     }
     
     /// Test GPU compute at startup to verify it's working
-    async fn test_gpu_at_startup(
-        gpu_compute: Option<Arc<RwLock<GPUCompute>>>, 
-        app_state: Option<web::Data<AppState>>,
-        instance_id: String
-    ) {
+    async fn test_gpu_at_startup(gpu_compute: Option<Arc<RwLock<GPUCompute>>>) {
         // Add a small delay to let other initialization complete
-        tokio::time::sleep(Duration::from_millis(GPU_INIT_WAIT_MS)).await;
+        tokio::time::sleep(Duration::from_millis(1000)).await;
         
-        info!("[GraphService:{}] Running GPU startup test", instance_id);
-        let mut is_gpu_available = false;
+        info!("[GraphService] Running GPU startup test");
         
-        if let Some(gpu) = gpu_compute {
+        if let Some(gpu) = &gpu_compute {
             match gpu.read().await.test_compute() {
                 Ok(_) => {
-                    info!("[GraphService:{}] ✅ GPU test computation succeeded - GPU physics is working", instance_id);
-                    is_gpu_available = true;
+                    info!("[GraphService] ✅ GPU test computation succeeded - GPU physics is working");
                 },
                 Err(e) => {
-                    error!("[GraphService:{}] ❌ GPU test computation failed: {}", instance_id, e);
-                    error!("[GraphService:{}] The system will fall back to CPU physics which may be slower", instance_id); 
-                    is_gpu_available = false;
+                    error!("[GraphService] ❌ GPU test computation failed: {}", e);
+                    error!("[GraphService] The system will fall back to CPU physics which may be slower");
                     
                     // Try initializing a new GPU instance
-                    info!("[GraphService:{}] Attempting to reinitialize GPU...", instance_id);
-                    if let Ok(new_gpu) = GPUCompute::new(&GraphData::default()).await {
-                        info!("[GraphService:{}] GPU reinitialization succeeded", instance_id);
-                        match new_gpu.read().await.test_compute() {
-                            Ok(_) => {
-                                info!("[GraphService:{}] Reinitialized GPU passed test", instance_id);
-                                is_gpu_available = true;
-                            },
-                            Err(_) => {}
-                        }
-                    }
+                    info!("[GraphService] Attempting to reinitialize GPU...");
+                    let _new_gpu = GPUCompute::new(&GraphData::default()).await; // Using _ to avoid unused warning
                 }
             }
         } else {
-            error!("[GraphService:{}] ❌ No GPU compute instance available for testing", instance_id);
-            is_gpu_available = false;
+            error!("[GraphService] ❌ No GPU compute instance available for testing");
         }
-        
-        // Update app_state if provided
-        if let Some(state) = app_state {
-            match state.gpu_available.try_write() {
-                Ok(mut available) => {
-                    *available = is_gpu_available;
-                    info!("[GraphService:{}] Updated global GPU status to: {}", instance_id, is_gpu_available);
-                },
-                Err(_) => error!("[GraphService:{}] Failed to update GPU status in AppState", instance_id)
-            }
-        }
-        
-        // CRITICAL FIX: Update the shared GPU availability flag
-        GPU_AVAILABLE.store(is_gpu_available, Ordering::SeqCst);
-        info!("[GraphService:{}] Updated global GPU availability flag to: {}", instance_id, is_gpu_available);
-    }
-
-    /// Update the global GPU availability flag directly (used by external systems)
-    pub fn update_global_gpu_status(available: bool) {
-        let old_status = GPU_AVAILABLE.load(Ordering::SeqCst);
-        GPU_AVAILABLE.store(available, Ordering::SeqCst);
-        info!("[GraphService] Global GPU availability flag updated: {} -> {}", 
-              old_status, available);
     }
     
     /// Wait for metadata file to be available (mounted by Docker)
@@ -403,35 +346,6 @@ impl GraphService {
     pub async fn build_graph_from_metadata(metadata: &MetadataStore) -> Result<GraphData, Box<dyn std::error::Error + Send + Sync>> {
         // Check if a rebuild is already in progress
         info!("Building graph from {} metadata entries", metadata.len());
-        
-        // Try to load from cache first if metadata has not changed
-        if let Ok(cached_graph) = Self::load_graph_cache().await {
-            // Check if cached graph matches current metadata
-            info!("Checking if cached graph is valid: {} cache entries vs {} metadata entries", cached_graph.metadata.len(), metadata.len());
-            if cached_graph.metadata.len() == metadata.len() {
-                // Simple check: count metadata items
-                let mut needs_rebuild = false;
-                
-                // More detailed check: compare sha1 hashes
-                for (file_name, meta) in metadata.iter() {
-                    if !cached_graph.metadata.contains_key(file_name) || 
-                       cached_graph.metadata[file_name].sha1 != meta.sha1 {
-                        needs_rebuild = true;
-                        break;
-                    }
-                }
-
-                if !needs_rebuild {
-                    info!("Cached graph is valid (all SHA1 hashes match), using it");
-                    let mut cloned_graph = cached_graph.clone();
-                    
-                    // Ensure timestamp is updated to show it was validated
-                    cloned_graph.last_validated = chrono::Utc::now();
-                    
-                    return Ok(cloned_graph);
-                }
-            }
-        }
         debug!("Building graph from {} metadata entries", metadata.len());
         
         if GRAPH_REBUILD_IN_PROGRESS.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_err() {
@@ -580,29 +494,10 @@ impl GraphService {
             .collect();
 
         // Initialize random positions
-        // Try to use cached layout positions first, fall back to random if not available
-        if let Err(e) = Self::initialize_positions(&mut graph).await {
-            warn!("Failed to initialize positions from cache: {}, using random positions", e);
-            Self::initialize_random_positions(&mut graph);
-        }
+        Self::initialize_random_positions(&mut graph);
 
-        // Record validation timestamp
-        graph.last_validated = chrono::Utc::now();
-        
-        // Take a layout snapshot to provide for client initialization
-        info!("Taking layout snapshot after graph build");
-        if let Err(e) = Self::save_layout_cache(graph.clone()).await {
-            warn!("Failed to take layout snapshot: {}", e);
-        }
-        
-        info!("Built graph with {} nodes and {} edges (validated at {})",
-              graph.nodes.len(), graph.edges.len(), graph.last_validated);
+        info!("Built graph with {} nodes and {} edges", graph.nodes.len(), graph.edges.len());
         debug!("Completed graph build: {} nodes, {} edges", graph.nodes.len(), graph.edges.len());
-        
-        // Cache the graph data to disk
-        if let Err(e) = Self::save_graph_cache(&graph).await {
-            warn!("Failed to cache graph data: {}", e);
-        }
         Ok(graph)
     }
 
@@ -761,25 +656,10 @@ impl GraphService {
             .collect();
 
         // Initialize random positions for all nodes
-        // Try to use cached layout positions first, fall back to random if not available
-        if let Err(e) = Self::initialize_positions(&mut graph).await {
-            warn!("Failed to initialize positions from cache: {}", e);
-            Self::initialize_random_positions(&mut graph);
-        }
+        Self::initialize_random_positions(&mut graph);
 
         info!("Built graph with {} nodes and {} edges", graph.nodes.len(), graph.edges.len());
         debug!("Completed graph build: {} nodes, {} edges", graph.nodes.len(), graph.edges.len());
-        
-        // Take a layout snapshot to provide for client initialization
-        info!("Taking layout snapshot after graph build");
-        if let Err(e) = Self::save_layout_cache(graph.clone()).await {
-            warn!("Failed to take layout snapshot: {}", e);
-        }
-        
-        // Cache the graph data to disk
-        if let Err(e) = Self::save_graph_cache(&graph).await {
-            warn!("Failed to cache graph data: {}", e);
-        }
         Ok(graph)
     }
 
@@ -826,69 +706,14 @@ impl GraphService {
             }
         }
     }
-    
-    // Initialize positions using cached values or random positions as fallback
-    pub async fn initialize_positions(graph: &mut GraphData) -> Result<(), std::io::Error> {
-        // Try to load positions from cache first
-        match Self::load_layout_cache().await {
-            Ok(position_map) => {
-                debug!("Applying cached positions to {} nodes", position_map.len());
-                let mut applied_count = 0;
-                
-                for node in &mut graph.nodes {
-                    if let Some(&(x, y, z)) = position_map.get(&node.id) {
-                        node.set_x(x);
-                        node.set_y(y);
-                        node.set_z(z);
-                        applied_count += 1;
-                    }
-                }
-                
-                info!("Applied cached positions to {}/{} nodes", applied_count, graph.nodes.len());
-                Ok(())
-            },
-            Err(e) => {
-                info!("No cached positions available, using random initialization: {}", e);
-                Self::initialize_random_positions(graph);
-                Ok(())
-            }
-        }
-    }
 
     /// Helper function to retry GPU layout calculation with exponential backoff
     pub async fn calculate_layout_with_retry(
         gpu_compute: &Arc<RwLock<GPUCompute>>,
-        app_state: Option<&web::Data<AppState>>,
         graph: &mut GraphData,
         node_map: &mut HashMap<String, Node>, 
-        params: &SimulationParams
+        params: &SimulationParams,
     ) -> std::io::Result<()> {
-        // First validate the graph data to avoid potential GPU issues
-        if graph.nodes.is_empty() {
-            warn!("[calculate_layout_with_retry] Empty graph received, cannot perform GPU calculation");
-            return Err(Error::new(ErrorKind::InvalidData, "Cannot perform GPU calculation on empty graph"));
-        }
-        
-        if let Err(e) = crate::services::empty_graph_check::check_empty_graph(graph, 5) {
-            warn!("[calculate_layout_with_retry] Graph data validation failed: {}. Falling back to CPU.", e);
-            return Self::calculate_layout_cpu(graph, node_map, params);
-        }
-        
-        // Check if GPU is available based on AppState tracking (if provided)
-        if let Some(app_state) = app_state {
-            let gpu_available = *app_state.gpu_available.read().await;
-            if !gpu_available {
-                // AppState knows GPU is not available, fall back to CPU without retry attempts
-                warn!("[calculate_layout_with_retry] GPU is known to be unavailable from AppState, using CPU directly");
-                return Self::calculate_layout_cpu(graph, node_map, params);
-            }
-        } else if !GPU_AVAILABLE.load(Ordering::SeqCst) {
-            // CRITICAL FIX: Check the shared GPU availability flag if AppState isn't provided
-            warn!("[calculate_layout_with_retry] GPU is marked as unavailable in shared state, using CPU directly");
-            return Self::calculate_layout_cpu(graph, node_map, params);
-        }
-
-        // Proceed with GPU calculation with retry mechanism
         debug!("[calculate_layout_with_retry] Starting GPU calculation with retry mechanism");
         let mut last_error: Option<Error> = None;
         
@@ -918,15 +743,6 @@ impl GraphService {
         debug!("[calculate_layout_with_retry] All GPU attempts failed, falling back to CPU");
         error!("[calculate_layout] Failed after {} attempts, falling back to CPU", MAX_GPU_CALCULATION_RETRIES);
         
-        // Update AppState to indicate GPU is unavailable if provided
-        if let Some(app_state) = app_state {
-            *app_state.gpu_available.write().await = false;
-            error!("Marking GPU as unavailable in AppState for future calculations");
-            
-            // CRITICAL FIX: Also update the shared flag
-            GPU_AVAILABLE.store(false, Ordering::SeqCst);
-        }
-        
         // As a fallback, try CPU calculation when GPU fails repeatedly
         match Self::calculate_layout_cpu(graph, node_map, params) {
             Ok(()) => {
@@ -950,7 +766,7 @@ impl GraphService {
     ) -> std::io::Result<()> {
         {
             info!("[calculate_layout] Starting GPU physics calculation for {} nodes, {} edges with mode {:?}", 
-                graph.nodes.len(), graph.edges.len(), params.mode);
+                  graph.nodes.len(), graph.edges.len(), params.mode);
             
             // Get current timestamp for performance tracking
             let start_time = std::time::Instant::now();
@@ -958,7 +774,7 @@ impl GraphService {
             let mut gpu_compute = gpu_compute.write().await;
 
             info!("[calculate_layout] params: iterations={}, spring_strength={:.3}, repulsion={:.3}, damping={:.3}",
-                params.iterations, params.spring_strength, params.repulsion, params.damping);
+                 params.iterations, params.spring_strength, params.repulsion, params.damping);
             
             // Update data and parameters
             if let Err(e) = gpu_compute.update_graph_data(graph) {
@@ -1027,15 +843,11 @@ impl GraphService {
                     format!("[{:.2},{:.2},{:.2}]", graph.nodes[0].data.position.x, graph.nodes[0].data.position.y, graph.nodes[0].data.position.z)
                 } else { "no nodes".to_string() };
             
-            info!("[calculate_layout] Updated positions for {}/{} nodes in {:?}. Sample positions: {}", nodes_updated, graph.nodes.len(), elapsed, sample_positions);
+                info!("[calculate_layout] Updated positions for {}/{} nodes in {:?}. Sample positions: {}", nodes_updated, graph.nodes.len(), elapsed, sample_positions);
             
-            // Return success
-            ()
+            Ok(())
         }
-        
-        // Return success
-        Ok(())
-   }
+    }
 
     /// CPU fallback implementation of force-directed graph layout
     pub fn calculate_layout_cpu(
@@ -1229,9 +1041,7 @@ impl GraphService {
         let elapsed = start_time.elapsed();
         info!("[calculate_layout_cpu] Updated positions for {} nodes in {:?}", 
              graph.nodes.len(), elapsed);
-             
         
-        // Return success
         Ok(())
     }
 
@@ -1283,13 +1093,6 @@ impl GraphService {
     pub async fn clear_position_cache(&self) {
         let mut cache = self.node_positions_cache.write().await;
         *cache = None;
-    }
-
-    /// Take a layout snapshot and save it to disk (only called explicitly, not after every physics update)
-    pub async fn take_layout_snapshot(&self) -> Result<(), std::io::Error> {
-        let graph = self.graph_data.read().await;
-        info!("Taking layout snapshot to {}", LAYOUT_CACHE_PATH);
-        Self::save_layout_cache((*graph).clone()).await
     }
 
     pub async fn get_node_positions(&self) -> Vec<Node> {
@@ -1350,241 +1153,6 @@ impl GraphService {
     pub async fn get_gpu_compute(&self) -> Option<Arc<RwLock<GPUCompute>>> {
         self.gpu_compute.clone()
     }
-
-    /// Save graph data to cache file
-    pub async fn save_graph_cache(graph: &GraphData) -> Result<(), std::io::Error> {
-        info!("Attempting to cache graph data to {}", GRAPH_CACHE_PATH);
-        let start_time = std::time::Instant::now();
-        info!("Graph contains {} nodes and {} edges", graph.nodes.len(), graph.edges.len());
-        
-        // Ensure the directory exists
-        if let Some(dir) = std::path::Path::new(GRAPH_CACHE_PATH).parent() {
-            if !dir.exists() {
-                info!("Creating directory: {:?}", dir);
-                match std::fs::create_dir_all(dir) {
-                    Ok(_) => {
-                        info!("Successfully created directory: {:?}", dir);
-                        
-                        // Set directory permissions explicitly on Unix systems
-                        #[cfg(unix)]
-                        {
-                            use std::os::unix::fs::PermissionsExt;
-                            if let Err(e) = std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o777)) {
-                                warn!("Could not set permissions on cache directory: {}", e);
-                            }
-                        }
-                    },
-                    Err(e) => {
-                        error!("Failed to create directory {:?}: {}", dir, e);
-                        // Continue anyway since the directory might already exist with different permissions
-                    }
-                }
-            }
-        }
-        
-        // Serialize graph to JSON with pretty formatting for easier debugging
-        let json = match serde_json::to_string_pretty(graph) {
-            Ok(json) => json,
-            Err(e) => {
-                error!("Failed to serialize graph data: {}", e);
-                return Err(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()));
-            }
-        };
-
-        // First try using standard file system functions, which might be more reliable
-        info!("Writing {} bytes to file {} using std::fs", json.len(), GRAPH_CACHE_PATH);
-        match std::fs::write(GRAPH_CACHE_PATH, json.as_bytes()) {
-            Ok(_) => {
-                let elapsed = start_time.elapsed();
-                info!("Successfully cached graph data ({} bytes) to {} in {:?} using std::fs", 
-                      json.len(), GRAPH_CACHE_PATH, elapsed);
-                return Ok(());
-            }
-            Err(e) => {
-                warn!("Failed to write graph cache using std::fs, falling back to tokio::fs: {}", e);
-                // Fall through to tokio version below
-            }
-        }
-        
-        // Fall back to tokio's async fs
-        info!("Writing {} bytes to file {} using tokio::fs", json.len(), GRAPH_CACHE_PATH);
-        match tokio::fs::write(GRAPH_CACHE_PATH, json.as_bytes()).await {
-            Ok(_) => {
-                info!("Successfully cached graph data ({} bytes) to {}", json.len(), GRAPH_CACHE_PATH);
-                Ok(())
-            },
-            Err(e) => {
-                error!("Failed to write graph cache file {}: {}", GRAPH_CACHE_PATH, e);
-                Err(e)
-            }
-        }
-    }
-    
-    /// Load graph data from cache file
-    pub async fn load_graph_cache() -> Result<GraphData, std::io::Error> {
-        info!("Attempting to load graph data from cache: {}", GRAPH_CACHE_PATH);
-        debug!("GRAPH_CACHE_PATH = {}", GRAPH_CACHE_PATH);
-        
-        // Check if cache file exists
-        if !tokio::fs::metadata(GRAPH_CACHE_PATH).await.is_ok() {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::NotFound, 
-                "Graph cache file not found"
-            ));
-        }
-        
-        // Read file content
-        let mut file = tokio::fs::File::open(GRAPH_CACHE_PATH).await?;
-        let mut content = String::new();
-        
-        // Read the file content
-        file.read_to_string(&mut content).await?;
-        
-        // Deserialize JSON
-        let graph = serde_json::from_str::<GraphData>(&content)
-            .map_err(|e| std::io::Error::new(
-                std::io::ErrorKind::InvalidData, 
-                format!("Failed to parse graph cache: {}", e)
-            ))?;
-        
-        info!("Successfully loaded graph data from cache ({} nodes, {} edges), last validated: {}", 
-              graph.nodes.len(), graph.edges.len(), graph.last_validated);
-              
-        // Return the loaded graph
-        Ok(graph) 
-    }
-    
-    /// Try to load cached graph data into the provided graph_data RwLock
-    pub async fn try_load_cached_graph_data(graph_data: Arc<RwLock<GraphData>>) -> Result<(), std::io::Error> {
-        match Self::load_graph_cache().await {
-            Ok(cached_graph) => {
-                info!("Initializing graph service with cached graph data");
-                let mut graph = graph_data.write().await;
-                *graph = cached_graph;
-                info!("Graph service initialized with {} nodes and {} edges from cache",
-                     graph.nodes.len(), graph.edges.len());
-                Ok(())
-            },
-            Err(e) => {
-                info!("No valid graph cache found: {}", e);
-                Err(e)
-            }
-        }
-    }
-    
-    /// Save layout positions to cache file
-    pub async fn save_layout_cache(graph: GraphData) -> Result<(), std::io::Error> {
-        info!("Attempting to cache node layout positions to {}", LAYOUT_CACHE_PATH);
-        let start_time = std::time::Instant::now();
-        
-        // Ensure the directory exists
-        if let Some(dir) = std::path::Path::new(LAYOUT_CACHE_PATH).parent() {
-            if !dir.exists() {
-                info!("Creating directory: {:?}", dir);
-                match std::fs::create_dir_all(dir) {
-                    Ok(_) => {
-                        info!("Successfully created directory: {:?}", dir);
-                        
-                        // Set directory permissions explicitly on Unix systems
-                        #[cfg(unix)]
-                        {
-                            use std::os::unix::fs::PermissionsExt;
-                            if let Err(e) = std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o777)) {
-                                warn!("Could not set permissions on cache directory: {}", e);
-                            }
-                        }
-                    },
-                    Err(e) => {
-                        error!("Failed to create directory {:?}: {}", dir, e);
-                        // Continue anyway since the directory might already exist with different permissions
-                    }
-                }
-            }
-        }
-        
-        // Create a serializable structure with just the necessary position information
-        info!("Building position data array for {} nodes", graph.nodes.len());
-        let positions: Vec<(String, f32, f32, f32)> = graph.nodes.iter()
-            .map(|node| (
-                node.id.clone(),
-                node.data.position.x,
-                node.data.position.y,
-                node.data.position.z
-            ))
-            .collect();
-        
-        // Serialize positions to JSON with pretty formatting for easier debugging
-        let json = match serde_json::to_string_pretty(&positions) {
-            Ok(json) => json,
-            Err(e) => {
-                error!("Failed to serialize layout positions: {}", e);
-                return Err(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()));
-            }
-        };
-
-        // First try using standard file system functions, which might be more reliable
-        info!("Writing {} bytes to file {} using std::fs", json.len(), LAYOUT_CACHE_PATH);
-        match std::fs::write(LAYOUT_CACHE_PATH, json.as_bytes()) {
-            Ok(_) => {
-                let elapsed = start_time.elapsed();
-                info!("Successfully cached layout data for {} nodes to {} in {:?} using std::fs", 
-                      positions.len(), LAYOUT_CACHE_PATH, elapsed);
-                return Ok(());
-            }
-            Err(e) => {
-                warn!("Failed to write layout cache using std::fs, falling back to tokio::fs: {}", e);
-                // Fall through to tokio version below
-            }
-        }
-        
-        // Fall back to tokio's async fs 
-        info!("Writing {} bytes to file {} using tokio::fs", json.len(), LAYOUT_CACHE_PATH);
-        match tokio::fs::write(LAYOUT_CACHE_PATH, json.as_bytes()).await {
-            Ok(_) => {
-                info!("Successfully cached layout data for {} nodes to {}", positions.len(), LAYOUT_CACHE_PATH);
-                Ok(())
-            },
-            Err(e) => {
-                error!("Failed to write layout cache file {}: {}", LAYOUT_CACHE_PATH, e);
-                Err(e)
-            }
-        }
-    }
-    
-    /// Load layout positions from cache file
-    pub async fn load_layout_cache() -> Result<HashMap<String, (f32, f32, f32)>, std::io::Error> {
-        info!("Attempting to load layout from cache: {}", LAYOUT_CACHE_PATH);
-        
-        // Check if cache file exists
-        if !tokio::fs::metadata(LAYOUT_CACHE_PATH).await.is_ok() {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::NotFound, 
-                "Layout cache file not found"
-            ));
-        }
-        
-        // Read file content
-        let mut file = tokio::fs::File::open(LAYOUT_CACHE_PATH).await?;
-        let mut content = String::new();
-        file.read_to_string(&mut content).await?;
-        
-        // Deserialize JSON
-        let positions = serde_json::from_str::<Vec<(String, f32, f32, f32)>>(&content)
-            .map_err(|e| std::io::Error::new(
-                std::io::ErrorKind::InvalidData, 
-                format!("Failed to parse layout cache: {}", e)
-            ))?;
-        
-        // Convert to HashMap
-        let position_map: HashMap<String, (f32, f32, f32)> = positions.into_iter()
-            .map(|(id, x, y, z)| (id, (x, y, z)))
-            .collect();
-        
-        info!("Successfully loaded layout positions for {} nodes from cache", 
-              position_map.len());
-        Ok(position_map)
-    }
-
 
     pub async fn update_node_positions(&self, updates: Vec<(u16, Node)>) -> Result<(), Error> {
         let mut graph = self.graph_data.write().await;
