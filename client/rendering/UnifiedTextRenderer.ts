@@ -33,6 +33,7 @@ interface LabelInstance {
     scale: number;
     color: Color;
     visible: boolean;
+    lastUpdated: number; // Timestamp for debugging update sequence
 }
 
 export class UnifiedTextRenderer {
@@ -213,64 +214,112 @@ export class UnifiedTextRenderer {
         return instancedGeometry;
     }
     
+    /**
+     * Update the label for a specific node. 
+     * 
+     * @param id - Unique ID for the label
+     * @param text - Text to display. If empty and preserveText=true, position will be updated but text preserved
+     * @param position - 3D position for the label
+     * @param color - Optional color for the label
+     * @param preserveText - If true and text is empty, existing text will be preserved (position-only update)
+     */
     public updateLabel(id: string, text: string, position: Vector3, color?: Color, preserveText: boolean = false): void {
-        // Skip empty text (reduces debug spam)
-        // BUT only if we don't have the preserveText flag set
-        if ((!text || text.trim() === '') && !preserveText) {
+        // Handle empty text cases
+        const isEmptyText = !text || text.trim() === '';
+        
+        // If we have an empty string and we're not preserving text, this is a no-op
+        if (isEmptyText && !preserveText) {
             return;
         }
         
-        const isPositionUpdateOnly = (!text || text.trim() === '') && preserveText;
-
+        // Check if this is a position-only update (empty text but preserveText flag)
+        const isPositionUpdate = isEmptyText && preserveText;
         
-        // Only log when debug is enabled
-        if (debugState.isDataDebugEnabled()) {
-            this.logger.debug('Updating label:', {
-                id,
-                text,
-                position,
-                color: color ? [(color as any).r, (color as any).g, (color as any).b] : undefined,
-                hasAtlas: !!this.fontAtlas
-            });
-        }
-        
+        // Find existing label or prepare to create new one
         let label = this.labels.get(id);
         
+        // POSITION UPDATE: If this is a position-only update for an existing label
+        if (isPositionUpdate && label) {
+            // Just update the position and leave everything else untouched
+            label.position.copy(position);
+            label.lastUpdated = Date.now();
+            
+            // Debug logging for position updates
+            if (debugState.isDataDebugEnabled() && Math.random() < 0.01) { // Log ~1% of updates
+                this.logger.debug('Position-only update for label:', {
+                    id,
+                    text: label.text,
+                    posX: position.x,
+                    posY: position.y,
+                    posZ: position.z
+                });
+            }
+            
+            // Update instance attributes to reflect new positions
+            this.updateInstanceAttributes();
+            return;
+        }
+        
+        // NEW LABEL: If the label doesn't exist yet, create it
         if (!label) {
+            // Check if we've hit the instance limit
             if (this.currentInstanceCount >= this.maxInstances) {
                 this.logger.warn(`Maximum instance count (${this.maxInstances}) reached, cannot add more labels`);
                 return;
             }
             
+            // For new labels, we must have actual text content
+            if (isEmptyText) {
+                // Don't create empty labels
+                return;
+            }
+            
+            // Create new label instance
             label = {
                 id,
                 text,
                 position: position.clone(),
                 scale: 1.0,
                 color: color || new Color(this.settings.textColor),
-                visible: true
+                visible: true,
+                lastUpdated: Date.now()
             };
             
             if (debugState.isDataDebugEnabled()) {
                 this.logger.debug('Created new label instance:', {
                     id,
-                    instanceIndex: this.currentInstanceCount,
-                    position,
-                    color: color ? [(color as any).r, (color as any).g, (color as any).b] : undefined
+                    text,
+                    instanceIndex: this.currentInstanceCount
                 });
             }
             
             this.labels.set(id, label);
             this.currentInstanceCount++;
-        } else {
-            // Only update text if we're not just updating the position
-            if (!isPositionUpdateOnly) {
-                label.text = text;
+        } 
+        // UPDATE EXISTING: Update an existing label
+        else {
+            // Only update text if we have new non-empty text
+            if (!isEmptyText) {
+                if (label.text !== text) {
+                    if (debugState.isDataDebugEnabled()) {
+                        this.logger.debug(`Updated label text: "${label.text}" -> "${text}"`);
+                    }
+                    label.text = text;
+                }
             }
+            
+            // Always update position
             label.position.copy(position);
-            if (color) label.color = color;
+            
+            // Update color if provided
+            if (color) {
+                label.color = color;
+            }
+            
+            label.lastUpdated = Date.now();
         }
         
+        // Update the instance attributes to reflect changes
         this.updateInstanceAttributes();
     }
     
@@ -279,43 +328,38 @@ export class UnifiedTextRenderer {
         const colors = (this.geometry.getAttribute('instanceColor') as InstancedBufferAttribute).array as Float32Array;
         const scales = (this.geometry.getAttribute('instanceScale') as InstancedBufferAttribute).array as Float32Array;
 
-        if (debugState.isDataDebugEnabled()) {
-            // Debug log instance updates
+        // Only log updates in debug mode
+        if (debugState.isDataDebugEnabled() && Math.random() < 0.01) { // Log ~1% of updates
             this.logger.debug('Updating instance attributes:', {
                 currentInstanceCount: this.currentInstanceCount,
-                labelsCount: this.labels.size,
-                positionsLength: positions.length,
-                colorsLength: colors.length
+                labelsCount: this.labels.size
             });
         }
         
         let index = 0;
         this.labels.forEach(label => {
             if (label.visible) {
+                // Copy position data
                 positions[index * 3] = label.position.x;
                 positions[index * 3 + 1] = label.position.y;
                 positions[index * 3 + 2] = label.position.z;
                 
+                // Copy color data
                 const colorArray = label.color.toArray();
                 colors.set(colorArray, index * 4);
-                colors[index * 4 + 3] = 1.0;
+                colors[index * 4 + 3] = 1.0; // Alpha
                 
-                scales[index] = label.scale * this.LABEL_SCALE; // Apply LABEL_SCALE here
+                // Copy scale data
+                scales[index] = label.scale * this.LABEL_SCALE;
+                
                 index++;
             }
         });
         
         // Set instance count on the mesh
-        (this.mesh as any).instanceCount = this.currentInstanceCount;
+        (this.mesh as any).instanceCount = index;
         
-        if (debugState.isDataDebugEnabled()) {
-            // Debug log final state
-            this.logger.debug('Instance attributes updated:', {
-                instanceCount: (this.mesh as any).instanceCount,
-                visibleLabels: index
-            });
-        }
-        
+        // Mark attributes as needing update
         (this.geometry.getAttribute('instancePosition') as InstancedBufferAttribute).needsUpdate = true;
         (this.geometry.getAttribute('instanceColor') as InstancedBufferAttribute).needsUpdate = true;
         (this.geometry.getAttribute('instanceScale') as InstancedBufferAttribute).needsUpdate = true;
@@ -325,6 +369,10 @@ export class UnifiedTextRenderer {
         if (this.labels.delete(id)) {
             this.currentInstanceCount--;
             this.updateInstanceAttributes();
+            
+            if (debugState.isDataDebugEnabled()) {
+                this.logger.debug(`Removed label ${id}`);
+            }
         }
     }
     
@@ -338,22 +386,23 @@ export class UnifiedTextRenderer {
         }
     }
     
+    /**
+     * Perform per-frame updates for all labels
+     */
     public update(): void {
         if (!this.camera || !this.material) return;
         
-        // When in camera billboard mode, update all labels regardless of position
+        // For camera billboard mode: Ensure all labels remain visible
         if (this.settings.billboardMode === 'camera') {
-            this.labels.forEach((label, id) => {
-                this.updateLabel(id, label.text, label.position, label.color);
+            this.labels.forEach(label => {
+                label.visible = true;
             });
         } else {
-            // For other billboard modes, update only visible labels
-            this.labels.forEach((label, id) => {
-                if (this.isLabelVisible(label)) {
-                    this.updateLabel(id, label.text, label.position, label.color);
-                }
-            });
+            // For other modes: Update visibility based on camera position
+            this.labels.forEach(label => label.visible = this.isLabelVisible(label));
         }
+
+        this.updateInstanceAttributes();
     }
 
     private isLabelVisible(label: LabelInstance): boolean {

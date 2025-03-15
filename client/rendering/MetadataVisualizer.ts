@@ -394,7 +394,7 @@ export class MetadataVisualizer {
      */
     public update(_camera: PerspectiveCamera): void {
         // Very rarely log how many labels we're tracking
-        if (Math.random() < 0.0001 && this.metadataGroups.size > 0) {
+        if (Math.random() < 0.00001 && this.metadataGroups.size > 0) { // Reduced to 0.001% to avoid spamming logs
             // Only log if data debugging is specifically enabled
             if (debugState.isDataDebugEnabled()) {
                 this.logger.debug('Metadata update stats:', {
@@ -406,6 +406,8 @@ export class MetadataVisualizer {
             }
         }
         // The text renderer handles label positions and visibility
+        // NOTE: We're not updating any labels here - the text renderer manages them
+        // This prevents us from inadvertently overwriting labels during the update cycle
     }
 
     public dispose(): void {

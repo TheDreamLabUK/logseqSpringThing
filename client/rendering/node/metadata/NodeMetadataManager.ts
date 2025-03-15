@@ -532,7 +532,10 @@ export class NodeMetadataManager {
         // Update metadata position
         label.metadata.position = { x: position.x, y: position.y, z: position.z };
         
-        // Update sprite position directly, using settings from labels
+        // IMPORTANT FIX: Just update position but don't recreate the label or change text
+        // This was likely the source of labels showing the same text - we were losing
+        // individual label text during position updates because we weren't using
+        // preserveText=true when updating positions
         label.container.position.copy(position);
     }
 
