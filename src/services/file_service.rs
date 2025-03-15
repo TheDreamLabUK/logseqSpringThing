@@ -37,6 +37,7 @@ pub struct ProcessedFile {
 }
 
 pub struct FileService {
+    #[allow(dead_code)]
     settings: Arc<RwLock<Settings>>,
     // Counter for assigning node IDs, initialized based on existing metadata
     node_id_counter: AtomicU32,

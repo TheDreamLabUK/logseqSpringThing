@@ -31,6 +31,7 @@ impl ContentAPI {
     }
 
     /// Ensure consistent URL encoding for paths
+    #[allow(dead_code)]
     async fn encode_path(&self, path: &str) -> String {
         let settings = self.client.settings().read().await;
         let debug_enabled = settings.system.debug.enabled;

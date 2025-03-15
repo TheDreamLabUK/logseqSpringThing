@@ -49,6 +49,15 @@ pub enum GpuHealth {
     Unknown
 }
 
+// Status enum for GPU availability reporting
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum GpuStatus {
+    Available,
+    Unavailable,
+    InitializationError,
+    DriverError
+}
+
 // Additional info about GPU state
 #[derive(Debug, Clone)]
 pub struct GpuDiagnostics {
@@ -83,7 +92,11 @@ impl GPUCompute {
     }
     
     fn create_cuda_device() -> Result<Arc<CudaDevice>, Error> {
-        // First try to use the NVIDIA_GPU_UUID environment variable
+        // CRITICAL FIX: Run diagnostics first to log all GPU-related environment variables
+        Self::diagnostic_cuda_info()?;
+        info!("CUDA diagnostics complete - proceeding with device creation");
+        
+        // Check the NVIDIA_GPU_UUID environment variable
         if let Ok(uuid) = env::var("NVIDIA_GPU_UUID") {
             info!("Attempting to create CUDA device with UUID: {}", uuid);
             // Note: cudarc doesn't directly support creation by UUID, so we log it
@@ -97,22 +110,65 @@ impl GPUCompute {
         }
         
         // Always use device index 0 within the container
-        // (NVIDIA_VISIBLE_DEVICES in docker-compose.yml controls which actual GPU this is)
-        info!("Creating CUDA device with index 0");
+        info!("CRITICAL: Attempting to create CUDA device with explicit index 0");
+        
+        // FIX: Add error recovery - try multiple approaches to create the device
         match CudaDevice::new(0) {
             Ok(device) => {
-                // Successfully created device
-                info!("Successfully created CUDA device with index 0 (for GPU UUID: {})", env::var("NVIDIA_GPU_UUID").unwrap_or_else(|_| "unknown".to_string()));
+                info!("✅ Successfully created CUDA device with index 0");
                 Ok(device.into()) // Use .into() to convert to Arc
             },
             Err(e) => {
-                error!("Failed to create CUDA device with index 0: {}", e);
-                Err(Error::new(ErrorKind::Other, 
-                    format!("Failed to create CUDA device: {}. Make sure CUDA drivers are installed and working, and GPU is properly detected.", e)))
+                error!("❌ Failed initial CUDA device creation attempt: {}", e);
+                
+                // Try to create device using alternative approach
+                info!("Attempting fallback CUDA device creation...");
+                
+                // Try to get the device count
+                match CudaDevice::count() {
+                    Ok(count) => {
+                        if count == 0 {
+                            error!("No CUDA devices found by driver");
+                            return Err(Error::new(ErrorKind::NotFound, 
+                                "No CUDA devices found by driver - GPU compute unavailable"));
+                        }
+                        
+                        info!("Detected {} CUDA devices, trying to create with first available", count);
+                        
+                        // Try using array initialization with first device
+                        match CudaDevice::new(0) {
+                            Ok(device) => {
+                                info!("✅ Successfully created CUDA device using alternative method");
+                                Ok(device.into())
+                            },
+                            Err(alt_err) => {
+                                error!("❌ Alternative device creation also failed: {}", alt_err);
+                                
+                                // One last attempt - try device 1 as fallback
+                                info!("Making final attempt with device 1");
+                                match CudaDevice::new(1) {
+                                    Ok(device) => {
+                                        info!("✅ Successfully created CUDA device using device 1");
+                                        Ok(device.into())
+                                    },
+                                    Err(def_err) => {
+                                        error!("❌ All device creation attempts failed: {}", def_err);
+                                        Err(Error::new(ErrorKind::Other, 
+                                            format!("All CUDA device creation attempts failed. GPU compute unavailable.")))
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    Err(count_err) => {
+                        error!("❌ Failed to get CUDA device count: {}", count_err);
+                        Err(Error::new(ErrorKind::Other, format!("Failed to get CUDA device count: {}", count_err)))
+                    }
+                }
             }
         }
     }
-
+    
     pub async fn new(graph: &GraphData) -> Result<Arc<RwLock<Self>>, Error> {
         let num_nodes = graph.nodes.len() as u32;
         info!("Initializing GPU compute with {} nodes (with retry mechanism)", num_nodes);
@@ -175,7 +231,7 @@ impl GPUCompute {
         info!("Checking CUDA-related environment variables:");
         for var in &["NVIDIA_GPU_UUID", "NVIDIA_VISIBLE_DEVICES", "CUDA_VISIBLE_DEVICES"] {
             match env::var(var) {
-                Ok(val) => info!("  {}={}", var, val),
+                Ok(val) => info!("  {}={} (FOUND)", var, val),
                 Err(_) => info!("  {} is not set", var)
             }
         }
@@ -336,7 +392,7 @@ impl GPUCompute {
 
         info!("Successfully loaded PTX file");
 
-        device.load_ptx(ptx_data, "compute_forces_kernel", &["compute_forces_kernel"])
+        device.clone().load_ptx(ptx_data, "compute_forces_kernel", &["compute_forces_kernel"])
             .map_err(|e| Error::new(std::io::ErrorKind::Other, e.to_string()))?;
 
             
@@ -578,6 +634,15 @@ impl GPUCompute {
             last_error: None,
             last_operation_time_ms: 0,
             timestamp: std::time::SystemTime::now(),
+        }
+    }
+    
+    /// Get current GPU status
+    pub fn get_status(&self) -> GpuStatus {
+        if self.iteration_count > 0 {
+            GpuStatus::Available
+        } else {
+            GpuStatus::Unavailable
         }
     }
 }

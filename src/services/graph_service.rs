@@ -40,6 +40,9 @@ static SIMULATION_LOOP_RUNNING: AtomicBool = AtomicBool::new(false);
 // while an old one is being shut down
 static SIMULATION_MUTEX: Lazy<Mutex<String>> = Lazy::new(|| Mutex::new(String::new()));
 
+// Static flag to track GPU availability across threads
+static GPU_AVAILABLE: AtomicBool = AtomicBool::new(false);
+
 // Cache configuration
 const NODE_POSITION_CACHE_TTL_MS: u64 = 50; // 50ms cache time
 const METADATA_FILE_WAIT_TIMEOUT_MS: u64 = 5000; // 5 second wait timeout
@@ -82,16 +85,18 @@ impl GraphService {
         // Create the shared node map
         let node_map = Arc::new(RwLock::new(HashMap::new()));
 
+        // Create shutdown signal
+        let shutdown_requested = Arc::new(AtomicBool::new(false));
+
         if gpu_compute.is_some() {
             info!("[GraphService] GPU compute is enabled - physics simulation will run");
             info!("[GraphService] Testing GPU compute functionality at startup");
-            tokio::spawn(Self::test_gpu_at_startup(gpu_compute.clone(), simulation_id.clone()));
+            
+            // CRITICAL FIX: Wait for GPU initialization to complete instead of spawning task
+            Self::test_gpu_at_startup(gpu_compute.clone(), None, simulation_id.clone()).await;
         } else {
             error!("[GraphService] GPU compute is NOT enabled - physics simulation will use CPU fallback");
         }
-
-        // Create shutdown signal
-        let shutdown_requested = Arc::new(AtomicBool::new(false));
         // Create the GraphService with caching enabled 
         let _cache = Arc::new(RwLock::new(Option::<(Vec<Node>, Instant)>::None));
         let graph_service = Self {
@@ -177,15 +182,20 @@ impl GraphService {
                 let mut graph = graph_data.write().await;
                 let mut node_map = node_map.write().await;
 
-                let gpu_status = if gpu_compute.is_some() { "available" } else { "NOT available" };
-                debug!("[Graph:{}] GPU compute status: {}, physics enabled: {}", 
-                       loop_simulation_id, gpu_status, physics_settings.enabled);
+                // CRITICAL FIX: Check the global GPU availability flag directly
+                // This ensures we use consistent state across components 
+                let is_gpu_available = GPU_AVAILABLE.load(Ordering::SeqCst);
+                
+                let gpu_status = if is_gpu_available { "available" } else { "NOT available" };
+                
+                debug!("[Graph:{}] GPU compute status: {}, is available flag: {}, physics enabled: {}", 
+                       loop_simulation_id, gpu_status, is_gpu_available, physics_settings.enabled);
                        
                 if physics_settings.enabled {
                     if let Some(gpu) = &gpu_compute {
-                        if let Err(e) = Self::calculate_layout_with_retry(gpu, &mut graph, &mut node_map, &params).await {
+                        if let Err(e) = Self::calculate_layout_with_retry(gpu, None, &mut graph, &mut node_map, &params).await {
                             error!("[Graph:{}] Error updating positions: {}", loop_simulation_id, e);
-                        } else {
+                        } else if is_gpu_available {
                             debug!("[Graph:{}] GPU calculation completed successfully", loop_simulation_id);
                             debug!("[Graph:{}] Successfully calculated layout for {} nodes", loop_simulation_id, graph.nodes.len());
                         }
@@ -276,29 +286,69 @@ impl GraphService {
     }
     
     /// Test GPU compute at startup to verify it's working
-    async fn test_gpu_at_startup(gpu_compute: Option<Arc<RwLock<GPUCompute>>>, instance_id: String) {
+    async fn test_gpu_at_startup(
+        gpu_compute: Option<Arc<RwLock<GPUCompute>>>, 
+        app_state: Option<web::Data<AppState>>,
+        instance_id: String
+    ) {
         // Add a small delay to let other initialization complete
         tokio::time::sleep(Duration::from_millis(GPU_INIT_WAIT_MS)).await;
         
         info!("[GraphService:{}] Running GPU startup test", instance_id);
+        let mut is_gpu_available = false;
         
-        if let Some(gpu) = &gpu_compute {
+        if let Some(gpu) = gpu_compute {
             match gpu.read().await.test_compute() {
                 Ok(_) => {
                     info!("[GraphService:{}] ✅ GPU test computation succeeded - GPU physics is working", instance_id);
+                    is_gpu_available = true;
                 },
                 Err(e) => {
                     error!("[GraphService:{}] ❌ GPU test computation failed: {}", instance_id, e);
-                    error!("[GraphService:{}] The system will fall back to CPU physics which may be slower", instance_id);
+                    error!("[GraphService:{}] The system will fall back to CPU physics which may be slower", instance_id); 
+                    is_gpu_available = false;
                     
                     // Try initializing a new GPU instance
                     info!("[GraphService:{}] Attempting to reinitialize GPU...", instance_id);
-                    let _new_gpu = GPUCompute::new(&GraphData::default()).await; // Using _ to avoid unused warning
+                    if let Ok(new_gpu) = GPUCompute::new(&GraphData::default()).await {
+                        info!("[GraphService:{}] GPU reinitialization succeeded", instance_id);
+                        match new_gpu.read().await.test_compute() {
+                            Ok(_) => {
+                                info!("[GraphService:{}] Reinitialized GPU passed test", instance_id);
+                                is_gpu_available = true;
+                            },
+                            Err(_) => {}
+                        }
+                    }
                 }
             }
         } else {
             error!("[GraphService:{}] ❌ No GPU compute instance available for testing", instance_id);
+            is_gpu_available = false;
         }
+        
+        // Update app_state if provided
+        if let Some(state) = app_state {
+            match state.gpu_available.try_write() {
+                Ok(mut available) => {
+                    *available = is_gpu_available;
+                    info!("[GraphService:{}] Updated global GPU status to: {}", instance_id, is_gpu_available);
+                },
+                Err(_) => error!("[GraphService:{}] Failed to update GPU status in AppState", instance_id)
+            }
+        }
+        
+        // CRITICAL FIX: Update the shared GPU availability flag
+        GPU_AVAILABLE.store(is_gpu_available, Ordering::SeqCst);
+        info!("[GraphService:{}] Updated global GPU availability flag to: {}", instance_id, is_gpu_available);
+    }
+
+    /// Update the global GPU availability flag directly (used by external systems)
+    pub fn update_global_gpu_status(available: bool) {
+        let old_status = GPU_AVAILABLE.load(Ordering::SeqCst);
+        GPU_AVAILABLE.store(available, Ordering::SeqCst);
+        info!("[GraphService] Global GPU availability flag updated: {} -> {}", 
+              old_status, available);
     }
     
     /// Wait for metadata file to be available (mounted by Docker)
@@ -808,9 +858,10 @@ impl GraphService {
     /// Helper function to retry GPU layout calculation with exponential backoff
     pub async fn calculate_layout_with_retry(
         gpu_compute: &Arc<RwLock<GPUCompute>>,
+        app_state: Option<&web::Data<AppState>>,
         graph: &mut GraphData,
         node_map: &mut HashMap<String, Node>, 
-        params: &SimulationParams,
+        params: &SimulationParams
     ) -> std::io::Result<()> {
         // First validate the graph data to avoid potential GPU issues
         if graph.nodes.is_empty() {
@@ -823,6 +874,21 @@ impl GraphService {
             return Self::calculate_layout_cpu(graph, node_map, params);
         }
         
+        // Check if GPU is available based on AppState tracking (if provided)
+        if let Some(app_state) = app_state {
+            let gpu_available = *app_state.gpu_available.read().await;
+            if !gpu_available {
+                // AppState knows GPU is not available, fall back to CPU without retry attempts
+                warn!("[calculate_layout_with_retry] GPU is known to be unavailable from AppState, using CPU directly");
+                return Self::calculate_layout_cpu(graph, node_map, params);
+            }
+        } else if !GPU_AVAILABLE.load(Ordering::SeqCst) {
+            // CRITICAL FIX: Check the shared GPU availability flag if AppState isn't provided
+            warn!("[calculate_layout_with_retry] GPU is marked as unavailable in shared state, using CPU directly");
+            return Self::calculate_layout_cpu(graph, node_map, params);
+        }
+
+        // Proceed with GPU calculation with retry mechanism
         debug!("[calculate_layout_with_retry] Starting GPU calculation with retry mechanism");
         let mut last_error: Option<Error> = None;
         
@@ -851,6 +917,15 @@ impl GraphService {
         // If we get here, all attempts failed
         debug!("[calculate_layout_with_retry] All GPU attempts failed, falling back to CPU");
         error!("[calculate_layout] Failed after {} attempts, falling back to CPU", MAX_GPU_CALCULATION_RETRIES);
+        
+        // Update AppState to indicate GPU is unavailable if provided
+        if let Some(app_state) = app_state {
+            *app_state.gpu_available.write().await = false;
+            error!("Marking GPU as unavailable in AppState for future calculations");
+            
+            // CRITICAL FIX: Also update the shared flag
+            GPU_AVAILABLE.store(false, Ordering::SeqCst);
+        }
         
         // As a fallback, try CPU calculation when GPU fails repeatedly
         match Self::calculate_layout_cpu(graph, node_map, params) {

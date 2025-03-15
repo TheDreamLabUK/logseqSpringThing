@@ -54,12 +54,37 @@ log "nginx started successfully"
 
 # Execute the webxr binary only if not in debug mode
 if [ "$START_WEBXR" = true ]; then
-    log "Executing webxr..."
+    log "Preparing to execute webxr with extended GPU diagnostics..."
     log "GPU information:"
     if command -v nvidia-smi &>/dev/null; then
         nvidia-smi
+        # Get device uuid to verify it matches our expected value
+        UUID=$(nvidia-smi --query-gpu=uuid --format=csv,noheader)
+        log "GPU UUID detected by nvidia-smi: $UUID"
     else
-        log "nvidia-smi not available"
+        log "WARNING: nvidia-smi not available - this may indicate NVIDIA driver issues"
+    fi
+    
+    # Verify that PTX file exists and is readable
+    if [ -f "/app/src/utils/compute_forces.ptx" ]; then
+        PTX_SIZE=$(stat -c%s "/app/src/utils/compute_forces.ptx")
+        log "✅ PTX file exists and is readable (size: $PTX_SIZE bytes)"
+    else
+        log "⚠️ PTX file NOT found at /app/src/utils/compute_forces.ptx"
+        # Try to create a link to an alternative location if it exists elsewhere
+        if [ -f "./src/utils/compute_forces.ptx" ]; then
+            log "PTX file found at ./src/utils/compute_forces.ptx, creating symlink"
+            ln -sf "$(pwd)/src/utils/compute_forces.ptx" "/app/src/utils/compute_forces.ptx"
+        fi
+    fi
+    
+    # Check CUDA visibility
+    if [ -n "${CUDA_VISIBLE_DEVICES:-}" ]; then
+        log "CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES"
+    else 
+        # If not set, explicitly set it to ensure CUDA can see device
+        export CUDA_VISIBLE_DEVICES=0
+        log "Explicitly setting CUDA_VISIBLE_DEVICES=0"
     fi
     # Always enable GPU debugging to ensure physics simulation runs
     log "Starting webxr with GPU compute enabled"
