@@ -17,17 +17,24 @@ const VERSION = 'v1.0';
 
 const logger = createLogger('NodeMetadataManager');
 
+interface LabelCanvas {
+    canvas: HTMLCanvasElement;
+    context: CanvasRenderingContext2D;
+}
+
 interface MetadataLabel {
     sprite: Sprite;
     container: Object3D;
     metadata: NodeMetadata;
     lastUpdateDistance: number;
     lastVisible: boolean;
+    labelCanvas?: LabelCanvas; // Reference to the dedicated canvas for this label
 }
 
 export class NodeMetadataManager {
     private static instance: NodeMetadataManager;
     private labels: Map<string, MetadataLabel> = new Map();
+    private labelCanvases: Map<string, LabelCanvas> = new Map(); // Cache of canvases per node ID
     // Add a map to store relationships between node IDs and metadata IDs (filenames)
     private nodeIdToMetadataId: Map<string, string> = new Map();
     private metadataIdToNodeId: Map<string, string> = new Map();
@@ -157,59 +164,86 @@ export class NodeMetadataManager {
         }
     }
 
-    private createLabelTexture(metadata: NodeMetadata): Texture {
-        // Clear canvas
-        this.labelContext.clearRect(0, 0, this.labelCanvas.width, this.labelCanvas.height);
+    private createLabelTexture(metadata: NodeMetadata, nodeId: string): Texture {
+        // Get or create a dedicated canvas for this node
+        let labelCanvas = this.labelCanvases.get(nodeId);
+        if (!labelCanvas) {
+            const canvas = document.createElement('canvas');
+            canvas.width = 256;
+            canvas.height = 128;
+            
+            const context = canvas.getContext('2d');
+            if (!context) {
+                throw new Error('Failed to get 2D context for dedicated canvas');
+            }
+            
+            // Configure the context
+            context.textAlign = 'center';
+            context.textBaseline = 'middle';
+            context.font = 'bold 24px Arial';
+            
+            labelCanvas = { canvas, context };
+            this.labelCanvases.set(nodeId, labelCanvas);
+            
+            if (debugState.isNodeDebugEnabled()) {
+                logger.debug(`Created new dedicated canvas for node ${nodeId}`);
+            }
+        }
+        
+        const { canvas, context } = labelCanvas;
+        
+        // Clear this node's canvas
+        context.clearRect(0, 0, canvas.width, canvas.height);
  
         // Get display name with improved fallback logic
-        let rawName = this.nodeIdToMetadataId.get(metadata.id) || metadata.name;
+        let rawName = this.nodeIdToMetadataId.get(nodeId) || metadata.name;
         let displayName = (rawName && rawName !== 'undefined' && rawName !== 'null') ? 
-            rawName : (metadata.id ? `Node_${metadata.id}` : 'Unknown');
+            rawName : (nodeId ? `Node_${nodeId}` : 'Unknown');
         
         // Using settings property to control debug logging
         const enableDebugLogging = debugState.isNodeDebugEnabled() || 
             (this.settings?.system?.debug?.enabled === true);
         if (enableDebugLogging) {
-            logger.debug(`Creating label for node ${metadata.id} with name: ${displayName}`,
+            logger.debug(`Creating label for node ${nodeId} with name: ${displayName}`,
                 createDataMetadata({ 
                     originalName: metadata.name,
-                    mappedName: this.nodeIdToMetadataId.get(metadata.id),
+                    mappedName: this.nodeIdToMetadataId.get(nodeId),
                     fileSize: metadata.fileSize 
                 }));
         }
         
         if (Math.random() < 0.01) { // Only log ~1% to reduce spam
-            logger.debug(`Label texture for node ${metadata.id}: Using name "${displayName}"`);
+            logger.debug(`Label texture for node ${nodeId}: Using name "${displayName}"`);
         }
 
         // Draw a slightly larger background to accommodate multiple lines
-        this.labelContext.fillStyle = 'rgba(0, 0, 0, 0.5)';
-        this.labelContext.fillRect(0, 0, this.labelCanvas.width, this.labelCanvas.height);
+        context.fillStyle = 'rgba(0, 0, 0, 0.5)';
+        context.fillRect(0, 0, canvas.width, canvas.height);
 
         // Draw main label (filename)
-        this.labelContext.fillStyle = 'white';
-        this.labelContext.font = 'bold 20px Arial';
-        this.labelContext.fillText(displayName, this.labelCanvas.width / 2, 30);
+        context.fillStyle = 'white';
+        context.font = 'bold 20px Arial';
+        context.fillText(displayName, canvas.width / 2, 30);
         
         // Draw subtext lines
-        this.labelContext.font = '14px Arial';
-        this.labelContext.fillStyle = '#dddddd';
+        context.font = '14px Arial';
+        context.fillStyle = '#dddddd';
         
         // Add file size if available
         if (metadata.fileSize) {
             // Use actual fileSize or a reasonable default
             const fileSize = metadata.fileSize || this.DEFAULT_FILE_SIZE;
             const fileSizeText = this.formatFileSize(fileSize);
-            this.labelContext.fillText(`Size: ${fileSizeText}`, this.labelCanvas.width / 2, 55);
+            context.fillText(`Size: ${fileSizeText}`, canvas.width / 2, 55);
         }
         
         // Add hyperlink count if available
         if (metadata.hyperlinkCount !== undefined && metadata.hyperlinkCount > 0) {
-            this.labelContext.fillText(`Links: ${metadata.hyperlinkCount}`, this.labelCanvas.width / 2, 75); 
+            context.fillText(`Links: ${metadata.hyperlinkCount}`, canvas.width / 2, 75); 
         }
 
         // Create texture
-        const texture = new Texture(this.labelCanvas);
+        const texture = new Texture(canvas);
         texture.needsUpdate = true;
         return texture;
     }
@@ -346,6 +380,11 @@ export class NodeMetadataManager {
             lastVisible: false
         };
 
+        // Store the canvas for this label
+        const labelCanvas = { canvas, context };
+        label.labelCanvas = labelCanvas;
+        this.labelCanvases.set(metadata.id, labelCanvas);
+
         // Add to scene
         this.scene.add(container);
 
@@ -437,7 +476,7 @@ export class NodeMetadataManager {
         }
         
         // Update texture
-        const texture = this.createLabelTexture(metadata); 
+        const texture = this.createLabelTexture(metadata, id); 
         
         // Dispose of old texture to avoid memory leaks
         if ((label.sprite.material as SpriteMaterial).map) {
@@ -599,6 +638,11 @@ export class NodeMetadataManager {
         
         // Remove from tracking
         this.labels.delete(id);
+        
+        // Clean up the dedicated canvas
+        if (this.labelCanvases.has(id)) {
+            this.labelCanvases.delete(id);
+        }
     }
 
     public dispose(): void {
@@ -615,6 +659,9 @@ export class NodeMetadataManager {
         // Clear mappings
         this.nodeIdToMetadataId.clear();
         this.metadataIdToNodeId.clear();
+        
+        // Clear canvases
+        this.labelCanvases.clear();
 
         // Reset singleton
         NodeMetadataManager.instance = null!;
