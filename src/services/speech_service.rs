@@ -1,6 +1,6 @@
 use tokio::sync::{mpsc, Mutex, RwLock};
-use tokio_tungstenite::{connect_async, WebSocketStream, MaybeTlsStream};
-use tungstenite::protocol::Message;
+use tokio_tungstenite::{connect_async, WebSocketStream, MaybeTlsStream, tungstenite};
+use tokio_tungstenite::tungstenite::Message;
 use tungstenite::http::Request;
 use serde_json::json;
 use std::sync::Arc;
@@ -88,7 +88,7 @@ impl SpeechService {
                                     }
                                 });
                                 
-                                if let Err(e) = stream.send(Message::Text(init_event.to_string())).await {
+                                if let Err(e) = stream.send(tungstenite::Message::Text(init_event.to_string())).await {
                                     error!("Failed to send initial response.create event: {}", e);
                                     continue;
                                 }
@@ -112,7 +112,7 @@ impl SpeechService {
                                 }
                             });
 
-                            if let Err(e) = stream.send(Message::Text(msg_event.to_string())).await {
+                            if let Err(e) = stream.send(tungstenite::Message::Text(msg_event.to_string())).await {
                                 error!("Failed to send message to OpenAI: {}", e);
                                 continue;
                             }
@@ -121,14 +121,14 @@ impl SpeechService {
                                 "type": "response.create"
                             });
                             
-                            if let Err(e) = stream.send(Message::Text(response_event.to_string())).await {
+                            if let Err(e) = stream.send(tungstenite::Message::Text(response_event.to_string())).await {
                                 error!("Failed to request response from OpenAI: {}", e);
                                 continue;
                             }
                             
                             while let Some(message) = stream.next().await {
                                 match message {
-                                    Ok(Message::Text(text)) => {
+                                    Ok(tungstenite::Message::Text(text)) => {
                                         let event = match serde_json::from_str::<serde_json::Value>(&text) {
                                             Ok(event) => event,
                                             Err(e) => {
@@ -163,7 +163,7 @@ impl SpeechService {
                                             _ => {}
                                         }
                                     },
-                                    Ok(Message::Close(_)) => break,
+                                    Ok(tungstenite::Message::Close(_)) => break,
                                     Err(e) => {
                                         error!("Error receiving from OpenAI: {}", e);
                                         break;
@@ -177,7 +177,7 @@ impl SpeechService {
                     },
                     SpeechCommand::Close => {
                         if let Some(mut stream) = ws_stream.take() {
-                            if let Err(e) = stream.send(Message::Close(None)).await {
+                            if let Err(e) = stream.send(tungstenite::Message::Close(None)).await {
                                 error!("Failed to send close frame: {}", e);
                             }
                         }

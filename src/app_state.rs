@@ -1,7 +1,7 @@
 use std::sync::{Arc, atomic::{AtomicUsize, Ordering}};
 use tokio::sync::RwLock;
 use actix_web::web;
-use log::{info, warn, error};
+use log::info;
 
 use crate::config::Settings;
 use tokio::time::Duration;
