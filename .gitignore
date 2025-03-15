@@ -28,6 +28,8 @@ data/markdown/
 data/runtime/
 data/public/dist/
 data/metadata/metadata.json
+data/metadata/layout.json
+data/metadata/graph.json
 
 # Documentation and assets
 docs/*.gif
