@@ -96,27 +96,64 @@ export class MetadataVisualizer {
      * Resolve a display name for a node based on metadata
      * This ensures we get unique names for each node
      */
-    private resolveDisplayName(metadata: NodeMetadata, nodeId: string): string {
-        // First, check if we already have a cached name for this node
+    private resolveDisplayName(metadata: NodeMetadata, nodeId: string, forceUnique: boolean = true): string {
+        // First, check if we already have a cached name in our local cache
         if (this.nodeMetadataCache.has(nodeId)) {
             return this.nodeMetadataCache.get(nodeId) || nodeId;
         }
         
         // Check if NodeIdentityManager already has a name for this node
         const identityName = this.nodeIdentityManager.getLabel(nodeId);
-        if (identityName && identityName !== nodeId) {
+        
+        // Check if the identityName looks like a numeric ID (which would mean no real label was found)
+        const isNumericLabel = /^\d+$/.test(identityName);
+        
+        // Log detailed info about identities to help diagnose labeling issues
+        this.logger.debug(`Label resolution for node ${nodeId}:`, {
+            identityName,
+            isNumericLabel,
+            hasMetadata: !!metadata,
+            metadataName: metadata?.name
+        });
+        
+        // Use the identity name if it's valid (not just numeric or the node ID itself)
+        if (identityName && !isNumericLabel && identityName !== nodeId) {
             // Update our cache with the identity manager's name
             this.nodeMetadataCache.set(nodeId, identityName);
             return identityName;
         }
         
-        // Otherwise, create a new mapping
-        const displayName = metadata.file_name || metadata.name || `Node ${nodeId}`;
+        // Otherwise, create a new mapping prioritizing metadata fields
+        // First check if metadata has any usable name fields
+        let displayName: string | undefined;
         
-        // Update the NodeIdentityManager with this name
-        if (displayName && displayName !== nodeId) {
-            this.nodeIdentityManager.setLabel(nodeId, displayName);
+        if (metadata.file_name && metadata.file_name !== nodeId) {
+            displayName = metadata.file_name;
+        } else if (metadata.name && metadata.name !== nodeId) {
+            displayName = metadata.name;
         }
+        
+        // If no usable name found, fallback to Node {id}
+        if (!displayName) {
+            displayName = `Node ${nodeId}`;
+        }
+        
+        // If we need to ensure uniqueness and the display name might be shared by other nodes
+        // add the node ID as a suffix to guarantee uniqueness
+        if (forceUnique) {
+            // First check if this label is already used for other nodes
+            const nodesWithLabel = this.nodeIdentityManager.getNodesWithLabel(displayName);
+            if (nodesWithLabel.length > 1 || 
+                (nodesWithLabel.length === 1 && nodesWithLabel[0] !== nodeId)) {
+                // This label is used elsewhere, make it unique with node ID
+                displayName = `${displayName} (${nodeId})`;
+                this.logger.debug(`Made label unique for node ${nodeId}: ${displayName}`);
+            }
+        }
+        
+        // Always update the NodeIdentityManager with our resolved name
+        // Always update the identity manager regardless of previous value
+        this.nodeIdentityManager.setLabel(nodeId, displayName);
         
         // Cache this mapping for future use
         this.nodeMetadataCache.set(nodeId, displayName);
@@ -176,14 +213,20 @@ export class MetadataVisualizer {
             });
         }
 
-        // Use metadata name, ensuring we show a properly formatted name
-        // Prefer the name from metadata, then fall back to ID if needed
-        const displayName = this.resolveDisplayName(metadata, nodeId);
+        // Resolve the display name with forced uniqueness
+        const displayName = this.resolveDisplayName(metadata, nodeId, true);
         
         // Log if we're displaying a numeric ID as the label
         if (/^\d+$/.test(displayName) && debugState.isNodeDebugEnabled()) {
-            this.logger.debug(`Using numeric ID ${displayName} as label for node ${nodeId} - missing proper name`);
+            this.logger.warn(`Using numeric ID as label for node ${nodeId}`, {
+                displayName,
+                metadata: {
+                    name: metadata.name,
+                    id: metadata.id
+                }
+            });
         }
+        
 
         // Create text labels using UnifiedTextRenderer
         // First, find the node's actual position
@@ -196,14 +239,17 @@ export class MetadataVisualizer {
         }
         
         // We'll set the group's position initially to help with initialization
+        // Ensure we have a valid position
         group.position.copy(nodePosition);
         
-        // Enhanced label text that displays the filename prominently
-        const labelTexts = [
-            `${displayName}`,  // Main label (filename)
-            `${fileSizeFormatted}`,  // File size
-            `${metadata.hyperlinkCount || 0} links`  // Link count
-        ];
+        // Customized label text based on available data
+        // Always ensure the main label is the unique display name
+        const labelTexts = [];
+        
+        // Main label is always the unique display name
+        labelTexts.push(displayName);
+        labelTexts.push(fileSizeFormatted);  // File size
+        labelTexts.push(`${metadata.hyperlinkCount || 0} links`);  // Link count
 
         // Make the yOffsets 10x smaller
         const yOffsets = [0.005, 0.003, 0.001]; // Reduced from [0.05, 0.03, 0.01]

@@ -174,35 +174,88 @@ export class NodeManagerFacade implements NodeManagerInterface {
 
         const shouldDebugLog = debugState.isEnabled() && debugState.isNodeDebugEnabled();
         
+        // First, log detailed info about the first few nodes to help with debugging
+        if (shouldDebugLog && nodes.length > 0) {
+            const sampleNodes = nodes.slice(0, Math.min(3, nodes.length));
+            logger.debug('Node sample for debugging:', createDataMetadata({
+                nodes: sampleNodes.map(node => ({
+                    id: node.id,
+                    hasMetadata: !!node.data.metadata,
+                    metadataName: node.data.metadata?.name,
+                    metadataFileName: node.data.metadata?.file_name
+                }))
+            }));
+        }
+        
+        // Reset the maps once to ensure clean state if this is the first batch
+        if (this.frameCount === 0) {
+            this.identityManager.reset();
+            logger.info('First frame: Reset identity manager to ensure clean state');
+        }
+        this.frameCount++;
+        
         // Filter out any nodes with invalid IDs before processing
         const validNodes = nodes.filter(node => {
             if (!this.validateNodeId(node.id)) {
-                logger.warn(`Skipping node with invalid ID format: ${node.id}`);
+                logger.warn(`Skipping node with invalid ID format: ${node.id}. Node IDs must be numeric strings.`);
                 return false;
             }
             return true;
         });
 
         if (validNodes.length < nodes.length) {
-            logger.warn(`Filtered out ${nodes.length - validNodes.length} nodes with invalid IDs (not numeric strings)`);
+            logger.warn(`Filtered out ${nodes.length - validNodes.length} nodes with invalid IDs`);
         }
 
-        // Process nodes through the identity manager to detect duplicates
-        const { duplicateLabels } = this.identityManager.processNodes(validNodes);
+        // Create a more detailed processing structure for each node
+        // Process nodes with explicit label handling before identity management
+        const enhancedNodes = validNodes.map(node => {
+            // Extract all possible label sources 
+            const metadataName = node.data.metadata?.name;
+            const metadataFileName = node.data.metadata?.file_name;
+            const isMetadataNameValid = metadataName && 
+                                       typeof metadataName === 'string' && 
+                                       metadataName !== 'undefined' &&
+                                       metadataName !== node.id;
+                                       
+            // Force a unique name if needed by explicitly calling forceNodeLabel
+            // This ensures we always have a valid display name
+            const displayName = isMetadataNameValid ? metadataName : 
+                               (metadataFileName || `Node_${node.id}`);
+                              
+            // If we have a good name that isn't just the ID, force it
+            if (displayName && displayName !== node.id) {
+                this.identityManager.forceNodeLabel(node.id, displayName);
+                if (shouldDebugLog) {
+                    logger.debug(`Forced label for node ${node.id}: ${displayName}`);
+                }
+            }
+            
+            return node;
+        });
+        
+        // Process enhanced nodes through identity manager to detect duplicates
+        const { duplicateLabels } = this.identityManager.processNodes(enhancedNodes);
         
         // Log duplicate labels
         if (duplicateLabels.size > 0) {
             logger.warn(`Found ${duplicateLabels.size} duplicate labels`, createDataMetadata({
-                duplicateLabelsCount: duplicateLabels.size
+                duplicateLabelsCount: duplicateLabels.size,
+                duplicateLabels: Array.from(duplicateLabels.entries()).map(([label, ids]) => 
+                    `${label}: ${ids.join(', ')}`)
             }));
         }
         
         // Prepare metadata mappings for the metadata manager
-        const metadataMappings = validNodes.map(node => ({
-            id: node.id,
-            metadataId: this.identityManager.getLabel(node.id),
-            label: this.identityManager.getLabel(node.id)
-        }));
+        const metadataMappings = validNodes.map(node => {
+            // Get the label for this node (prioritizing metadata name if possible)
+            const label = this.identityManager.getLabel(node.id);
+            return {
+                id: node.id,
+                metadataId: node.data.metadata?.name || label, // Use metadata.name if available
+                label: label
+            };
+        });
         
         this.metadataManager.initializeMappings(metadataMappings);
         
@@ -219,10 +272,9 @@ export class NodeManagerFacade implements NodeManagerInterface {
                     }));
             }
             
-            // Skip if this node ID has already been processed in this batch
-            // This prevents duplicate processing which could lead to overwriting
+            // Skip any duplicate node IDs in this batch
             if (processedIds.has(node.id)) {
-                logger.warn(`Skipping duplicate node ID: ${node.id}`);
+                logger.debug(`Skipping duplicate node ID: ${node.id}`);
                 return;
             }
             processedIds.add(node.id);

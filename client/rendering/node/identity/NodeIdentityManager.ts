@@ -21,6 +21,9 @@ export class NodeIdentityManager {
     // Regular expression to validate numeric IDs
     private readonly NODE_ID_REGEX = /^\d+$/;
     
+    // Set default label to ensure it's never empty or duplicated
+    private readonly DEFAULT_LABEL_PREFIX = 'Node_';
+    
     private constructor() {
         logger.info('NodeIdentityManager initialized');
     }
@@ -45,11 +48,27 @@ export class NodeIdentityManager {
     /**
      * Process a batch of nodes to establish identity mappings and detect duplicates
      */
-    public processNodes(nodes: any[]): { duplicateLabels: Map<string, string[]> } {
+    public processNodes(nodes: any[], forceReset: boolean = false): { duplicateLabels: Map<string, string[]> } {
         const duplicateLabels = new Map<string, string[]>();
         
-        // Clear the label tracking for this batch to detect duplicates
-        this.labelToNodeIds.clear();
+        // If force reset is requested, completely reset our mappings
+        if (forceReset) {
+            logger.info('Forced reset of all node identity mappings');
+            this.reset();
+        }
+        
+        if (nodes.length === 0) {
+            return { duplicateLabels };
+        }
+        
+        // Log first few nodes for debugging
+        logger.info(`Processing ${nodes.length} nodes. First few node IDs:`, 
+            createDataMetadata({
+                nodeIds: nodes.slice(0, 5).map(n => n.id)
+            }));
+        
+        // Track processed nodes in this batch
+        const processedNodeIds = new Set<string>();
         
         // Process each node
         nodes.forEach(node => {
@@ -58,15 +77,59 @@ export class NodeIdentityManager {
                 return;
             }
             
-            // Determine the best label using a simplified approach
-            const label = this.determineBestLabel(node);
+            processedNodeIds.add(node.id);
             
-            // Store the mapping
-            if (label && label !== node.id) {
-                this.numericIdToLabel.set(node.id, label);
-                this.trackLabelUsage(node.id, label);
+            // Get any existing label for this node
+            const existingLabel = this.numericIdToLabel.get(node.id);
+            
+            if (existingLabel) {
+                // If we have an existing label and it's different from the node ID, use it
+                // But only if it doesn't look like our default or a numeric ID
+                if (existingLabel !== node.id && 
+                    !this.NODE_ID_REGEX.test(existingLabel) && 
+                    !existingLabel.startsWith(this.DEFAULT_LABEL_PREFIX)) {
+                    
+                    // Keep using the existing label if it's valid
+                    this.trackLabelUsage(node.id, existingLabel);
+                    return;
+                }
+            }
+            
+            // Determine a new best label if we don't have a valid one
+            const newLabel = this.determineBestLabel(node);
+            if (newLabel && newLabel !== node.id) {
+                this.numericIdToLabel.set(node.id, newLabel);
+                this.trackLabelUsage(node.id, newLabel);
             }
         });
+        
+        // Rebuild the labelToNodeIds map based on all existing mappings in numericIdToLabel
+        // but keeping any entries for nodes not in this batch
+        const newLabelToNodeIds = new Map<string, string[]>();
+        
+        // First, copy over existing entries for nodes not in this batch
+        this.labelToNodeIds.forEach((nodeIds, label) => {
+            const filteredNodeIds = nodeIds.filter(id => !processedNodeIds.has(id));
+            if (filteredNodeIds.length > 0) {
+                newLabelToNodeIds.set(label, filteredNodeIds);
+            }
+        });
+        
+        // Then add the entries from this batch
+        this.numericIdToLabel.forEach((label, nodeId) => {
+            if (!label || label === nodeId || this.NODE_ID_REGEX.test(label)) {
+                return; // Skip numeric IDs or empty labels
+            }
+            
+            if (!newLabelToNodeIds.has(label)) {
+                newLabelToNodeIds.set(label, [nodeId]);
+            } else {
+                newLabelToNodeIds.get(label)!.push(nodeId);
+            }
+        });
+        
+        // Update the main map
+        this.labelToNodeIds = newLabelToNodeIds;
         
         // Find and log duplicates
         this.labelToNodeIds.forEach((nodeIds, label) => {
@@ -88,24 +151,28 @@ export class NodeIdentityManager {
      * Track which labels are used to detect duplicates
      */
     private trackLabelUsage(nodeId: string, label: string): void {
-        if (!label || label === nodeId || this.NODE_ID_REGEX.test(label)) {
+        if (!nodeId || !label || label === nodeId || this.NODE_ID_REGEX.test(label)) {
             return; // Don't track numeric IDs or empty labels
+        }
+        
+        // Ensure we're not trying to add an invalid nodeId
+        if (!this.isValidNumericId(nodeId)) {
+            logger.warn(`Attempted to track invalid node ID: ${nodeId} for label: ${label}`);
+            return;
         }
         
         if (!this.labelToNodeIds.has(label)) {
             this.labelToNodeIds.set(label, [nodeId]);
         } else {
-            const existingNodes = this.labelToNodeIds.get(label)!;
-            if (!existingNodes.includes(nodeId)) {
-                existingNodes.push(nodeId);
-            }
+            this.labelToNodeIds.get(label)!.push(nodeId);
         }
     }
     
     /**
      * Determines the best label to use for a node using a simplified priority order
      */
-    private determineBestLabel(node: any): string {
+    private determineBestLabel(node: any, fallbackToDefault: boolean = true): string {
+        let bestLabel = '';
         // First try metadata.name as the canonical source of the filename without extension
         if (node.data?.metadata?.name && typeof node.data.metadata.name === 'string' && 
             node.data.metadata.name !== 'undefined') {
@@ -124,15 +191,60 @@ export class NodeIdentityManager {
             return node.metadataId;
         }
         
-        // Last resort: use the numeric ID itself
+        // If existing approaches failed and we should use a default
+        if (fallbackToDefault) {
+            // Always ensure uniqueness by creating a unique label using numeric ID as suffix
+            bestLabel = `${this.DEFAULT_LABEL_PREFIX}${node.id}`;
+            
+            // Log this default label creation as it should only happen rarely
+            if (Math.random() < 0.1) {
+                logger.debug(`Created default label for node ${node.id}: ${bestLabel}`);
+            }
+            
+            return bestLabel;
+        }
+        
+        // Absolute last resort: use the numeric ID itself
+        logger.debug(`Failed to determine label for node ${node.id}, using ID as fallback`);
         return node.id;
+    }
+    
+    /**
+     * Force a label for a node, useful when a specific label must be assigned
+     */
+    public forceNodeLabel(nodeId: string, label: string): void {
+        if (this.isValidNumericId(nodeId)) {
+            this.numericIdToLabel.set(nodeId, label);
+            this.trackLabelUsage(nodeId, label);
+        }
     }
     
     /**
      * Get the label for a numeric node ID
      */
     public getLabel(numericId: string): string {
-        return this.numericIdToLabel.get(numericId) || numericId;
+        if (!this.isValidNumericId(numericId)) {
+            return numericId; // If not a valid ID, just return it
+        }
+        
+        const label = this.numericIdToLabel.get(numericId);
+        
+        // If we have a label and it's not a numeric ID or default label
+        if (label && !this.NODE_ID_REGEX.test(label) && !label.startsWith(this.DEFAULT_LABEL_PREFIX)) {
+            return label;
+        }
+        
+        // If we don't have a label, or it's just a numeric ID or default label,
+        // create a guaranteed unique label based on the numeric ID
+        const newLabel = `${this.DEFAULT_LABEL_PREFIX}${numericId}`;
+        
+        // Save this for future use
+        this.numericIdToLabel.set(numericId, newLabel);
+        this.trackLabelUsage(numericId, newLabel);
+        
+        logger.debug(`Generated new label for node ${numericId}: ${newLabel}`);
+        
+        return newLabel;
     }
     
     /**
