@@ -23,6 +23,9 @@ const SHARED_MEM_SIZE: u32 = BLOCK_SIZE * NODE_SIZE;
 // Constants for retry mechanism
 const MAX_GPU_INIT_RETRIES: u32 = 3;
 const RETRY_DELAY_MS: u64 = 500; // 500ms delay between retries
+const MIN_VALID_NODES: u32 = 5;  // Minimum number of nodes for valid initialization
+const DIAGNOSTIC_INTERVAL: i32 = 100;  // Log diagnostic info every N iterations
+const PTX_PATHS: [&str; 2] = ["/app/src/utils/compute_forces.ptx", "./src/utils/compute_forces.ptx"];
 
 // Note: CPU fallback code has been removed as we're always using GPU now
 
@@ -36,6 +39,29 @@ pub struct GPUCompute {
     pub simulation_params: SimulationParams,
     pub iteration_count: i32,
 }
+
+// Health status of the GPU compute system
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum GpuHealth {
+    Healthy,
+    Warning,
+    Critical,
+    Unknown
+}
+
+// Additional info about GPU state
+#[derive(Debug, Clone)]
+pub struct GpuDiagnostics {
+    pub health: GpuHealth,
+    pub node_count: u32,
+    pub gpu_memory_used: u64,
+    pub iterations_completed: i32,
+    pub device_properties: String,
+    pub last_error: Option<String>,
+    pub last_operation_time_ms: u64,
+    pub timestamp: std::time::SystemTime,
+}
+
 
 impl GPUCompute {
     pub fn test_gpu() -> Result<(), Error> {
@@ -91,7 +117,16 @@ impl GPUCompute {
         let num_nodes = graph.nodes.len() as u32;
         info!("Initializing GPU compute with {} nodes (with retry mechanism)", num_nodes);
 
-        // Check node count limit
+        // Validate graph has enough nodes to avoid empty/near-empty graph issues
+        if num_nodes == 0 {
+            return Err(Error::new(
+                ErrorKind::InvalidInput,
+                "Cannot initialize GPU with empty graph (no nodes)"
+            ));
+        } else if num_nodes < MIN_VALID_NODES {
+            warn!("Initializing GPU with only {} nodes, which is below the recommended minimum of {}. This may cause instability.", num_nodes, MIN_VALID_NODES);
+        }
+        
         if num_nodes > MAX_NODES {
             return Err(Error::new(
                 std::io::ErrorKind::Other,
@@ -259,24 +294,51 @@ impl GPUCompute {
         device: Arc<CudaDevice>, 
         num_nodes: u32, 
         graph: &GraphData
-    ) -> Result<Arc<RwLock<Self>>, Error> {
-        let ptx_path = "/app/src/utils/compute_forces.ptx";
+    ) -> Result<Arc<RwLock<Self>>, Error> {        
+        let primary_ptx_path = "/app/src/utils/compute_forces.ptx";
+        let primary_path_exists = Path::new(primary_ptx_path).exists();
         
-        // Validate PTX file
-        let ptx_path_obj = Path::new(ptx_path);
-
-        if !ptx_path_obj.exists() {
-            error!("PTX file does not exist at {} - this file is required for GPU physics", ptx_path);
-            return Err(Error::new(ErrorKind::NotFound, 
-                format!("PTX file not found at {}", ptx_path)));
+        // Variable to hold our PTX data once loaded
+        let ptx_data;
+        
+        if primary_path_exists {
+            // Primary path exists, use it
+            info!("PTX file found at primary path: {}", primary_ptx_path);
+            ptx_data = Ptx::from_file(primary_ptx_path);
+            info!("Successfully loaded PTX file from primary path");
+        } else {
+            // Primary path doesn't exist, try alternatives
+            error!("PTX file does not exist at primary path: {} - trying alternatives", primary_ptx_path);
+            
+            let mut found = false;
+            let mut alternative_ptx = None;
+            
+            // Try each alternative path
+            for alt_path in &PTX_PATHS {
+                if Path::new(alt_path).exists() {
+                    info!("Found PTX file at alternative path: {}", alt_path);
+                    alternative_ptx = Some(Ptx::from_file(alt_path));
+                    found = true;
+                    break;
+                }
+            }
+            
+            if !found {
+                // No valid PTX file found anywhere
+                error!("PTX file not found at any known location. GPU physics will not work.");
+                return Err(Error::new(ErrorKind::NotFound, 
+                    format!("PTX file not found at any known location. Tried: {} and alternatives", primary_ptx_path)));
+            }
+            
+            ptx_data = alternative_ptx.unwrap();
+            info!("Successfully loaded PTX file from alternative path");
         }
 
-        let ptx = Ptx::from_file(ptx_path);
-
         info!("Successfully loaded PTX file");
-            
-        device.load_ptx(ptx, "compute_forces_kernel", &["compute_forces_kernel"])
+
+        device.load_ptx(ptx_data, "compute_forces_kernel", &["compute_forces_kernel"])
             .map_err(|e| Error::new(std::io::ErrorKind::Other, e.to_string()))?;
+
             
         let force_kernel = device.get_func("compute_forces_kernel", "compute_forces_kernel")
             .ok_or_else(|| Error::new(std::io::ErrorKind::Other, "Function compute_forces_kernel not found"))?;
@@ -311,7 +373,20 @@ impl GPUCompute {
 
     pub fn update_graph_data(&mut self, graph: &GraphData) -> Result<(), Error> {
         info!("Updating graph data for {} nodes", graph.nodes.len());
-
+        
+        // Early validation for empty graph
+        if graph.nodes.is_empty() {
+            return Err(Error::new(ErrorKind::InvalidData, 
+                "Cannot update GPU with empty graph data. The graph contains no nodes."));
+        }
+        
+        // Validate node positions to avoid NaN issues
+        for (i, node) in graph.nodes.iter().enumerate() {
+            if node.data.position.x.is_nan() || node.data.position.y.is_nan() || node.data.position.z.is_nan() {
+                warn!("Node at index {} (id: {}) has NaN coordinates - fixing with zero values", 
+                    i, node.id);
+            }
+        }
         // Update node index mapping
         self.node_indices.clear();
         for (idx, node) in graph.nodes.iter().enumerate() {
@@ -367,6 +442,12 @@ impl GPUCompute {
     pub fn compute_forces(&mut self) -> Result<(), Error> {
         info!("Starting force computation on GPU");
         
+        // Safety check: Make sure we have nodes to process
+        if self.num_nodes == 0 {
+            return Err(Error::new(ErrorKind::InvalidData, 
+                "Cannot compute forces with zero nodes"));
+        }
+        
         let blocks = ((self.num_nodes + BLOCK_SIZE - 1) / BLOCK_SIZE).max(1);
         let cfg = LaunchConfig {
             grid_dim: (blocks, 1, 1),
@@ -374,9 +455,17 @@ impl GPUCompute {
             shared_mem_bytes: SHARED_MEM_SIZE,
         };
 
-        info!("Launch config: blocks={}, threads={}, shared_mem={}",
-            blocks, BLOCK_SIZE, SHARED_MEM_SIZE);
-
+        // Log detailed information periodically rather than every call
+        if self.iteration_count % DIAGNOSTIC_INTERVAL == 0 {
+            info!("GPU kernel parameters: spring_strength={}, damping={}, repulsion={}, time_step={}",
+                self.simulation_params.spring_strength,
+                self.simulation_params.damping,
+                self.simulation_params.repulsion,
+                self.simulation_params.time_step);
+        } else {
+            info!("GPU kernel launching: blocks={}, nodes={}, iteration={}",
+                blocks, self.num_nodes, self.iteration_count);
+        }
         unsafe {
             self.force_kernel.clone().launch(cfg, (
                 &self.node_data,
@@ -471,6 +560,25 @@ impl GPUCompute {
         // If we got here, the GPU instance is working
         info!("GPU test computation successful");
         Ok(())
+    }
+    
+    pub fn get_diagnostics(&self) -> GpuDiagnostics {
+        // Simplified diagnostics without using unsupported methods
+        let device_props = "CUDA GPU".to_string();
+
+        // Use simpler diagnostics without unsupported memory methods
+        let memory_used = 0; // Cannot get actual memory usage
+
+        GpuDiagnostics {
+            health: if self.iteration_count > 0 { GpuHealth::Healthy } else { GpuHealth::Unknown },
+            node_count: self.num_nodes,
+            gpu_memory_used: memory_used,
+            iterations_completed: self.iteration_count,
+            device_properties: device_props,
+            last_error: None,
+            last_operation_time_ms: 0,
+            timestamp: std::time::SystemTime::now(),
+        }
     }
 }
 

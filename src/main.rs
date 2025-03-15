@@ -147,18 +147,26 @@ async fn main() -> std::io::Result<()> {
     // LAZY INITIALIZATION: We don't build the graph on startup anymore
     // Instead, we'll build it when the first client request comes in
     info!("LAZY INITIALIZATION ENABLED: Deferring graph building until first client request");
-    
-    // Initialize the GraphService with the settings, but don't build the graph yet
-    // GraphService will try to load from cache when first requested
-    info!("Initializing graph service with lazy loading");
-    
-    // Initialize GPU compute instance but don't populate it with data yet
-    match GPUCompute::new(&GraphData::default()).await {
-        Ok(gpu_instance) => {
-            info!("GPU compute initialized (empty) successfully for lazy loading");
-            app_state.gpu_compute = Some(gpu_instance);
+
+    // Build initial graph from metadata and initialize GPU compute
+    info!("Building initial graph from existing metadata for physics simulation");
+    match GraphService::build_graph_from_metadata(&metadata_store).await {
+        Ok(new_graph) => {
+            // Update app state with the new graph
+            let mut graph = app_state.graph_service.get_graph_data_mut().await;
+            *graph = new_graph;
+            
+            // Now initialize GPU with the populated graph
+            info!("Initializing GPU compute with populated graph data");
+            match GPUCompute::new(&*graph).await {
+                Ok(gpu_instance) => {
+                    info!("GPU compute initialized successfully");
+                    app_state.gpu_compute = Some(gpu_instance);
+                },
+                Err(e) => warn!("Failed to initialize GPU compute: {}. Will use CPU fallback.", e)
+            }
         },
-        Err(e) => warn!("Failed to initialize GPU compute: {}. Will use CPU fallback when needed.", e)
+        Err(e) => error!("Failed to build initial graph: {}", e)
     }
     
     info!("Starting HTTP server with lazy graph initialization...");

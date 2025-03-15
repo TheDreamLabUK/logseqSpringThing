@@ -47,6 +47,7 @@ const METADATA_FILE_CHECK_INTERVAL_MS: u64 = 100; // Check every 100ms
 // Constants for GPU retry mechanism
 const MAX_GPU_CALCULATION_RETRIES: u32 = 3;
 const GPU_RETRY_DELAY_MS: u64 = 500; // 500ms delay between retries
+const GPU_INIT_WAIT_MS: u64 = 1000; // 1 second wait before GPU test
 
 #[derive(Clone)]
 pub struct GraphService {
@@ -84,7 +85,7 @@ impl GraphService {
         if gpu_compute.is_some() {
             info!("[GraphService] GPU compute is enabled - physics simulation will run");
             info!("[GraphService] Testing GPU compute functionality at startup");
-            tokio::spawn(Self::test_gpu_at_startup(gpu_compute.clone()));
+            tokio::spawn(Self::test_gpu_at_startup(gpu_compute.clone(), simulation_id.clone()));
         } else {
             error!("[GraphService] GPU compute is NOT enabled - physics simulation will use CPU fallback");
         }
@@ -275,28 +276,28 @@ impl GraphService {
     }
     
     /// Test GPU compute at startup to verify it's working
-    async fn test_gpu_at_startup(gpu_compute: Option<Arc<RwLock<GPUCompute>>>) {
+    async fn test_gpu_at_startup(gpu_compute: Option<Arc<RwLock<GPUCompute>>>, instance_id: String) {
         // Add a small delay to let other initialization complete
-        tokio::time::sleep(Duration::from_millis(1000)).await;
+        tokio::time::sleep(Duration::from_millis(GPU_INIT_WAIT_MS)).await;
         
-        info!("[GraphService] Running GPU startup test");
+        info!("[GraphService:{}] Running GPU startup test", instance_id);
         
         if let Some(gpu) = &gpu_compute {
             match gpu.read().await.test_compute() {
                 Ok(_) => {
-                    info!("[GraphService] ✅ GPU test computation succeeded - GPU physics is working");
+                    info!("[GraphService:{}] ✅ GPU test computation succeeded - GPU physics is working", instance_id);
                 },
                 Err(e) => {
-                    error!("[GraphService] ❌ GPU test computation failed: {}", e);
-                    error!("[GraphService] The system will fall back to CPU physics which may be slower");
+                    error!("[GraphService:{}] ❌ GPU test computation failed: {}", instance_id, e);
+                    error!("[GraphService:{}] The system will fall back to CPU physics which may be slower", instance_id);
                     
                     // Try initializing a new GPU instance
-                    info!("[GraphService] Attempting to reinitialize GPU...");
+                    info!("[GraphService:{}] Attempting to reinitialize GPU...", instance_id);
                     let _new_gpu = GPUCompute::new(&GraphData::default()).await; // Using _ to avoid unused warning
                 }
             }
         } else {
-            error!("[GraphService] ❌ No GPU compute instance available for testing");
+            error!("[GraphService:{}] ❌ No GPU compute instance available for testing", instance_id);
         }
     }
     
@@ -811,6 +812,17 @@ impl GraphService {
         node_map: &mut HashMap<String, Node>, 
         params: &SimulationParams,
     ) -> std::io::Result<()> {
+        // First validate the graph data to avoid potential GPU issues
+        if graph.nodes.is_empty() {
+            warn!("[calculate_layout_with_retry] Empty graph received, cannot perform GPU calculation");
+            return Err(Error::new(ErrorKind::InvalidData, "Cannot perform GPU calculation on empty graph"));
+        }
+        
+        if let Err(e) = crate::services::empty_graph_check::check_empty_graph(graph, 5) {
+            warn!("[calculate_layout_with_retry] Graph data validation failed: {}. Falling back to CPU.", e);
+            return Self::calculate_layout_cpu(graph, node_map, params);
+        }
+        
         debug!("[calculate_layout_with_retry] Starting GPU calculation with retry mechanism");
         let mut last_error: Option<Error> = None;
         
