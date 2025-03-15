@@ -235,6 +235,14 @@ pub async fn get_graph_data(state: web::Data<AppState>) -> impl Responder {
     } else {
         info!("GPU compute not available, sending graph without GPU processing");
     }
+    
+    // Take a single layout snapshot for client to load at init
+    info!("Taking layout snapshot for client initialization");
+    if let Err(e) = state.graph_service.take_layout_snapshot().await {
+        warn!("Failed to take layout snapshot: {}", e);
+    } else {
+        info!("Layout snapshot saved successfully");
+    }
 
     // Verify if cache files were created and provide details
     let (graph_cached, layout_cached) = verify_cache_files().await;
@@ -469,6 +477,14 @@ pub async fn refresh_graph(state: web::Data<AppState>) -> impl Responder {
                 node_map.insert(node.id.clone(), node.clone());
             }
 
+            // Take a layout snapshot after refreshing the graph
+            info!("Taking layout snapshot after graph refresh");
+            if let Err(e) = state.graph_service.take_layout_snapshot().await {
+                warn!("Failed to take layout snapshot: {}", e);
+            } else {
+                info!("Layout snapshot saved successfully after refresh");
+            }
+
             // Verify the cache files after rebuilding the graph
             let (graph_cached, layout_cached) = verify_cache_files().await;
             
@@ -559,6 +575,14 @@ pub async fn update_graph(state: web::Data<AppState>) -> impl Responder {
                     node_map.clear();
                     for node in &graph.nodes {
                         node_map.insert(node.id.clone(), node.clone());
+                    }
+
+                    // Take a layout snapshot after updating the graph
+                    info!("Taking layout snapshot after graph update");
+                    if let Err(e) = state.graph_service.take_layout_snapshot().await {
+                        warn!("Failed to take layout snapshot: {}", e);
+                    } else {
+                        info!("Layout snapshot saved successfully after update");
                     }
                     
                     debug!("Graph updated successfully");

@@ -14,8 +14,8 @@ export default defineConfig(({ mode, command }) => {
       outDir: resolve(__dirname, 'data/public/dist'),
       emptyOutDir: true,
       chunkSizeWarningLimit: 600,
-      sourcemap: !isProd,
-      minify: false, // Disable minification to debug shader issues
+      sourcemap: !isProd, 
+      minify: isProd, // Enable minification for production builds
       target: 'esnext',
       terserOptions: {
         compress: {

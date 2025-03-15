@@ -538,6 +538,12 @@ impl GraphService {
         // Record validation timestamp
         graph.last_validated = chrono::Utc::now();
         
+        // Take a layout snapshot to provide for client initialization
+        info!("Taking layout snapshot after graph build");
+        if let Err(e) = Self::save_layout_cache(graph.clone()).await {
+            warn!("Failed to take layout snapshot: {}", e);
+        }
+        
         info!("Built graph with {} nodes and {} edges (validated at {})",
               graph.nodes.len(), graph.edges.len(), graph.last_validated);
         debug!("Completed graph build: {} nodes, {} edges", graph.nodes.len(), graph.edges.len());
@@ -712,6 +718,12 @@ impl GraphService {
 
         info!("Built graph with {} nodes and {} edges", graph.nodes.len(), graph.edges.len());
         debug!("Completed graph build: {} nodes, {} edges", graph.nodes.len(), graph.edges.len());
+        
+        // Take a layout snapshot to provide for client initialization
+        info!("Taking layout snapshot after graph build");
+        if let Err(e) = Self::save_layout_cache(graph.clone()).await {
+            warn!("Failed to take layout snapshot: {}", e);
+        }
         
         // Cache the graph data to disk
         if let Err(e) = Self::save_graph_cache(&graph).await {
@@ -931,12 +943,8 @@ impl GraphService {
             info!("[calculate_layout] Updated positions for {}/{} nodes in {:?}. Sample positions: {}", nodes_updated, graph.nodes.len(), elapsed, sample_positions);
             
             // Return success
-            Ok::<(), std::io::Error>(())
-        };
-        
-        // Cache the layout positions (outside the block to avoid syntax error)
-        // We use spawn to avoid blocking and handle errors internally
-        tokio::spawn(Self::save_layout_cache(graph.clone()));
+            ()
+        }
         
         // Return success
         Ok(())
@@ -1135,8 +1143,6 @@ impl GraphService {
         info!("[calculate_layout_cpu] Updated positions for {} nodes in {:?}", 
              graph.nodes.len(), elapsed);
              
-        // Cache layout in a non-blocking way
-        tokio::spawn(Self::save_layout_cache(graph.clone()));
         
         // Return success
         Ok(())
@@ -1190,6 +1196,13 @@ impl GraphService {
     pub async fn clear_position_cache(&self) {
         let mut cache = self.node_positions_cache.write().await;
         *cache = None;
+    }
+
+    /// Take a layout snapshot and save it to disk (only called explicitly, not after every physics update)
+    pub async fn take_layout_snapshot(&self) -> Result<(), std::io::Error> {
+        let graph = self.graph_data.read().await;
+        info!("Taking layout snapshot to {}", LAYOUT_CACHE_PATH);
+        Self::save_layout_cache((*graph).clone()).await
     }
 
     pub async fn get_node_positions(&self) -> Vec<Node> {
