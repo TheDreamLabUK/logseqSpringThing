@@ -9,19 +9,19 @@ visualization:
     - 10.0
     quality: medium
     enable_instancing: false
-    enable_hologram: true
-    enable_metadata_shape: true
+    enable_hologram: false
+    enable_metadata_shape: false
     enable_metadata_visualization: true
   edges:
     arrow_size: 0.02
-    base_width: 0.005
+    base_width: 0.1
     color: '#0c2140'
-    enable_arrows: true
+    enable_arrows: false
     opacity: 1
     width_range:
     - 0.1
     - 0.5
-    quality: low
+    quality: medium
   physics:
     attraction_strength: 0.2      # Increased for stronger cohesion
     bounds_size: 8.0              # Reduced to keep nodes closer together
@@ -40,8 +40,8 @@ visualization:
     ambient_light_intensity: 0.8
     background_color: '#1a1a2e'
     directional_light_intensity: 0.7
-    enable_ambient_occlusion: true
-    enable_antialiasing: true
+    enable_ambient_occlusion: false
+    enable_antialiasing: false
     enable_shadows: false
     environment_intensity: 0.7
   animations:
@@ -70,20 +70,20 @@ visualization:
     radius: 2.0
     strength: 3.0
   hologram:
-    ring_count: 3
+    ring_count: 1
     ring_color: '#c2a200'
     ring_opacity: 0.001
     sphere_sizes: # Reduced by factor of 10 to match default scale
     - 4
     - 8
     ring_rotation_speed: 10.0
-    enable_buckminster: true
+    enable_buckminster: false
     buckminster_size: 10
     buckminster_opacity: 0.05
-    enable_geodesic: true
+    enable_geodesic: false
     geodesic_size: 10
     geodesic_opacity: 0.05
-    enable_triangle_sphere: true
+    enable_triangle_sphere: false
     triangle_sphere_size: 10 # Reduced by factor of 10 to match default scale
     triangle_sphere_opacity: 0.05
     global_rotation_speed: 3
@@ -133,16 +133,16 @@ system:
     cookie_samesite: Strict
     cookie_secure: true
     csrf_token_timeout: 3600
-    enable_audit_logging: true
-    enable_request_validation: true
+    enable_audit_logging: false
+    enable_request_validation: false
     session_timeout: 3600
   debug:
-    enabled: false
-    enable_data_debug: false
-    enable_websocket_debug: false
-    log_binary_headers: false
-    log_full_json: false
-    log_level: debug
+    enabled: true
+    enable_data_debug: true
+    enable_websocket_debug: true
+    log_binary_headers: true
+    log_full_json: true
+    log_level: trace
     log_format: json
 xr:
   mode: inline
