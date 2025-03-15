@@ -15,6 +15,9 @@ use crate::utils::binary_protocol;
 use crate::types::vec3::Vec3Data;
 use crate::utils::socket_flow_messages::{BinaryNodeData, PingMessage, PongMessage};
 
+// Initialize node ID counter when module is loaded
+use crate::models::node::Node;
+
 // Constants for throttling debug logs
 const DEBUG_LOG_SAMPLE_RATE: usize = 10; // Only log 1 in 10 updates
 
@@ -803,6 +806,9 @@ pub async fn socket_flow_handler(
     app_state: web::Data<AppState>,
     settings: web::Data<Arc<RwLock<crate::config::Settings>>>,
 ) -> Result<HttpResponse, Error> {
+    // Initialize node ID counter from persistent storage
+    Node::initialize_id_counter();
+    
     let should_debug = settings.try_read().map(|s| {
         s.system.debug.enabled && s.system.debug.enable_websocket_debug
     }).unwrap_or(false);

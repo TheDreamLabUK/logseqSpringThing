@@ -12,6 +12,9 @@ import { createLogger, createDataMetadata } from '../../../core/logger';
 import { Settings } from '../../../types/settings';
 import { debugState } from '../../../core/debugState';
 
+// For tracking changes in node handling between sessions
+const VERSION = 'v1.0';
+
 const logger = createLogger('NodeMetadataManager');
 
 interface MetadataLabel {
@@ -42,6 +45,7 @@ export class NodeMetadataManager {
     private scene: Scene;
 
     private constructor(scene: Scene, settings?: Settings) {
+        logger.info(`Initializing NodeMetadataManager (${VERSION})`);
         this.settings = settings || {} as Settings;
         // Create canvas for label textures
         this.labelCanvas = document.createElement('canvas');
@@ -78,20 +82,59 @@ export class NodeMetadataManager {
     public initializeMappings(nodes: Array<{id: string, metadataId?: string, label?: string}>): void {
         if (this.isInitialMappingComplete) return;
         
-        logger.info(`Initializing metadata mappings for ${nodes.length} nodes`, 
-            createDataMetadata({ nodeCount: nodes.length }));
+        // Count nodes with explicit metadata values vs. fallback values
+        const nodesWithMetadataId = nodes.filter(node => node.metadataId && 
+            node.metadataId !== 'undefined' && 
+            node.metadataId !== 'null' && 
+            node.metadataId !== node.id).length;
+            
+        logger.info(`Initializing metadata mappings for ${nodes.length} nodes (${nodesWithMetadataId} with explicit metadata IDs)`, 
+            createDataMetadata({ 
+                nodeCount: nodes.length,
+                nodesWithMetadataId,
+                nodesWithFallbackIds: nodes.length - nodesWithMetadataId 
+            }));
         
         nodes.forEach(node => {
-            // Always prefer metadataId (filename) over label for mapping
-            const metadataId = node.metadataId || node.label || node.id;
-            if (metadataId && metadataId !== node.id) {
-                this.mapNodeIdToMetadataId(node.id, metadataId);
-                logger.info(`Initial mapping: Node ID ${node.id} -> metadata ID "${metadataId}"`);
+            // Only map nodes where we actually have useful metadata
+            if (node.id) {
+                // Get all possible values in order of preference
+                const validMetadataId = node.metadataId && 
+                    node.metadataId !== 'undefined' && 
+                    node.metadataId !== 'null' ? 
+                    node.metadataId : null;
+                    
+                const validLabel = node.label && 
+                    node.label !== 'undefined' && 
+                    node.label !== 'null' ? 
+                    node.label : null;
+                    
+                // Use the best available option
+                const bestName = validMetadataId || validLabel || `Node_${node.id}`;
+                
+                // Record this mapping
+                this.mapNodeIdToMetadataId(node.id, bestName);
+                
+                // Only log a sample of mappings to avoid spam
+                if (Math.random() < 0.05) { // Log ~5% of mappings
+                    logger.debug(`Initial mapping: Node ID ${node.id} -> "${bestName}"`);
+                }
             }
         });
-        
+
         this.isInitialMappingComplete = true;
-        logger.info(`Completed initial metadata mappings for ${this.nodeIdToMetadataId.size} nodes`);
+        
+        // Log detailed mapping statistics
+        const metadataIds = Array.from(this.nodeIdToMetadataId.values());
+        const uniqueMetadataIds = new Set(metadataIds);
+        const duplicateCount = metadataIds.length - uniqueMetadataIds.size;
+        
+        logger.info(`Completed initial metadata mappings for ${this.nodeIdToMetadataId.size} nodes (${duplicateCount} potential duplicates)`, 
+            createDataMetadata({
+                totalMappings: this.nodeIdToMetadataId.size,
+                uniqueNames: uniqueMetadataIds.size,
+                duplicates: duplicateCount
+            }));
     }
 
     /**
@@ -117,9 +160,11 @@ export class NodeMetadataManager {
     private createLabelTexture(metadata: NodeMetadata): Texture {
         // Clear canvas
         this.labelContext.clearRect(0, 0, this.labelCanvas.width, this.labelCanvas.height);
-
-        // CRITICAL: First check if we have a mapping for this node ID
-        let displayName = this.nodeIdToMetadataId.get(metadata.id) || metadata.name || metadata.id || 'Unknown';
+ 
+        // Get display name with improved fallback logic
+        let rawName = this.nodeIdToMetadataId.get(metadata.id) || metadata.name;
+        let displayName = (rawName && rawName !== 'undefined' && rawName !== 'null') ? 
+            rawName : (metadata.id ? `Node_${metadata.id}` : 'Unknown');
         
         // Using settings property to control debug logging
         const enableDebugLogging = debugState.isNodeDebugEnabled() || 
@@ -133,7 +178,9 @@ export class NodeMetadataManager {
                 }));
         }
         
-        logger.info(`Label texture for node ${metadata.id}: Using name "${displayName}"`);
+        if (Math.random() < 0.01) { // Only log ~1% to reduce spam
+            logger.debug(`Label texture for node ${metadata.id}: Using name "${displayName}"`);
+        }
 
         // Draw a slightly larger background to accommodate multiple lines
         this.labelContext.fillStyle = 'rgba(0, 0, 0, 0.5)';
@@ -203,18 +250,10 @@ export class NodeMetadataManager {
         context.font = `bold ${fontSize}px Arial`;
         
         // CRITICAL FIX: Simplified name resolution logic - consistent with createLabelTexture
-        // First check node-to-metadata mapping, then fall back to metadata name
-        // Generate a unique display name for each node
-        let displayName: string;
-        if (this.nodeIdToMetadataId.has(metadata.id)) {
-            displayName = this.nodeIdToMetadataId.get(metadata.id) || `Node ${metadata.id}`;
-        } else if (metadata.name && metadata.name !== 'undefined') {
-            displayName = metadata.name;
-            this.mapNodeIdToMetadataId(metadata.id, metadata.name);
-        } else {
-            displayName = `Node ${metadata.id}`;
-            this.mapNodeIdToMetadataId(metadata.id, displayName);
-        }
+        // Use the same logic as createLabelTexture to get the display name
+        let rawName = this.nodeIdToMetadataId.get(metadata.id) || metadata.name;
+        let displayName = (rawName && rawName !== 'undefined' && rawName !== 'null') ? 
+            rawName : (metadata.id ? `Node_${metadata.id}` : 'Unknown');
 
         // Log the name resolution process for debugging
         if (debugState.isNodeDebugEnabled()) {
@@ -413,22 +452,30 @@ export class NodeMetadataManager {
      * Map a node ID to a metadata ID (filename) for proper labeling
      * This is crucial for connecting numeric IDs with human-readable names
      */
-    public mapNodeIdToMetadataId(nodeId: string, metadataId: string): void {
+    public mapNodeIdToMetadataId(nodeId: string, metadataId: string | undefined): void {
+        if (!nodeId) {
+            logger.warn(`Attempted to map empty node ID to "${metadataId}"`);
+            return;
+        }
+        
         // Don't map empty metadata IDs
-        if (!metadataId || metadataId === 'undefined') {
+        if (!metadataId || metadataId === 'undefined' || metadataId === 'null') {
             if (debugState.isNodeDebugEnabled()) {
                 logger.debug(`Skipping invalid metadata ID mapping for node ${nodeId}: "${metadataId}"`);
             }
             // Even for invalid metadata, create a unique fallback name
             // This ensures each node gets a unique label
-            metadataId = `Node ${nodeId}`;
-            logger.info(`Created fallback mapping for node ${nodeId}: "${metadataId}"`);
+            metadataId = `Node_${nodeId}`;
+            
+            if (debugState.isNodeDebugEnabled()) {
+                logger.debug(`Created fallback mapping for node ${nodeId}: "${metadataId}"`);
+            }
         }
         
         // Log previous mapping if it exists and is different
         const prevMapping = this.nodeIdToMetadataId.get(nodeId);
         if (prevMapping && prevMapping !== metadataId) {
-            logger.info(`Updating node ID ${nodeId} mapping from "${prevMapping}" to "${metadataId}"`, 
+            logger.debug(`Updating node ID ${nodeId} mapping from "${prevMapping}" to "${metadataId}"`, 
                 createDataMetadata({ nodeId, previousMapping: prevMapping, newMapping: metadataId }));
         }
         
@@ -440,33 +487,44 @@ export class NodeMetadataManager {
         
         // Only log new mappings or if debug is enabled
         if (!prevMapping || debugState.isNodeDebugEnabled()) {
-            logger.info(`Mapped node ID ${nodeId} to metadata ID "${metadataId}"`);
+            if (Math.random() < 0.05) { // Only log ~5% to reduce spam
+                logger.debug(`Mapped node ID ${nodeId} to metadata ID "${metadataId}"`);
+            }
         }
     }
 
     public updatePosition(id: string, position: Vector3): void {
         const label = this.labels.get(id);
         if (!label) {
-            // Check if this is a numeric ID with a mapped metadata ID
-            if (/^\d+$/.test(id) && this.nodeIdToMetadataId.has(id)) {
-                const metadataId = this.nodeIdToMetadataId.get(id);
-                // Try to find the label using the metadata ID
-                const metadataLabel = this.labels.get(metadataId!);
-                if (metadataLabel) {
-                    // Update the metadata label position
-                    metadataLabel.metadata.position = { 
-                        x: position.x, 
-                        y: position.y, 
-                        z: position.z 
-                    };
-                    metadataLabel.container.position.copy(position);
-                    return;
+            try {
+                // Check if this is a numeric ID with a mapped metadata ID
+                if (/^\d+$/.test(id) && this.nodeIdToMetadataId.has(id)) {
+                    const metadataId = this.nodeIdToMetadataId.get(id);
+                    if (metadataId) {
+                        // Try to find the label using the metadata ID
+                        const metadataLabel = this.labels.get(metadataId);
+                        if (metadataLabel) {
+                            // Update the metadata label position
+                            metadataLabel.metadata.position = { 
+                                x: position.x, 
+                                y: position.y, 
+                                z: position.z 
+                            };
+                            metadataLabel.container.position.copy(position);
+                            return;
+                        }
+                    }
                 }
-            }
-            
-            // Only log missing labels in debug mode to avoid spamming the console
-            if (debugState.isNodeDebugEnabled()) {
-                logger.debug(`No label found for node ${id}`);
+                
+                // Only log missing labels in debug mode to avoid spamming the console
+                if (debugState.isNodeDebugEnabled() && Math.random() < 0.01) {
+                    logger.debug(`No label found for node ${id}`);
+                }
+            } catch (error) {
+                logger.warn(`Error updating position for node ${id}`, createDataMetadata({
+                    error: error instanceof Error ? error.message : String(error),
+                    position: `${position.x.toFixed(2)}, ${position.y.toFixed(2)}, ${position.z.toFixed(2)}`
+                }));
             }
             return;
         }
@@ -520,7 +578,9 @@ export class NodeMetadataManager {
      * Get the label for a node - uses the mapped metadata name if available
      */
     public getLabel(nodeId: string): string {
-        return this.nodeIdToMetadataId.get(nodeId) || nodeId;
+        const mappedLabel = this.nodeIdToMetadataId.get(nodeId);
+        return (mappedLabel && mappedLabel !== 'undefined' && mappedLabel !== 'null') ? 
+            mappedLabel : `Node_${nodeId}`;
     }
 
     public removeLabel(id: string): void {

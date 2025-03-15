@@ -213,12 +213,14 @@ export class UnifiedTextRenderer {
         return instancedGeometry;
     }
     
-    public updateLabel(id: string, text: string, position: Vector3, color?: Color): void {
+    public updateLabel(id: string, text: string, position: Vector3, color?: Color, preserveText: boolean = false): void {
         // Skip empty text (reduces debug spam)
-        if (!text || text.trim() === '') {
+        // BUT only if we don't have the preserveText flag set
+        if ((!text || text.trim() === '') && !preserveText) {
             return;
         }
         
+        const isPositionUpdateOnly = (!text || text.trim() === '') && preserveText;
 
         
         // Only log when debug is enabled
@@ -261,7 +263,10 @@ export class UnifiedTextRenderer {
             this.labels.set(id, label);
             this.currentInstanceCount++;
         } else {
-            label.text = text;
+            // Only update text if we're not just updating the position
+            if (!isPositionUpdateOnly) {
+                label.text = text;
+            }
             label.position.copy(position);
             if (color) label.color = color;
         }

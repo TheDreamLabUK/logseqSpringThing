@@ -42,6 +42,7 @@ export class NodeManagerFacade implements NodeManagerInterface {
     private isInitialized: boolean = false;
     private frameCount: number = 0;
     private tempVector = new Vector3();
+    private labelsInitialized: boolean = false;
     private metadataUpdateThrottler = new UpdateThrottler(100); // Update at most every 100ms
     private readonly MAX_POSITION = 1000.0; // Reasonable limit for safe positions
 
@@ -161,8 +162,15 @@ export class NodeManagerFacade implements NodeManagerInterface {
      */
     public updateNodes(nodes: { id: string, data: NodeData }[]): void {
         const updateStartTime = performance.now();
-        
+
         if (!this.isInitialized) return;
+
+        // On the first update, reset the node identity manager to ensure clean state
+        if (!this.labelsInitialized) {
+            this.identityManager.reset();
+            logger.info('First updateNodes call: Reset identity manager to ensure clean state');
+            this.labelsInitialized = true;
+        }
 
         logger.info(`Updating ${nodes.length} nodes in NodeManagerFacade`, createDataMetadata({
             timestamp: Date.now(),
@@ -181,19 +189,14 @@ export class NodeManagerFacade implements NodeManagerInterface {
                 nodes: sampleNodes.map(node => ({
                     id: node.id,
                     hasMetadata: !!node.data.metadata,
-                    metadataName: node.data.metadata?.name,
-                    metadataFileName: node.data.metadata?.file_name
+                    metadataName: node.data.metadata?.name || 'undefined',
+                    metadataFileName: node.data.metadata?.file_name || 'undefined'
                 }))
             }));
         }
         
-        // Reset the maps once to ensure clean state if this is the first batch
-        if (this.frameCount === 0) {
-            this.identityManager.reset();
-            logger.info('First frame: Reset identity manager to ensure clean state');
-        }
         this.frameCount++;
-        
+
         // Filter out any nodes with invalid IDs before processing
         const validNodes = nodes.filter(node => {
             if (!this.validateNodeId(node.id)) {
@@ -206,7 +209,7 @@ export class NodeManagerFacade implements NodeManagerInterface {
         if (validNodes.length < nodes.length) {
             logger.warn(`Filtered out ${nodes.length - validNodes.length} nodes with invalid IDs`);
         }
-
+ 
         // Create a more detailed processing structure for each node
         // Process nodes with explicit label handling before identity management
         const enhancedNodes = validNodes.map(node => {
@@ -214,26 +217,43 @@ export class NodeManagerFacade implements NodeManagerInterface {
             const metadataName = node.data.metadata?.name;
             const metadataFileName = node.data.metadata?.file_name;
             const isMetadataNameValid = metadataName && 
-                                       typeof metadataName === 'string' && 
-                                       metadataName !== 'undefined' &&
-                                       metadataName !== node.id;
+                typeof metadataName === 'string' && 
+                metadataName !== 'undefined' &&
+                metadataName !== 'null' &&
+                metadataName !== node.id;
                                        
             // Force a unique name if needed by explicitly calling forceNodeLabel
             // This ensures we always have a valid display name
-            const displayName = isMetadataNameValid ? metadataName : 
-                               (metadataFileName || `Node_${node.id}`);
+            let displayName;
+            
+            if (isMetadataNameValid) {
+                // First choice: Use metadata name (e.g., file title without extension)
+                displayName = metadataName;
+            } else if (metadataFileName && 
+                      typeof metadataFileName === 'string' && 
+                      metadataFileName !== 'undefined' &&
+                      metadataFileName !== 'null') {
+                // Second choice: Use file name if available
+                displayName = metadataFileName;
+            } else {
+                // Last resort: Use node ID with prefix
+                displayName = `Node_${node.id}`;
+            }
                               
             // If we have a good name that isn't just the ID, force it
             if (displayName && displayName !== node.id) {
                 this.identityManager.forceNodeLabel(node.id, displayName);
                 if (shouldDebugLog) {
-                    logger.debug(`Forced label for node ${node.id}: ${displayName}`);
+                    // Only log occasionally to reduce spam
+                    if (Math.random() < 0.1) {
+                        logger.debug(`Label for node ${node.id}: "${displayName}"`);
+                    }
                 }
             }
             
             return node;
         });
-        
+
         // Process enhanced nodes through identity manager to detect duplicates
         const { duplicateLabels } = this.identityManager.processNodes(enhancedNodes);
         
@@ -249,11 +269,19 @@ export class NodeManagerFacade implements NodeManagerInterface {
         // Prepare metadata mappings for the metadata manager
         const metadataMappings = validNodes.map(node => {
             // Get the label for this node (prioritizing metadata name if possible)
-            const label = this.identityManager.getLabel(node.id);
+            const bestLabel = this.identityManager.getLabel(node.id);
+            
+            // Use the metadata name if available, otherwise use our best label
+            const displayName = node.data.metadata?.name && 
+                               typeof node.data.metadata.name === 'string' && 
+                               node.data.metadata.name !== 'undefined' &&
+                               node.data.metadata.name !== 'null' ? 
+                                  node.data.metadata.name : bestLabel;
+            
             return {
                 id: node.id,
-                metadataId: node.data.metadata?.name || label, // Use metadata.name if available
-                label: label
+                metadataId: node.data.metadata?.name || displayName,
+                label: bestLabel
             };
         });
         
@@ -284,7 +312,7 @@ export class NodeManagerFacade implements NodeManagerInterface {
                 if (node.data.position && 
                     (node.data.position.x === 0 && node.data.position.y === 0 && node.data.position.z === 0)) {
                     logger.warn(`Node ${node.id} has ZERO position during updateNodes`, createDataMetadata({
-                        label: this.identityManager.getLabel(node.id),
+                        label: this.identityManager.getLabel(node.id) || node.id,
                         position: `x:0, y:0, z:0`
                     }));
                 } else if (node.data.position) {

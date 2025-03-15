@@ -168,33 +168,60 @@ export class TextRenderer {
         this.group.visible = visible;
     }
 
-    public updateLabel(id: string, text: string, position: Vector3): void {
+    public updateLabel(id: string, text: string, position: Vector3, preserveText: boolean = false): void {
         try {
             let state = this.labelStates.get(id);
+            
+            // Skip processing if text is empty but preserveText is true and we already have a state
+            if (text.trim() === '' && preserveText && state) {
+                // Just update the position
+                if (state.sprite) {
+                    state.position.copy(position);
+                    state.sprite.position.copy(position);
+                }
+                return;
+            }
+
             if (!state) {
                 state = {
-                    text,
+                    text: text || '',
                     position: position.clone(),
                     visible: true
                 };
                 this.labelStates.set(id, state);
-            } else {
+            } else if (text.trim() !== '') {
+                // Only update text if non-empty text is provided
                 state.text = text;
-                state.position.copy(position);
             }
+            
+            // Always update position
+            state.position.copy(position);
 
-            // Remove old sprite if it exists
-            if (state.sprite) {
-                this.group.remove(state.sprite);
-                state.sprite.material.dispose();
-                state.sprite.material.map?.dispose();
-                state.texture?.dispose();
+            // Only recreate the sprite if:
+            // 1. There's no sprite yet
+            // 2. Text content has changed
+            const recreateSprite = !state.sprite || 
+                                 (text.trim() !== '' && text !== state.text);
+
+            if (recreateSprite) {
+                // Remove old sprite if it exists
+                if (state.sprite) {
+                    this.group.remove(state.sprite);
+                    state.sprite.material.dispose();
+                    state.sprite.material.map?.dispose();
+                    state.texture?.dispose();
+                }
+
+                // Create new sprite only if we have text to render
+                if (state.text.trim() !== '') {
+                    state.sprite = this.createTextSprite(state.text, this.settings.desktopFontSize);
+                    state.sprite.position.copy(position);
+                    this.group.add(state.sprite);
+                }
+            } else if (state.sprite) {
+                // Just update position if sprite exists
+                state.sprite.position.copy(position);
             }
-
-            // Create new sprite
-            state.sprite = this.createTextSprite(text, this.settings.desktopFontSize);
-            state.sprite.position.copy(position);
-            this.group.add(state.sprite);
         } catch (error) {
             logger.error('Error updating label:', createErrorMetadata(error));
         }

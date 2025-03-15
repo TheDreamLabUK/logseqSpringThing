@@ -330,7 +330,9 @@ export class MetadataVisualizer {
                 // Create relative position to the node with y-offset
                 const relativePosition = new Vector3(0, yOffset, 0);
                 const labelPosition = position.clone().add(relativePosition);
-                this.textRenderer.updateLabel(labelId, '', labelPosition); // Text content remains unchanged
+                
+                // Update only the position, preserving the existing text content
+                this.textRenderer.updateLabel(labelId, '', labelPosition, undefined, true);
 
                 // Only show debug helpers when debug is enabled
                 if (debugState.isEnabled()) {
