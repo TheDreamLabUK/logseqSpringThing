@@ -1,14 +1,26 @@
 #include <cuda_runtime.h>
 
 extern "C" {
-    // This struct matches the Rust BinaryNodeData struct
+    // Vec3Data struct definition to match Rust's Vec3Data
+    struct Vec3Data {
+        float x;    // 4 bytes
+        float y;    // 4 bytes
+        float z;    // 4 bytes
+    };
+
+    // Updated BinaryNodeData struct to match Rust's memory layout
+    // Previous version used arrays which caused memory layout mismatches
     struct BinaryNodeData {
-        float position[3];    // 12 bytes - matches Rust [f32; 3]
-        float velocity[3];    // 12 bytes - matches Rust [f32; 3]
-        // These fields are used internally but not transmitted over the wire
-        // The binary_protocol.rs sets default values when decoding
-        unsigned char mass;   // 1 byte - matches Rust u8
-        unsigned char flags;  // 1 byte - matches Rust u8
+        // Now using Vec3Data structs instead of arrays to match Rust memory layout
+        Vec3Data position;    // 12 bytes - matches Rust Vec3Data struct
+        Vec3Data velocity;    // 12 bytes - matches Rust Vec3Data struct
+        
+        // These fields remain unchanged and are still
+        // used internally but not transmitted over the wire
+        // The binary_protocol.rs still sets default values when decoding
+        
+        unsigned char mass;   // 1 byte  - matches Rust u8
+        unsigned char flags;  // 1 byte  - matches Rust u8
         unsigned char padding[2]; // 2 bytes - matches Rust padding
     };
 
@@ -44,8 +56,8 @@ extern "C" {
         }
         
         float3 total_force = make_float3(0.0f, 0.0f, 0.0f);
-        float3 pos = make_float3(nodes[idx].position[0], nodes[idx].position[1], nodes[idx].position[2]);
-        float3 vel = make_float3(nodes[idx].velocity[0], nodes[idx].velocity[1], nodes[idx].velocity[2]);
+        float3 pos = make_float3(nodes[idx].position.x, nodes[idx].position.y, nodes[idx].position.z);
+        float3 vel = make_float3(nodes[idx].velocity.x, nodes[idx].velocity.y, nodes[idx].velocity.z);
 
         // Zero out velocity in the very first iterations to prevent explosion
         if (iteration_count < 5) {
@@ -75,9 +87,9 @@ extern "C" {
             float other_mass = (nodes[j].mass == 0) ? 0.5f : (nodes[j].mass + 1.0f) / 256.0f;
             
             float3 other_pos = make_float3(
-                nodes[j].position[0],
-                nodes[j].position[1],
-                nodes[j].position[2]
+                nodes[j].position.x,
+                nodes[j].position.y,
+                nodes[j].position.z
             );
             
             float3 diff = make_float3(
@@ -203,12 +215,12 @@ extern "C" {
         }
 
         // Store results back
-        nodes[idx].position[0] = pos.x;
-        nodes[idx].position[1] = pos.y;
-        nodes[idx].position[2] = pos.z;
-        nodes[idx].velocity[0] = vel.x;
-        nodes[idx].velocity[1] = vel.y;
-        nodes[idx].velocity[2] = vel.z;
+        nodes[idx].position.x = pos.x;
+        nodes[idx].position.y = pos.y;
+        nodes[idx].position.z = pos.z;
+        nodes[idx].velocity.x = vel.x;
+        nodes[idx].velocity.y = vel.y;
+        nodes[idx].velocity.z = vel.z;
 
         // Debug output for first node
         if (idx == 0 && (iteration_count < 5 || iteration_count % 20 == 0)) {

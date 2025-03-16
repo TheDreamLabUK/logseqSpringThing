@@ -8,7 +8,8 @@ use log::{error, warn, info};
 use crate::models::graph::GraphData;
 use std::collections::HashMap;
 use crate::models::simulation_params::SimulationParams;
-use crate::utils::socket_flow_messages::{BinaryNodeData, vec3data_to_array, array_to_vec3data};
+use crate::utils::socket_flow_messages::BinaryNodeData;
+use crate::types::vec3::Vec3Data;
 use std::path::Path;
 use std::env;
 use tokio::sync::RwLock;
@@ -312,31 +313,44 @@ impl GPUCompute {
     pub fn update_graph_data(&mut self, graph: &GraphData) -> Result<(), Error> {
         info!("Updating graph data for {} nodes", graph.nodes.len());
 
-        // Update node index mapping
+        // First, update the node index mapping
         self.node_indices.clear();
         for (idx, node) in graph.nodes.iter().enumerate() {
             self.node_indices.insert(node.id.clone(), idx);
         }
 
-        // Reallocate buffer if node count changed
+        // Reallocate buffer if the node count has changed
         if graph.nodes.len() as u32 != self.num_nodes {
             info!("Reallocating GPU buffer for {} nodes", graph.nodes.len());
             self.node_data = self.device.alloc_zeros::<BinaryNodeData>(graph.nodes.len())
                 .map_err(|e| Error::new(std::io::ErrorKind::Other, e.to_string()))?;
             self.num_nodes = graph.nodes.len() as u32;
             
-            // Reset iteration counter when the graph data changes
+            // Reset iteration counter since we're essentially starting a new simulation
             self.iteration_count = 0;
         }
 
-        // Prepare node data
+        // Prepare node data for GPU transfer
         let mut node_data = Vec::with_capacity(graph.nodes.len());
+
+        // Debug the first few nodes to help with troubleshooting
+        if graph.nodes.len() > 0 {
+            let sample_size = std::cmp::min(3, graph.nodes.len());
+            info!("Sample of first {} nodes before GPU transfer:", sample_size);
+            for i in 0..sample_size {
+                let node = &graph.nodes[i];
+                info!(
+                    "Node[{}] id={}: pos=[{:.3},{:.3},{:.3}], vel=[{:.3},{:.3},{:.3}]",
+                    i, node.id,
+                    node.data.position.x, node.data.position.y, node.data.position.z,
+                    node.data.velocity.x, node.data.velocity.y, node.data.velocity.z
+                );
+            }
+        }
+
+        // Process each node and prepare it for GPU processing
         for node in &graph.nodes {
-            // For GPU computation we need to convert Vec3Data to array format
-            let _position_array = vec3data_to_array(&node.data.position);
-            let _velocity_array = vec3data_to_array(&node.data.velocity);
-            
-            // Create the node data with Vec3Data structures
+            // Now the memory layouts match directly between Rust and CUDA
             node_data.push(BinaryNodeData {
                 position: node.data.position.clone(),
                 velocity: node.data.velocity.clone(),
@@ -345,15 +359,23 @@ impl GPUCompute {
                 padding: node.data.padding,
             });
             
-            // NOTE: For actual GPU kernel processing, you would use the arrays:
-            // position_array and velocity_array instead of the Vec3Data structures
+            // Log a sample of nodes to verify correct data transfer
+            if node.id == "0" || node.id == "1" {
+                info!(
+                    "Node {} data prepared for GPU: position=[{:.3},{:.3},{:.3}], velocity=[{:.3},{:.3},{:.3}]",
+                    node.id,
+                    node.data.position.x, node.data.position.y, node.data.position.z,
+                    node.data.velocity.x, node.data.velocity.y, node.data.velocity.z
+                );
+            }
         }
 
         info!("Copying {} nodes to GPU", graph.nodes.len());
 
-        // Copy data to GPU
+        // Copy data to GPU memory
         self.device.htod_sync_copy_into(&node_data, &mut self.node_data)
-            .map_err(|e| Error::new(std::io::ErrorKind::Other, e.to_string()))?;
+            .map_err(|e| Error::new(std::io::ErrorKind::Other, 
+                format!("Failed to copy node data to GPU: {}", e)))?;
 
         Ok(())
     }
@@ -404,31 +426,53 @@ impl GPUCompute {
     }
 
     pub fn get_node_data(&self) -> Result<Vec<BinaryNodeData>, Error> {
-        // Create buffer for GPU to copy into
+        // Create a buffer for GPU to copy data into
         let mut gpu_raw_data = vec![BinaryNodeData {
-            position: array_to_vec3data([0.0, 0.0, 0.0]),
-            velocity: array_to_vec3data([0.0, 0.0, 0.0]),
+            position: Vec3Data::zero(),
+            velocity: Vec3Data::zero(),
             mass: 0,
             flags: 0,
             padding: [0, 0],
         }; self.num_nodes as usize];
 
-        // Get the raw data from GPU
+        // Copy data from GPU to our buffer
         self.device.dtoh_sync_copy_into(&self.node_data, &mut gpu_raw_data)
-            .map_err(|e| Error::new(std::io::ErrorKind::Other, e.to_string()))?;
+            .map_err(|e| Error::new(std::io::ErrorKind::Other, 
+                format!("Failed to copy data from GPU: {}", e)))?;
 
-        // Process the raw data into BinaryNodeData format
+        // Debug the first few nodes retrieved from GPU
+        if gpu_raw_data.len() > 0 {
+            let sample_size = std::cmp::min(5, gpu_raw_data.len());
+            info!("Sample of first {} nodes after GPU calculation:", sample_size);
+            for i in 0..sample_size {
+                let node = &gpu_raw_data[i];
+                
+                // Calculate force magnitude for velocity verification
+                let force_mag = (
+                    node.velocity.x * node.velocity.x +
+                    node.velocity.y * node.velocity.y +
+                    node.velocity.z * node.velocity.z
+                ).sqrt();
+                info!(
+                    "Node[{}]: force_mag={:.6}, pos=[{:.3},{:.3},{:.3}], vel=[{:.6},{:.6},{:.6}]",
+                    i, force_mag,
+                    node.position.x, node.position.y, node.position.z,
+                    node.velocity.x, node.velocity.y, node.velocity.z
+                );
+            }
+        }
+
+        // Return the retrieved data
         let gpu_nodes = gpu_raw_data.into_iter().map(|raw_node| {
-            // Convert between formats if needed for GPU processing
             BinaryNodeData {
-                position: raw_node.position,
-                velocity: raw_node.velocity,
+                position: raw_node.position.clone(),
+                velocity: raw_node.velocity.clone(),
                 mass: raw_node.mass,
                 flags: raw_node.flags,
                 padding: raw_node.padding,
             }
         }).collect();
-
+        
         Ok(gpu_nodes)
     }
 

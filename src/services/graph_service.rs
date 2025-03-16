@@ -5,6 +5,7 @@ use std::collections::{HashMap, HashSet};
 use actix_web::web;
 use rand::distributions::{Alphanumeric, DistString};
 use rand::Rng;
+use rand::seq::SliceRandom;
 use std::io::{Error, ErrorKind};
 use serde_json;
 use std::pin::Pin;
@@ -22,7 +23,9 @@ use crate::app_state::AppState;
 use crate::config::Settings;
 use crate::utils::gpu_compute::GPUCompute;
 use crate::models::simulation_params::{SimulationParams, SimulationPhase, SimulationMode};
+use crate::handlers::socket_flow_handler::ClientManager;
 use crate::models::pagination::PaginatedGraphData;
+use crate::types::vec3::Vec3Data;
 use tokio::sync::Mutex;
 use once_cell::sync::Lazy;
 
@@ -36,6 +39,11 @@ static SIMULATION_LOOP_RUNNING: AtomicBool = AtomicBool::new(false);
 // This is necessary to avoid race conditions when a new GraphService is created
 // while an old one is being shut down
 static SIMULATION_MUTEX: Lazy<Mutex<String>> = Lazy::new(|| Mutex::new(String::new()));
+
+
+// Physics simulation constants for independent processing
+const CONTINUOUS_SIMULATION_INTERVAL_MS: u64 = 16; // ~60fps
+const STABLE_THRESHOLD_ITERATIONS: usize = 100; // Number of iterations with minimal movement to consider graph stable
 
 // Cache configuration
 const NODE_POSITION_CACHE_TTL_MS: u64 = 50; // 50ms cache time
@@ -53,17 +61,20 @@ pub struct GraphService {
     node_positions_cache: Arc<RwLock<Option<(Vec<Node>, Instant)>>>,
     cache_enabled: bool,
     simulation_id: String,
+    client_manager: Option<Arc<ClientManager>>,
+    is_initialized: Arc<AtomicBool>,
+    is_physics_stable: Arc<AtomicBool>,
     shutdown_requested: Arc<AtomicBool>,
 }
 
 impl GraphService {
-    pub async fn new(settings: Arc<RwLock<Settings>>, gpu_compute: Option<Arc<RwLock<GPUCompute>>>) -> Self {
+    pub async fn new(settings: Arc<RwLock<Settings>>, gpu_compute: Option<Arc<RwLock<GPUCompute>>>, client_manager: Option<Arc<ClientManager>>) -> Self {
         // Get physics settings
         let physics_settings = settings.read().await.visualization.physics.clone();
 
         // Generate a unique ID for this GraphService instance
         let simulation_id = Alphanumeric.sample_string(&mut rand::thread_rng(), 8);
-        info!("[GraphService::new] Creating new GraphService instance with ID: {}", simulation_id);
+        info!("[GraphService::new] Creating independent GraphService instance with ID: {}", simulation_id);
         
         // Acquire the mutex to ensure exclusive access during initialization
         let mut guard = SIMULATION_MUTEX.lock().await;
@@ -79,7 +90,7 @@ impl GraphService {
         let node_map = Arc::new(RwLock::new(HashMap::new()));
 
         if gpu_compute.is_some() {
-            info!("[GraphService] GPU compute is enabled - physics simulation will run");
+            info!("[GraphService] GPU compute is enabled - continuous physics simulation will run");
             info!("[GraphService] Testing GPU compute functionality at startup");
             tokio::spawn(Self::test_gpu_at_startup(gpu_compute.clone()));
         } else {
@@ -90,15 +101,36 @@ impl GraphService {
         let shutdown_requested = Arc::new(AtomicBool::new(false));
         // Create the GraphService with caching enabled 
         let _cache = Arc::new(RwLock::new(Option::<(Vec<Node>, Instant)>::None));
+        
+        // Create atomic flags for graph status tracking
+        let is_initialized = Arc::new(AtomicBool::new(false));
+        let is_physics_stable = Arc::new(AtomicBool::new(false));
+        
         let graph_service = Self {
             graph_data: Arc::new(RwLock::new(GraphData::default())),
             node_map: node_map.clone(),
             gpu_compute,
             node_positions_cache: Arc::new(RwLock::new(None)),
             cache_enabled: true,
+            client_manager,
+            is_initialized: is_initialized.clone(),
+            is_physics_stable: is_physics_stable.clone(),
             simulation_id: simulation_id.clone(),
             shutdown_requested: shutdown_requested.clone(),
         };
+
+        // Initialize the graph data from metadata if available
+        // This runs immediately on startup, before any clients connect
+        let graph_service_clone = graph_service.clone();
+        tokio::spawn(async move {
+            // Allow a small delay for other systems to initialize
+            tokio::time::sleep(Duration::from_millis(500)).await;
+            info!("[GraphService] Starting initial graph initialization");
+            
+            if let Err(e) = graph_service_clone.initialize_graph().await {
+                error!("[GraphService] Failed to initialize graph data: {}", e);
+            }
+        });
         
         // Prepare for simulation loop
         let graph_data = Arc::clone(&graph_service.graph_data);
@@ -135,10 +167,11 @@ impl GraphService {
         // Release the mutex before spawning the task
         drop(guard);
         
-        info!("[GraphService] Starting physics simulation loop (ID: {})", loop_simulation_id);
+        info!("[GraphService] Starting continuous physics simulation loop (ID: {})", loop_simulation_id);
         tokio::spawn(async move {
+            // Configure simulation parameters
             let params = SimulationParams {
-                iterations: physics_settings.iterations,
+                iterations: physics_settings.iterations, 
                 spring_strength: physics_settings.spring_strength,
                 repulsion: physics_settings.repulsion_strength,
                 damping: physics_settings.damping,
@@ -158,6 +191,10 @@ impl GraphService {
                 SIMULATION_LOOP_RUNNING.store(false, Ordering::SeqCst); 
             });
             
+            // Track stability by monitoring consecutive frames with minimal position changes
+            let mut consecutive_stable_iterations = 0;
+            let mut previous_positions: HashMap<String, Vec3Data> = HashMap::new();
+            
             loop {
                 // Check if shutdown was requested
                 if shutdown_requested.load(Ordering::SeqCst) {
@@ -165,7 +202,7 @@ impl GraphService {
                     break;
                 }
                 
-                // Update positions - using loop ID in logs to track which loop is running
+                // Continuously update positions - using loop ID in logs to track which loop is running
                 debug!("[Graph:{}] Starting physics calculation iteration", loop_simulation_id);
                 let mut graph = graph_data.write().await;
                 let mut node_map = node_map.write().await;
@@ -175,26 +212,78 @@ impl GraphService {
                        loop_simulation_id, gpu_status, physics_settings.enabled);
                        
                 if physics_settings.enabled {
+                    let mut positions_stable = true;
+                    
                     if let Some(gpu) = &gpu_compute {
                         if let Err(e) = Self::calculate_layout_with_retry(gpu, &mut graph, &mut node_map, &params).await {
                             error!("[Graph:{}] Error updating positions: {}", loop_simulation_id, e);
+                            positions_stable = false;
                         } else {
                             debug!("[Graph:{}] GPU calculation completed successfully", loop_simulation_id);
                             debug!("[Graph:{}] Successfully calculated layout for {} nodes", loop_simulation_id, graph.nodes.len());
+                            
+                            // Check if positions have stabilized
+                            if !graph.nodes.is_empty() {
+                                // Compare current positions with previous positions
+                                let mut max_movement = 0.0f32;
+                                
+                                for node in &graph.nodes {
+                                    let curr_pos = &node.data.position;
+                                    if let Some(prev_pos) = previous_positions.get(&node.id) {
+                                        let dx = curr_pos.x - prev_pos.x;
+                                        let dy = curr_pos.y - prev_pos.y;
+                                        let dz = curr_pos.z - prev_pos.z;
+                                        let movement = (dx*dx + dy*dy + dz*dz).sqrt();
+                                        if movement > max_movement {
+                                            max_movement = movement;
+                                        }
+                                        
+                                        if movement > 0.001 { // Consider stable if movement < 1mm
+                                            positions_stable = false;
+                                        }
+                                    }
+                                    
+                                    // Update previous positions for next iteration
+                                    previous_positions.insert(node.id.clone(), curr_pos.clone());
+                                }
+                                
+                                if positions_stable {
+                                    consecutive_stable_iterations += 1;
+                                    if consecutive_stable_iterations >= STABLE_THRESHOLD_ITERATIONS && 
+                                       !is_physics_stable.load(Ordering::SeqCst) {
+                                        info!("[Graph:{}] Physics simulation STABILIZED after {} iterations", 
+                                              loop_simulation_id, consecutive_stable_iterations);
+                                        is_physics_stable.store(true, Ordering::SeqCst);
+                                    }
+                                } else {
+                                    consecutive_stable_iterations = 0;
+                                    if is_physics_stable.load(Ordering::SeqCst) {
+                                        info!("[Graph:{}] Physics simulation destabilized, max movement: {:.6}", 
+                                              loop_simulation_id, max_movement);
+                                        is_physics_stable.store(false, Ordering::SeqCst);
+                                    }
+                                }
+                            }
                         }
                     } else {
                         // Use CPU fallback when GPU is not available
                         debug!("[Graph:{}] GPU compute not available - using CPU fallback for physics calculation", loop_simulation_id);
                         if let Err(e) = Self::calculate_layout_cpu(&mut graph, &mut node_map, &params) {
                             error!("[Graph:{}] Error updating positions with CPU fallback: {}", loop_simulation_id, e);
+                            positions_stable = false;
                         } else {
                             debug!("[Graph:{}] CPU calculation completed successfully", loop_simulation_id);
                             debug!("[Graph:{}] Successfully calculated layout with CPU fallback for {} nodes", loop_simulation_id, graph.nodes.len());
+                            // Similar stability check could be implemented for CPU calculation
                         }
                     }
                 } else {
                     debug!("[Graph:{}] Physics disabled in settings - skipping physics calculation", loop_simulation_id);
                 }
+                
+                // Mark graph as initialized after first layout calculation
+                is_initialized.store(true, Ordering::SeqCst);
+                
                 drop(graph); // Release locks before sleep
                 drop(node_map);
                 tokio::time::sleep(tokio::time::Duration::from_millis(16)).await;
@@ -202,9 +291,137 @@ impl GraphService {
                 *cache = None;
             }
             drop(loop_guard); // Explicitly drop the guard to trigger the cleanup
+            info!("[Graph:{}] Physics simulation loop terminated", loop_simulation_id);
         }); 
 
+        // Add a periodic duplicate node cleanup job
+        info!("[GraphService] Starting periodic duplicate node cleanup job");
+        let graph_service_clone = graph_service.clone();
+        let cleanup_simulation_id = simulation_id.clone();
+        tokio::spawn(async move {
+            // Wait for graph to initialize before starting cleanup
+            tokio::time::sleep(Duration::from_secs(10)).await;
+            
+            // Run cleanup every minute to prevent node proliferation
+            let mut interval = tokio::time::interval(Duration::from_secs(60));
+            
+            loop {
+                interval.tick().await;
+                
+                // Check if shutdown was requested
+                if graph_service_clone.shutdown_requested.load(Ordering::SeqCst) {
+                    info!("[GraphService:{}] Cleanup job shutting down", cleanup_simulation_id);
+                    break;
+                }
+                
+                // Clean any duplicate nodes that might have appeared
+                if let Ok(removed) = graph_service_clone.clean_duplicate_nodes().await {
+                    if removed > 0 {
+                        info!("[GraphService:{}] Removed {} duplicate nodes during cleanup", cleanup_simulation_id, removed);
+                    }
+                    
+                    // Also fix any node 0 instances that might be causing the axis-aligned issues
+                    if let Ok(fixed) = graph_service_clone.fix_node_zero_issue().await {
+                        if fixed > 0 {
+                            info!("[GraphService:{}] Fixed {} instances of problematic node 0", cleanup_simulation_id, fixed);
+                        }
+                    }
+                }
+            }
+        });
+
         graph_service
+    }
+    
+    // Initialize the graph from metadata on startup
+    pub async fn initialize_graph(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        info!("[GraphService] Initializing graph from metadata");
+        
+        // Wait for metadata file if in docker environment
+        if Self::is_running_in_docker() {
+            if !Self::wait_for_metadata_file().await {
+                return Err("Timed out waiting for metadata file".into());
+            }
+        }
+        
+        // Load metadata and build graph
+        let metadata = match crate::services::file_service::FileService::load_or_create_metadata() {
+            Ok(metadata) => metadata,
+            Err(e) => return Err(format!("Failed to load metadata: {}", e).into()),
+        };
+        
+        // Build graph from metadata
+        let graph = Self::build_graph_from_metadata(&metadata).await?;
+        *self.graph_data.write().await = graph;
+        
+        // Also initialize node_map
+        {
+            let graph = self.graph_data.read().await;
+            let mut node_map = self.node_map.write().await;
+            node_map.clear();
+            for node in &graph.nodes {
+                node_map.insert(node.id.clone(), node.clone());
+            }
+        }
+        
+        info!("[GraphService] Graph successfully initialized from metadata");
+        self.is_initialized.store(true, Ordering::SeqCst);
+        Ok(())
+    }
+    
+    // Helper to check if running in docker
+    fn is_running_in_docker() -> bool {
+        std::path::Path::new("/.dockerenv").exists()
+    }
+    
+    // Broadcast node position updates to all connected clients
+    pub async fn broadcast_node_positions(&self) {
+        if let Some(client_manager) = &self.client_manager {
+            // Only broadcast if graph is initialized
+            if !self.is_initialized.load(Ordering::SeqCst) {
+                return;
+            }
+            
+            // Get current node positions
+            let nodes = self.get_node_positions().await;
+            if nodes.is_empty() {
+                return;
+            }
+            
+            // Broadcast to all clients
+            client_manager.broadcast_node_positions(nodes).await;
+        }
+    }
+    
+    // Check if physics simulation has stabilized
+    pub fn is_physics_stable(&self) -> bool {
+        self.is_physics_stable.load(Ordering::SeqCst)
+    }
+    
+    // Start broadcasting loop to send position updates to all connected clients
+    pub fn start_broadcast_loop(&self) {
+        if self.client_manager.is_none() {
+            return;
+        }
+        
+        let graph_service = self.clone();
+        let simulation_id = self.simulation_id.clone();
+        tokio::spawn(async move {
+            info!("[GraphService:{}] Starting position broadcast loop", simulation_id);
+            let mut interval = tokio::time::interval(tokio::time::Duration::from_millis(100)); // 10 Hz broadcasts
+            
+            loop {
+                interval.tick().await;
+                
+                // Check if shutdown was requested
+                if graph_service.shutdown_requested.load(Ordering::SeqCst) {
+                    info!("[GraphService:{}] Broadcast loop shutting down", simulation_id);
+                    break;
+                }
+                
+                graph_service.broadcast_node_positions().await;
+            }
+        }); 
     }
     
     /// Shutdown the simulation loop to allow creating a new instance
@@ -361,12 +578,16 @@ impl GraphService {
             }
         }
         // This guard will reset the flag when it goes out of scope
+        debug!("Starting graph rebuild from metadata");
         let _guard = RebuildGuard;
         
         let mut graph = GraphData::new();
         let mut edge_map = HashMap::new();
         let mut node_map = HashMap::new();
 
+        // Track used numeric IDs to prevent duplicates
+        let mut used_numeric_ids = HashSet::new();
+        let mut next_id_counter = 1; // Start at 1 to avoid node 0 issues
         // First pass: Create nodes from files in metadata
         let mut valid_nodes = HashSet::new();
         debug!("Creating nodes from {} metadata entries", metadata.len());
@@ -378,12 +599,55 @@ impl GraphService {
 
         // Create nodes for all valid node IDs
         for node_id in &valid_nodes {
+            // Skip if this node ID already has a numeric ID to prevent duplicates
+            if graph.id_to_metadata.values().any(|id| id == node_id) {
+                debug!("Skipping duplicate node for metadata ID: {}", node_id); 
+                continue;
+            }
             // Get metadata for this node, including the node_id if available
             let metadata_entry = graph.metadata.get(&format!("{}.md", node_id));
             let stored_node_id = metadata_entry.map(|m| m.node_id.clone());
+
+            // Validate the stored node ID or generate a new one to guarantee uniqueness
+            let final_node_id = if let Some(id_str) = stored_node_id {
+                if let Ok(id_num) = id_str.parse::<u16>() {
+                    if id_num == 0 || used_numeric_ids.contains(&id_str) {
+                        // Don't use 0 or already used IDs
+                        let new_id = next_id_counter.to_string();
+                        next_id_counter += 1;
+                        new_id
+                    } else {
+                        id_str
+                    }
+                } else {
+                    let new_id = next_id_counter.to_string();
+                    next_id_counter += 1;
+                    new_id
+                }
+            } else {
+                // No stored ID, generate a new unique one
+                let new_id = next_id_counter.to_string();
+                next_id_counter += 1;
+                new_id
+            };
+            used_numeric_ids.insert(final_node_id.clone());
             
-            // Create node with stored ID or generate a new one if not available
-            let mut node = Node::new_with_id(node_id.clone(), stored_node_id);
+            // Create node with guaranteed unique ID
+            let mut node = Node::new_with_id(node_id.clone(), Some(final_node_id));
+            debug!("Created node {} with numeric ID {}", node_id, node.id);
+            
+            // CRITICAL: Double-check to ensure no node 0
+            if node.id == "0" {
+                debug!("Found node with ID 0 after creation, assigning new ID");
+                // Generate a new unique ID
+                let new_id = next_id_counter.to_string();
+                next_id_counter += 1;
+                
+                // Create a new node with the same metadata but different ID
+                let mut replacement_node = node.clone();
+                replacement_node.id = new_id;
+                node = replacement_node;
+            }
             graph.id_to_metadata.insert(node.id.clone(), node_id.clone());
 
             // Get metadata for this node
@@ -436,6 +700,7 @@ impl GraphService {
             let node_clone = node.clone();
             graph.nodes.push(node_clone);
             // Store nodes in map by numeric ID for efficient lookups
+            debug!("Added node with numeric ID: {}, metadata ID: {}", node.id, node.metadata_id);
             node_map.insert(node.id.clone(), node);
         }
 
@@ -443,6 +708,15 @@ impl GraphService {
         debug!("Storing {} metadata entries in graph", metadata.len());
         graph.metadata = metadata.clone();
         debug!("Created {} nodes in graph", graph.nodes.len());
+        
+        // Final check for any duplicate node IDs that might have slipped through
+        let mut unique_ids = HashSet::new();
+        let original_count = graph.nodes.len();
+        graph.nodes.retain(|node| unique_ids.insert(node.id.clone()));
+        if original_count != graph.nodes.len() {
+            debug!("Removed {} duplicate nodes in final validation", original_count - graph.nodes.len());
+        }
+        
         // Second pass: Create edges from topic counts
         for (source_file, metadata) in metadata.iter() {
             let source_id = source_file.trim_end_matches(".md").to_string();
@@ -523,14 +797,26 @@ impl GraphService {
         let mut graph = GraphData::new();
         let mut node_map = HashMap::new();
         debug!("Starting graph build process");
+        
+        // Track used numeric IDs to prevent duplicates
+        let mut used_numeric_ids: HashSet<String> = HashSet::new();
+        let mut next_id_counter = 1; // Start at 1 to avoid node 0 issues
+        
+        // Track all existing node IDs to prevent duplicates
+        let mut existing_numeric_ids = HashSet::new();
 
         // Copy metadata from current graph
         graph.metadata = current_graph.metadata.clone();
         debug!("Copied {} metadata entries from current graph", graph.metadata.len());
         
         let mut edge_map = HashMap::new();
+        
+        // Copy id_to_metadata mapping to prevent duplicate node creation
+        graph.id_to_metadata = current_graph.id_to_metadata.clone();
 
-        // Create nodes from metadata entries
+        // Create nodes from metadata entries - first build a set of valid nodes
+        // to avoid creating duplicate nodes or nodes not tied to metadata
+        debug!("Building node set from metadata entries");
         let mut valid_nodes = HashSet::new();
         for file_name in graph.metadata.keys() {
             let node_id = file_name.trim_end_matches(".md").to_string();
@@ -540,6 +826,12 @@ impl GraphService {
 
         // Create nodes for all valid node IDs
         for node_id in &valid_nodes {
+            // Skip if this node ID already has a numeric ID to prevent duplicates
+            if graph.id_to_metadata.values().any(|id| id == node_id) {
+                debug!("Skipping duplicate node for metadata ID: {}", node_id);
+                continue;
+            }
+            
             // Get metadata for this node, including the node_id if available
             let metadata_entry = graph.metadata.get(&format!("{}.md", node_id));
             let stored_node_id = metadata_entry.map(|m| m.node_id.clone());
@@ -547,6 +839,25 @@ impl GraphService {
             // Create node with stored ID or generate a new one if not available
             let mut node = Node::new_with_id(node_id.clone(), stored_node_id);
             graph.id_to_metadata.insert(node.id.clone(), node_id.clone());
+
+            // CRITICAL: Check for node 0 and assign a new ID if found
+            if node.id == "0" {
+                debug!("Found node with ID 0, assigning new ID");
+                // Generate a new unique ID
+                let new_id = next_id_counter.to_string();
+                next_id_counter += 1;
+                
+                // Create a new node with the same metadata but different ID
+                let mut replacement_node = node.clone();
+                replacement_node.id = new_id;
+                node = replacement_node;
+            }
+
+            // Track numeric ID to avoid duplicates
+            if !existing_numeric_ids.insert(node.id.clone()) {
+                debug!("Detected duplicate numeric ID: {} for node: {}", node.id, node_id);
+                continue;  // Skip this node as it has a duplicate ID
+            }
 
             // Get metadata for this node
             if let Some(metadata) = graph.metadata.get(&format!("{}.md", node_id)) {
@@ -653,7 +964,15 @@ impl GraphService {
             .map(|((source, target), weight)| {
                 Edge::new(source, target, weight)
             })
-            .collect();
+            .collect(); 
+        
+        // Final check for any duplicate node IDs that might have slipped through
+        let mut unique_ids = HashSet::new();
+        let original_count = graph.nodes.len();
+        graph.nodes.retain(|node| unique_ids.insert(node.id.clone()));
+        if original_count != graph.nodes.len() {
+            debug!("Removed {} duplicate nodes in final validation", original_count - graph.nodes.len());
+        }
 
         // Initialize random positions for all nodes
         Self::initialize_random_positions(&mut graph);
@@ -667,7 +986,8 @@ impl GraphService {
         let mut rng = rand::thread_rng();
         let node_count = graph.nodes.len() as f32;
         let initial_radius = 3.0; // Increasing radius for better visibility
-        let golden_ratio = (1.0 + 5.0_f32.sqrt()) / 2.0;
+        // Slightly vary the golden ratio to avoid perfect symmetry
+        let golden_ratio = (1.0 + 5.0_f32.sqrt()) / 2.0 + rng.gen_range(-0.01..0.01);
         
         // Log the initialization process
         info!("Initializing random positions for {} nodes with radius {}", 
@@ -680,15 +1000,25 @@ impl GraphService {
             let i_float: f32 = i as f32;
             
             // Calculate Fibonacci sphere coordinates
+            // Add randomness to prevent perfect alignment
+            let _i_perturbed = i_float + rng.gen_range(-0.2..0.2);
+            let _golden_angle = 2.0 * std::f32::consts::PI / golden_ratio + rng.gen_range(-0.01..0.01);
             let theta = 2.0 * std::f32::consts::PI * i_float / golden_ratio;
             let phi = (1.0 - 2.0 * (i_float + 0.5) / node_count).acos();
-            
+
             // Add slight randomness to prevent exact overlaps
-            let r = initial_radius * (0.9 + rng.gen_range(0.0..0.2));
+            // CRITICAL FIX: Use different random values for each coordinate component
+            // This prevents nodes from aligning along axis lines which was causing
+            // node proliferation issues. By using independent randomization factors
+            // for each coordinate, we ensure better 3D distribution and prevent
+            // nodes from clustering along specific axes.
+            let r_x = initial_radius * (0.85 + rng.gen_range(0.0..0.3));
+            let r_y = initial_radius * (0.85 + rng.gen_range(0.0..0.3));
+            let r_z = initial_radius * (0.85 + rng.gen_range(0.0..0.3));
             
-            node.set_x(r * phi.sin() * theta.cos());
-            node.set_y(r * phi.sin() * theta.sin());
-            node.set_z(r * phi.cos());
+            node.set_x(r_x * phi.sin() * theta.cos());
+            node.set_y(r_y * phi.sin() * theta.sin());
+            node.set_z(r_z * phi.cos());
             
             // Initialize with zero velocity
             node.set_vx(0.0);
@@ -1147,6 +1477,51 @@ impl GraphService {
 
     pub async fn get_node_map_mut(&self) -> tokio::sync::RwLockWriteGuard<'_, HashMap<String, Node>> {
         self.node_map.write().await
+    }
+
+    /// Fix any instances of node ID 0 throughout the graph
+    pub async fn fix_node_zero_issue(&self) -> Result<usize, Error> {
+        debug!("Checking for problematic node 0 instances");
+        let mut graph = self.graph_data.write().await;
+        let mut node_map = self.node_map.write().await;
+        
+        let mut counter = 0;
+        let mut next_id = 100; // Start at higher number to avoid conflicts
+        
+        // Fix any node with ID 0
+        for node in &mut graph.nodes {
+            if node.id == "0" {
+                debug!("Found node with ID 0, replacing with ID {}", next_id);
+                let old_id = node.id.clone();
+                node.id = next_id.to_string();
+                next_id += 1;
+                counter += 1;
+                node_map.remove(&old_id);
+                node_map.insert(node.id.clone(), node.clone());
+            }
+        }
+        
+        Ok(counter)
+    }
+    
+    // Add a method to check for duplicate nodes and clean them
+    pub async fn clean_duplicate_nodes(&self) -> Result<usize, Error> {
+        debug!("Checking for duplicate nodes in the graph");
+        let mut graph = self.graph_data.write().await;
+        let mut node_map = self.node_map.write().await;
+        
+        // Create a set to track unique node IDs
+        let mut unique_ids = HashSet::new();
+        let original_count = graph.nodes.len();
+        
+        // Remove duplicate nodes (keeping the first instance)
+        graph.nodes.retain(|node| unique_ids.insert(node.id.clone()));
+        
+        // Update node map to match
+        *node_map = graph.nodes.iter().map(|n| (n.id.clone(), n.clone())).collect();
+        let nodes_removed = original_count - graph.nodes.len();
+        debug!("Removed {} duplicate nodes from graph", nodes_removed);
+        Ok(nodes_removed)
     }
     
     // Add method to get GPU compute instance

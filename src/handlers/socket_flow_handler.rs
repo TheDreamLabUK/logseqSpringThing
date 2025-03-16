@@ -1,11 +1,12 @@
-use actix::prelude::*;
+use actix::{prelude::*, Actor, Handler, Message};
 use actix_web::{web, Error, HttpRequest, HttpResponse};
 use actix_web_actors::ws;
 use flate2::{write::ZlibEncoder, Compression};
 use log::{debug, error, info, warn};
 use std::io::Write;
-use std::sync::Arc;
 use std::collections::HashMap;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use tokio::sync::RwLock;
 use std::time::Instant;
 
@@ -31,6 +32,79 @@ const DEFAULT_MOTION_DAMPING: f32 = 0.9;  // Smooth transitions in rate
 
 // Maximum value for u16 node IDs
 const MAX_U16_VALUE: u32 = 65535;
+
+/// ClientManager keeps track of all connected WebSocket clients
+/// and provides methods for broadcasting data to all clients
+#[derive(Debug)]
+pub struct ClientManager {
+    /// Map of client IDs to associated actor addresses
+    clients: RwLock<HashMap<usize, actix::Addr<SocketFlowServer>>>,
+    /// Counter for generating unique client IDs
+    next_id: AtomicUsize,
+}
+
+impl ClientManager {
+    /// Create a new ClientManager
+    pub fn new() -> Self {
+        Self {
+            clients: RwLock::new(HashMap::new()),
+            next_id: AtomicUsize::new(1),
+        }
+    }
+
+    /// Register a new client with the manager
+    pub async fn register(&self, addr: actix::Addr<SocketFlowServer>) -> usize {
+        let id = self.next_id.fetch_add(1, Ordering::SeqCst);
+        let mut clients = self.clients.write().await;
+        clients.insert(id, addr);
+        info!("[ClientManager] Registered new client: {} (total: {})", id, clients.len());
+        id
+    }
+
+    /// Unregister a client from the manager
+    pub async fn unregister(&self, id: usize) {
+        let mut clients = self.clients.write().await;
+        clients.remove(&id);
+        info!("[ClientManager] Unregistered client: {} (remaining: {})", id, clients.len());
+    }
+
+    /// Broadcast node positions to all connected clients
+    pub async fn broadcast_node_positions(&self, nodes: Vec<crate::utils::socket_flow_messages::Node>) {
+        if nodes.is_empty() {
+            return;
+        }
+
+        let clients = self.clients.read().await;
+        if clients.is_empty() {
+            return;
+        }
+
+        // Convert nodes to binary format
+        let binary_data = nodes.into_iter()
+            .filter_map(|node| {
+                // Parse node ID as u16 for binary protocol
+                node.id.parse::<u16>().ok().map(|id| (id, BinaryNodeData {
+                    position: node.data.position,
+                    velocity: node.data.velocity,
+                    mass: node.data.mass,
+                    flags: node.data.flags,
+                    padding: node.data.padding,
+                }))
+            })
+            .collect::<Vec<_>>();
+
+        // Send the update to all clients
+        for (id, addr) in clients.iter() {
+            addr.do_send(BroadcastPositionUpdate(binary_data.clone()));
+            debug!("[ClientManager] Sent position update to client {}", id);
+        }
+    }
+}
+
+/// Message type for broadcasting position updates to clients
+#[derive(Message, Clone)]
+#[rtype(result = "()")]
+pub struct BroadcastPositionUpdate(pub Vec<(u16, BinaryNodeData)>);
 
 pub struct SocketFlowServer {
     app_state: Arc<AppState>,
@@ -61,11 +135,15 @@ pub struct SocketFlowServer {
     motion_damping: f32,       // Smoothing factor for rate changes
     nodes_in_motion: usize,    // Counter for nodes currently in motion
     total_node_count: usize,   // Total node count for percentage calculation
-    last_motion_check: Instant, // Last time we checked motion percentage
+    last_motion_check: Instant, // Last time we checked motion percentage,
+    // Client ID assigned by the ClientManager
+    client_id: Option<usize>,
+    // Reference to the ClientManager
+    client_manager: Option<Arc<ClientManager>>,
 }
 
 impl SocketFlowServer {
-    pub fn new(app_state: Arc<AppState>, settings: Arc<RwLock<crate::config::Settings>>) -> Self {
+    pub fn new(app_state: Arc<AppState>, settings: Arc<RwLock<crate::config::Settings>>, client_manager: Option<Arc<ClientManager>>) -> Self {
         // Get dynamic rate settings from config
         let min_update_rate = settings
             .try_read()
@@ -120,6 +198,8 @@ impl SocketFlowServer {
             nodes_in_motion: 0,
             total_node_count: 0,
             last_motion_check: Instant::now(),
+            client_id: None,
+            client_manager,
         }
     }
 
@@ -264,8 +344,25 @@ impl Actor for SocketFlowServer {
     type Context = ws::WebsocketContext<Self>;
 
     fn started(&mut self, ctx: &mut Self::Context) {
-        info!("[WebSocket] Client connected successfully");
+        // Register this client with the client manager
+        if let Some(client_manager) = &self.client_manager {
+            let addr = ctx.address();
+            let addr_clone = addr.clone(); // Clone the address before moving it
+            
+            // Use actix's runtime to avoid blocking in the actor's started method
+            let cm_clone = client_manager.clone();
+            actix::spawn(async move {
+                let client_id = cm_clone.register(addr_clone).await;
+                // Send a message back to the actor with its client ID
+                addr.do_send(SetClientId(client_id)); // This uses the original addr which is still valid
+            });
+        }
+    
+        info!("[WebSocket] New client connected");
         self.last_activity = std::time::Instant::now();
+        
+        // We'll retrieve client ID asynchronously via message
+        self.client_id = None;
         
         // Set up server-side heartbeat ping to keep connection alive
         if !self.heartbeat_timer_set {
@@ -299,12 +396,63 @@ impl Actor for SocketFlowServer {
         self.last_activity = std::time::Instant::now();
     }
 
-    fn stopped(&mut self, _: &mut Self::Context) {
-        info!("[WebSocket] Client disconnected");
+    fn stopped(&mut self, _ctx: &mut Self::Context) {
+        // Unregister this client when it disconnects
+        if let Some(client_id) = self.client_id {
+            if let Some(client_manager) = &self.client_manager {
+                let client_manager_clone = client_manager.clone();
+                actix::spawn(async move {
+                    client_manager_clone.unregister(client_id).await;
+                });
+            }
+            info!("[WebSocket] Client {} disconnected", client_id);
+        } else {
+            info!("[WebSocket] Unidentified client disconnected");
+        }
     }
 }
 
+// Message to set client ID after registration
+#[derive(Message)]
+#[rtype(result = "()")]
+struct SetClientId(usize);
+
 // Helper function to fetch nodes without borrowing from the actor
+// Helper function to fetch nodes without borrowing from the actor
+
+// Implement handler for BroadcastPositionUpdate message
+impl Handler<BroadcastPositionUpdate> for SocketFlowServer {
+    type Result = ();
+
+    fn handle(&mut self, msg: BroadcastPositionUpdate, ctx: &mut Self::Context) -> Self::Result {
+        if !msg.0.is_empty() {
+            // Encode the binary message
+            let binary_data = binary_protocol::encode_node_data(&msg.0);
+            
+            // Apply compression if needed
+            let compressed_data = self.maybe_compress(binary_data);
+            let final_data_size = compressed_data.len(); // Store the size before moving
+            
+            // Send to client
+            ctx.binary(compressed_data);
+            
+            // Debug logging - limit to avoid spamming logs
+            if self.should_log_update() {
+                debug!("[WebSocket] Broadcast update sent: {} nodes, {} bytes", msg.0.len(), final_data_size);
+            }
+        }
+    }
+}
+
+// Implement handler for SetClientId message
+impl Handler<SetClientId> for SocketFlowServer {
+    type Result = ();
+
+    fn handle(&mut self, msg: SetClientId, _ctx: &mut Self::Context) -> Self::Result {
+        self.client_id = Some(msg.0);
+        info!("[WebSocket] Client assigned ID: {}", msg.0);
+    }
+}
 async fn fetch_nodes(
     app_state: Arc<AppState>,
     settings: Arc<RwLock<crate::config::Settings>>
@@ -515,7 +663,7 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
                     let _settings_clone = act.settings.clone();
                                                 ctx.run_later(next_interval, move |act, ctx| {
                                                     // Recursively call the handler to restart the cycle
-                                                    act.handle(Ok(ws::Message::Text("{\"type\":\"requestInitialData\"}".to_string().into())), ctx);
+                                                    <SocketFlowServer as StreamHandler<Result<ws::Message, ws::ProtocolError>>>::handle(act, Ok(ws::Message::Text("{\"type\":\"requestInitialData\"}".to_string().into())), ctx);
                                                 });
                                                 
                                                 // Log performance metrics periodically
@@ -734,8 +882,11 @@ pub async fn socket_flow_handler(
     req: HttpRequest,
     stream: web::Payload,
     app_state: web::Data<AppState>,
-    settings: web::Data<Arc<RwLock<crate::config::Settings>>>,
+    settings: web::Data<Arc<RwLock<crate::config::Settings>>>
 ) -> Result<HttpResponse, Error> {
+    // Ensure ClientManager exists in app_state or create it if not present
+    let client_manager = app_state.ensure_client_manager().await;
+
     let should_debug = settings.try_read().map(|s| {
         s.system.debug.enabled && s.system.debug.enable_websocket_debug
     }).unwrap_or(false);
@@ -749,7 +900,7 @@ pub async fn socket_flow_handler(
         return Ok(HttpResponse::BadRequest().body("WebSocket upgrade required"));
     }
 
-    let ws = SocketFlowServer::new(app_state.into_inner(), settings.get_ref().clone());
+    let ws = SocketFlowServer::new(app_state.into_inner(), settings.get_ref().clone(), Some(client_manager));
 
     match ws::start(ws, &req, stream) {
         Ok(response) => {

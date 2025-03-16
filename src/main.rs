@@ -94,7 +94,7 @@ async fn main() -> std::io::Result<()> {
             None,
             None,
             speech_service,
-            None, "default_session".to_string(),
+            None, "default_session".to_string()
         ).await {
             Ok(state) => state,
             Err(e) => return Err(std::io::Error::new(std::io::ErrorKind::Other, format!("Failed to initialize app state: {}", e)))
@@ -135,6 +135,10 @@ async fn main() -> std::io::Result<()> {
 
     // Build initial graph from metadata and initialize GPU compute
     info!("Building initial graph from existing metadata for physics simulation");
+    
+    // Create the ClientManager that will be shared between GraphService and WebSocket handlers
+    let client_manager = app_state.ensure_client_manager().await;
+    
     match GraphService::build_graph_from_metadata(&metadata_store).await {
         Ok(graph_data) => {            
             // Initialize GPU compute if not already done
@@ -159,7 +163,8 @@ async fn main() -> std::io::Result<()> {
                         info!("Reinitializing graph service with GPU compute");
                         app_state.graph_service = GraphService::new(
                             settings.clone(), 
-                            app_state.gpu_compute.clone()
+                            app_state.gpu_compute.clone(),
+                            Some(client_manager.clone())
                         ).await;
                         
                         info!("Graph service successfully reinitialized with GPU compute");
@@ -172,7 +177,8 @@ async fn main() -> std::io::Result<()> {
         // Initialize graph service with None as GPU compute (will use CPU fallback)
                         app_state.graph_service = GraphService::new(
                             settings.clone(), 
-                            None
+                            None,
+                            Some(client_manager.clone())
                         ).await;
                         
                         info!("Graph service initialized with CPU fallback");
@@ -207,6 +213,11 @@ async fn main() -> std::io::Result<()> {
     info!("Waiting for initial physics layout calculation to complete...");
     tokio::time::sleep(Duration::from_millis(500)).await;
     info!("Initial delay complete. Starting HTTP server...");
+    
+    // Start the broadcast loop to share position updates with all clients
+    info!("Starting position broadcast loop for client synchronization...");
+    app_state.graph_service.start_broadcast_loop();
+    info!("Position broadcast loop started");
 
     // Create web::Data after all initialization is complete
     let app_state_data = web::Data::new(app_state);

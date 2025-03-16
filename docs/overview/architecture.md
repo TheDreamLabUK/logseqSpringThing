@@ -27,6 +27,7 @@ graph TB
     end
 
     subgraph Backend
+        PhysicsEngine[Continuous Physics Engine]
         Server[Actix Web Server]
         FileH[File Handler]
         GraphH[Graph Handler]
@@ -43,6 +44,7 @@ graph TB
         SpeechS[Speech Service]
         NostrS[Nostr Service]
         WSManager[WebSocket Manager]
+        ClientManager[Client Manager]
         GPUCompute[GPU Compute]
         Compression[Compression Utils]
         AudioProc[Audio Processor]
@@ -82,10 +84,13 @@ graph TB
 
     FileH --> FileS
     GraphH --> GraphS
-    WSH --> WSManager
+    WSH --> ClientManager
+    ClientManager --> WSManager
     PerplexityH --> PerplexityS
     RagFlowH --> RagFlowS
     NostrH --> NostrS
+    
+    GraphS --> PhysicsEngine --> ClientManager
 
     FileS --> GitHub
     PerplexityS --> Perplexity
@@ -123,7 +128,9 @@ graph TB
 - **PerplexityH (Perplexity Handler)**: Interfaces with the Perplexity AI service.
 - **RagFlowH (RagFlow Handler)**: Interfaces with the RAGFlow service.
 - **VisualizationH (Visualization Handler)**: Handles visualization-related requests.
+- **ClientManager**: Manages all connected WebSocket clients and broadcasts updates.
 - **NostrH (Nostr Handler)**: Manages Nostr authentication and user sessions.
+- **PhysicsEngine**: Continuously calculates force-directed layout independent of client connections.
 - **FileS (File Service)**: Provides file-related services.
 - **GraphS (Graph Service)**: Provides graph-related services.
 - **GPUS (GPU Compute Service)**: Manages GPU-accelerated computations.
@@ -143,7 +150,12 @@ graph TB
 
 For more detailed technical information, please refer to:
 - [Binary Protocol](../technical/binary-protocol.md)
+- [Decoupled Graph Architecture](../technical/decoupled-graph-architecture.md)
 - [Performance Optimizations](../technical/performance.md)
 - [Class Diagrams](../technical/class-diagrams.md)
-- [WebSockets Implementation](../technical/websockets.md)
+- [WebSockets Implementation](../api/websocket-updated.md)
 - [Graph Node Stacking Fix](../technical/graph-node-stacking-fix.md)
+
+## Server Architecture
+
+The server now uses a continuous physics simulation system that pre-computes node positions independent of client connections. When clients connect, they receive the complete graph state and any ongoing updates. This architecture enables bidirectional synchronization of graph state between all connected clients.
