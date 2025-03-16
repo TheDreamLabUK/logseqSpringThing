@@ -222,11 +222,18 @@ export class EdgeManager {
             targetPos.x, targetPos.y, targetPos.z
         ]);
         
-        line.geometry.dispose();
-        const geometry = new BufferGeometry();
-        geometry.setAttribute('position', new BufferAttribute(positions, 3)); 
+        // Update the existing buffer attribute instead of creating a new geometry
+        const positionAttribute = line.geometry.getAttribute('position');
         
-        line.geometry = geometry;
+        if (positionAttribute) {
+            // Update vertex positions directly using the proper method
+            this.updatePositionAttribute(positionAttribute, sourcePos, targetPos);
+            positionAttribute.needsUpdate = true;
+        } else {
+            // If attribute doesn't exist (should never happen), create a new one
+            line.geometry.setAttribute('position', new BufferAttribute(positions, 3));
+        }
+        
         
         // Update material source/target if it's EdgeShaderMaterial
         if (line.material instanceof EdgeShaderMaterial) {
@@ -289,10 +296,33 @@ export class EdgeManager {
 
     public update(): void {
         // Update edge animations if using EdgeShaderMaterial
-        const deltaTime = 1/60; // Default to 60fps for animation
+        const deltaTime = 1/60; // Default to 60fps for animation timing
+        
+        // Update edge positions based on current node positions
+        this.updateEdgePositions();
+        
         this.edges.forEach(edge => {
             if (edge.material instanceof EdgeShaderMaterial && edge.material.update) {
                 edge.material.update(deltaTime);
+            }
+        });
+    }
+    
+    /**
+     * Updates all edge positions based on current node positions
+     * Should be called in the render loop to ensure edges follow nodes
+     */
+    private updateEdgePositions(): void {
+        this.edges.forEach((line, edgeId) => {
+            const [sourceId, targetId] = edgeId.split('_');
+            
+            const sourcePos = this.nodeInstanceManager.getNodePosition(sourceId);
+            const targetPos = this.nodeInstanceManager.getNodePosition(targetId);
+            
+            if (sourcePos && targetPos && this.validateVector3(sourcePos) && this.validateVector3(targetPos)) {
+                const positionAttribute = line.geometry.getAttribute('position');
+                this.updatePositionAttribute(positionAttribute, sourcePos, targetPos);
+                positionAttribute.needsUpdate = true;
             }
         });
     }
@@ -312,5 +342,22 @@ export class EdgeManager {
             }
         });
         this.edges.clear();
+    }
+    
+    /**
+     * Updates a position buffer attribute with new source and target positions
+     * @param attribute The position buffer attribute to update
+     * @param sourcePos The source node position
+     * @param targetPos The target node position
+     */
+    private updatePositionAttribute(attribute: BufferAttribute, sourcePos: Vector3, targetPos: Vector3): void {
+        if (!attribute) return;
+        
+        // Update source position (first vertex)
+        attribute.setXYZ(0, sourcePos.x, sourcePos.y, sourcePos.z);
+        
+        // Update target position (second vertex)
+        attribute.setXYZ(1, targetPos.x, targetPos.y, targetPos.z);
+        
     }
 }
