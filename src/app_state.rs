@@ -11,6 +11,7 @@ use crate::models::protected_settings::{ProtectedSettings, ApiKeys, NostrUser};
 use crate::services::graph_service::GraphService;
 use crate::services::github::{GitHubClient, ContentAPI};
 use crate::services::perplexity_service::PerplexityService;
+use crate::services::speech_service::SpeechService;
 use crate::services::ragflow_service::RAGFlowService;
 use crate::services::nostr_service::NostrService;
 use crate::utils::gpu_compute::GPUCompute;
@@ -26,9 +27,10 @@ pub struct AppState {
     pub content_api: Arc<ContentAPI>,
     pub perplexity_service: Option<Arc<PerplexityService>>,
     pub ragflow_service: Option<Arc<RAGFlowService>>,
+    pub speech_service: Option<Arc<SpeechService>>,
     pub nostr_service: Option<web::Data<NostrService>>,
     pub feature_access: web::Data<FeatureAccess>,
-    pub ragflow_conversation_id: String,
+    pub ragflow_session_id: String,
     pub active_connections: Arc<AtomicUsize>,
 }
 
@@ -39,8 +41,9 @@ impl AppState {
         content_api: Arc<ContentAPI>,
         perplexity_service: Option<Arc<PerplexityService>>,
         ragflow_service: Option<Arc<RAGFlowService>>,
+        speech_service: Option<Arc<SpeechService>>,
         gpu_compute: Option<Arc<RwLock<GPUCompute>>>,
-        ragflow_conversation_id: String,
+        ragflow_session_id: String,
     ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         // Initialize GraphService with settings - log this as a major step
         info!("[AppState::new] Initializing GraphService");
@@ -61,9 +64,10 @@ impl AppState {
             content_api,
             perplexity_service,
             ragflow_service,
+            speech_service,
             nostr_service: None,
             feature_access: web::Data::new(FeatureAccess::from_env()),
-            ragflow_conversation_id,
+            ragflow_session_id,
             active_connections: Arc::new(AtomicUsize::new(0)),
         })
     }

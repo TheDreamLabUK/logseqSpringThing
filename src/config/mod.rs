@@ -69,6 +69,7 @@ pub struct Settings {
     pub ragflow: RagFlowSettings,
     pub perplexity: PerplexitySettings,
     pub openai: OpenAISettings,
+    pub kokoro: KokoroSettings,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
@@ -287,9 +288,9 @@ pub struct XRSettings {
 pub struct RagFlowSettings {
     pub api_key: String,
     pub api_base_url: String,
+    pub agent_id: String,
     pub timeout: u64,
     pub max_retries: u32,
-    pub chat_id: String,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -312,6 +313,18 @@ pub struct OpenAISettings {
     pub base_url: String,
     pub timeout: u64,
     pub rate_limit: u32,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct KokoroSettings {
+    pub api_url: String,
+    pub default_voice: String,
+    pub default_format: String,
+    pub default_speed: f32,
+    pub timeout: u64,
+    pub stream: bool,
+    pub return_timestamps: bool,
+    pub sample_rate: u32,
 }
 
 impl Settings {
@@ -622,9 +635,9 @@ impl Default for Settings {
             ragflow: RagFlowSettings {
                 api_key: String::new(),
                 api_base_url: String::new(),
+                agent_id: String::new(),
                 timeout: 30,
                 max_retries: 3,
-                chat_id: String::new(),
             },
             perplexity: PerplexitySettings {
                 api_key: String::new(),
@@ -643,6 +656,16 @@ impl Default for Settings {
                 base_url: String::new(),
                 timeout: 30,
                 rate_limit: 100,
+            },
+            kokoro: KokoroSettings {
+                api_url: "http://pedantic_morse:8880".to_string(), // Default URL based on Docker network
+                default_voice: "af_heart".to_string(),
+                default_format: "mp3".to_string(),
+                default_speed: 1.0,
+                timeout: 30,
+                stream: true,
+                return_timestamps: true,
+                sample_rate: 24000,
             },
         }
     }

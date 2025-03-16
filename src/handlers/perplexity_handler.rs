@@ -32,7 +32,7 @@ pub async fn handle_perplexity(
         }))
     };
 
-    let conversation_id = state.ragflow_conversation_id.clone();
+    let conversation_id = state.ragflow_session_id.clone();
     match perplexity_service.query(&request.query, &conversation_id).await {
         Ok(answer) => {
             let response = PerplexityResponse {
