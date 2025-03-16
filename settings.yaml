@@ -24,18 +24,18 @@ visualization:
     quality: medium
   physics:
     attraction_strength: 0.2      # Increased for stronger cohesion
-    bounds_size: 8.0              # Reduced to keep nodes closer together
-    collision_radius: 0.5         # Increased to prevent nodes from getting too close
-    damping: 0.98                 # Higher damping to reduce oscillation and improve stability
-    enable_bounds: false
+    bounds_size: 8.0              # Keep nodes closer together
+    collision_radius: 0.5         # Prevent nodes from getting too close
+    damping: 0.95                 # Slightly lower to allow more dynamic motion
+    enable_bounds: true           # Enable boundaries to contain the nodes
     enabled: true
     iterations: 100
-    max_velocity: 0.01            # Reduced to prevent nodes from moving too quickly
-    repulsion_strength: 0.03      # Reduced relative to attraction for better cohesion
-    spring_strength: 0.15         # Increased to improve node cohesion
-    repulsion_distance: 1.0       # Reduced to limit repulsion effects
+    max_velocity: 0.02            # Increased to allow faster responses
+    repulsion_strength: 0.03      # Keep repulsion low relative to attraction
+    spring_strength: 0.2          # Increased to improve node cohesion (with correct negative sign)
+    repulsion_distance: 1.2       # Slightly increased to prevent overlaps
     mass_scale: 1.0
-    boundary_damping: 0.98        # Increased for better containment and stability
+    boundary_damping: 0.95        # Lowered for a bit more gentle boundary repulsion
   rendering:
     ambient_light_intensity: 0.8
     background_color: '#1a1a2e'

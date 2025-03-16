@@ -102,7 +102,7 @@ extern "C" {
                     
                     // Progressive spring forces - stronger when further apart
                     // Apply the ramp_up_factor to gradually increase spring forces
-                    float spring_force = spring_k * ramp_up_factor * (dist - natural_length);
+                    float spring_force = -spring_k * ramp_up_factor * (dist - natural_length);
                     
                     // Apply progressively stronger springs for very distant nodes
                     if (dist > natural_length * 3.0f) {
@@ -125,9 +125,10 @@ extern "C" {
                         total_force.z -= dir.z * repel_force;
                     } else {
                         // Always apply spring forces
-                        total_force.x += dir.x * force_magnitude;
-                        total_force.y += dir.y * force_magnitude;
-                        total_force.z += dir.z * force_magnitude;
+                        // We use -= because spring_force is negative for attraction
+                        total_force.x -= dir.x * force_magnitude;
+                        total_force.y -= dir.y * force_magnitude;
+                        total_force.z -= dir.z * force_magnitude;
                     }
                 }
             }
