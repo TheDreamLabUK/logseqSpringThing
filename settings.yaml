@@ -15,12 +15,12 @@ visualization:
   edges:
     arrow_size: 0.02
     base_width: 0.1
-    color: '#0c2140'
+    color: '#4287f5'
     enable_arrows: false
-    opacity: 1
+    opacity: 0.85
     width_range:
     - 0.1
-    - 0.5
+    - 1.0
     quality: medium
   physics:
     attraction_strength: 0.2      # Increased for stronger cohesion
@@ -137,12 +137,12 @@ system:
     enable_request_validation: false
     session_timeout: 3600
   debug:
-    enabled: true
-    enable_data_debug: true
-    enable_websocket_debug: true
-    log_binary_headers: true
-    log_full_json: true
-    log_level: trace
+    enabled: false
+    enable_data_debug: false
+    enable_websocket_debug: false
+    log_binary_headers: false
+    log_full_json: false
+    log_level: warn
     log_format: json
 xr:
   mode: inline

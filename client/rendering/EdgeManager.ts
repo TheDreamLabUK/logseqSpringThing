@@ -11,6 +11,7 @@ import { createLogger } from '../core/logger';
 import { Edge } from '../core/types';
 import { Settings } from '../types/settings';
 import { NodeInstanceManager } from './node/instance/NodeInstanceManager';
+import { EdgeShaderMaterial } from './materials/EdgeShaderMaterial';
 
 const logger = createLogger('EdgeManager');
 
@@ -137,17 +138,25 @@ export class EdgeManager {
         
         geometry.setAttribute('position', new BufferAttribute(positions, 3));
         
-        // Create LineBasicMaterial with higher opacity for better visibility
-        const material = new LineBasicMaterial({
-            color: this.settings.visualization.edges.color || "#888888", 
-            transparent: true, 
-            // Use settings opacity directly instead of multiplying
-            opacity: this.settings.visualization.edges.opacity || 0.8
-        });
+        // Try to use EdgeShaderMaterial if available for better visibility
+        let material;
+        try {
+            material = new EdgeShaderMaterial(this.settings);
+            material.setSourceTarget(sourcePos, targetPos);
+        } catch (error) {
+            // Fallback to LineBasicMaterial
+            material = new LineBasicMaterial({
+                color: this.settings.visualization.edges.color || "#888888", 
+                transparent: true, 
+                opacity: this.settings.visualization.edges.opacity || 0.8,
+                depthWrite: false // Ensure edges render correctly by disabling depth writing
+            });
+            logger.warn(`Failed to create EdgeShaderMaterial, falling back to LineBasicMaterial: ${error}`);
+        }
 
         // Use Mesh with line geometry for rendering
         const line = new Mesh(geometry, material);
-        line.renderOrder = 5; // Increased to render on top of nodes
+        line.renderOrder = 10; // Increased to render on top of nodes
 
         // Store the edge ID in userData for identification
         line.userData = { edgeId };
@@ -162,11 +171,7 @@ export class EdgeManager {
         this.scene.add(line);
         
         // Verify the edge was added to the scene
-        logger.debug(`Edge created: ${edgeId}, visible: ${line.visible}, layers: ${line.layers.mask}`);
-        
-        // Log the material properties
-        const mat = line.material as LineBasicMaterial;
-        logger.debug(`Edge material: color=${mat.color.toString()}, opacity=${mat.opacity}, transparent=${mat.transparent}`);
+        logger.debug(`Edge created: ${edgeId}, visible: ${line.visible}, layers: ${line.layers.mask}, renderOrder: ${line.renderOrder}`);
     }
 
     /**
@@ -223,6 +228,11 @@ export class EdgeManager {
         
         line.geometry = geometry;
         
+        // Update material source/target if it's EdgeShaderMaterial
+        if (line.material instanceof EdgeShaderMaterial) {
+            line.material.setSourceTarget(sourcePos, targetPos);
+        }
+        
         logger.debug(`Edge updated: ${edgeId}`);
     }
 
@@ -249,10 +259,11 @@ export class EdgeManager {
         this.settings = settings;
         // Update edge appearance based on new settings
         this.edges.forEach((edge) => {
-            if (edge.material instanceof LineBasicMaterial) {
+            if (edge.material instanceof LineBasicMaterial || edge.material instanceof EdgeShaderMaterial) {
                 edge.material.color.set(this.settings.visualization.edges.color);
                 edge.material.opacity = this.settings.visualization.edges.opacity;
                 edge.material.needsUpdate = true;
+                edge.renderOrder = 10; // Ensure it's still rendering on top
             }
         });
     }
@@ -277,8 +288,13 @@ export class EdgeManager {
     }
 
     public update(): void {
-        // The edge update is now handled during updateEdges
-        // This method is kept for compatibility with the rendering loop
+        // Update edge animations if using EdgeShaderMaterial
+        const deltaTime = 1/60; // Default to 60fps for animation
+        this.edges.forEach(edge => {
+            if (edge.material instanceof EdgeShaderMaterial && edge.material.update) {
+                edge.material.update(deltaTime);
+            }
+        });
     }
 
     /**
