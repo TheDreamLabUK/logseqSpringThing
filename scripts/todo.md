@@ -1,6 +1,6 @@
 
 
-Inconsistent Settings Handling: The README.md describes a settings inheritance model (Unauthenticated, Authenticated, Power Users) that is partially implemented in the Rust code (feature_access.rs) but not fully reflected in the client-side settings management. The client-side SettingsStore doesn't seem to be aware of user roles or server-side settings inheritance.
+✓ [FIXED] Inconsistent Settings Handling: The README.md describes a settings inheritance model (Unauthenticated, Authenticated, Power Users) that is partially implemented in the Rust code (feature_access.rs) but not fully reflected in the client-side settings management. The client-side SettingsStore doesn't seem to be aware of user roles or server-side settings inheritance.
 
 
 Missing Client-Side Authentication: The README.md and Rust code describe Nostr authentication, but there's no corresponding implementation in the provided client-side code. The NostrAuthService.ts is present but not integrated into a full authentication flow.

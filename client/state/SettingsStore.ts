@@ -1,6 +1,7 @@
 import { Settings } from '../types/settings/base';
 import { createLogger, createErrorMetadata, createMessageMetadata, createDataMetadata } from '../core/logger';
 import { defaultSettings } from './defaultSettings';
+import { nostrAuth } from '../services/NostrAuthService';
 import { buildApiUrl, getAuthHeaders } from '../core/api';
 import { API_ENDPOINTS } from '../core/constants';
 import { Logger, LoggerConfig } from '../core/logger';
@@ -25,6 +26,7 @@ export class SettingsStore {
     private readonly RETRY_DELAY: number = 1000;
     private settingsOrigin: 'server' | 'default' = 'default';
     private _isUserLoggedIn: boolean = false;
+    private _restrictedSettings: Set<string> = new Set();
 
     private constructor() {
         this.settings = { ...defaultSettings };
@@ -44,6 +46,7 @@ export class SettingsStore {
      */
     public setUserLoggedIn(isLoggedIn: boolean): void {
         this._isUserLoggedIn = isLoggedIn;
+        this.updateRestrictedSettings();
     }
 
     /**
@@ -51,6 +54,36 @@ export class SettingsStore {
      */
     public isUserLoggedIn(): boolean {
         return this._isUserLoggedIn;
+    }
+
+    /**
+     * Update the list of restricted settings based on user role
+     */
+    private updateRestrictedSettings(): void {
+        this._restrictedSettings.clear();
+        
+        // If not logged in, restrict all server-only settings
+        if (!this._isUserLoggedIn) {
+            this._restrictedSettings.add('system.advanced');
+            this._restrictedSettings.add('perplexity');
+            this._restrictedSettings.add('openai');
+            this._restrictedSettings.add('ragflow');
+            return;
+        }
+
+        // If logged in but not a power user, restrict power user settings
+        if (!nostrAuth.isPowerUser()) {
+            this._restrictedSettings.add('system.advanced');
+        }
+
+        // Add feature-specific restrictions based on user access
+        if (!nostrAuth.hasFeatureAccess('perplexity')) this._restrictedSettings.add('perplexity');
+        if (!nostrAuth.hasFeatureAccess('openai')) this._restrictedSettings.add('openai');
+        if (!nostrAuth.hasFeatureAccess('ragflow')) this._restrictedSettings.add('ragflow');
+    }
+
+    private isSettingRestricted(path: string): boolean {
+        return Array.from(this._restrictedSettings).some(prefix => path.startsWith(prefix));
     }
 
     public async initialize(): Promise<void> {
@@ -218,6 +251,13 @@ export class SettingsStore {
 
     public async set(path: string, value: unknown): Promise<void> {
         try {
+            // Check if setting is restricted
+            if (this.isSettingRestricted(path)) {
+                const error = `Setting ${path} is restricted based on user role`;
+                this.logger.warn(error);
+                throw new Error(error);
+            }
+
             // Validate the specific setting change
             // Update logger config if debug settings change
             if (path.startsWith('system.debug')) {
@@ -280,6 +320,7 @@ export class SettingsStore {
         return this.settingsOrigin === 'server';
     }
 
+    // Prepare settings for sync, respecting user role restrictions
     private prepareSettingsForSync(settings: Settings): any {
         // Create a copy of settings
         const preparedSettings = JSON.parse(JSON.stringify(settings));
@@ -288,6 +329,15 @@ export class SettingsStore {
         if (!preparedSettings.system) preparedSettings.system = {};
         if (!preparedSettings.system.debug) preparedSettings.system.debug = {};
         if (!preparedSettings.xr) preparedSettings.xr = {};
+        
+        // Remove restricted settings based on user role
+        for (const restrictedPath of this._restrictedSettings) {
+            const parts = restrictedPath.split('.');
+            let current = preparedSettings;
+            for (let i = 0; i < parts.length - 1; i++) {
+                if (current[parts[i]]) delete current[parts[i]][parts[i + 1]];
+            }
+        }
 
         // Always include all required debug fields
         preparedSettings.system.debug = {
