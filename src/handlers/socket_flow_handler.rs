@@ -1,11 +1,12 @@
-use actix::prelude::*;
+use actix::{prelude::*, Actor, Handler, Message};
 use actix_web::{web, Error, HttpRequest, HttpResponse};
 use actix_web_actors::ws;
 use flate2::{write::ZlibEncoder, Compression};
 use log::{debug, error, info, warn};
 use std::io::Write;
-use std::sync::Arc;
 use std::collections::HashMap;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use tokio::sync::RwLock;
 use std::time::Instant;
 
@@ -32,9 +33,121 @@ const DEFAULT_MOTION_DAMPING: f32 = 0.9;  // Smooth transitions in rate
 // Maximum value for u16 node IDs
 const MAX_U16_VALUE: u32 = 65535;
 
+/// ClientManager keeps track of all connected WebSocket clients
+/// and provides methods for broadcasting data to all clients
+#[derive(Debug)]
+pub struct ClientManager {
+    /// Map of client IDs to associated actor addresses
+    clients: RwLock<HashMap<usize, actix::Addr<SocketFlowServer>>>,
+    /// Counter for generating unique client IDs
+    next_id: AtomicUsize,
+}
+
+impl ClientManager {
+    /// Create a new ClientManager
+    pub fn new() -> Self {
+        Self {
+            clients: RwLock::new(HashMap::new()),
+            next_id: AtomicUsize::new(1),
+        }
+    }
+
+    /// Register a new client with the manager
+    pub async fn register(&self, addr: actix::Addr<SocketFlowServer>) -> usize {
+        let id = self.next_id.fetch_add(1, Ordering::SeqCst);
+        let mut clients = self.clients.write().await;
+        clients.insert(id, addr);
+        info!("[ClientManager] Registered new client: {} (total: {})", id, clients.len());
+        id
+    }
+
+    /// Unregister a client from the manager
+    pub async fn unregister(&self, id: usize) {
+        let mut clients = self.clients.write().await;
+        clients.remove(&id);
+        info!("[ClientManager] Unregistered client: {} (remaining: {})", id, clients.len());
+    }
+
+    /// Broadcast node positions to all connected clients
+    pub async fn broadcast_node_positions(&self, nodes: Vec<crate::utils::socket_flow_messages::Node>) {
+        if nodes.is_empty() {
+            return;
+        }
+
+        let clients = self.clients.read().await;
+        if clients.is_empty() {
+            return;
+        }
+
+        // Convert nodes to binary format
+        let binary_data = nodes.into_iter()
+            .filter_map(|node| {
+                // Parse node ID as u16 for binary protocol
+                node.id.parse::<u16>().ok().map(|id| (id, BinaryNodeData {
+                    position: node.data.position,
+                    velocity: node.data.velocity,
+                    mass: node.data.mass,
+                    flags: node.data.flags,
+                    padding: node.data.padding,
+                }))
+            })
+            .collect::<Vec<_>>();
+
+        // Send the update to all clients
+        for (id, addr) in clients.iter() {
+            addr.do_send(BroadcastPositionUpdate(binary_data.clone()));
+            debug!("[ClientManager] Sent position update to client {}", id);
+        }
+    }
+}
+
+// Message to set client ID after registration
+#[derive(Message)]
+#[rtype(result = "()")]
+struct SetClientId(usize);
+
+// Implement handler for SetClientId message
+impl Handler<SetClientId> for SocketFlowServer {
+    type Result = ();
+
+    fn handle(&mut self, msg: SetClientId, _ctx: &mut Self::Context) -> Self::Result {
+        self.client_id = Some(msg.0);
+        info!("[WebSocket] Client assigned ID: {}", msg.0);
+    }
+}
+
+// Implement handler for BroadcastPositionUpdate message
+impl Handler<BroadcastPositionUpdate> for SocketFlowServer {
+    type Result = ();
+
+    fn handle(&mut self, msg: BroadcastPositionUpdate, ctx: &mut Self::Context) -> Self::Result {
+        if !msg.0.is_empty() {
+            // Encode the binary message
+            let binary_data = binary_protocol::encode_node_data(&msg.0);
+            
+            // Apply compression if needed
+            let compressed_data = self.maybe_compress(binary_data);
+            
+            // Send to client
+            ctx.binary(compressed_data);
+            
+            // Debug logging - limit to avoid spamming logs
+            if self.should_log_update() {
+                debug!("[WebSocket] Position update sent: {} nodes", msg.0.len());
+            }
+        }
+    }
+}
+/// Message type for broadcasting position updates to clients
+#[derive(Message, Clone)]
+#[rtype(result = "()")]
+pub struct BroadcastPositionUpdate(pub Vec<(u16, BinaryNodeData)>);
+
 pub struct SocketFlowServer {
     app_state: Arc<AppState>,
     settings: Arc<RwLock<crate::config::Settings>>,
+    client_id: Option<usize>,
+    client_manager: Option<Arc<ClientManager>>,
     last_ping: Option<u64>,
     update_counter: usize, // Counter for throttling debug logs
     last_activity: std::time::Instant, // Track last activity time
@@ -65,7 +178,7 @@ pub struct SocketFlowServer {
 }
 
 impl SocketFlowServer {
-    pub fn new(app_state: Arc<AppState>, settings: Arc<RwLock<crate::config::Settings>>) -> Self {
+    pub fn new(app_state: Arc<AppState>, settings: Arc<RwLock<crate::config::Settings>>, client_manager: Option<Arc<ClientManager>>) -> Self {
         // Get dynamic rate settings from config
         let min_update_rate = settings
             .try_read()
@@ -97,6 +210,8 @@ impl SocketFlowServer {
         Self {
             app_state,
             settings,
+            client_id: None,
+            client_manager,
             last_ping: None,
             update_counter: 0,
             last_activity: std::time::Instant::now(),
@@ -264,7 +379,26 @@ impl Actor for SocketFlowServer {
     type Context = ws::WebsocketContext<Self>;
 
     fn started(&mut self, ctx: &mut Self::Context) {
-        info!("[WebSocket] Client connected successfully");
+        // Register this client with the client manager
+        if let Some(client_manager) = &self.client_manager {
+            let addr = ctx.address();
+            let addr_clone = addr.clone();
+            
+            // Use actix's runtime to avoid blocking in the actor's started method
+            let cm_clone = client_manager.clone();
+            actix::spawn(async move {
+                let client_id = cm_clone.register(addr_clone).await;
+                // Send a message back to the actor with its client ID
+                addr.do_send(SetClientId(client_id));
+            });
+        }
+    
+        info!("[WebSocket] New client connected");
+        self.last_activity = std::time::Instant::now();
+        
+        // We'll retrieve client ID asynchronously via message
+        self.client_id = None;
+
         self.last_activity = std::time::Instant::now();
         
         // Set up server-side heartbeat ping to keep connection alive
@@ -299,8 +433,17 @@ impl Actor for SocketFlowServer {
         self.last_activity = std::time::Instant::now();
     }
 
-    fn stopped(&mut self, _: &mut Self::Context) {
-        info!("[WebSocket] Client disconnected");
+    fn stopped(&mut self, _ctx: &mut Self::Context) {
+        // Unregister this client when it disconnects
+        if let Some(client_id) = self.client_id {
+            if let Some(client_manager) = &self.client_manager {
+                let client_manager_clone = client_manager.clone();
+                actix::spawn(async move {
+                    client_manager_clone.unregister(client_id).await;
+                });
+            }
+            info!("[WebSocket] Client {} disconnected", client_id);
+        }
     }
 }
 
@@ -408,7 +551,7 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
                                 }
                             }
                             Some("requestInitialData") => {
-                                info!("Received request for position updates");
+                                info!("Client requested initial data - sending authoritative server state");
 
                                 // Use a smaller initial interval to start updates quickly
                                 let initial_interval = std::time::Duration::from_millis(10);
@@ -515,7 +658,7 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
                     let _settings_clone = act.settings.clone();
                                                 ctx.run_later(next_interval, move |act, ctx| {
                                                     // Recursively call the handler to restart the cycle
-                                                    act.handle(Ok(ws::Message::Text("{\"type\":\"requestInitialData\"}".to_string().into())), ctx);
+                                                    <SocketFlowServer as StreamHandler<Result<ws::Message, ws::ProtocolError>>>::handle(act, Ok(ws::Message::Text("{\"type\":\"requestPositionUpdates\"}".to_string().into())), ctx);
                                                 });
                                                 
                                                 // Log performance metrics periodically
@@ -595,27 +738,33 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
                 match binary_protocol::decode_node_data(&data) {
                     Ok(nodes) => {
                         info!("Decoded {} nodes from binary message", nodes.len());
+                        let _nodes_vec: Vec<_> = nodes.clone().into_iter().collect();
+
                         // CRITICAL FIX: Remove node count limitation to allow processing batches from randomization
                         // Previous code only allowed 2 nodes maximum, which blocked randomization batches
                         {
                             let app_state = self.app_state.clone();
-                            let nodes_vec: Vec<_> = nodes.into_iter().collect();
+                            let nodes_vec: Vec<_> = nodes.clone().into_iter().collect();
 
                             let fut = async move {
-                                let mut graph = app_state.graph_service.get_graph_data_mut().await;
-                                let mut node_map = app_state.graph_service.get_node_map_mut().await;
-
-                                for (node_id, node_data) in nodes_vec {
+                                for (node_id, node_data) in &nodes_vec {
                                     // Convert node_id to string for lookup
-                                    let node_id_str = node_id.to_string();
+                                    let _node_id_str = node_id.to_string();
                                     
                                     // Debug logging for node ID tracking
-                                    if node_id < 5 {
+                                    if *node_id < 5 {
                                         debug!(
                                             "Processing binary update for node ID: {} with position [{:.3}, {:.3}, {:.3}]",
                                             node_id, node_data.position.x, node_data.position.y, node_data.position.z
                                         );
                                     }
+                                }
+
+                                let mut graph = app_state.graph_service.get_graph_data_mut().await;
+                                let mut node_map = app_state.graph_service.get_node_map_mut().await;
+
+                                for (node_id, node_data) in nodes_vec {
+                                    let node_id_str = node_id.to_string();
                                     
                                     if let Some(node) = node_map.get_mut(&node_id_str) {
                                         // Node exists with this numeric ID
@@ -749,7 +898,10 @@ pub async fn socket_flow_handler(
         return Ok(HttpResponse::BadRequest().body("WebSocket upgrade required"));
     }
 
-    let ws = SocketFlowServer::new(app_state.into_inner(), settings.get_ref().clone());
+    // Get the client manager from app state
+    let client_manager = app_state.ensure_client_manager().await;
+
+    let ws = SocketFlowServer::new(app_state.into_inner(), settings.get_ref().clone(), Some(client_manager));
 
     match ws::start(ws, &req, stream) {
         Ok(response) => {

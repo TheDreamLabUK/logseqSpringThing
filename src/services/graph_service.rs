@@ -23,6 +23,7 @@ use crate::config::Settings;
 use crate::utils::gpu_compute::GPUCompute;
 use crate::models::simulation_params::{SimulationParams, SimulationPhase, SimulationMode};
 use crate::models::pagination::PaginatedGraphData;
+use crate::handlers::socket_flow_handler::ClientManager;
 use tokio::sync::Mutex;
 use once_cell::sync::Lazy;
 
@@ -40,6 +41,15 @@ static SIMULATION_MUTEX: Lazy<Mutex<String>> = Lazy::new(|| Mutex::new(String::n
 // Cache configuration
 const NODE_POSITION_CACHE_TTL_MS: u64 = 50; // 50ms cache time
 const METADATA_FILE_WAIT_TIMEOUT_MS: u64 = 5000; // 5 second wait timeout
+
+// Physics stabilization constants
+const STABLE_THRESHOLD_ITERATIONS: usize = 100; // Number of iterations with minimal movement
+const POSITION_STABILITY_THRESHOLD: f32 = 0.001; // 1mm threshold for stability
+
+// Rate limiting and conflict resolution constants
+const UPDATE_RATE_LIMIT_MS: u64 = 16; // ~60fps max update rate
+const POSITION_CONFLICT_THRESHOLD: f32 = 0.001; // 1mm threshold for position conflicts
+const MAX_CONCURRENT_UPDATES: usize = 100; // Maximum number of node updates per batch
 const METADATA_FILE_CHECK_INTERVAL_MS: u64 = 100; // Check every 100ms
 // Constants for GPU retry mechanism
 const MAX_GPU_CALCULATION_RETRIES: u32 = 3;
@@ -51,13 +61,20 @@ pub struct GraphService {
     node_map: Arc<RwLock<HashMap<String, Node>>>,
     gpu_compute: Option<Arc<RwLock<GPUCompute>>>,
     node_positions_cache: Arc<RwLock<Option<(Vec<Node>, Instant)>>>,
+    last_update: Arc<RwLock<Instant>>,
+    pending_updates: Arc<RwLock<HashMap<String, (Node, Instant)>>>,
     cache_enabled: bool,
     simulation_id: String,
+    client_manager: Option<Arc<ClientManager>>,
+    is_initialized: Arc<AtomicBool>,
     shutdown_requested: Arc<AtomicBool>,
 }
 
 impl GraphService {
-    pub async fn new(settings: Arc<RwLock<Settings>>, gpu_compute: Option<Arc<RwLock<GPUCompute>>>) -> Self {
+    pub async fn new(
+        settings: Arc<RwLock<Settings>>, 
+        gpu_compute: Option<Arc<RwLock<GPUCompute>>>,
+        client_manager: Option<Arc<ClientManager>>) -> Self {
         // Get physics settings
         let physics_settings = settings.read().await.visualization.physics.clone();
 
@@ -94,8 +111,12 @@ impl GraphService {
             graph_data: Arc::new(RwLock::new(GraphData::default())),
             node_map: node_map.clone(),
             gpu_compute,
+            last_update: Arc::new(RwLock::new(Instant::now())),
+            pending_updates: Arc::new(RwLock::new(HashMap::new())),
             node_positions_cache: Arc::new(RwLock::new(None)),
             cache_enabled: true,
+            client_manager,
+            is_initialized: Arc::new(AtomicBool::new(false)),
             simulation_id: simulation_id.clone(),
             shutdown_requested: shutdown_requested.clone(),
         };
@@ -136,6 +157,10 @@ impl GraphService {
         drop(guard);
         
         info!("[GraphService] Starting physics simulation loop (ID: {})", loop_simulation_id);
+        
+        // Clone graph_service twice - one for the async block and one for return
+        let graph_service_clone = graph_service.clone();
+        let return_service = graph_service.clone();
         tokio::spawn(async move {
             let params = SimulationParams {
                 iterations: physics_settings.iterations,
@@ -181,6 +206,9 @@ impl GraphService {
                         } else {
                             debug!("[Graph:{}] GPU calculation completed successfully", loop_simulation_id);
                             debug!("[Graph:{}] Successfully calculated layout for {} nodes", loop_simulation_id, graph.nodes.len());
+                            
+                            // Broadcast position updates to all clients
+                            Self::broadcast_positions(&graph_service_clone, &graph.nodes).await;
                         }
                     } else {
                         // Use CPU fallback when GPU is not available
@@ -190,6 +218,9 @@ impl GraphService {
                         } else {
                             debug!("[Graph:{}] CPU calculation completed successfully", loop_simulation_id);
                             debug!("[Graph:{}] Successfully calculated layout with CPU fallback for {} nodes", loop_simulation_id, graph.nodes.len());
+                            
+                            // Broadcast position updates to all clients
+                            Self::broadcast_positions(&graph_service_clone, &graph.nodes).await;
                         }
                     }
                 } else {
@@ -204,9 +235,68 @@ impl GraphService {
             drop(loop_guard); // Explicitly drop the guard to trigger the cleanup
         }); 
 
-        graph_service
+        return_service
     }
     
+    // Helper method to check for update rate limiting
+    async fn should_rate_limit(&self) -> bool {
+        let now = Instant::now();
+        let last = *self.last_update.read().await;
+        if now.duration_since(last).as_millis() < UPDATE_RATE_LIMIT_MS as u128 {
+            return true;
+        }
+        *self.last_update.write().await = now;
+        false
+    }
+
+    // Helper method to resolve position conflicts
+    fn resolve_position_conflict(current: &Node, update: &Node) -> Node {
+        let mut resolved = current.clone();
+        
+        // Calculate position differences
+        let dx = update.data.position.x - current.data.position.x;
+        let dy = update.data.position.y - current.data.position.y;
+        let dz = update.data.position.z - current.data.position.z;
+        
+        // If difference is significant, use update position
+        if dx*dx + dy*dy + dz*dz > POSITION_CONFLICT_THRESHOLD*POSITION_CONFLICT_THRESHOLD {
+            resolved.data.position = update.data.position.clone();
+            
+            // Average the velocities to smooth transitions
+            resolved.data.velocity.x = (current.data.velocity.x + update.data.velocity.x) * 0.5;
+            resolved.data.velocity.y = (current.data.velocity.y + update.data.velocity.y) * 0.5;
+            resolved.data.velocity.z = (current.data.velocity.z + update.data.velocity.z) * 0.5;
+        }
+        
+        // Preserve mass and flags from current node
+        resolved.data.mass = current.data.mass;
+        resolved.data.flags = current.data.flags;
+        
+        resolved
+    }
+
+    // Helper method to clean up old pending updates
+    async fn cleanup_pending_updates(&self) {
+        let mut pending = self.pending_updates.write().await;
+        let now = Instant::now();
+        pending.retain(|_, (_, timestamp)| {
+            now.duration_since(*timestamp).as_millis() < UPDATE_RATE_LIMIT_MS as u128
+        });
+    }
+
+    // Helper method to broadcast position updates to all clients
+    async fn broadcast_positions(service: &GraphService, nodes: &[Node]) {
+        if let Some(client_manager) = &service.client_manager {
+            // Clone nodes for broadcasting
+            let nodes_to_broadcast = nodes.to_vec();
+            
+            // Broadcast to all clients through the client manager
+            client_manager.broadcast_node_positions(nodes_to_broadcast).await;
+        } else {
+            debug!("No client manager available for broadcasting positions");
+        }
+    }
+
     /// Shutdown the simulation loop to allow creating a new instance
     pub async fn shutdown(&self) {
         info!("[GraphService] Shutting down simulation loop (ID: {})", self.simulation_id);
@@ -855,83 +945,53 @@ impl GraphService {
         node_map: &mut HashMap<String, Node>,
         params: &SimulationParams,
     ) -> std::io::Result<()> {
-        debug!("[calculate_layout_cpu] Starting CPU calculation with {} nodes", graph.nodes.len());
-        // Get current timestamp for performance tracking
-        let start_time = std::time::Instant::now();
+        let nodes_len = graph.nodes.len();
+        debug!("[calculate_layout_cpu] Starting CPU calculation with {} nodes", nodes_len);
         
         // Early return if there are no nodes to process
-        if graph.nodes.is_empty() {
-            debug!("[calculate_layout_cpu] No nodes to process");
+        if nodes_len == 0 {
             return Ok(());
         }
         
-        // Convert the simulation parameters to local variables for easier access
-        let spring_strength = params.spring_strength;
-        let repulsion = params.repulsion;
-        let damping = params.damping;
-        let max_repulsion_distance = params.max_repulsion_distance;
-        let time_step = params.time_step;
-        let enable_bounds = params.enable_bounds;
-        let bounds_size = params.viewport_bounds;
-        let boundary_damping = params.boundary_damping;
-        let mass_scale = params.mass_scale;
-        
-        // Create a copy of nodes for thread safety during force calculation
-        let nodes_copy: Vec<Node> = graph.nodes.clone();
-        
         // Initialize force accumulators for each node
-        let mut forces: Vec<(f32, f32, f32)> = vec![(0.0, 0.0, 0.0); graph.nodes.len()];
+        let mut forces = vec![(0.0, 0.0, 0.0); nodes_len];
         
         // Calculate repulsive forces between all pairs of nodes
-        // This is an O(n²) operation - the most expensive part of the algorithm
-        for i in 0..nodes_copy.len() {
-            for j in (i+1)..nodes_copy.len() {
-                let node_i = &nodes_copy[i];
-                let node_j = &nodes_copy[j];
+        for i in 0..nodes_len {
+            for j in (i+1)..nodes_len {
+                let node_i = &graph.nodes[i];
+                let node_j = &graph.nodes[j];
                 
                 // Calculate distance between nodes
                 let dx = node_j.data.position.x - node_i.data.position.x;
                 let dy = node_j.data.position.y - node_i.data.position.y;
                 let dz = node_j.data.position.z - node_i.data.position.z;
-                
                 let distance_squared = dx * dx + dy * dy + dz * dz;
                 
                 // Avoid division by zero and limit maximum repulsion distance
-                if distance_squared < 0.0001 {
-                    continue;
-                }
-                
+                if distance_squared < 0.0001 { continue; }
                 let distance = distance_squared.sqrt();
+                if distance > params.max_repulsion_distance { continue; }
                 
-                // Only apply repulsion within max_repulsion_distance
-                if distance > max_repulsion_distance {
-                    continue;
-                }
-                
-                // Use inverse-square law for repulsion (like gravity/electrostatic)
                 // Calculate repulsion strength based on node masses (stored in data.mass) and distance
-                let mass_i = (node_i.data.mass as f32 / 255.0) * 10.0 * mass_scale;
-                let mass_j = (node_j.data.mass as f32 / 255.0) * 10.0 * mass_scale;
-                
-                // Normalize the repulsion to be between 0 and 1 based on max distance
-                let _normalized_distance = distance / max_repulsion_distance;
-                let repulsion_factor = repulsion * mass_i * mass_j / distance_squared;
+                let mass_i = (node_i.data.mass as f32 / 255.0) * 10.0 * params.mass_scale;
+                let mass_j = (node_j.data.mass as f32 / 255.0) * 10.0 * params.mass_scale;
+                let repulsion_factor = params.repulsion * mass_i * mass_j / distance_squared;
                 
                 // Normalize direction
                 let nx = dx / distance;
                 let ny = dy / distance;
                 let nz = dz / distance;
                 
-                // Apply repulsive force (nodes push each other away)
+                // Calculate forces (nodes push each other away)
                 let fx = nx * repulsion_factor;
                 let fy = ny * repulsion_factor;
                 let fz = nz * repulsion_factor;
                 
-                // Add forces (equal and opposite for each node)
+                // Apply forces to both nodes (equal and opposite)
                 forces[i].0 -= fx;
                 forces[i].1 -= fy;
                 forces[i].2 -= fz;
-                
                 forces[j].0 += fx;
                 forces[j].1 += fy;
                 forces[j].2 += fz;
@@ -940,107 +1000,61 @@ impl GraphService {
         
         // Calculate attractive forces for edges (spring forces)
         for edge in &graph.edges {
-            // Find indices of source and target nodes
             let source_idx = graph.nodes.iter().position(|n| n.id == edge.source);
             let target_idx = graph.nodes.iter().position(|n| n.id == edge.target);
             
             if let (Some(i), Some(j)) = (source_idx, target_idx) {
-                let node_i = &nodes_copy[i];
-                let node_j = &nodes_copy[j];
+                let node_i = &graph.nodes[i];
+                let node_j = &graph.nodes[j];
                 
                 // Calculate distance between nodes
                 let dx = node_j.data.position.x - node_i.data.position.x;
                 let dy = node_j.data.position.y - node_i.data.position.y;
                 let dz = node_j.data.position.z - node_i.data.position.z;
-                
                 let distance_squared = dx * dx + dy * dy + dz * dz;
-                
-                // Avoid division by zero
-                if distance_squared < 0.0001 {
-                    continue;
-                }
-                
+                if distance_squared < 0.0001 { continue; }
                 let distance = distance_squared.sqrt();
                 
                 // Spring force increases with distance and edge weight
-                let spring_factor = spring_strength * edge.weight * distance;
+                let spring_factor = params.spring_strength * edge.weight * distance;
                 
                 // Normalize direction
                 let nx = dx / distance;
                 let ny = dy / distance;
                 let nz = dz / distance;
                 
-                // Apply spring force (edges pull nodes together)
+                // Calculate spring forces (edges pull nodes together)
                 let fx = nx * spring_factor;
                 let fy = ny * spring_factor;
                 let fz = nz * spring_factor;
                 
-                // Add forces (pulling both nodes toward each other)
+                // Apply spring forces 
                 forces[i].0 += fx;
                 forces[i].1 += fy;
                 forces[i].2 += fz;
-                
                 forces[j].0 -= fx;
                 forces[j].1 -= fy;
                 forces[j].2 -= fz;
             }
         }
         
-        // Update velocities and positions based on calculated forces
-        for (i, node) in graph.nodes.iter_mut().enumerate() {
+        // Update velocities and positions for all nodes
+        for (i, node) in graph.nodes.iter_mut().enumerate() {            
             // Apply force to velocity with damping
-            node.set_vx(node.data.velocity.x * damping + forces[i].0 * time_step);
-            node.set_vy(node.data.velocity.y * damping + forces[i].1 * time_step);
-            node.set_vz(node.data.velocity.z * damping + forces[i].2 * time_step);
+            node.set_vx(node.data.velocity.x * params.damping + forces[i].0 * params.time_step);
+            node.set_vy(node.data.velocity.y * params.damping + forces[i].1 * params.time_step);
+            node.set_vz(node.data.velocity.z * params.damping + forces[i].2 * params.time_step);
             
             // Update position based on velocity
-            node.set_x(node.data.position.x + node.data.velocity.x * time_step);
-            node.set_y(node.data.position.y + node.data.velocity.y * time_step);
-            node.set_z(node.data.position.z + node.data.velocity.z * time_step);
-            
-            // Apply boundary constraints if enabled
-            if enable_bounds {
-                let half_bounds = bounds_size / 2.0;
-                
-                // For each axis, if position exceeds boundary:
-                // 1. Clamp position to boundary
-                // 2. Reverse velocity with damping
-                
-                if node.data.position.x > half_bounds {
-                    node.set_x(half_bounds);
-                    node.set_vx(-node.data.velocity.x * boundary_damping);
-                } else if node.data.position.x < -half_bounds {
-                    node.set_x(-half_bounds);
-                    node.set_vx(-node.data.velocity.x * boundary_damping);
-                }
-                
-                if node.data.position.y > half_bounds {
-                    node.set_y(half_bounds);
-                    node.set_vy(-node.data.velocity.y * boundary_damping);
-                } else if node.data.position.y < -half_bounds {
-                    node.set_y(-half_bounds);
-                    node.set_vy(-node.data.velocity.y * boundary_damping);
-                }
-                
-                if node.data.position.z > half_bounds {
-                    node.set_z(half_bounds);
-                    node.set_vz(-node.data.velocity.z * boundary_damping);
-                } else if node.data.position.z < -half_bounds {
-                    node.set_z(-half_bounds);
-                    node.set_vz(-node.data.velocity.z * boundary_damping);
-                }
-            }
+            node.set_x(node.data.position.x + node.data.velocity.x * params.time_step);
+            node.set_y(node.data.position.y + node.data.velocity.y * params.time_step);
+            node.set_z(node.data.position.z + node.data.velocity.z * params.time_step);
             
             // Update node_map as well
             if let Some(map_node) = node_map.get_mut(&node.id) {
                 map_node.data = node.data.clone();
             }
         }
-        
-        // Log performance info
-        let elapsed = start_time.elapsed();
-        info!("[calculate_layout_cpu] Updated positions for {} nodes in {:?}", 
-             graph.nodes.len(), elapsed);
         
         Ok(())
     }
@@ -1157,21 +1171,47 @@ impl GraphService {
     pub async fn update_node_positions(&self, updates: Vec<(u16, Node)>) -> Result<(), Error> {
         let mut graph = self.graph_data.write().await;
         let mut node_map = self.node_map.write().await;
+        
+        // Process node updates efficiently
+        let mut updated_count = 0;
+        let mut skipped_count = 0;
+        
+        // Process updates in batches
+        for (node_id_u16, update_node) in updates {
+            let node_id = node_id_u16.to_string(); 
 
-        for (node_id_u16, node_data) in updates {
-            let node_id = node_id_u16.to_string();
-            if let Some(node) = node_map.get_mut(&node_id) {
-                node.data = node_data.data.clone();
+            // Skip if this is a redundant update based on rate limiting
+            if self.should_rate_limit().await {
+                skipped_count += 1;
+                continue;
+            }
+            
+            // Apply update with conflict resolution if node exists
+            if let Some(existing_node) = node_map.get_mut(&node_id) {
+                // Create a new node with updated position/velocity but preserving other data
+                let mut resolved_node = update_node.clone();
+                
+                // Preserve important attributes from existing node
+                resolved_node.data.mass = existing_node.data.mass;
+                resolved_node.data.flags = existing_node.data.flags;
+                resolved_node.metadata = existing_node.metadata.clone();
+                
+                // Update the node in the map
+                *existing_node = resolved_node;
+                updated_count += 1;
             }
         }
-
-        // Update graph nodes with new positions from the map
-        for node in &mut graph.nodes {
-            if let Some(updated_node) = node_map.get(&node.id) {
-                node.data = updated_node.data.clone();
+        
+        // Sync graph nodes with node_map
+        graph.nodes.iter_mut().for_each(|node| {
+            if let Some(map_node) = node_map.get(&node.id) {
+                node.data = map_node.data.clone();
             }
-        }
-
+        });
+        
+        // Broadcast all positions 
+        Self::broadcast_positions(self, &graph.nodes).await;
+        
         Ok(())
     }
 

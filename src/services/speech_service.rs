@@ -1,6 +1,5 @@
 use tokio::sync::{mpsc, Mutex, RwLock};
 use tokio_tungstenite::{connect_async, WebSocketStream, MaybeTlsStream, tungstenite};
-use tokio_tungstenite::tungstenite::Message;
 use tungstenite::http::Request;
 use serde_json::json;
 use std::sync::Arc;

@@ -103,16 +103,6 @@ export class WebSocketService {
     private constructor() {
         // Don't automatically connect - wait for explicit connect() call
         
-        // Listen for reset events (when graph data is cleared)
-        window.addEventListener('graph-data-reset', () => {
-            this.resetNodeIndices();
-        });
-    }
-    
-    private resetNodeIndices(): void {
-        this.nodeNameToIndexMap.clear();
-        this.nextNodeIndex = 0;
-        logger.info('Node indices reset');
     }
 
     public static getInstance(): WebSocketService {
@@ -372,159 +362,80 @@ export class WebSocketService {
             }
             
             const decompressedBuffer = this.tryDecompress(buffer);
-
+            
             // Check if buffer is empty or too small after decompression
             if (!decompressedBuffer || decompressedBuffer.byteLength === 0) {
                 logger.error('Empty binary message after decompression');
                 return;
             }
-
+            
             // Check if there's enough data for at least one node
             if (decompressedBuffer.byteLength < BYTES_PER_NODE) {
                 logger.error(`Failed to decode binary message: Data too small to contain any nodes (${decompressedBuffer.byteLength} bytes, need at least ${BYTES_PER_NODE})`);
                 return;
             }
             
-            // Throttled debug logging for binary messages
-            debugLog('Binary data processed:', createDataMetadata({ 
-                rawSize: buffer.byteLength, 
-                initialDataReceived: this.initialDataReceived,
-                decompressedSize: decompressedBuffer.byteLength, 
-                nodeCount: Math.floor(decompressedBuffer.byteLength / BYTES_PER_NODE)
-            }));
-            logger.debug(`Received binary update with ${Math.floor(decompressedBuffer.byteLength / BYTES_PER_NODE)} nodes`);
-            
-            const dataView = new DataView(decompressedBuffer);
-            
             // Calculate how many complete nodes we can read
             const nodeCount = Math.floor(decompressedBuffer.byteLength / BYTES_PER_NODE);
-            
-            // If there's a remainder, log it but continue processing the complete nodes
-            const remainder = decompressedBuffer.byteLength % BYTES_PER_NODE;
-            if (remainder > 0) {
-                // This shouldn't happen as the server should send complete node data
-                logger.warn(`Binary message has ${remainder} extra bytes that don't form a complete node. ` +
-                          `Processing ${nodeCount} complete nodes.`);
-                if (debugState.isDataDebugEnabled()) {
-                    logger.debug(`Buffer size: ${decompressedBuffer.byteLength}, Node size: ${BYTES_PER_NODE}, Nodes: ${nodeCount}, Remainder: ${remainder}`);
-                }
-            }
-
-            if (nodeCount === 0) {
-                logger.warn('No nodes in binary update - empty message received');
-                return;
-            }
-            
-            // Start reading nodes from the beginning
-            let offset = 0;
+            const dataView = new DataView(decompressedBuffer);
             const nodes: BinaryNodeData[] = [];
             
+            let offset = 0;
+            // Process each complete node in the buffer
             for (let i = 0; i < nodeCount; i++) {
-                // Read node ID (u16)
                 const id = dataView.getUint16(offset, true);
                 offset += 2;
-
-                // Skip nodes with invalid IDs
-                if (id === 0 || id === 65535 || id > MAX_U16_VALUE) { // 0 and 65535 are often used as sentinel values
-                    if (debugState.isNodeDebugEnabled()) {
-                        logger.debug(`Skipping node with reserved ID: ${id}`);
-                    }
-                    offset += 24; // Skip position and velocity (2×12 bytes)
+                
+                // Skip invalid IDs
+                if (id === 0 || id === 65535 || id > MAX_U16_VALUE) {
+                    offset += 24; // Skip the rest of this node data
                     continue;
                 }
                 
-                // Create THREE.Vector3 objects directly
                 const position = new Vector3(
                     dataView.getFloat32(offset, true),     // x
                     dataView.getFloat32(offset + 4, true), // y
                     dataView.getFloat32(offset + 8, true)  // z
                 );
-                
-                // Update offset after reading position vector (12 bytes: 3×4 bytes)
                 offset += 12;
-
-                // Now read velocity with the updated offset
+                
                 const velocity = new Vector3(
                     dataView.getFloat32(offset, true),      // x
                     dataView.getFloat32(offset + 4, true),  // y
                     dataView.getFloat32(offset + 8, true)   // z
                 );
-                
-                // Update offset after reading velocity (12 bytes: 3×4 bytes)
                 offset += 12;
-
-                // Apply deadband filtering - only include if position has changed significantly
-                const lastPosition = this.lastNodePositions.get(id);
-                let positionChanged = true;
                 
+                // Apply position filtering
+                const lastPosition = this.lastNodePositions.get(id);
                 if (lastPosition) {
                     // Calculate squared distance to avoid unnecessary sqrt
                     const dx = position.x - lastPosition.x;
                     const dy = position.y - lastPosition.y;
                     const dz = position.z - lastPosition.z;
                     const distanceSquared = dx*dx + dy*dy + dz*dz;
-                    
-                    // Only consider position changed if it exceeds our threshold
-                    positionChanged = distanceSquared > (POSITION_DEADBAND * POSITION_DEADBAND);
-                    
-                    if (!positionChanged && Math.random() < 0.001) { // Log occasionally (0.1% chance)
-                        if (debugState.isWebsocketDebugEnabled()) {
-                            logger.debug(`Filtering node ${id} - position change too small: ${Math.sqrt(distanceSquared).toFixed(5)} < ${POSITION_DEADBAND}`);
-                        }
-                        continue; // Skip this position update entirely
-                    }
-                }
                 
-                // Store this position for future comparisons
-                this.lastNodePositions.set(id, position.clone());
-                
-                // Only include the node if position changed or we don't have a previous position
-                if (positionChanged) {
-                    // IMPORTANT: Use the string nodeId that matches the metadata format
-                    // This ensures the position updates will be correctly applied to
-                    // the nodes with matching metadata
-                    nodes.push({ 
-                        id, 
-                        position, velocity });
-                    
-                    // Debug logging for node ID tracking
-                    if (debugState.isNodeDebugEnabled() && Math.random() < 0.01) {
-                        logger.debug(`Processing node ID ${id} from binary update`);
-                    }
+                    // Skip if change is too small
+                    if (distanceSquared <= (POSITION_DEADBAND * POSITION_DEADBAND)) {
+                        continue;
+                    } 
                 }
-            }
 
-            // Enhanced logging for node ID tracking - log every 100th update
-            const shouldLogExtras = debugState.isNodeDebugEnabled() && Math.random() < 0.01; // ~1% chance to log per update
-                
-            if (shouldLogExtras) {
-                // Sample a few nodes for debugging
-                const sampleNodes = nodes.slice(0, Math.min(3, nodes.length));
-                if (sampleNodes.length > 0) {
-                    logger.debug('Node binary update sample:', createDataMetadata({
-                        sampleSize: sampleNodes.length,
-                        totalNodes: nodes.length,
-                        nodeInfo: sampleNodes.map(n => ({
-                            id: n.id,
-                            position: { 
-                                x: n.position.x.toFixed(2), 
-                                y: n.position.y.toFixed(2), 
-                                z: n.position.z.toFixed(2) 
-                            }
-                        }))
-                    }));
-                }
+                // Store position for future comparison
+                this.lastNodePositions.set(id, position.clone());
+
+                // Add node to processed list
+                nodes.push({ id, position, velocity });
             }
 
             // Add nodes to pending updates
             if (nodes.length > 0) {
                 this.pendingNodeUpdates.push(...nodes);
-                
+
                 // Process updates with throttling
                 if (this.updateThrottler.shouldUpdate()) {
                     this.processPendingNodeUpdates();
                 } else {
-                    // Schedule processing if not already scheduled
                     if (this.nodeUpdateTimer === null) {
                         this.nodeUpdateTimer = window.setTimeout(() => {
                             this.processPendingNodeUpdates();

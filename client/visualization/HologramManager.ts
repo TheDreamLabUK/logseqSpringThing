@@ -152,28 +152,36 @@ export class HologramManager {
     }
 
     update(deltaTime: number) {
-        this.group.traverse(child => {
-            if (child instanceof InstancedMesh) {
-                const rotationSpeed = this.settings.visualization.hologram.globalRotationSpeed;
-                
-                // Update each instance's rotation
-                for (let i = 0; i < child.count; i++) {
-                    child.getMatrixAt(i, this.tempMatrix);
-                    
-                    // Apply rotation based on instance index
-                    const instanceSpeed = rotationSpeed * (i + 1);
-                    this.tempMatrix.multiply(new Matrix4().makeRotationY(instanceSpeed * deltaTime));
-                    
-                    child.setMatrixAt(i, this.tempMatrix);
-                }
-                
-                child.instanceMatrix.needsUpdate = true;
-                
-                // Update shader time
-                const material = child.material as HologramShaderMaterial;
-                material.update(deltaTime);
-            }
-        });
+        // Get base rotation speed from settings
+        const rotationSpeed = this.settings.visualization.hologram.globalRotationSpeed;
+        
+        // Process all ring instances
+        for (const instance of this.ringInstances) {
+            this.updateInstancedMeshRotations(instance, rotationSpeed, deltaTime);
+        }
+        
+        // Process all sphere instances
+        for (const instance of this.sphereInstances) {
+            this.updateInstancedMeshRotations(instance, rotationSpeed, deltaTime);
+        }
+    }
+    
+    private updateInstancedMeshRotations(mesh: InstancedMesh, rotationSpeed: number, deltaTime: number) {
+        // Update each instance's rotation
+        for (let i = 0; i < mesh.count; i++) {
+            mesh.getMatrixAt(i, this.tempMatrix);
+            
+            // Apply rotation based on instance index (faster for higher indices)
+            const instanceSpeed = rotationSpeed * (i + 1);
+            this.tempMatrix.multiply(new Matrix4().makeRotationY(instanceSpeed * deltaTime));
+            mesh.setMatrixAt(i, this.tempMatrix);
+        }
+        mesh.instanceMatrix.needsUpdate = true;
+        
+        // Update shader time in material
+        if (mesh.material instanceof HologramShaderMaterial) {
+            mesh.material.update(deltaTime);
+        }
     }
 
     updateSettings(newSettings: Settings) {
