@@ -186,6 +186,7 @@ xr:
   portal_edge_width: 0.02
 ragflow:
   api_key: ''
+  agent_id: '302e58df9d4411ef929c0242ac120006'
   api_base_url: ''
   timeout: 30
   max_retries: 3
@@ -206,3 +207,12 @@ openai:
   base_url: ''
   timeout: 30
   rate_limit: 100
+kokoro:
+  api_url: 'http://pedantic_morse:8880'
+  default_voice: 'af_heart'
+  default_format: 'mp3'
+  default_speed: 1.0
+  timeout: 30
+  stream: true
+  return_timestamps: true
+  sample_rate: 24000

@@ -63,13 +63,32 @@ impl From<base64::DecodeError> for SpeechError {
 
 #[derive(Debug, Clone)]
 pub enum TTSProvider {
-    OpenAI,  // OpenAI is now the only supported provider
+    OpenAI,
+    Kokoro,
 }
 
 #[derive(Debug)]
 pub enum SpeechCommand {
     Initialize,
     SendMessage(String),
+    TextToSpeech(String, SpeechOptions),
     Close,
     SetTTSProvider(TTSProvider),
+}
+
+#[derive(Debug, Clone)]
+pub struct SpeechOptions {
+    pub voice: String,
+    pub speed: f32,
+    pub stream: bool,
+}
+
+impl Default for SpeechOptions {
+    fn default() -> Self {
+        Self {
+            voice: "af_heart".to_string(), // Default Kokoro voice
+            speed: 1.0,
+            stream: true,
+        }
+    }
 }

@@ -6,6 +6,7 @@ use webxr::{
         health_handler,
         pages_handler,
         socket_flow_handler::socket_flow_handler,
+        speech_socket_handler::speech_socket_handler,
         nostr_handler,
     },
     services::{
@@ -13,7 +14,8 @@ use webxr::{
         graph_service::GraphService,
         github::{GitHubClient, ContentAPI, GitHubConfig},
     },
-    utils::gpu_compute::GPUCompute
+    utils::gpu_compute::GPUCompute,
+    services::speech_service::SpeechService,
 };
 
 use actix_web::{web, App, HttpServer, middleware};
@@ -79,14 +81,20 @@ async fn main() -> std::io::Result<()> {
     let content_api = Arc::new(ContentAPI::new(github_client.clone()));
 
     // Initialize app state asynchronously
+    // Initialize speech service
+    let speech_service = {
+        let service = SpeechService::new(settings.clone());
+        Some(Arc::new(service))
+    };
+    
     let mut app_state = match AppState::new(
             settings.clone(),
             github_client.clone(),
             content_api.clone(),
             None,
             None,
-            None,
-            "default_conversation".to_string(),
+            speech_service,
+            None, "default_session".to_string(),
         ).await {
             Ok(state) => state,
             Err(e) => return Err(std::io::Error::new(std::io::ErrorKind::Other, format!("Failed to initialize app state: {}", e)))
@@ -233,6 +241,7 @@ async fn main() -> std::io::Result<()> {
             .app_data(app_state_data.nostr_service.clone().unwrap())
             .app_data(app_state_data.feature_access.clone())
             .route("/wss", web::get().to(socket_flow_handler))
+            .route("/speech", web::get().to(speech_socket_handler))
             .service(
                 web::scope("")
                     .configure(api_handler::config)

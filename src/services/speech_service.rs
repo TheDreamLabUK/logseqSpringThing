@@ -4,6 +4,7 @@ use tungstenite::http::Request;
 use serde_json::json;
 use std::sync::Arc;
 use tokio::task;
+use tokio::sync::broadcast;
 use crate::config::Settings;
 use log::{info, error, debug};
 use futures::{SinkExt, StreamExt};
@@ -11,13 +12,18 @@ use std::error::Error;
 use tokio::net::TcpStream;
 use url::Url;
 use base64::Engine as _;
-use base64::engine::general_purpose::STANDARD as BASE64;
-use crate::types::speech::{SpeechError, SpeechCommand, TTSProvider};
+use base64::engine::general_purpose::{STANDARD as BASE64};
+use crate::types::speech::{SpeechError, SpeechCommand, TTSProvider, SpeechOptions};
+use reqwest::Client;
+
 
 pub struct SpeechService {
     sender: Arc<Mutex<mpsc::Sender<SpeechCommand>>>,
     settings: Arc<RwLock<Settings>>,
     tts_provider: Arc<RwLock<TTSProvider>>,
+    // Audio broadcast channel for distributing TTS audio to all connected clients
+    audio_tx: broadcast::Sender<Vec<u8>>,
+    http_client: Arc<Client>,
 }
 
 impl SpeechService {
@@ -25,10 +31,18 @@ impl SpeechService {
         let (tx, rx) = mpsc::channel(100);
         let sender = Arc::new(Mutex::new(tx));
 
+        // Create a broadcast channel for audio data with buffer size of 100
+        let (audio_tx, _) = broadcast::channel(100);
+        
+        // Create HTTP client for Kokoro TTS API
+        let http_client = Arc::new(Client::new());
+
         let service = SpeechService {
             sender,
             settings,
-            tts_provider: Arc::new(RwLock::new(TTSProvider::OpenAI)),
+            tts_provider: Arc::new(RwLock::new(TTSProvider::Kokoro)), // Updated default to Kokoro
+            audio_tx,
+            http_client,
         };
 
         service.start(rx);
@@ -37,6 +51,9 @@ impl SpeechService {
 
     fn start(&self, mut receiver: mpsc::Receiver<SpeechCommand>) {
         let settings = Arc::clone(&self.settings);
+        let http_client = Arc::clone(&self.http_client);
+        let tts_provider = Arc::clone(&self.tts_provider);
+        let audio_tx = self.audio_tx.clone();
 
         task::spawn(async move {
             let mut ws_stream: Option<WebSocketStream<MaybeTlsStream<TcpStream>>> = None;
@@ -182,9 +199,109 @@ impl SpeechService {
                         }
                         break;
                     },
-                    SpeechCommand::SetTTSProvider(_) => {
-                        // OpenAI is now the only provider, so we ignore provider changes
-                        info!("TTS provider is fixed to OpenAI");
+                    SpeechCommand::SetTTSProvider(provider) => {
+                        // Update the provider
+                        let mut current_provider = tts_provider.write().await;
+                        *current_provider = provider.clone();
+                        info!("TTS provider updated to: {:?}", provider);
+                    },
+                    SpeechCommand::TextToSpeech(text, options) => {
+                        // Check which provider to use
+                        let provider = {
+                            let p = tts_provider.read().await;
+                            p.clone()
+                        };
+                        
+                        match provider {
+                            TTSProvider::OpenAI => {
+                                // Ignore OpenAI for now and just log
+                                info!("TextToSpeech command with OpenAI provider not implemented");
+                            },
+                            TTSProvider::Kokoro => {
+                                info!("Processing TextToSpeech command with Kokoro provider");
+                                let kokoro_settings = {
+                                    let s = settings.read().await;
+                                    s.kokoro.clone()
+                                };
+                                
+                                // Prepare Kokoro API request
+                                let api_url = format!("{}/v1/audio/speech", kokoro_settings.api_url);
+                                info!("Sending TTS request to Kokoro API: {}", api_url);
+                                
+                                let request_body = json!({
+                                    "model": "kokoro",
+                                    "input": text,
+                                    "voice": options.voice.clone(),
+                                    "response_format": kokoro_settings.default_format,
+                                    "speed": options.speed,
+                                    "stream": options.stream
+                                });
+                                
+                                let response = match http_client
+                                    .post(&api_url)
+                                    .header("Content-Type", "application/json")
+                                    .body(request_body.to_string())
+                                    .send()
+                                    .await
+                                {
+                                    Ok(response) => {
+                                        if !response.status().is_success() {
+                                            let status = response.status();
+                                            let error_text = response.text().await.unwrap_or_default();
+                                            error!("Kokoro API error {}: {}", status, error_text);
+                                            continue;
+                                        }
+                                        response
+                                    }
+                                    Err(e) => {
+                                        error!("Failed to connect to Kokoro API: {}", e);
+                                        continue;
+                                    }
+                                };
+                                
+                                // Handle the response (streaming or not)
+                                if options.stream {
+                                    let stream = response.bytes_stream();
+                                    let audio_broadcaster = audio_tx.clone();
+                                    
+                                    // Process the streaming response
+                                    tokio::spawn(async move {
+                                        let mut stream = Box::pin(stream);
+                                        
+                                        while let Some(item) = stream.next().await {
+                                            match item {
+                                                Ok(bytes) => {
+                                                    // Send audio chunk to all connected clients
+                                                    if let Err(e) = audio_broadcaster.send(bytes.to_vec()) {
+                                                        error!("Failed to broadcast audio chunk: {}", e);
+                                                    }
+                                                }
+                                                Err(e) => {
+                                                    error!("Error receiving audio stream: {}", e);
+                                                    break;
+                                                }
+                                            }
+                                        }
+                                        debug!("Finished streaming audio from Kokoro");
+                                    });
+                                } else {
+                                    // Handle non-streaming response
+                                    match response.bytes().await {
+                                        Ok(bytes) => {
+                                            // Send the complete audio file in one chunk
+                                            if let Err(e) = audio_tx.send(bytes.to_vec()) {
+                                                error!("Failed to send audio data: {}", e);
+                                            } else {
+                                                debug!("Sent {} bytes of audio data", bytes.len());
+                                            }
+                                        }
+                                        Err(e) => {
+                                            error!("Failed to get audio bytes: {}", e);
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -202,17 +319,32 @@ impl SpeechService {
         self.sender.lock().await.send(command).await.map_err(|e| Box::new(SpeechError::from(e)))?;
         Ok(())
     }
+    
+    pub async fn text_to_speech(&self, text: String, options: SpeechOptions) -> Result<(), Box<dyn Error>> {
+        let command = SpeechCommand::TextToSpeech(text, options);
+        self.sender.lock().await.send(command).await.map_err(|e| Box::new(SpeechError::from(e)))?;
+        Ok(())
+    }
 
     pub async fn close(&self) -> Result<(), Box<dyn Error>> {
         let command = SpeechCommand::Close;
         self.sender.lock().await.send(command).await.map_err(|e| Box::new(SpeechError::from(e)))?;
         Ok(())
     }
-
-    pub async fn set_tts_provider(&self, _use_openai: bool) -> Result<(), Box<dyn Error>> {
-        // OpenAI is now the only provider, so we ignore the parameter
-        let command = SpeechCommand::SetTTSProvider(TTSProvider::OpenAI);
+    
+    pub async fn set_tts_provider(&self, provider: TTSProvider) -> Result<(), Box<dyn Error>> {
+        let command = SpeechCommand::SetTTSProvider(provider);
         self.sender.lock().await.send(command).await.map_err(|e| Box::new(SpeechError::from(e)))?;
         Ok(())
+    }
+
+    // Get a subscriber to the audio broadcast channel
+    pub fn subscribe_to_audio(&self) -> broadcast::Receiver<Vec<u8>> {
+        self.audio_tx.subscribe()
+    }
+    
+    // Current provider
+    pub async fn get_tts_provider(&self) -> TTSProvider {
+        self.tts_provider.read().await.clone()
     }
 }
