@@ -12,38 +12,45 @@ LogseqXR transforms your Logseq knowledge base into an immersive 3D visualizatio
 
 ## Quick Links
 
-- [Project Overview](docs/overview/introduction.md)
-- [Technical Architecture](docs/overview/architecture.md)
-- [Development Setup](docs/development/setup.md)
-- [API Documentation](docs/api/index.md)
-- [Contributing Guidelines](docs/contributing/guidelines.md)
+- [Project Overview](documentation/index.md)
+- [Development Setup](documentation/development/setup.md)
+- [API Documentation](documentation/api/index.md)
+- [Contributing Guidelines](documentation/contributing.md)
 
-## Documentation Structure
+## Documentation
 
-### Overview
-- [Introduction & Features](docs/overview/introduction.md)
-- [System Architecture](docs/overview/architecture.md)
+Our documentation is organized into several key sections:
 
-### Technical Documentation
-- [WebSocket Communication](docs/technical/websockets.md)
-- [Binary Protocol](docs/technical/binary-protocol.md)
-- [Performance Optimizations](docs/technical/performance.md)
-- [Class Diagrams](docs/technical/class-diagrams.md)
+### Client Documentation
+- [Architecture](documentation/client/architecture.md)
+- [Components](documentation/client/components.md)
+- [Core Utilities](documentation/client/core.md)
+- [Rendering System](documentation/client/rendering.md)
+- [State Management](documentation/client/state.md)
+- [Type Definitions](documentation/client/types.md)
+- [Visualization](documentation/client/visualization.md)
+- [WebSocket Communication](documentation/client/websocket.md)
+- [WebXR Integration](documentation/client/xr.md)
 
-### Development
-- [Setup Guide](docs/development/setup.md)
-- [Debugging Guide](docs/development/debugging.md)
+### Server Documentation
+- [Architecture](documentation/server/architecture.md)
+- [Configuration](documentation/server/config.md)
+- [Request Handlers](documentation/server/handlers.md)
+- [Data Models](documentation/server/models.md)
+- [Services](documentation/server/services.md)
+- [Type Definitions](documentation/server/types.md)
+- [Utilities](documentation/server/utils.md)
 
 ### API Documentation
-- [API Overview](docs/api/index.md)
-- [REST API](docs/api/rest.md)
-- [WebSocket API](docs/api/websocket.md)
+- [REST API](documentation/api/rest.md)
+- [WebSocket API](documentation/api/websocket.md)
 
-### Deployment
-- [Docker Deployment](docs/deployment/docker.md)
+### Development and Deployment
+- [Development Setup](documentation/development/setup.md)
+- [Debugging Guide](documentation/development/debugging.md)
+- [Docker Deployment](documentation/deployment/docker.md)
+- [Contributing Guidelines](documentation/contributing.md)
 
-### Contributing
-- [Contributing Guidelines](docs/contributing/guidelines.md)
 
 ### Diagrams
 
