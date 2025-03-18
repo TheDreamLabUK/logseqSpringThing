@@ -76,6 +76,8 @@ export class WebSocketService {
     private reconnectTimeout: number | null = null;
     private connectionState: ConnectionState = ConnectionState.DISCONNECTED;
     private reconnectAttempts: number = 0;
+    // Add a readiness flag to track when the connection is fully established
+    private isReadyFlag: boolean = false;
     private readonly _maxReconnectAttempts: number = 5;
     // Keep track of node ID to numeric index mapping for binary protocol
     private nodeNameToIndexMap: Map<string, number> = new Map();
@@ -99,10 +101,18 @@ export class WebSocketService {
     private lastNodePositions: Map<number, Vector3> = new Map(); // Keep track of last sent positions
     private pendingNodeUpdates: BinaryNodeData[] = [];
 
+    /**
+     * Check if the WebSocket service is fully ready to handle binary updates.
+     * This requires both the connection to be established and the server to have
+     * sent a connection_established message.
+     * @returns boolean - true if the WebSocket is ready for binary updates
+     */
+    public isReady(): boolean {
+        return this.connectionState === ConnectionState.CONNECTED && this.isReadyFlag;
+    }
 
     private constructor() {
         // Don't automatically connect - wait for explicit connect() call
-        
     }
 
     public static getInstance(): WebSocketService {
@@ -163,6 +173,9 @@ export class WebSocketService {
             }
 
             this.connectionState = ConnectionState.CONNECTING;
+            // Reset the readiness flag when starting a new connection
+            this.isReadyFlag = false;
+            
             return new Promise((resolve, reject) => {
                 this.ws = new WebSocket(this.url);
                 this.setupWebSocketHandlers();
@@ -195,6 +208,10 @@ export class WebSocketService {
         this.ws.binaryType = 'arraybuffer';
 
         this.ws.onopen = (): void => {
+            // WebSocket is connected but not yet ready for binary updates
+            // We need to wait for the 'connection_established' message from the server
+            this.isReadyFlag = false;
+            
             logger.info('WebSocket connected successfully to', createMessageMetadata(this.url));
             this.connectionState = ConnectionState.CONNECTED;
             this.reconnectAttempts = 0;
@@ -226,9 +243,6 @@ export class WebSocketService {
             logger.error('WebSocket error:', createDataMetadata(event));
             // Don't call handleReconnect here, let onclose handle it
             // This prevents duplicate reconnection attempts when both error and close events fire
-            // if (this.ws?.readyState === WebSocket.CLOSED) {
-            //     this.handleReconnect();
-            // }
         };
 
         this.ws.onclose = (event: CloseEvent): void => {
@@ -239,6 +253,9 @@ export class WebSocketService {
                 wasConnected: this.connectionState === ConnectionState.CONNECTED,
                 url: this.url
             }));
+            
+            // Reset the readiness flag when the connection closes
+            this.isReadyFlag = false;
             
             // Clear heartbeat on connection close
             this.clearHeartbeat();
@@ -253,7 +270,6 @@ export class WebSocketService {
         this.ws.onmessage = (event: MessageEvent) => {
             try {
                 if (event.data instanceof ArrayBuffer) {
-                    
                     this.handleBinaryMessage(event.data);
                 } else if (typeof event.data === 'string') {
                     try {
@@ -282,9 +298,13 @@ export class WebSocketService {
                                 this.loadingStatusHandler(false);
                             }
                         } else if (message.type === 'connection_established') {
+                            // Set the readiness flag when we receive the connection_established message
+                            this.isReadyFlag = true;
+                            logger.info('WebSocket connection fully established and ready for binary updates');
                             logger.info('WebSocket message received:', createDataMetadata({
                                 type: message.type,
-                                timestamp: message.timestamp || Date.now()
+                                timestamp: message.timestamp || Date.now(),
+                                ready: true
                             }));
                         } else if (debugState.isWebsocketDebugEnabled()) {
                             logger.debug('WebSocket message received:', message);
@@ -481,6 +501,8 @@ export class WebSocketService {
         const prevState = this.connectionState;
         this.binaryMessageCallback = null;
         this.connectionState = ConnectionState.DISCONNECTED;
+        // Reset the readiness flag
+        this.isReadyFlag = false;
         
         logger.info(`WebSocket reconnect triggered (previous state: ${prevState})`);
         
@@ -514,6 +536,9 @@ export class WebSocketService {
 
     private handleReconnectFailure(): void {
         this.connectionState = ConnectionState.FAILED;
+        // Ensure readiness flag is reset
+        this.isReadyFlag = false;
+        
         logger.error('WebSocket reconnection failed after maximum attempts', createDataMetadata({
             attempts: this.reconnectAttempts,
             maxAttempts: this._maxReconnectAttempts,
@@ -855,6 +880,14 @@ export class WebSocketService {
         }
     }
 
+    /**
+     * Reset the readiness state. This should be called when reinitializing the connection.
+     */
+    public resetReadyState(): void {
+        this.isReadyFlag = false;
+        logger.info('WebSocket readiness state reset');
+    }
+
     public dispose(): void {
         if (this.reconnectTimeout !== null) {
             window.clearTimeout(this.reconnectTimeout);
@@ -878,6 +911,10 @@ export class WebSocketService {
         // Clear position tracking data to prevent memory leaks
         this.lastNodePositions.clear();
         this.pendingNodeUpdates = [];
+        
+        // Reset readiness flag
+        this.isReadyFlag = false;
+        
         if (this.ws) {
             logger.info('Closing WebSocket connection during disposal');
             this.ws.close();
@@ -893,6 +930,8 @@ export class WebSocketService {
     }
 
     public close(): void {
+        // Reset readiness flag when closing
+        this.isReadyFlag = false;
         if (this.ws) {
             this.ws.close();
             this.ws = null;

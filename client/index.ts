@@ -105,14 +105,36 @@ export class GraphVisualization {
                 if (debugState.isEnabled()) {
                     logger.info(`WebSocket connection status changed: ${connected}`);
                 }
+                
+                // Check if websocket is both connected AND ready (received 'connection_established' message)
                 if (connected && this.componentsReady) {
-                    // Enable binary updates in GraphDataManager
-                    graphDataManager.setBinaryUpdatesEnabled(true);
-                    if (debugState.isDataDebugEnabled()) {
-                        logger.debug('Binary updates enabled');
+                    if (this.websocketService?.isReady()) {
+                        // WebSocket is fully ready, now it's safe to enable binary updates
+                        logger.info('WebSocket is connected and fully established - enabling binary updates');
+                        graphDataManager.setBinaryUpdatesEnabled(true);
+                        if (debugState.isDataDebugEnabled()) {
+                            logger.debug('Binary updates enabled');
+                        }
+                    } else {
+                        logger.info('WebSocket connected but not fully established yet - waiting for readiness');
+                        
+                        // We'll let graphDataManager handle the binary updates enablement
+                        // through its retry mechanism that now checks for websocket readiness
+                        graphDataManager.enableBinaryUpdates();
                     }
                 }
             });
+            
+            // Configure GraphDataManager with WebSocket service (adapter pattern)
+            if (this.websocketService) {
+                const wsAdapter = {
+                    send: (data: ArrayBuffer) => {
+                        this.websocketService?.sendRawBinaryData(data);
+                    },
+                    isReady: () => this.websocketService?.isReady() || false
+                };
+                graphDataManager.setWebSocketService(wsAdapter);
+            }
             
             // Mark as initialized before connecting WebSocket
             this.websocketInitialized = true;
@@ -120,15 +142,8 @@ export class GraphVisualization {
             // Finally connect WebSocket
             await this.websocketService?.connect();
             
-            try {
-                // Enable binary updates now that WebSocket is connected
-                logger.info('Binary updates enabled for GraphDataManager with WebSocket adapter');
-            } catch (error) {
-                logger.error('Error enabling binary updates:', createErrorMetadata(error));
-            }
-            
             if (debugState.isDataDebugEnabled()) {
-                logger.debug('WebSocket connected and ready for binary updates');
+                logger.debug('WebSocket connected and waiting for server readiness confirmation');
             }
         } catch (error) {
             logger.error('Failed to initialize data and WebSocket:', createErrorMetadata(error));

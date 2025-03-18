@@ -60,13 +60,12 @@ export class NostrAuthService {
     private static instance: NostrAuthService;
     private currentUser: NostrUser | null = null;
     private eventEmitter: SettingsEventEmitter;
-    private settingsPersistence: SettingsPersistenceService;
-    private settingsStore: SettingsStore;
+    private settingsPersistence: SettingsPersistenceService | null = null;
+    private settingsStore: SettingsStore | null = null;
 
     private constructor() {
         this.eventEmitter = SettingsEventEmitter.getInstance();
-        this.settingsStore = SettingsStore.getInstance();
-        this.settingsPersistence = SettingsPersistenceService.getInstance();
+        // No SettingsStore initialization here to avoid circular dependency
     }
 
     /**
@@ -83,6 +82,30 @@ export class NostrAuthService {
      * Initialize the auth service and check for existing session
      */
     public async initialize(): Promise<void> {
+        logger.debug('Starting NostrAuthService initialization...');
+        try {
+            // Get SettingsStore instance but don't initialize it here
+            this.settingsStore = SettingsStore.getInstance();
+
+            // Wait for SettingsStore to be initialized if needed
+            if (!this.settingsStore.isInitialized()) {
+                logger.debug('Waiting for SettingsStore initialization...');
+                await this.settingsStore.initialize();
+            }
+
+            // Get persistence service after SettingsStore is ready
+            this.settingsPersistence = SettingsPersistenceService.getInstance();
+
+            if (!this.settingsStore || !this.settingsPersistence) {
+                throw new Error('Required services not initialized properly');
+            }
+
+            logger.debug('NostrAuthService initialized with settings store');
+        } catch (error) {
+            logger.error('Failed to initialize services:', createErrorMetadata(error));
+            throw error;
+        }
+
         const storedPubkey = localStorage.getItem('nostr_pubkey');
         if (storedPubkey) {
             // Wait for checkAuthStatus to complete
@@ -96,6 +119,8 @@ export class NostrAuthService {
                 }
             });
         }
+
+        logger.debug('NostrAuthService initialization complete');
     }
 
     /**
@@ -256,15 +281,19 @@ export class NostrAuthService {
             localStorage.setItem('nostr_token', authData.token);
             
             // Update both services
-            this.settingsPersistence.setCurrentUser(pubkey, authData.user.is_power_user);
+            if (!this.settingsPersistence || !this.settingsStore) {
+                throw new Error('Services not initialized. Call initialize() first.');
+            }
+
+            this.settingsPersistence?.setCurrentUser(pubkey, authData.user.is_power_user);
             
             // Update settings store and load server settings
             this.settingsStore.setUserLoggedIn(true);
             const settingsLoaded = await this.settingsStore.loadServerSettings();
             
             // Update settings manager with server settings
-            settingsManager.updateSettingsFromServer();
-
+            await settingsManager.updateSettingsFromServer();
+            
             // Force refresh of visualization with new settings
             try {
                 const visualizationController = VisualizationController.getInstance();
@@ -350,6 +379,10 @@ export class NostrAuthService {
         const token = localStorage.getItem('nostr_token');
         const wasLoggedIn = this.isAuthenticated();
         
+        if (!this.settingsPersistence || !this.settingsStore) {
+            throw new Error('Services not initialized. Call initialize() first.');
+        }
+
         if (currentPubkey && token) {
             try {
                 await fetch(buildApiUrl(API_ENDPOINTS.AUTH_NOSTR), {
@@ -360,7 +393,7 @@ export class NostrAuthService {
                     body: JSON.stringify({
                         pubkey: currentPubkey,
                         token
-                    })
+                    }),
                 });
             } catch (error) {
                 logger.error('Logout request failed:', createErrorMetadata(error));
@@ -374,17 +407,18 @@ export class NostrAuthService {
         // Update settings store login status
         this.settingsStore.setUserLoggedIn(false);
         
-        this.settingsPersistence.setCurrentUser(null, false);
+        this.settingsPersistence?.setCurrentUser(null, false);
         this.eventEmitter.emit(SettingsEventType.AUTH_STATE_CHANGED, {
             authState: {
-                isAuthenticated: false
+                isAuthenticated: false,
+                pubkey: undefined
             }
         });
 
         // If user was using server settings, revert to local settings
         if (wasLoggedIn) {
-            await this.settingsPersistence.loadSettings();
-            await this.settingsStore.initialize(); // Reinitialize UI store
+            await this.settingsPersistence?.loadSettings();
+            await this.settingsStore?.initialize(); // Reinitialize UI store
         }
     }
 
@@ -470,6 +504,10 @@ export class NostrAuthService {
                 return;
             }
 
+            if (!this.settingsPersistence || !this.settingsStore) {
+                throw new Error('Services not initialized. Call initialize() first.');
+            }
+
             // Set currentUser before emitting event
             this.currentUser = {
                 pubkey,
@@ -478,7 +516,7 @@ export class NostrAuthService {
             };
             
             // Update persistence service with verified user
-            this.settingsPersistence.setCurrentUser(pubkey, verifyData.user.is_power_user);
+            this.settingsPersistence?.setCurrentUser(pubkey, verifyData.user.is_power_user);
             
             // Load server settings since user is authenticated
             this.settingsStore.setUserLoggedIn(true);

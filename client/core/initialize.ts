@@ -16,12 +16,6 @@ export async function initializeApplication(): Promise<Settings> {
     }
 
     try {
-        // Initialize auth system first
-        await initializeAuth();
-
-        // Initialize platform detection
-        await platformManager.initialize(defaultSettings);
-
         // Initialize ModularControlPanel and wait for settings to be ready
         const controlPanel = ModularControlPanel.getInstance();
         const settingsStore = SettingsStore.getInstance();
@@ -37,6 +31,12 @@ export async function initializeApplication(): Promise<Settings> {
             }),
             settingsStore.initialize()
         ]);
+
+        // Initialize auth system after settings store is ready
+        await initializeAuth();
+
+        // Initialize platform detection
+        await platformManager.initialize(defaultSettings);
 
         // Get settings after everything is initialized
         const settings = settingsStore.get('') as Settings || defaultSettings;

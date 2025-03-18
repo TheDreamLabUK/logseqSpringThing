@@ -15,7 +15,7 @@ export default defineConfig(({ mode, command }) => {
       emptyOutDir: true,
       chunkSizeWarningLimit: 600,
       sourcemap: !isProd, 
-      minify: isProd, // Enable minification for production builds
+      minify: false, // Disabled minification for better debugging
       target: 'esnext',
       terserOptions: {
         compress: {
@@ -30,7 +30,7 @@ export default defineConfig(({ mode, command }) => {
           ecma: 2020,
           module: true
         },
-        mangle: isProd
+        mangle: false // Disabled name mangling for better debugging
       },
       rollupOptions: {
         input: {

@@ -1,0 +1,9 @@
+api/rest.md
+api/websocket.md
+client/architecture.md
+client/components.md
+client/state.md
+client/websocket.md
+server/architecture.md
+server/services.md
+server/utils.md

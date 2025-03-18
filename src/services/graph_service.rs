@@ -41,6 +41,7 @@ static SIMULATION_MUTEX: Lazy<Mutex<String>> = Lazy::new(|| Mutex::new(String::n
 // Cache configuration
 const NODE_POSITION_CACHE_TTL_MS: u64 = 50; // 50ms cache time
 const METADATA_FILE_WAIT_TIMEOUT_MS: u64 = 5000; // 5 second wait timeout
+const SHUTDOWN_TIMEOUT_MS: u64 = 5000; // 5 second shutdown timeout
 
 // Physics stabilization constants
 const STABLE_THRESHOLD_ITERATIONS: usize = 100; // Number of iterations with minimal movement
@@ -58,6 +59,7 @@ const GPU_RETRY_DELAY_MS: u64 = 500; // 500ms delay between retries
 #[derive(Clone)]
 pub struct GraphService {
     graph_data: Arc<RwLock<GraphData>>,
+    shutdown_complete: Arc<AtomicBool>,
     node_map: Arc<RwLock<HashMap<String, Node>>>,
     gpu_compute: Option<Arc<RwLock<GPUCompute>>>,
     node_positions_cache: Arc<RwLock<Option<(Vec<Node>, Instant)>>>,
@@ -109,6 +111,7 @@ impl GraphService {
         let _cache = Arc::new(RwLock::new(Option::<(Vec<Node>, Instant)>::None));
         let graph_service = Self {
             graph_data: Arc::new(RwLock::new(GraphData::default())),
+            shutdown_complete: Arc::new(AtomicBool::new(false)),
             node_map: node_map.clone(),
             gpu_compute,
             last_update: Arc::new(RwLock::new(Instant::now())),
@@ -180,7 +183,13 @@ impl GraphService {
             // Create a guard to reset the flag when the task exits
             let loop_guard = scopeguard::guard((), |_| { 
                 info!("[Graph] Physics simulation loop exiting, resetting SIMULATION_LOOP_RUNNING flag (ID: {})", loop_simulation_id);
-                SIMULATION_LOOP_RUNNING.store(false, Ordering::SeqCst); 
+                // Use compare_exchange to safely reset the flag
+                if SIMULATION_LOOP_RUNNING.compare_exchange(true, false, Ordering::SeqCst, Ordering::SeqCst).is_ok() {
+                    graph_service.shutdown_complete.store(true, Ordering::SeqCst);
+                } else {
+                    error!("[Graph] Failed to reset SIMULATION_LOOP_RUNNING flag - was already false (ID: {})", 
+                           loop_simulation_id);
+                }
             });
             
             loop {
@@ -315,13 +324,30 @@ impl GraphService {
         self.shutdown_requested.store(true, Ordering::SeqCst);
         info!("[GraphService] Set shutdown flag for simulation loop (ID: {})", self.simulation_id);
         
-        // Wait for the loop to observe the flag and exit
-        for _ in 0..10 {
+        // Reset shutdown complete flag before waiting
+        self.shutdown_complete.store(false, Ordering::SeqCst);
+        
+        // Wait for the loop to fully exit with a 5 second timeout
+        let max_attempts = SHUTDOWN_TIMEOUT_MS / 50; // 5 seconds total at 50ms intervals
+        for attempt in 0..max_attempts {
             if !SIMULATION_LOOP_RUNNING.load(Ordering::SeqCst) {
-                info!("[GraphService] Simulation loop successfully stopped (ID: {})", self.simulation_id);
-                return;
+                // Double check that shutdown is complete
+                if self.shutdown_complete.load(Ordering::SeqCst) {
+                    info!("[GraphService] Simulation loop successfully stopped (ID: {})", self.simulation_id);
+                    return;
+                }
             }
+            
+            // Log progress every second
+            if attempt % 20 == 0 {
+                info!("[GraphService] Waiting for simulation loop to stop (attempt {}/{})", attempt, max_attempts);
+            }
+            
             tokio::time::sleep(Duration::from_millis(50)).await;
+            if attempt == max_attempts - 1 {
+                error!("[GraphService] Shutdown timeout after {}ms for simulation (ID: {})", 
+                    SHUTDOWN_TIMEOUT_MS, self.simulation_id);
+            }
         }
     }
     
