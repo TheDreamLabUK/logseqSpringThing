@@ -6,6 +6,7 @@
   <meta name="immersive-ar" content="true">
   <meta name="oculus-hand-tracking" content="true">
   <title>LogseqXR Graph Visualization</title>
+  <link rel="stylesheet" href="/ui/auth.css">
   <style>
     body {
       margin: 0;
@@ -147,6 +148,17 @@
   </style>
 </head>
 <body>
+  <div id="auth-container" class="auth-container">
+    <div class="user-info">
+      <span id="user-role" class="user-role"></span>
+      <span id="user-pubkey" class="user-pubkey"></span>
+    </div>
+    <button id="login-button">Login with Nostr</button>
+    <div id="auth-error" class="auth-error">
+      <!-- Error messages will be inserted here -->
+    </div>
+  </div>
+
   <div id="scene-container">
     <canvas id="main-canvas"></canvas>
   </div>

@@ -1,8 +1,26 @@
 # REST API Reference
 
+## Overview
+The REST API provides endpoints for graph data management, content operations, and system status.
+
+## Base URL
+```
+https://api.webxr.dev/v1
+```
+
 ## Authentication
 
-### Login
+All API requests require authentication. There are two methods:
+
+### JWT Token
+Include the token in the Authorization header:
+```
+Authorization: Bearer <token>
+```
+
+### Nostr Authentication
+
+#### Login
 ```http
 POST /api/auth/nostr
 ```
@@ -30,7 +48,7 @@ POST /api/auth/nostr
 }
 ```
 
-### Verify Token
+#### Verify Token
 ```http
 POST /api/auth/nostr/verify
 ```
@@ -43,9 +61,74 @@ POST /api/auth/nostr/verify
 }
 ```
 
-### Logout
+#### Logout
 ```http
 DELETE /api/auth/nostr
+```
+
+## Graph API
+
+### Get Graph Data
+```http
+GET /api/graph/data
+```
+
+Returns complete graph structure:
+```json
+{
+  "nodes": [...],
+  "edges": [...],
+  "metadata": {...}
+}
+```
+
+### Get Specific Node
+```http
+GET /graph/nodes/{nodeId}
+```
+
+**Response:**
+```json
+{
+  "id": "string",
+  "metadata": {...},
+  "connections": [...]
+}
+```
+
+### Get Paginated Graph Data
+```http
+GET /api/graph/data/paginated
+```
+
+**Query Parameters:**
+- `page`: Page number (default: 1)
+- `page_size`: Items per page (default: 100)
+- `sort`: Sort field
+- `filter`: Filter expression
+
+### Update Graph
+```http
+POST /api/graph/update
+```
+
+**Request Body:**
+```json
+{
+  "nodes": [
+    {
+      "id": "string",
+      "position": {"x": 0, "y": 0, "z": 0},
+      "mass": 1.0
+    }
+  ],
+  "edges": [...]
+}
+```
+
+### Refresh Graph
+```http
+POST /api/graph/refresh
 ```
 
 ## Files API
@@ -70,42 +153,18 @@ Triggers fetching and processing of Markdown files.
 GET /api/files/get_content/{filename}
 ```
 
-## Graph API
-
-### Get Graph Data
+### Upload Content
 ```http
-GET /api/graph/data
-```
-
-Returns complete graph structure.
-
-### Get Paginated Graph Data
-```http
-GET /api/graph/data/paginated
-```
-
-**Query Parameters:**
-- `page`: Page number (default: 1)
-- `page_size`: Items per page (default: 100)
-- `sort`: Sort field
-- `filter`: Filter expression
-
-### Update Graph
-```http
-POST /api/graph/update
+POST /content/upload
 ```
 
 **Request Body:**
 ```json
 {
-  "nodes": [...],
-  "edges": [...]
+  "path": "string",
+  "content": "string",
+  "metadata": {...}
 }
-```
-
-### Refresh Graph
-```http
-POST /api/graph/refresh
 ```
 
 ## Settings API
@@ -152,47 +211,47 @@ POST /api/perplexity
 }
 ```
 
-## Error Responses
+## System Status
 
-All endpoints may return the following error responses:
+### Health Check
+```http
+GET /health
+```
 
-#### 400 Bad Request
+**Response:**
 ```json
 {
-  "error": "bad_request",
-  "message": "Invalid parameters",
-  "details": {
-    "field": "reason for error"
+  "status": "healthy",
+  "services": {
+    "gpu": "active",
+    "github": "connected"
   }
 }
 ```
 
-#### 401 Unauthorized
+## Error Responses
+
+All endpoints may return the following error responses:
+
+### Standard Error Format
 ```json
 {
-  "error": "unauthorized",
-  "message": "Invalid or missing authentication token"
+  "error": {
+    "code": "string",
+    "message": "string",
+    "details": {...}
+  }
 }
 ```
 
-#### 404 Not Found
-```json
-{
-  "error": "not_found",
-  "message": "Resource not found"
-}
-```
-
-#### 500 Internal Server Error
-```json
-{
-  "error": "internal_error",
-  "message": "An internal error occurred",
-  "request_id": "abc-123"
-}
-```
+### Common Error Codes
+- `400`: Bad Request - Invalid parameters or request
+- `401`: Unauthorized - Invalid or missing authentication token
+- `403`: Forbidden - Valid token but insufficient permissions
+- `404`: Not Found - Resource not found
+- `429`: Too Many Requests - Rate limit exceeded
+- `500`: Internal Server Error - Server-side error
 
 ## Related Documentation
 - [WebSocket API](./websocket.md)
 - [Development Setup](../development/setup.md)
-- [Technical Architecture](../overview/architecture.md)

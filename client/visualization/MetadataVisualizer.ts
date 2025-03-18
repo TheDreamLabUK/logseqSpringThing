@@ -301,16 +301,15 @@ export class MetadataVisualizer {
      */
     public async createMetadataLabel(metadata: NodeMetadata, nodeLabel?: string): Promise<MetadataLabelGroup> {
         const group = new Group() as MetadataLabelGroup;
-        
-        // Check if metadata position is zero or undefined
-        if (!metadata.position || (metadata.position.x === 0 && metadata.position.y === 0 && metadata.position.z === 0)) {
-            logger.warn(`[POSITION WARNING] Metadata for node ${metadata.id} has zero/undefined position`, 
-                createDataMetadata({
-                    position: metadata.position || 'undefined',
-                    nodeLabel: nodeLabel || 'undefined',
-                    metadataName: metadata.name || 'undefined'
-                })
-            );
+
+        // Validate position data
+        if (!metadata.position) {
+            // Create a default position if missing
+            metadata.position = new Vector3(0, 0, 0);
+            logger.warn(`Missing position for node ${metadata.id}, using default position`);
+        } else if (metadata.position.x === 0 && metadata.position.y === 0 && metadata.position.z === 0) {
+            // Log warning for zero position but continue
+            logger.warn(`Zero position detected for node ${metadata.id}`);
         }
         
         group.name = 'metadata-label';

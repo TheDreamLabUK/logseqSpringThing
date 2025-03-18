@@ -1,8 +1,19 @@
 # WebSocket API Reference
 
+## Overview
+The WebSocket implementation in LogseqXR provides real-time graph updates using an optimized binary protocol.
+
 ## Connection
 
 Connect to: `wss://your-domain/wss`
+
+### Connection Flow
+1. Client connects to WebSocket endpoint (`/wss`)
+2. Server sends: `{"type": "connection_established"}`
+3. Client sends authentication (if required)
+4. Client sends: `{"type": "requestInitialData"}`
+5. Server begins binary updates (configured by `binary_update_rate`)
+6. Server sends: `{"type": "updatesStarted"}`
 
 ## Authentication
 
@@ -40,13 +51,15 @@ Send authentication message immediately after connection:
 }
 ```
 
-### Binary Messages
+### Binary Protocol Format
 
-Node position updates are sent as binary messages:
+Node position updates are sent as binary messages. Each binary message consists of node updates, where each node update is exactly 26 bytes:
 
-- Each node update is 26 bytes
-- Format: [Node ID (2 bytes)][Position (12 bytes)][Velocity (12 bytes)]
-- Position and Velocity are float32[3] arrays
+| Field    | Type      | Size (bytes) | Description                       |
+|----------|-----------|--------------|-----------------------------------|
+| Node ID  | uint16    | 2            | Unique identifier for the node    |
+| Position | float32[3]| 12           | X, Y, Z coordinates               |
+| Velocity | float32[3]| 12           | X, Y, Z velocity components       |
 
 ### Settings Synchronization
 
@@ -62,7 +75,16 @@ Node position updates are sent as binary messages:
 }
 ```
 
+## Optimization Features
+
+- Zlib compression for messages >1KB
+- Fixed-size format for efficient parsing
+- No message headers to minimize overhead
+- Consistent use of THREE.Vector3 throughout
+
 ## Error Handling
+
+### Error Message Format
 
 1. Connection Error
 ```json
@@ -82,7 +104,37 @@ Node position updates are sent as binary messages:
 }
 ```
 
+### Error Handling Features
+- Connection failures trigger automatic reconnection
+- Invalid messages are logged and skipped
+- Server-side validation prevents corrupt data transmission
+
 ## Rate Limiting
 
 - 60 messages per minute per connection
 - Binary updates don't count towards rate limit
+
+## Diagnostics
+
+### Common Issues
+
+1. Connection Issues
+   - Mixed Content: Ensure WebSocket uses WSS with HTTPS
+   - CORS: Check server configuration for cross-origin
+   - Proxy/Firewall: Verify WebSocket ports are open
+
+2. Binary Protocol Issues
+   - Message Size: Verify 26 bytes per node
+   - Data Integrity: Validate Vector3 data
+
+### Diagnostic Tools
+
+```typescript
+// Run comprehensive diagnostics
+WebSocketDiagnostics.runDiagnostics();
+
+// Test API connectivity
+WebSocketDiagnostics.testApiConnectivity();
+
+// Validate vector data
+WebSocketDiagnostics.validateVectorData();

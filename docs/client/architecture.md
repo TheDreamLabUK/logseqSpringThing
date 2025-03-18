@@ -159,9 +159,9 @@ The client communicates with the server through two primary channels:
 
 This dual-channel approach allows for efficient communication patterns based on the nature of the data being exchanged.
 
-## Next Sections
+## Related Documentation
 
-For more detailed information, refer to:
-- [Component Architecture](component-architecture.md) - Detailed component relationships
-- [Data Flow](data-flow.md) - Detailed data flow patterns
-- [State Management](state-management.md) - State management approach
+- [Components](components.md) - Detailed component relationships
+- [State Management](state.md) - State management approach
+- [WebSocket Communication](websocket.md) - WebSocket protocol details
+- [XR Integration](xr.md) - WebXR implementation details

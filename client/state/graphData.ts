@@ -28,7 +28,11 @@ function throttledDebugLog(message: string, data?: any): void {
 }
 
 // Interface for the internal WebSocket service used by this class
-type InternalWebSocketService = { send(data: ArrayBuffer): void };
+// Updated to include isReady method
+type InternalWebSocketService = { 
+  send(data: ArrayBuffer): void;
+  isReady?(): boolean;
+};
 
 // Extend Edge interface to include id
 interface EdgeWithId extends Edge {
@@ -67,7 +71,8 @@ export class GraphDataManager {
     this.positionUpdateListeners = new Set();
     // Initialize with a no-op websocket service
     this.wsService = {
-      send: () => logger.warn('WebSocket service not configured')
+      send: () => logger.warn('WebSocket service not configured'),
+      isReady: () => false
     };
     // Don't enable binary updates by default
     this.binaryUpdatesEnabled = false;
@@ -81,11 +86,19 @@ export class GraphDataManager {
     logger.info('WebSocket service configured');
     
     // If binary updates were enabled before the service was configured,
-    // send an initial empty update now that we have a service
+    // check if service is ready before sending initial update
     if (this.binaryUpdatesEnabled) {
       try {
-        this.updatePositions(new Float32Array());
-        logger.info('Sent initial empty update after WebSocket service configuration');
+        // Check if the WebSocket service is ready using the isReady method if available
+        const isReady = typeof this.wsService.isReady === 'function' && this.wsService.isReady();
+        
+        if (isReady) {
+          this.updatePositions(new Float32Array());
+          logger.info('Sent initial empty update after WebSocket service configuration');
+        } else {
+          logger.info('WebSocket service configured but not ready yet. Will send update when ready.');
+          this.retryWebSocketConfiguration();
+        }
       } catch (error) {
         logger.error('Failed to send initial update after WebSocket service configuration:', error);
       }
@@ -232,152 +245,6 @@ export class GraphDataManager {
     }
   }
 
-  async loadInitialGraphData(): Promise<void> {
-    try {
-      // Try both endpoints
-      const endpoints = [
-        API_ENDPOINTS.GRAPH_PAGINATED
-      ];
-
-      let response = null;
-      for (const endpoint of endpoints) {
-        try {
-          response = await fetch(`${endpoint}?page=1&pageSize=100`);
-          if (response.ok) break;
-        } catch (e) {
-          continue;
-        }
-      }
-
-      if (!response || !response.ok) {
-        throw new Error('Failed to fetch graph data from any endpoint');
-      }
-
-      const data = await response.json();
-      const transformedData = transformGraphData(data);
-      
-      // Update nodes and edges
-      this.nodes = new Map(transformedData.nodes.map((node: Node) => [node.id, node]));
-      const edgesWithIds = transformedData.edges.map((edge: Edge) => ({
-        ...edge,
-        id: this.createEdgeId(edge.source, edge.target)
-      }));
-      this.edges = new Map(edgesWithIds.map(edge => [edge.id, edge]));
-      
-      // Update metadata
-      this.metadata = {
-        ...transformedData.metadata || {},
-        pagination: {
-          totalPages: data.totalPages,
-          currentPage: data.currentPage,
-          totalItems: data.totalItems,
-          pageSize: data.pageSize
-        }
-      };
-
-      // Enable WebSocket updates immediately
-      // Binary updates will be enabled by GraphVisualization when the WebSocket is connected
-      // this.enableBinaryUpdates();
-      // this.setBinaryUpdatesEnabled(true);
-      
-      // Notify listeners of initial data
-      this.notifyUpdateListeners();
-      
-      // Load remaining pages if any
-      if (data.totalPages > 1) {
-        await this.loadRemainingPages(data.totalPages, data.pageSize);
-      }
-      
-      // If there's only one page, enable randomization immediately
-      if (data.totalPages <= 1) {
-        const websocketService = WebSocketServiceClass.getInstance();
-        logger.info('Single page graph data loaded. Enabling server-side randomization.');
-        websocketService.enableRandomization(true);
-      }
-      
-      // Signal that graph data is complete after loading single page
-      this.graphDataComplete = true;
-      logger.info('Initial graph data loaded successfully');
-    } catch (error) {
-      logger.error('Failed to fetch graph data:', error);
-      throw new Error('Failed to fetch graph data: ' + error);
-    }
-  }
-
-  private async loadRemainingPages(totalPages: number, pageSize: number): Promise<void> {
-    try {
-      throttledDebugLog(`Starting to load remaining pages. Total pages: ${totalPages}, Current nodes: ${this.nodes.size}`);
-      
-      // Load remaining pages in parallel with a reasonable chunk size
-      const chunkSize = 5;
-      for (let i = 2; i <= totalPages; i += chunkSize) {
-        const pagePromises = [];
-        for (let j = i; j < Math.min(i + chunkSize, totalPages + 1); j++) {
-          pagePromises.push(this.loadPage(j, pageSize));
-        }
-        await Promise.all(pagePromises);
-        // Update listeners after each chunk
-        throttledDebugLog(`Loaded chunk ${i}-${Math.min(i + chunkSize - 1, totalPages)}. Current nodes: ${this.nodes.size}, edges: ${this.edges.size}`);
-        this.notifyUpdateListeners(); 
-
-        // Process any pending edges after each chunk 
-        this.processPendingEdges();
-      }
-    } catch (error) {
-      logger.error('Error loading remaining pages:', error);
-      throw error;
-    }
-  }
-
-  private async loadPage(page: number, pageSize: number): Promise<void> {
-    try {
-      throttledDebugLog(`Loading page ${page}. Current nodes before load: ${this.nodes.size}`);
-      
-      const response = await fetch(
-        `${API_ENDPOINTS.GRAPH_PAGINATED}?page=${page}&pageSize=${pageSize}`,
-        {
-          method: 'GET',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-        }
-      );
-      if (!response.ok) {
-        throw new Error(`Failed to fetch page ${page}: ${response.statusText}`);
-      }
-
-      const data = await response.json();
-      const transformedData = transformGraphData(data);
-      
-      // Add new nodes
-      let newNodes = 0;
-      transformedData.nodes.forEach((node: Node) => {
-        if (!this.nodes.has(node.id)) {
-          this.nodes.set(node.id, node);
-          newNodes++;
-        } 
-      });
-      
-      // Add new edges
-      let newEdges = 0;
-      transformedData.edges.forEach((edge: Edge) => {
-        const edgeId = this.createEdgeId(edge.source, edge.target);
-        if (!this.edges.has(edgeId)) {
-          // Make sure both source and target nodes exist before adding the edge
-          if (this.nodes.has(edge.source) && this.nodes.has(edge.target)) {
-            this.edges.set(edgeId, { ...edge, id: edgeId });
-          }
-          newEdges++;
-        }
-      });
-
-      throttledDebugLog(`Loaded page ${page}: ${newNodes} new nodes, ${newEdges} new edges. Total now: ${this.nodes.size} nodes, ${this.edges.size} edges`);
-    } catch (error) {
-      logger.error(`Error loading page ${page}:`, error);
-      throw error;
-    }
-  }
-
   /**
    * Enable binary position updates via WebSocket
    */
@@ -386,14 +253,14 @@ export class GraphDataManager {
     this.setBinaryUpdatesEnabled(true);
     logger.info('Binary updates enabled');
     
-    // Explicitly check WebSocket service status
-    const isDefaultService = this.wsService.send.toString().includes('WebSocket service not configured');
-    if (isDefaultService) {
-      logger.warn('Binary updates enabled but WebSocket service not yet configured. Starting retry mechanism...');
-      debugState.setBinaryProtocolStatus('pending');
-    } else {
-      logger.info('WebSocket service is properly configured for binary updates');
+    // Check if WebSocket service is ready using new isReady method
+    if (typeof this.wsService.isReady === 'function' && this.wsService.isReady()) {
+      logger.info('WebSocket service is ready for binary updates');
       debugState.setBinaryProtocolStatus('active');
+    } else {
+      logger.warn('Binary updates enabled but WebSocket service not yet ready. Starting retry mechanism...');
+      debugState.setBinaryProtocolStatus('pending');
+      this.retryWebSocketConfiguration();
     }
   }
 
@@ -407,23 +274,30 @@ export class GraphDataManager {
     logger.info(`Binary updates ${enabled ? 'enabled' : 'disabled'}`);
     
     if (enabled) {
-      // Check if WebSocket service is configured before sending update
-      // Check if the send function is our default warning function
+      // Check if WebSocket service is configured AND ready before sending update
       const isDefaultService = this.wsService.send.toString().includes('WebSocket service not configured');
-      if (!isDefaultService) {
-        // Send initial empty update to start receiving binary updates
+      const isReady = typeof this.wsService.isReady === 'function' && this.wsService.isReady();
+      
+      if (!isDefaultService && isReady) {
+        // Service is configured and ready, send initial update
+        logger.info('WebSocket service is configured and ready, sending initial binary update');
         this.updatePositions(new Float32Array());
+        debugState.setBinaryProtocolStatus('active');
       } else {
-        logger.warn('Binary updates enabled but WebSocket service not yet configured. Will send update when service is available.');
-        
-        // Set up a retry mechanism to check for WebSocket service availability
+        if (isDefaultService) {
+          logger.warn('Binary updates enabled but WebSocket service not yet configured. Will send update when service is available.');
+        } else {
+          logger.warn('Binary updates enabled but WebSocket service not yet ready. Will send update when service is ready.');
+        }
+        debugState.setBinaryProtocolStatus('pending');
+        // Set up a retry mechanism to check for WebSocket service availability and readiness
         this.retryWebSocketConfiguration();
       }
     }
   }
   
   /**
-   * Retry WebSocket configuration until it's available
+   * Retry WebSocket configuration until it's available and ready
    * This helps ensure we don't miss updates when the WebSocket service
    * is configured after binary updates are enabled
    */
@@ -434,31 +308,37 @@ export class GraphDataManager {
       return;
     }
     
-    logger.info('Starting WebSocket configuration retry mechanism');
+    logger.info('Starting WebSocket readiness check retry mechanism');
     debugState.setBinaryProtocolStatus('pending');
     
     // Define maximum retry attempts
     let retryCount = 0;
     const MAX_RETRIES = 30; // 30 seconds max
     
-    const checkAndRetry = () => {
+    const checkAndRetry = async () => {
       retryCount++;
       
-      // Check if WebSocket service is now configured
+      // Check if WebSocket service is now configured and ready
       const isDefaultService = this.wsService.send.toString().includes('WebSocket service not configured');
-      if (!isDefaultService) {
-        // WebSocket service is now configured, send initial update
-        logger.info('WebSocket service now available, sending initial update');
+      const isReady = typeof this.wsService.isReady === 'function' && this.wsService.isReady();
+      
+      if (!isDefaultService && isReady) {
+        // WebSocket service is now configured and ready, send initial update
+        logger.info('WebSocket service now available and ready, sending initial update');
         this.updatePositions(new Float32Array());
         this._retryTimeout = null;
         debugState.setBinaryProtocolStatus('active');
       } else {
-        // Still not configured, retry after delay if under max retries
+        // Still not configured or not ready, retry after delay if under max retries
         if (retryCount < MAX_RETRIES) {
-          logger.debug(`WebSocket service still not configured (attempt ${retryCount}/${MAX_RETRIES})`);
+          if (isDefaultService) {
+            logger.debug(`WebSocket service still not configured (attempt ${retryCount}/${MAX_RETRIES})`);
+          } else if (!isReady) {
+            logger.debug(`WebSocket service configured but not ready (attempt ${retryCount}/${MAX_RETRIES})`);
+          }
           this._retryTimeout = setTimeout(checkAndRetry, 1000) as any;
         } else {
-          logger.warn(`WebSocket configuration retry failed after ${MAX_RETRIES} attempts`);
+          logger.warn(`WebSocket readiness retry failed after ${MAX_RETRIES} attempts`);
           this._retryTimeout = null;
           debugState.setBinaryProtocolStatus('failed');
         }
@@ -481,12 +361,18 @@ export class GraphDataManager {
     }
     
     try {
-      // Check if WebSocket service is properly configured
-      // Check if the send function is our default warning function
+      // Check if WebSocket service is properly configured and ready
       const isDefaultService = this.wsService.send.toString().includes('WebSocket service not configured');
+      const isReady = typeof this.wsService.isReady === 'function' && this.wsService.isReady();
+      
       if (isDefaultService) {
         logger.warn('Cannot send position update: WebSocket service not configured');
-        // Set up retry mechanism if not already running
+        this.retryWebSocketConfiguration();
+        return;
+      }
+      
+      if (!isReady) {
+        logger.warn('Cannot send position update: WebSocket service not ready');
         this.retryWebSocketConfiguration();
         return;
       }

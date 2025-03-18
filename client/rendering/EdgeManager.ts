@@ -189,58 +189,40 @@ export class EdgeManager {
     private updateEdge(edge: Edge): void {
         const edgeId = this.createEdgeId(edge.source, edge.target);
         const line = this.edges.get(edgeId);
-        
+
         if (!line) {
             this.createEdge(edge);
             return;
         }
 
-        // Get updated node positions
         const sourcePos = this.nodeInstanceManager.getNodePosition(edge.source);
         const targetPos = this.nodeInstanceManager.getNodePosition(edge.target);
 
         if (!sourcePos || !targetPos) {
-            logger.warn(`Cannot update edge ${edgeId}: missing node positions`);
+            logger.warn(`Cannot update edge ${edgeId}: node positions not found`);
             return;
         }
 
-        // Validate positions
-        const isSourceValid = this.validateVector3(sourcePos);
-        const isTargetValid = this.validateVector3(targetPos);
-        
-        if (!isSourceValid || !isTargetValid) {
-            logger.warn(`Skipping edge update for ${edgeId} due to invalid node positions. ` + 
-                        `Source valid: ${isSourceValid}, Target valid: ${isTargetValid}`);
-            if (!isSourceValid) logger.warn(`Invalid source position: [${sourcePos.x}, ${sourcePos.y}, ${sourcePos.z}]`);
-            if (!isTargetValid) logger.warn(`Invalid target position: [${targetPos.x}, ${targetPos.y}, ${targetPos.z}]`);
-            return;
+        // Create valid source and target vectors - cloning to avoid modifying the original vectors
+        const validatedSource = sourcePos.clone();
+        const validatedTarget = targetPos.clone();
+
+        // Make sure positions are valid
+        if (!this.validateVector3(validatedSource) || !this.validateVector3(validatedTarget)) {
+            // Fix any invalid values
+            this.fixVector3IfNeeded(validatedSource);
+            this.fixVector3IfNeeded(validatedTarget);
         }
 
-        // Update the geometry with new positions
-        const positions = new Float32Array([
-            sourcePos.x, sourcePos.y, sourcePos.z,
-            targetPos.x, targetPos.y, targetPos.z
-        ]);
-        
-        // Update the existing buffer attribute instead of creating a new geometry
+        // Update the position attribute directly
         const positionAttribute = line.geometry.getAttribute('position');
-        
-        if (positionAttribute) {
-            // Update vertex positions directly using the proper method
-            this.updatePositionAttribute(positionAttribute, sourcePos, targetPos);
-            positionAttribute.needsUpdate = true;
-        } else {
-            // If attribute doesn't exist (should never happen), create a new one
-            line.geometry.setAttribute('position', new BufferAttribute(positions, 3));
-        }
-        
-        
+        this.updatePositionAttribute(positionAttribute, validatedSource, validatedTarget);
+        positionAttribute.needsUpdate = true;
+
         // Update material source/target if it's EdgeShaderMaterial
         if (line.material instanceof EdgeShaderMaterial) {
-            line.material.setSourceTarget(sourcePos, targetPos);
+            line.material.setSourceTarget(validatedSource, validatedTarget);
         }
-        
-        logger.debug(`Edge updated: ${edgeId}`);
     }
 
     private removeEdge(edgeId: string): void {
@@ -347,17 +329,26 @@ export class EdgeManager {
     /**
      * Updates a position buffer attribute with new source and target positions
      * @param attribute The position buffer attribute to update
-     * @param sourcePos The source node position
-     * @param targetPos The target node position
+     * @param source The source node position
+     * @param target The target node position
      */
-    private updatePositionAttribute(attribute: BufferAttribute, sourcePos: Vector3, targetPos: Vector3): void {
+    private updatePositionAttribute(attribute: BufferAttribute, source: Vector3, target: Vector3): void {
         if (!attribute) return;
-        
+
         // Update source position (first vertex)
-        attribute.setXYZ(0, sourcePos.x, sourcePos.y, sourcePos.z);
-        
+        attribute.setXYZ(0, source.x, source.y, source.z);
+
         // Update target position (second vertex)
-        attribute.setXYZ(1, targetPos.x, targetPos.y, targetPos.z);
-        
+        attribute.setXYZ(1, target.x, target.y, target.z);
+    }
+
+    /**
+     * Fix a Vector3 if it contains invalid values
+     */
+    private fixVector3IfNeeded(vec: Vector3): void {
+        const MAX_VALUE = 1000;
+        vec.x = isFinite(vec.x) && !isNaN(vec.x) ? Math.min(Math.max(vec.x, -MAX_VALUE), MAX_VALUE) : 0;
+        vec.y = isFinite(vec.y) && !isNaN(vec.y) ? Math.min(Math.max(vec.y, -MAX_VALUE), MAX_VALUE) : 0;
+        vec.z = isFinite(vec.z) && !isNaN(vec.z) ? Math.min(Math.max(vec.z, -MAX_VALUE), MAX_VALUE) : 0;
     }
 }

@@ -504,57 +504,68 @@ export class XRSessionManager {
 
     private applyXRSettings(): void {
         if (!this.isPresenting) return;
+        
+        this.updateCamera();
 
-        // Update movement settings
+        // Apply settings to controllers
         const controllers = this.getControllers();
         controllers.forEach(controller => {
-            const inputSource = controller.userData.inputSource as XRInputSource;
-            if (inputSource?.gamepad) {
-                // Settings will be applied on next frame in onXRFrame
-            }
-        });
-
-        // Update visual settings if needed
-        if (this.currentSettings.handMeshEnabled !== undefined) {
-            controllers.forEach(controller => {
+            // Apply hand mesh visibility settings
+            if (this.currentSettings.handMeshEnabled !== undefined) {
                 controller.traverse((object: { name?: string; visible: boolean }) => {
                     if (object.name === 'handMesh') {
                         object.visible = !!this.currentSettings.handMeshEnabled;
                     }
                 });
-            });
-        }
+            }
 
-        if (this.currentSettings.handRayEnabled !== undefined) {
-            controllers.forEach(controller => {
+            // Apply hand ray visibility settings
+            if (this.currentSettings.handRayEnabled !== undefined) {
                 controller.traverse((object: { name?: string; visible: boolean }) => {
                     if (object.name === 'ray') {
                         object.visible = !!this.currentSettings.handRayEnabled;
                     }
                 });
-            });
-        }
+            }
+        });
 
-        // Update room scale if changed
+        // Update scale based on platform
         if (this.currentSettings.roomScale !== undefined) {
             if (platformManager.isQuest()) {
-                // Use roomScale directly for consistent AR sizing
                 const arScale = Number(this.currentSettings.roomScale);
-                if (debugState.isEnabled()) {
-                    logger.info('Updating AR scale:', { 
-                        arScale, 
-                        roomScale: this.currentSettings.roomScale,
-                        cameraRigScale: this.cameraRig.scale.x,
-                        arGroupScale: this.arGroup.scale.x,
-                        arGraphGroupScale: this.arGraphGroup.scale.x,
-                        currentGroupScale: this.arGroup.scale.x
-                    });
-                }
                 this.arGroup.scale.setScalar(arScale);
             } else {
                 this.cameraRig.scale.setScalar(Number(this.currentSettings.roomScale));
             }
         }
+    }
+    
+    /**
+     * Updates the camera matrices and layers when XR mode changes
+     */
+    private updateCamera(): void {
+        if (!this.isPresenting) return;
+        
+        const camera = this.sceneManager.getCamera();
+        const renderer = this.sceneManager.getRenderer();
+        
+        // Make sure the camera matrices are properly updated
+        camera.updateMatrixWorld();
+        camera.updateProjectionMatrix();
+        
+        // Set up correct layers
+        if (platformManager.isQuest()) {
+            // In AR mode, enable layer 1 for XR content
+            camera.layers.disable(0);
+            camera.layers.enable(1);
+        } else {
+            // In VR mode, enable both layers
+            camera.layers.enable(0);
+            camera.layers.enable(1);
+        }
+        
+        // Make sure XR is enabled in the renderer
+        renderer.xr.enabled = true;
     }
 
     public dispose(): void {

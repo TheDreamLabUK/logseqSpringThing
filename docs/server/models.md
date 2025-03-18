@@ -119,6 +119,3 @@ impl Serialize for MetadataStore {
 impl SimulationParams {
     pub fn validate(&self) -> Result<(), ValidationError>
 }
-```
-
-

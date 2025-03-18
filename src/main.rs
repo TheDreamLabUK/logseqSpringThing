@@ -153,8 +153,15 @@ async fn main() -> std::io::Result<()> {
                         // Shut down the existing GraphService before creating a new one
                         info!("Shutting down existing graph service before reinitializing with GPU");
                         let shutdown_start = std::time::Instant::now();
-                        app_state.graph_service.shutdown().await;
-                        info!("Graph service shutdown completed in {:?}", shutdown_start.elapsed());
+                        
+                        // Attempt shutdown with proper error handling
+                        match tokio::time::timeout(Duration::from_secs(5), app_state.graph_service.shutdown()).await {
+                            Ok(_) => info!("Graph service shutdown completed successfully in {:?}", shutdown_start.elapsed()),
+                            Err(_) => {
+                                warn!("Graph service shutdown timed out after 5 seconds");
+                                warn!("Proceeding with reinitialization anyway - old simulation loop will self-terminate");
+                            }
+                        }
                         
                         // Add a small delay to ensure clean shutdown
                         tokio::time::sleep(Duration::from_millis(100)).await;
@@ -164,21 +171,29 @@ async fn main() -> std::io::Result<()> {
                         app_state.graph_service = GraphService::new(
                             settings.clone(), 
                             app_state.gpu_compute.clone(),
-                            Some(client_manager.clone())
+                            None
                         ).await;
                         
                         info!("Graph service successfully reinitialized with GPU compute");
                     },
                     Err(e) => {
                         warn!("Failed to initialize GPU compute: {}. Continuing with CPU fallback.", e);
-                                        // Shut down the existing GraphService before creating a new one
-                        app_state.graph_service.shutdown().await;
+                        
+                        // Attempt shutdown with proper error handling
+                        let shutdown_start = std::time::Instant::now();
+                        match tokio::time::timeout(Duration::from_secs(5), app_state.graph_service.shutdown()).await {
+                            Ok(_) => info!("Graph service shutdown completed successfully in {:?}", shutdown_start.elapsed()),
+                            Err(_) => {
+                                warn!("Graph service shutdown timed out after 5 seconds");
+                                warn!("Proceeding with reinitialization anyway - old simulation loop will self-terminate");
+                            }
+                        }
                         
         // Initialize graph service with None as GPU compute (will use CPU fallback)
                         app_state.graph_service = GraphService::new(
                             settings.clone(), 
                             None,
-                            Some(client_manager.clone())
+                            None
                         ).await;
                         
                         info!("Graph service initialized with CPU fallback");

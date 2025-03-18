@@ -1,4 +1,5 @@
 import { Settings } from './base';
+import { nostrAuth } from '../../services/NostrAuthService';
 
 export interface ValidationError {
     path: string;
@@ -134,6 +135,46 @@ const validationRules: Record<string, Record<string, ValidationRule>> = {
     }
 };
 
+// Define settings that require specific permissions
+const restrictedSettings: Record<string, string[]> = {
+    perplexity: ['perplexity'],
+    openai: ['openai'],
+    ragflow: ['ragflow'],
+    power_user: [
+        'system.advanced',
+        'visualization.physics.advanced',
+        'visualization.rendering.advanced'
+    ]
+};
+
+function validatePermissions(path: string): ValidationError[] {
+    const errors: ValidationError[] = [];
+    
+    // Check if user is authenticated
+    if (!nostrAuth.isAuthenticated()) {
+        // Unauthenticated users can only access basic settings
+        if (Object.values(restrictedSettings).flat().some(prefix => path.startsWith(prefix))) {
+            errors.push({
+                path,
+                message: 'This setting requires authentication'
+            });
+        }
+        return errors;
+    }
+    
+    // Check feature-specific permissions
+    Object.entries(restrictedSettings).forEach(([feature, paths]) => {
+        if (paths.some(prefix => path.startsWith(prefix)) && !nostrAuth.hasFeatureAccess(feature)) {
+            errors.push({
+                path,
+                message: `This setting requires ${feature} access`
+            });
+        }
+    });
+    
+    return errors;
+}
+
 export function validateSettings(settings: Partial<Settings>): ValidationResult {
     const errors: ValidationError[] = [];
     
@@ -143,6 +184,12 @@ export function validateSettings(settings: Partial<Settings>): ValidationResult 
         
         Object.entries(obj).forEach(([key, value]) => {
             const currentPath = path ? `${path}.${key}` : key;
+            
+            // Check permissions first
+            const permissionErrors = validatePermissions(currentPath);
+            if (permissionErrors.length > 0) {
+                errors.push(...permissionErrors);
+            }
             
             // Check if there's a validation rule for this path
             for (const [category, rules] of Object.entries(validationRules)) {
@@ -175,6 +222,12 @@ export function validateSettings(settings: Partial<Settings>): ValidationResult 
 
 export function validateSettingValue(path: string, value: any, currentSettings: Settings): ValidationError[] {
     const errors: ValidationError[] = [];
+    
+    // Check permissions first
+    const permissionErrors = validatePermissions(path);
+    if (permissionErrors.length > 0) {
+        return permissionErrors;
+    }
     
     // Find matching validation rule
     for (const [category, rules] of Object.entries(validationRules)) {

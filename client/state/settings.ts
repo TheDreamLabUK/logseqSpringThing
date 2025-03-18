@@ -17,11 +17,16 @@ const logger = createLogger('SettingsManager');
 export class SettingsManager {
     private store: SettingsStore;
     private initialized: boolean = false;
+    private _storeInitialized: boolean = false;
     private settings: Settings = { ...defaultSettings };
 
     constructor() {
-        this.store = SettingsStore.getInstance();
+        // Defer SettingsStore initialization to avoid circular dependencies
+        this.store = null as any;
+        this.settings = { ...defaultSettings };
     }
+    
+    private getStore = () => this.store || (this.store = SettingsStore.getInstance());
 
     public async initialize(): Promise<void> {
         if (this.initialized) return;
@@ -29,13 +34,17 @@ export class SettingsManager {
         // Initialize with default settings
         this.settings = { ...defaultSettings };
         
+        // Initialize the store reference
+        this.store = SettingsStore.getInstance();
+        this._storeInitialized = true;
+        
         // Initialize the store but don't load server settings yet
         try {
-            await this.store.initialize();
+            await this.getStore().initialize();
             
             // If the user is already logged in (session restored), we might have server settings
-            if (this.store.isUserLoggedIn()) {
-                this.settings = this.store.get('') as Settings;
+            if (this.getStore().isUserLoggedIn()) {
+                this.settings = this.getStore().get('') as Settings;
                 logger.info('Settings initialized from server (user logged in)');
             } else {
                 logger.info('Settings initialized with defaults (user not logged in)');
@@ -52,9 +61,9 @@ export class SettingsManager {
      * Called when user logs in with Nostr to update settings
      */
     public updateSettingsFromServer(): void {
-        if (this.store.isUserLoggedIn()) {
+        if (this._storeInitialized && this.getStore().isUserLoggedIn()) {
             // Get the latest settings from the store which should have loaded them from server
-            this.settings = this.store.get('') as Settings;
+            this.settings = this.getStore().get('') as Settings;
             logger.info('Settings updated from server after user login');
 
             // Force refresh of visualization with new settings
@@ -82,8 +91,8 @@ export class SettingsManager {
         try {
             setSettingValue(this.settings, path, value);
             if (this.initialized) {
-                await this.store.set(path, value);
-                if (!this.store.isUserLoggedIn()) {
+                await this.getStore().set(path, value);
+                if (!this.getStore().isUserLoggedIn()) {
                     logger.warn(`Setting ${path} updated, but won't be saved to server until user logs in`);
                 }
             } else {
@@ -169,9 +178,9 @@ export class SettingsManager {
             // Then sync with store if initialized
             if (this.initialized) {
                 await Promise.all(
-                    updates.map(({ path, value }) => this.store.set(path, value))
+                    updates.map(({ path, value }) => this.getStore().set(path, value))
                 );
-                if (!this.store.isUserLoggedIn()) {
+                if (!this.getStore().isUserLoggedIn()) {
                     logger.warn(`Settings batch updated, but won't be saved to server until user logs in`);
                 }
             } else {
@@ -184,7 +193,10 @@ export class SettingsManager {
     }
 
     public dispose(): void {
-        this.store.dispose();
+        if (this._storeInitialized) {
+            this.getStore().dispose();
+            this.store = null as any;
+        }
         this.initialized = false;
     }
 }

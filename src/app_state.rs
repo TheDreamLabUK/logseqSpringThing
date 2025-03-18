@@ -5,7 +5,7 @@ use log::info;
 
 use crate::handlers::socket_flow_handler::ClientManager;
 use crate::config::Settings;
-use once_cell::sync::Lazy;
+use crate::handlers::socket_flow_handler::ClientManager;
 use tokio::time::Duration;
 use crate::config::feature_access::FeatureAccess;
 use crate::models::metadata::MetadataStore;
@@ -17,6 +17,7 @@ use crate::services::speech_service::SpeechService;
 use crate::services::ragflow_service::RAGFlowService;
 use crate::services::nostr_service::NostrService;
 use crate::utils::gpu_compute::GPUCompute;
+use once_cell::sync::Lazy;
 
 #[derive(Clone)]
 pub struct AppState {
@@ -39,7 +40,8 @@ pub struct AppState {
 }
 
 // Static ClientManager for the app
-static APP_CLIENT_MANAGER: Lazy<Arc<ClientManager>> = Lazy::new(|| Arc::new(ClientManager::new()));
+static APP_CLIENT_MANAGER: Lazy<Arc<ClientManager>> = 
+    Lazy::new(|| Arc::new(ClientManager::new()));
 
 impl AppState {
     pub async fn new(

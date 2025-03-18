@@ -126,4 +126,3 @@ pub const CACHE_DURATION: Duration = Duration::from_secs(3600);
 pub const DEFAULT_PORT: u16 = 8080;
 pub const DEFAULT_HOST: &str = "127.0.0.1";
 pub const API_VERSION: &str = "v1";
-```

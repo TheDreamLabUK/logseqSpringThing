@@ -4,21 +4,16 @@ import { EdgeManager } from './rendering/EdgeManager';
 import { HologramManager } from './visualization/HologramManager';
 import { TextRenderer } from './rendering/textRenderer';
 import { WebSocketService } from './websocket/websocketService';
-import { SettingsStore } from './state/SettingsStore';
-import { LoggerConfig, createLogger, createErrorMetadata, createDataMetadata } from './core/logger';
-import { platformManager } from './platform/platformManager';
-
-import { XRSessionManager } from './xr/xrSessionManager';
-import { XRInitializer } from './xr/xrInitializer';
+import { createLogger, createErrorMetadata, createDataMetadata } from './core/logger';
+import { debugState } from './core/debugState';
 import { SceneManager } from './rendering/scene';
 import { graphDataManager } from './state/graphData';
-import { debugState } from './core/debugState';
-import { ModularControlPanel } from './ui/ModularControlPanel';
-import { defaultSettings } from './state/defaultSettings';
 import { MaterialFactory } from './rendering/factories/MaterialFactory';
-import './ui'; // Import UI initialization
+import { XRSessionManager } from './xr/xrSessionManager';
+import { XRInitializer } from './xr/xrInitializer';
+import { initializeApplication } from './core/initialize';
+import { SettingsStore } from './state/SettingsStore';
 
-import { Vector3 } from 'three';
 const logger = createLogger('GraphVisualization');
 
 export function checkWebGLSupport(): boolean {
@@ -33,237 +28,16 @@ export function checkWebGLSupport(): boolean {
     return true;
 }
 
-/**
- * Helper to validate and sanitize Vector3 positions
- * Returns true if fixed, false if already valid
- */
-function validateAndFixVector3(vec: Vector3): boolean {
-    if (isNaN(vec.x) || isNaN(vec.y) || isNaN(vec.z) || !isFinite(vec.x) || !isFinite(vec.y) || !isFinite(vec.z)) {
-        vec.set(isNaN(vec.x) || !isFinite(vec.x) ? 0 : vec.x, isNaN(vec.y) || !isFinite(vec.y) ? 0 : vec.y, isNaN(vec.z) || !isFinite(vec.z) ? 0 : vec.z);
-        return true;
-    }
-    return false;
-}
-
 export class GraphVisualization {
     private sceneManager: SceneManager;
     private nodeManager: NodeManagerFacade;
     private edgeManager: EdgeManager;
     private hologramManager: HologramManager;
     private textRenderer: TextRenderer;
-    private websocketService!: WebSocketService;
-    private initialized: boolean = false;
-    private websocketInitialized: boolean = false;
-    private componentsReady: boolean = false;
+    private websocketService: WebSocketService | null = null;
+    private websocketInitialized = false;
+    private componentsReady = false;
     private loadingTimeout: number | null = null;
-
-    // Start a timeout to detect endless loading states
-    private startLoadingTimeout(): void {
-        if (this.loadingTimeout) {
-            window.clearTimeout(this.loadingTimeout);
-        }
-        this.loadingTimeout = window.setTimeout(() => {
-            logger.error('Loading timeout: Initial graph data loading took too long');
-            // Try to make the app usable even with timeout
-            document.getElementById('loading-message')?.remove();
-        }, 30000); // 30 second timeout
-    }
-    
-    private clearLoadingTimeout(): void {
-        if (this.loadingTimeout) {
-            window.clearTimeout(this.loadingTimeout);
-            this.loadingTimeout = null;
-        }
-    }
-
-    public async initializeWebSocket(): Promise<void> {
-        if (!this.componentsReady) {
-            if (debugState.isEnabled()) {
-                logger.warn('Attempting to initialize WebSocket before components are ready');
-            }
-            return;
-        }
-        
-        // Prevent duplicate WebSocket initialization
-        if (this.websocketInitialized) {
-            if (debugState.isEnabled()) {
-                logger.warn('WebSocket already initialized, skipping duplicate initialization');
-            }
-            return;
-        }
-
-        if (debugState.isDataDebugEnabled()) {
-            logger.debug('Loading initial graph data via REST');
-        }
-        
-        // Set a timeout for the initial data loading to avoid hanging in the loading state
-        const LOADING_TIMEOUT = 30000; // 30 seconds
-        if (this.loadingTimeout) {
-            window.clearTimeout(this.loadingTimeout);
-        }
-        
-        this.loadingTimeout = window.setTimeout(() => {
-            logger.error('Timeout while loading initial graph data. The server may be unresponsive.');
-            document.getElementById('loading-message')?.setAttribute('data-error', 'true');
-            const loadingEl = document.getElementById('loading-message');
-            if (loadingEl) {
-                loadingEl.textContent = 'Error: Timeout while loading graph data. Please refresh the page to try again.';
-                loadingEl.classList.add('error');
-            }
-        }, LOADING_TIMEOUT);
-        
-        // Start loading timeout
-        this.startLoadingTimeout();
-        
-        try {
-            // First load graph data via REST
-            await graphDataManager.fetchInitialData();
-            const graphData = graphDataManager.getGraphData();
-            
-            // Clear the loading timeout since we have data
-            this.clearLoadingTimeout();
-            
-            // Check for empty or invalid graph data
-            if (!graphData || !graphData.nodes || graphData.nodes.length === 0) {
-                logger.error('Initial graph data is empty or invalid', createDataMetadata({ 
-                    hasGraphData: !!graphData,
-                    hasNodes: !!(graphData && graphData.nodes),
-                    nodeCount: graphData?.nodes?.length || 0
-                }));
-            }
-            
-            // Clear the loading timeout since data was loaded successfully
-            if (this.loadingTimeout) {
-                window.clearTimeout(this.loadingTimeout);
-                this.loadingTimeout = null;
-            }
-            
-            // Validate the received data
-            if (!graphData || !graphData.nodes || graphData.nodes.length === 0) {
-                logger.error('Initial graph data is empty or invalid', createDataMetadata(graphData));
-                throw new Error('Initial graph data is empty or invalid');
-            }
-            
-            // Update visualization with initial data
-            this.nodeManager.updateNodes(graphData.nodes);
-            this.edgeManager.updateEdges(graphData.edges);
-            
-            if (debugState.isDataDebugEnabled()) {
-                logger.debug('Initial graph data loaded via REST', {
-                    nodes: graphData.nodes.length,
-                    edges: graphData.edges.length
-                });
-            }
-
-            // Now initialize WebSocket for binary updates
-            this.websocketService = WebSocketService.getInstance();
-            
-            // Create an adapter that implements the InternalWebSocketService interface
-            // expected by GraphDataManager
-            const webSocketAdapter = {
-                send: (data: ArrayBuffer) => {
-                    if (debugState.isDataDebugEnabled()) {
-                        logger.debug('Sending binary data via WebSocket adapter');
-                    }
-                    // Use WebSocketService's binary message handling capability
-                    // The WebSocketService handles compression internally
-                    this.websocketService.sendNodeUpdates([]);
-                    
-                    // Send the raw binary data - this may be needed for certain types of updates
-                    const success = this.websocketService.sendRawBinaryData(data);
-                    if (!success) {
-                        logger.error('Failed to send binary data via WebSocket adapter: WebSocket may not be connected');
-                    }
-                }
-            };
-            
-            // Register the adapter with GraphDataManager
-            graphDataManager.setWebSocketService(webSocketAdapter);
-            
-            // Set up binary message handler
-            this.websocketService.onBinaryMessage((nodes) => {
-                if (this.initialized && this.componentsReady) {
-                    if (debugState.isDataDebugEnabled()) {
-                        logger.debug('Received binary node update', { nodeCount: nodes.length });
-                    }
-                    
-                    // Check each node for NaN values and fix if needed
-                    nodes.forEach(node => {
-                        if (validateAndFixVector3(node.position)) {
-                            logger.warn(`Fixed invalid position for node ${node.id}`);
-                        }
-                        if (node.velocity && validateAndFixVector3(node.velocity)) {
-                            logger.warn(`Fixed invalid velocity for node ${node.id}`);
-                        }
-                    });
-                    this.nodeManager.updateNodePositions(nodes.map(node => ({
-                        id: node.id.toString(),
-                        data: {
-                            position: node.position,
-                            velocity: node.velocity
-                        }
-                    })));
-                }
-            });
-            
-            // Set up connection status handler
-            this.websocketService.onConnectionStatusChange((connected) => {
-                if (debugState.isEnabled()) {
-                    logger.info(`WebSocket connection status changed: ${connected}`);
-                }
-                if (connected && this.componentsReady) {
-                    // Enable binary updates in GraphDataManager
-                    graphDataManager.setBinaryUpdatesEnabled(true);
-                    if (debugState.isDataDebugEnabled()) {
-                        logger.debug('Binary updates enabled');
-                    }
-                }
-            });
-            
-            // Mark as initialized before connecting WebSocket
-            this.initialized = true;
-            this.websocketInitialized = true;
-            
-            // Finally connect WebSocket
-            await this.websocketService.connect();
-            
-            /**
-             * At this point, we need to manually notify other components that the WebSocket is ready.
-             * The GraphDataManager tries to configure itself with WebSocketService but 
-             * they use different interfaces, which is causing the "WebSocket service not configured" error.
-             * 
-             * Instead of trying to bridge them directly (which would require modifying interfaces),
-             * we're enabling binary updates on GraphDataManager after the WebSocket is connected, and
-             * the components will communicate through their existing API methods:
-             * 
-             * - GraphDataManager.setBinaryUpdatesEnabled(true) -> enables updates
-             * - WebSocketService.sendNodeUpdates() -> handles outgoing node updates
-             * - WebSocketService.onBinaryMessage() -> processes incoming binary data (already set up above)
-             */
-            try {
-                // Enable binary updates now that WebSocket is connected
-                logger.info('Binary updates enabled for GraphDataManager with WebSocket adapter');
-            } catch (error) {
-                logger.error('Error enabling binary updates:', createErrorMetadata(error));
-            }
-            
-            if (debugState.isDataDebugEnabled()) {
-                logger.debug('WebSocket connected and ready for binary updates');
-            }
-        } catch (error) {
-            logger.error('Failed to initialize data and WebSocket:', createErrorMetadata(error));
-            
-            // Clear the loading timeout
-            if (this.loadingTimeout) {
-                window.clearTimeout(this.loadingTimeout);
-                this.loadingTimeout = null;
-            }
-            
-            // Show error to user
-            this.showLoadingError('Failed to load graph data. Please check your connection and try again.');
-            throw error;
-        }
-    }
 
     constructor(settings: Settings) {
         if (debugState.isDataDebugEnabled()) {
@@ -305,6 +79,91 @@ export class GraphVisualization {
         }
     }
 
+    public async initializeWebSocket(): Promise<void> {
+        if (this.websocketInitialized) {
+            logger.warn('WebSocket already initialized');
+            return;
+        }
+
+        try {
+            // Initialize WebSocket service
+            this.websocketService = WebSocketService.getInstance();
+            
+            // Handle binary position updates from WebSocket
+            this.websocketService?.onBinaryMessage((data) => {
+                if (data instanceof ArrayBuffer) {
+                    // Process binary position update through graph data manager
+                    graphDataManager.updateNodePositions(new Float32Array(data));
+                    if (debugState.isDataDebugEnabled()) {
+                        logger.debug('Received binary position update');
+                    }
+                }
+            });
+            
+            // Set up connection status handler
+            this.websocketService?.onConnectionStatusChange((connected) => {
+                if (debugState.isEnabled()) {
+                    logger.info(`WebSocket connection status changed: ${connected}`);
+                }
+                
+                // Check if websocket is both connected AND ready (received 'connection_established' message)
+                if (connected && this.componentsReady) {
+                    if (this.websocketService?.isReady()) {
+                        // WebSocket is fully ready, now it's safe to enable binary updates
+                        logger.info('WebSocket is connected and fully established - enabling binary updates');
+                        graphDataManager.setBinaryUpdatesEnabled(true);
+                        if (debugState.isDataDebugEnabled()) {
+                            logger.debug('Binary updates enabled');
+                        }
+                    } else {
+                        logger.info('WebSocket connected but not fully established yet - waiting for readiness');
+                        
+                        // We'll let graphDataManager handle the binary updates enablement
+                        // through its retry mechanism that now checks for websocket readiness
+                        graphDataManager.enableBinaryUpdates();
+                    }
+                }
+            });
+            
+            // Configure GraphDataManager with WebSocket service (adapter pattern)
+            if (this.websocketService) {
+                const wsAdapter = {
+                    send: (data: ArrayBuffer) => {
+                        this.websocketService?.sendRawBinaryData(data);
+                    },
+                    isReady: () => this.websocketService?.isReady() || false
+                };
+                graphDataManager.setWebSocketService(wsAdapter);
+            }
+            
+            // Mark as initialized before connecting WebSocket
+            this.websocketInitialized = true;
+            
+            // Finally connect WebSocket
+            await this.websocketService?.connect();
+            
+            // Fetch initial graph data from REST API before enabling binary updates
+            logger.info('Fetching initial graph data via REST API');
+            await graphDataManager.fetchInitialData();
+            
+            if (debugState.isDataDebugEnabled()) {
+                logger.debug('WebSocket connected and waiting for server readiness confirmation');
+            }
+        } catch (error) {
+            logger.error('Failed to initialize data and WebSocket:', createErrorMetadata(error));
+            
+            // Clear the loading timeout
+            if (this.loadingTimeout) {
+                window.clearTimeout(this.loadingTimeout);
+                this.loadingTimeout = null;
+            }
+            
+            // Show error to user
+            this.showLoadingError('Failed to load graph data. Please check your connection and try again.');
+            throw error;
+        }
+    }
+
     public handleSettingsUpdate(settings: Settings) {
         if (!this.componentsReady) {
             if (debugState.isEnabled()) {
@@ -319,7 +178,7 @@ export class GraphVisualization {
         this.nodeManager.handleSettingsUpdate(settings);
         this.edgeManager.handleSettingsUpdate(settings);
         this.hologramManager.updateSettings(settings);
-        this.textRenderer.handleSettingsUpdate(settings.visualization.labels);
+        this.textRenderer.handleSettingsUpdate(settings.visualization?.labels);
         this.sceneManager.handleSettingsUpdate(settings);
     }
 
@@ -358,7 +217,6 @@ export class GraphVisualization {
             window.clearTimeout(this.loadingTimeout);
             this.loadingTimeout = null;
         }
-        this.initialized = false;
         this.componentsReady = false;
         if (debugState.isDataDebugEnabled()) {
             logger.debug('GraphVisualization disposed');
@@ -366,48 +224,15 @@ export class GraphVisualization {
     }
 }
 
-// Initialize settings and logging
+// Initialize application
 async function init() {
     if (debugState.isEnabled()) {
         logger.info('Starting application initialization...');
     }
     
     try {
-        // Initialize platform detection first
-        await platformManager.initialize(defaultSettings);
-        
-        // Initialize ModularControlPanel first and wait for settings to be ready
-        const controlPanel = ModularControlPanel.getInstance();
-        const settingsStore = SettingsStore.getInstance();
-        
-        // Wait for both control panel and settings store to be ready
-        await Promise.all([
-            new Promise<void>((resolve) => {
-                if (controlPanel.isReady()) {
-                    resolve();
-                } else {
-                    controlPanel.on('settings:ready', () => resolve());
-                }
-            }),
-            settingsStore.initialize()
-        ]);
-        
-        // Get settings after everything is initialized
-        const settings = settingsStore.get('') as Settings || defaultSettings;
-
-        // Configure logging based on settings
-        const debugEnabled = settingsStore.get('system.debug.enabled') as boolean;
-        const logFullJson = settingsStore.get('system.debug.log_full_json') as boolean;
-        LoggerConfig.setGlobalDebug(debugEnabled);
-        LoggerConfig.setFullJson(logFullJson);
-        
-        // Subscribe to debug setting changes
-        settingsStore.subscribe('system.debug.enabled', (_, value) => {
-            LoggerConfig.setGlobalDebug(value as boolean);
-        });
-        settingsStore.subscribe('system.debug.log_full_json', (_, value) => {
-            LoggerConfig.setFullJson(value as boolean);
-        });
+        // Initialize core systems (auth, platform, settings)
+        const settings = await initializeApplication();
 
         // Create XR button if it doesn't exist
         if (!document.getElementById('xr-button')) {
@@ -437,14 +262,10 @@ async function init() {
 
         // Subscribe to all relevant visualization paths
         const visualizationPaths = [
-            'visualization.nodes',
-            'visualization.edges',
-            'visualization.physics',
-            'visualization.rendering',
-            'visualization.animations',
-            'visualization.labels',
-            'visualization.bloom',
-            'visualization.hologram'
+            'visualization',  // Subscribe to all visualization changes
+            'system.websocket',  // Subscribe to websocket settings
+            'system.debug',  // Subscribe to debug settings
+            'xr'  // Subscribe to XR settings
         ];
 
         // Subscribe to each path and update both visualization and scene
@@ -470,8 +291,12 @@ async function init() {
                 
                 if (debugState.isEnabled()) {
                     logger.debug('Settings updated:', {
-                        bloom: currentSettings.visualization.bloom,
-                        rendering: currentSettings.visualization.rendering
+                        visualization: {
+                            bloom: currentSettings.visualization?.bloom,
+                            rendering: currentSettings.visualization?.rendering
+                        },
+                        system: currentSettings.system,
+                        xr: currentSettings.xr
                     });
                 }
             } catch (error) {
@@ -480,6 +305,7 @@ async function init() {
         };
 
         // Use a single subscription for all visualization paths
+        const settingsStore = SettingsStore.getInstance();
         visualizationPaths.forEach(path => {
             settingsStore.subscribe(path, () => {
                 if (!pendingUpdate) {
@@ -492,12 +318,6 @@ async function init() {
 
         // Log successful initialization
         if (debugState.isEnabled()) {
-            logger.info('Application components initialized successfully', {
-                platformType: platformManager.getPlatform(),
-                xrSupported: platformManager.isXRSupported(),
-                isQuest: platformManager.isQuest()
-            });
-            
             logger.info('Application initialized successfully');
         }
     } catch (error) {

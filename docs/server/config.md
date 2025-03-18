@@ -100,4 +100,3 @@ impl Settings {
 ### Hot Reload
 ```rust
 pub async fn reload_config() -> Result<(), ConfigError>
-```

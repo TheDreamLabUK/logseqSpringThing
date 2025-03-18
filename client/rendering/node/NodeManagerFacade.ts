@@ -428,85 +428,60 @@ export class NodeManagerFacade implements NodeManagerInterface {
             velocity?: Vector3
         } 
     }[]): void {
-        const updatePosStartTime = performance.now();
-        
         if (!this.isInitialized) return;
         
-        // Validate all node IDs in the update
-        const validNodeIds = nodes.every(update => this.validateNodeId(update.id));
-        if (!validNodeIds) {
-            logger.warn("Some node IDs in position update are invalid (non-numeric). This may cause rendering issues.");
-        }
-        
+
+        const updatePosStartTime = performance.now();
+        let processedCount = 0;
+        let skippedCount = 0;
         logger.info(`Updating positions for ${nodes.length} nodes`, createDataMetadata({
             timestamp: Date.now(),
             nodeCount: nodes.length
         }));
 
-        // Track zero position counts for diagnostics
-        let zeroPositionCount = 0;
-        let nullVelocityCount = 0;
-
         try {
-            // Handle NaN values and validate positions before passing to instance manager
-            const validatedNodes = nodes.map(node => {
-                // Skip nodes with invalid IDs
+            // Process only nodes with valid IDs and proper positions
+            const validatedNodes = nodes
+              .filter(node => {
                 if (!this.validateNodeId(node.id)) {
-                    logger.warn(`Skipping node with invalid ID format: ${node.id} from position update`);
-                    return null;
+                    logger.warn(`Skipping node with invalid ID: ${node.id}`);
+                    skippedCount++;
+                    return false;
                 }
-
-                // Check for zero positions
-                if (node.data.position.x === 0 && node.data.position.y === 0 && node.data.position.z === 0) {
-                    zeroPositionCount++;
-                    if (Math.random() < 0.05) { // Log only 5% of cases to avoid spam
-                        logger.debug(`Node ${node.id} has ZERO position during updateNodePositions`);
-                    }
-                }
+                return true;
+              })
+              .map(node => {
+                const position = node.data.position.clone();
+                const velocity = node.data.velocity ? node.data.velocity.clone() : new Vector3();
                 
-                // Check for null velocities
-                if (!node.data.velocity) {
-                    nullVelocityCount++;
-                    // Create a zero velocity vector if missing
-                    node.data.velocity = new Vector3(0, 0, 0);
-                }
-                
-                const positionValid = this.validateAndFixVector3(node.data.position, 'position', node.id);
-                const velocityValid = node.data.velocity ? 
-                                     this.validateAndFixVector3(node.data.velocity, 'velocity', node.id) : 
-                                     false;
+                // Validate and fix vectors if needed
+                const positionValid = this.validateAndFixVector3(position, 'position', node.id);
+                const velocityValid = this.validateAndFixVector3(velocity, 'velocity', node.id);
                 
                 if (!positionValid || !velocityValid) {
                     logger.warn(`Fixed invalid vectors for node ${node.id}`, createDataMetadata({
                         positionValid,
                         velocityValid,
-                        position: {
-                            x: node.data.position.x, 
-                            y: node.data.position.y, 
-                            z: node.data.position.z
-                        },
-                        velocity: node.data.velocity ? {
-                            x: node.data.velocity.x, 
-                            y: node.data.velocity.y, 
-                            z: node.data.velocity.z
-                        } : 'undefined'
+                        position: { x: position.x, y: position.y, z: position.z },
+                        velocity: { x: velocity.x, y: velocity.y, z: velocity.z }
                     }));
                 }
                 
-                return { id: node.id, position: node.data.position, velocity: node.data.velocity };
-            }).filter(node => node !== null) as { 
-                id: string, 
-                position: Vector3, 
-                velocity: Vector3 
-            }[];
+                processedCount++;
+                return { 
+                    id: node.id, 
+                    position: position, 
+                    velocity: velocity 
+                };
+            });
             
             this.instanceManager.updateNodePositions(validatedNodes);
             
             const updatePosElapsedTime = performance.now() - updatePosStartTime;
             logger.info(`Position updates completed in ${updatePosElapsedTime.toFixed(2)}ms`, createDataMetadata({
                 nodeCount: nodes.length,
-                zeroPositionCount,
-                nullVelocityCount,
+                processedCount,
+                skippedCount,
                 elapsedTimeMs: updatePosElapsedTime.toFixed(2)
             }));
         } catch (error) {

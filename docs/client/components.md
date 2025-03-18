@@ -1,4 +1,4 @@
-# Component Architecture
+# Client Components
 
 This document details the client component architecture, describing the relationships between major components, their responsibilities, and dependencies.
 
@@ -162,11 +162,6 @@ flowchart TB
     NodeInteractionManager --> XRHandInteraction
 ```
 
-**Key Dependencies:**
-- Three.js
-- WebSocket for position updates
-- Settings for visual configuration
-
 ### Edge Manager (`client/rendering/EdgeManager.ts`)
 Manages the visual representation of edges connecting nodes.
 
@@ -175,11 +170,6 @@ Manages the visual representation of edges connecting nodes.
 - Manage edge materials and appearance
 - Update edge positions based on connected nodes
 
-**Key Dependencies:**
-- Three.js
-- Node Manager (for node positions)
-- Settings for visual configuration
-
 ### Text Renderer (`client/rendering/textRenderer.ts`)
 Renders text labels in 3D space.
 
@@ -187,11 +177,6 @@ Renders text labels in 3D space.
 - Create and position text elements
 - Manage text appearance and visibility
 - Handle SDF font rendering for crisp text
-
-**Key Dependencies:**
-- Three.js
-- SDF font generation
-- Settings for text configuration
 
 ## Network Components
 
@@ -204,11 +189,6 @@ Manages WebSocket connection and communication with the server.
 - Handle binary protocol for position updates
 - Manage reconnection on connection loss
 
-**Key Dependencies:**
-- Browser WebSocket API
-- Binary data handling for position updates
-- Settings for connection configuration
-
 ### Graph Data Manager (`client/state/graphData.ts`)
 Manages graph data loading, updates, and state.
 
@@ -217,11 +197,6 @@ Manages graph data loading, updates, and state.
 - Process graph updates
 - Track node and edge data
 - Manage binary position updates
-
-**Key Dependencies:**
-- WebSocket Service
-- API Client
-- Settings for graph configuration
 
 ## XR Components
 
@@ -233,11 +208,6 @@ Initializes WebXR capabilities and sessions.
 - Initialize WebXR sessions
 - Set up XR reference space
 
-**Key Dependencies:**
-- Three.js
-- WebXR API
-- XR Session Manager
-
 ### XR Session Manager (`client/xr/xrSessionManager.ts`)
 Manages WebXR sessions and state.
 
@@ -246,11 +216,6 @@ Manages WebXR sessions and state.
 - Track XR session state
 - Manage XR reference spaces
 
-**Key Dependencies:**
-- Three.js WebXR integration
-- Hand Interaction manager
-- WebXR API
-
 ### Hand Interaction (`client/xr/handInteraction.ts`)
 Handles XR hand tracking and interactions.
 
@@ -258,11 +223,6 @@ Handles XR hand tracking and interactions.
 - Track hand positions
 - Handle grabbing and manipulation gestures
 - Interact with nodes and UI elements in XR
-
-**Key Dependencies:**
-- WebXR Hand Input API
-- Node Manager
-- XR Session Manager
 
 ## UI Components
 
@@ -274,11 +234,6 @@ Provides user interface controls for the application.
 - Handle user input
 - Update application state based on input
 
-**Key Dependencies:**
-- DOM manipulation
-- Settings Store
-- Event Emitter
-
 ### Settings UI
 Provides interfaces for configuring application settings.
 
@@ -287,14 +242,7 @@ Provides interfaces for configuring application settings.
 - Validate user input
 - Update settings in Settings Store
 
-**Key Dependencies:**
-- DOM manipulation
-- Settings Store
-- Settings validation
-
 ## Component Initialization Sequence
-
-The following sequence diagram shows the initialization flow of major components:
 
 ```mermaid
 sequenceDiagram
@@ -380,9 +328,9 @@ The application uses a mix of dependency injection patterns:
 2. **Constructor Injection** - Some components take dependencies in constructors
 3. **Method Injection** - Some methods accept dependencies as parameters
 
-## Next Sections
+## Related Documentation
 
-For more detailed information, refer to:
-- [Data Flow](data-flow.md) - Detailed data flow patterns
-- [State Management](state-management.md) - State management approach
-- [Rendering Pipeline](../components/rendering-pipeline.md) - Rendering component details
+- [Architecture Overview](architecture.md)
+- [State Management](state.md)
+- [Rendering System](rendering.md)
+- [XR Integration](xr.md)

@@ -82,7 +82,7 @@ The Graph Data Manager maintains the state of the graph visualization data.
 **Key Features:**
 - Loads and processes graph data from server
 - Manages node and edge collections
-- Handles real-time position updates
+- Handles real-time position updates via binary protocol
 - Provides subscription mechanism for changes
 
 **State Transitions:**
@@ -124,15 +124,6 @@ sequenceDiagram
     SettingsObserver->>SettingsObserver: filterRelevantUpdates()
     SettingsObserver->>Component: callback(value)
 ```
-
-### Debug State (`client/core/debugState.ts`)
-
-Debug State manages debug flags and settings that control logging and development features.
-
-**Key Features:**
-- Feature flags for debug capabilities
-- Controlled access to debug state
-- Persistence of debug settings
 
 ## State Persistence
 
@@ -178,7 +169,7 @@ A publish-subscribe system for loose coupling between components.
 **Usage Pattern:**
 ```typescript
 // Publisher
-eventEmitter.emit('settings:changed', { path: 'rendering.quality', value: 'high' });
+eventEmitter.emit('settings:changed', { path: 'visualization.rendering.quality', value: 'high' });
 
 // Subscriber
 const unsubscribe = eventEmitter.on('settings:changed', (data) => {
@@ -206,45 +197,6 @@ const unsubscribe = settingsStore.subscribe((settings) => {
 });
 ```
 
-### DOM Events
-
-Used for global application events and cross-component communication.
-
-**Example:**
-```typescript
-// Dispatch event
-window.dispatchEvent(new CustomEvent('graph-data-reset', { detail: {} }));
-
-// Listen for event
-window.addEventListener('graph-data-reset', () => {
-  // Handle event
-});
-```
-
-## State Initialization Sequence
-
-```mermaid
-sequenceDiagram
-    participant App
-    participant SettingsStore
-    participant GraphDataManager
-    participant WebSocketService
-    
-    App->>SettingsStore: initialize()
-    SettingsStore->>SettingsStore: loadDefaults()
-    SettingsStore->>SettingsStore: loadFromLocalStorage()
-    SettingsStore->>App: settingsLoaded
-    
-    App->>GraphDataManager: initialize()
-    App->>WebSocketService: initialize()
-    WebSocketService->>WebSocketService: connect()
-    
-    App->>GraphDataManager: fetchInitialData()
-    GraphDataManager->>App: initialDataLoaded
-    
-    WebSocketService->>WebSocketService: sendRequestInitialData()
-```
-
 ## Settings Structure
 
 The settings are organized hierarchically by domain:
@@ -253,32 +205,98 @@ The settings are organized hierarchically by domain:
 interface Settings {
   visualization: {
     nodes: {
-      size: number;
-      color: string;
+      quality: 'low' | 'medium' | 'high';
+      enableInstancing: boolean;
+      enableHologram: boolean;
+      enableMetadataShape: boolean;
+      sizeRange: [number, number];
+      baseColor: string;
+      opacity: number;
       // ...
     };
     edges: {
-      thickness: number;
       color: string;
+      opacity: number;
+      arrowSize: number;
+      baseWidth: number;
+      enableArrows: boolean;
+      widthRange: [number, number];
+      quality: 'low' | 'medium' | 'high';
+      // ...
+    };
+    physics: {
+      enabled: boolean;
+      attractionStrength: number;
+      repulsionStrength: number;
+      springStrength: number;
+      damping: number;
+      // ...
+    };
+    rendering: {
+      ambientLightIntensity: number;
+      directionalLightIntensity: number;
+      environmentIntensity: number;
+      backgroundColor: string;
+      enableAmbientOcclusion: boolean;
+      enableAntialiasing: boolean;
+      enableShadows: boolean;
+      // ...
+    };
+    animations: {
+      enableNodeAnimations: boolean;
+      enableMotionBlur: boolean;
+      motionBlurStrength: number;
       // ...
     };
     labels: {
-      visible: boolean;
-      size: number;
+      enableLabels: boolean;
+      desktopFontSize: number;
+      textColor: string;
+      textOutlineColor: string;
       // ...
     };
+    bloom: {
+      enabled: boolean;
+      strength: number;
+      radius: number;
+      threshold: number;
+      // ...
+    };
+    hologram: {
+      ringCount: number;
+      sphereSizes: number[];
+      ringRotationSpeed: number;
+      globalRotationSpeed: number;
+      // ...
+    };
+  };
+  system: {
+    websocket: {
+      reconnectAttempts: number;
+      reconnectDelay: number;
+      binaryChunkSize: number;
+      compressionEnabled: boolean;
+      // ...
+    };
+    debug: {
+      enabled: boolean;
+      enableDataDebug: boolean;
+      enableWebsocketDebug: boolean;
+      logBinaryHeaders: boolean;
+      // ...
+    };
+  };
+  xr: {
+    mode: 'immersive-ar';
+    roomScale: number;
+    spaceType: 'local-floor';
+    quality: 'low' | 'medium' | 'high';
+    enableHandTracking: boolean;
+    handMeshEnabled: boolean;
+    handMeshColor: string;
+    handMeshOpacity: number;
     // ...
   };
-  physics: {
-    enabled: boolean;
-    gravity: number;
-    // ...
-  };
-  network: {
-    reconnectDelay: number;
-    // ...
-  };
-  // ...
 }
 ```
 
@@ -316,40 +334,8 @@ this.state = {
 }; // GOOD
 ```
 
-## Common State Patterns
+## Related Documentation
 
-### State Initialization
-
-Components initialize state in a consistent pattern:
-
-1. Create with default values
-2. Load from persistent storage if available
-3. Subscribe to relevant state updates
-4. Initialize async resources
-5. Signal readiness
-
-### Error State Management
-
-Error states are managed through:
-
-1. Try-catch blocks for synchronous operations
-2. Promise catch handlers for async operations
-3. Error objects with type information
-4. Centralized error logging
-5. State flags to indicate error conditions
-
-### Loading State Management
-
-Loading states are tracked to improve user experience:
-
-1. Boolean flags for loading status
-2. Progress indicators for long operations
-3. Throttling to prevent UI flicker
-4. Timeout detection for stuck operations
-
-## Next Sections
-
-For more detailed information, refer to:
-- [Data Flow](data-flow.md) - How data flows through the application
-- [Component Architecture](component-architecture.md) - Component relationships
-- [Business Logic](../core/business-logic.md) - Core business rules and logic
+- [Components](components.md) - Component relationships and dependencies
+- [Architecture](architecture.md) - Overall system architecture
+- [WebSocket Communication](websocket.md) - Real-time state updates
