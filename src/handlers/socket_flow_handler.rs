@@ -175,10 +175,6 @@ pub struct SocketFlowServer {
     nodes_in_motion: usize,    // Counter for nodes currently in motion
     total_node_count: usize,   // Total node count for percentage calculation
     last_motion_check: Instant, // Last time we checked motion percentage,
-    // Client ID assigned by the ClientManager
-    client_id: Option<usize>,
-    // Reference to the ClientManager
-    client_manager: Option<Arc<ClientManager>>,
 }
 
 impl SocketFlowServer {
@@ -238,9 +234,7 @@ impl SocketFlowServer {
             motion_damping,
             nodes_in_motion: 0,
             total_node_count: 0,
-            last_motion_check: Instant::now(),
-            client_id: None,
-            client_manager,
+            last_motion_check: Instant::now()
         }
     }
 
@@ -405,11 +399,6 @@ impl Actor for SocketFlowServer {
         // We'll retrieve client ID asynchronously via message
         self.client_id = None;
 
-        self.last_activity = std::time::Instant::now();
-        
-        // We'll retrieve client ID asynchronously via message
-        self.client_id = None;
-        
         // Set up server-side heartbeat ping to keep connection alive
         if !self.heartbeat_timer_set {
             ctx.run_interval(std::time::Duration::from_secs(5), |act, ctx| {
@@ -458,39 +447,6 @@ impl Actor for SocketFlowServer {
 
 // Helper function to fetch nodes without borrowing from the actor
 
-// Implement handler for BroadcastPositionUpdate message
-impl Handler<BroadcastPositionUpdate> for SocketFlowServer {
-    type Result = ();
-
-    fn handle(&mut self, msg: BroadcastPositionUpdate, ctx: &mut Self::Context) -> Self::Result {
-        if !msg.0.is_empty() {
-            // Encode the binary message
-            let binary_data = binary_protocol::encode_node_data(&msg.0);
-            
-            // Apply compression if needed
-            let compressed_data = self.maybe_compress(binary_data);
-            let final_data_size = compressed_data.len(); // Store the size before moving
-            
-            // Send to client
-            ctx.binary(compressed_data);
-            
-            // Debug logging - limit to avoid spamming logs
-            if self.should_log_update() {
-                debug!("[WebSocket] Broadcast update sent: {} nodes, {} bytes", msg.0.len(), final_data_size);
-            }
-        }
-    }
-}
-
-// Implement handler for SetClientId message
-impl Handler<SetClientId> for SocketFlowServer {
-    type Result = ();
-
-    fn handle(&mut self, msg: SetClientId, _ctx: &mut Self::Context) -> Self::Result {
-        self.client_id = Some(msg.0);
-        info!("[WebSocket] Client assigned ID: {}", msg.0);
-    }
-}
 async fn fetch_nodes(
     app_state: Arc<AppState>,
     settings: Arc<RwLock<crate::config::Settings>>
@@ -943,9 +899,6 @@ pub async fn socket_flow_handler(
     if !req.headers().contains_key("Upgrade") {
         return Ok(HttpResponse::BadRequest().body("WebSocket upgrade required"));
     }
-
-    // Get the client manager from app state
-    let client_manager = app_state.ensure_client_manager().await;
 
     let ws = SocketFlowServer::new(app_state.into_inner(), settings.get_ref().clone(), Some(client_manager));
 

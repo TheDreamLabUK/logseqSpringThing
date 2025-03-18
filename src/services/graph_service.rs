@@ -1199,8 +1199,8 @@ impl GraphService {
         let mut node_map = self.node_map.write().await;
         
         // Process node updates efficiently
-        let mut updated_count = 0;
-        let mut skipped_count = 0;
+        let mut _updated_count = 0;
+        let mut _skipped_count = 0;
         
         // Process updates in batches
         for (node_id_u16, update_node) in updates {
@@ -1208,7 +1208,7 @@ impl GraphService {
 
             // Skip if this is a redundant update based on rate limiting
             if self.should_rate_limit().await {
-                skipped_count += 1;
+                _skipped_count += 1;
                 continue;
             }
             
@@ -1224,7 +1224,7 @@ impl GraphService {
                 
                 // Update the node in the map
                 *existing_node = resolved_node;
-                updated_count += 1;
+                _updated_count += 1;
             }
         }
         
@@ -1386,5 +1386,48 @@ impl GraphService {
 
         println!("All metadata tests passed!");
         Ok(())
+    }
+    
+    /// Start a separate broadcast loop to periodically push position updates to all clients
+    pub fn start_broadcast_loop(&self) {
+        info!("[GraphService] Starting position broadcast loop for client synchronization...");
+
+        // Check if we have a client manager, if not, log and return
+        if self.client_manager.is_none() {
+            warn!("[GraphService] Cannot start broadcast loop - no client manager available");
+            return;
+        }
+
+        // Clone what we need for the async task
+        let service_clone = self.clone();
+        let simulation_id = self.simulation_id.clone();
+
+        // Spawn a new task for the broadcast loop
+        tokio::spawn(async move {
+            info!("[GraphService:{}] Position broadcast loop starting", simulation_id);
+
+            // Main broadcast loop
+            loop {
+                // Check if shutdown was requested
+                if service_clone.shutdown_requested.load(Ordering::SeqCst) {
+                    info!("[GraphService:{}] Broadcast loop shutting down due to shutdown request", simulation_id);
+                    break;
+                }
+
+                // Get current node positions
+                let nodes = service_clone.get_node_positions().await;
+
+                // Broadcast positions to all clients
+                if !nodes.is_empty() {
+                    GraphService::broadcast_positions(&service_clone, &nodes).await;
+                }
+
+                // Sleep to avoid excessive updates
+                tokio::time::sleep(Duration::from_millis(100)).await;
+            }
+
+            info!("[GraphService:{}] Position broadcast loop exited", simulation_id);
+        });
+        info!("[GraphService] Position broadcast loop started");
     }
 }
