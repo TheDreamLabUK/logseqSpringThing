@@ -142,6 +142,10 @@ export class GraphVisualization {
             // Finally connect WebSocket
             await this.websocketService?.connect();
             
+            // Fetch initial graph data from REST API before enabling binary updates
+            logger.info('Fetching initial graph data via REST API');
+            await graphDataManager.fetchInitialData();
+            
             if (debugState.isDataDebugEnabled()) {
                 logger.debug('WebSocket connected and waiting for server readiness confirmation');
             }
