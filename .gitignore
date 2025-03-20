@@ -10,6 +10,7 @@ debug_log.txt
 
 # Dependencies
 node_modules
+client/node_modules
 .pnpm-store/
 .npm
 .yarn
