@@ -1,0 +1,42 @@
+services:
+  webxr:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+      args:
+        CUDA_ARCH: ${CUDA_ARCH:-86}  # Can be overridden by .env file
+    volumes:
+      - ./client:/app/client
+      - ./data/markdown:/app/data/markdown
+      - ./data/metadata:/app/data/metadata
+      - ./data/user_settings:/app/user_settings
+      - ./settings.yaml:/app/settings.yaml
+      - pnpm-cache:/root/.local/share/pnpm/store
+      - cargo-cache:/root/.cargo/registry
+      - cargo-git-cache:/root/.cargo/git
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=GPU-553dc306-dab3-32e2-c69b-28175a6f4da6
+      - RUST_LOG=debug
+      - NODE_ENV=development
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              capabilities: [compute,utility]
+              device_ids: ['0']
+    ports:
+      - "3001:3001"  # Vite dev server
+      - "4000:4000"  # Nginx
+      - "24678:24678"  # Vite HMR (Hot Module Replacement)
+    networks:
+      - docker_ragflow
+
+networks:
+  docker_ragflow:
+    external: true
+
+volumes:
+  pnpm-cache:
+  cargo-cache:
+  cargo-git-cache:

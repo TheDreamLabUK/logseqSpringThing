@@ -1,0 +1,71 @@
+FROM nvidia/cuda:12.8.1-devel-ubuntu22.04
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    RUST_LOG=info \
+    PATH="/root/.cargo/bin:${PATH}" \
+    NVIDIA_DRIVER_CAPABILITIES=all \
+    CUDA_HOME=/usr/local/cuda
+
+# Install dependencies including compilation tools
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    git \
+    nginx \
+    build-essential \
+    gcc-11 \
+    g++-11 \
+    pkg-config \
+    libssl-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set gcc-11 as default compiler (needed for CUDA compilation)
+RUN update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-11 100 \
+    && update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-11 100
+
+# Install Node.js
+RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
+    apt-get install -y nodejs && \
+    npm install -g pnpm@9.14.2
+
+# Install Rust
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+
+WORKDIR /app
+
+# Create necessary directories
+RUN mkdir -p /app/data/markdown \
+    /app/data/metadata \
+    /app/data/runtime \
+    /app/user_settings \
+    /app/client
+
+# Copy Rust files first
+COPY Cargo.toml Cargo.lock ./
+COPY src ./src
+
+# Copy client directory with all frontend files
+COPY client ./client
+
+# Install Node.js dependencies
+WORKDIR /app/client
+RUN pnpm install --prefer-offline
+
+WORKDIR /app
+
+# Build Rust with GPU features
+RUN cargo build --features gpu
+
+# PTX compilation - now happens during container build
+COPY scripts/compile_ptx.sh ./scripts/
+COPY src/utils/compute_forces.cu ./src/utils/
+RUN chmod +x ./scripts/compile_ptx.sh && \
+    # Get CUDA_ARCH from build arg or default to 86
+    CUDA_ARCH=${CUDA_ARCH:-86} ./scripts/compile_ptx.sh
+
+# Development entrypoint script
+COPY scripts/dev-entrypoint.sh ./
+RUN chmod +x ./dev-entrypoint.sh
+
+EXPOSE 3001 4000
+
+ENTRYPOINT ["./dev-entrypoint.sh"]

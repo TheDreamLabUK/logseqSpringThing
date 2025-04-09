@@ -4,12 +4,12 @@
     "useDefineForClassFields": true,
     "module": "ESNext",
     "lib": [
-      "es2020",
-      "dom",
-      "dom.iterable",
-      "webworker",
-      "webworker.importscripts",
-      "webworker.iterable"
+      "ES2020",
+      "DOM",
+      "DOM.Iterable",
+      "WebWorker",
+      "WebWorker.ImportScripts",
+      "Webworker.Iterable"
     ],
     "skipLibCheck": true,
     "moduleResolution": "bundler",
@@ -31,8 +31,14 @@
     "allowJs": true,
     "checkJs": true,
     "esModuleInterop": true,
-    "forceConsistentCasingInFileNames": true
+    "forceConsistentCasingInFileNames": true,
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["client/*"],
+      "three/examples/jsm/*": ["node_modules/three/examples/jsm/*"]
+    },
+    "types": ["vite/client", "node", "three"]
   },
-  "include": ["**/*.ts", "**/*.d.ts"],
-  "exclude": ["node_modules"]
+  "include": ["client/**/*.ts", "client/**/*.d.ts", "node_modules/three/examples/jsm/**/*.d.ts"],
+  "exclude": ["node_modules", "dist"]
 }
