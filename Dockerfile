@@ -6,18 +6,24 @@ WORKDIR /app/client
 # Copy package files
 COPY client/package.json client/package-lock.json ./
 
-# Install dependencies with clean install
-RUN npm ci
+# Install dependencies (using install instead of ci)
+RUN npm install
 
 # Copy source files and config
 COPY client/src ./src
+COPY client/index.html ./index.html
 COPY client/vite.config.ts ./vite.config.ts
+COPY client/tsconfig.json ./tsconfig.json
 
 # Create dist directory
 RUN mkdir -p ../data/public/dist
 
-# Build frontend using npx to ensure we use the local vite
-RUN SKIP_TS_CHECK=true npx vite build --config vite.config.ts
+# Build frontend
+ENV NODE_ENV=production
+RUN npm run build
+
+# Move the build output to the expected location
+RUN mv dist/* ../data/public/dist/
 
 # Stage 2: Rust Dependencies Cache
 FROM nvidia/cuda:12.8.1-devel-ubuntu22.04 AS rust-deps-builder

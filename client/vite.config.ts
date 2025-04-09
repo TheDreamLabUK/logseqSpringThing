@@ -5,6 +5,10 @@ import path from 'path';
 
 export default defineConfig({
   plugins: [react()],
+  build: {
+    outDir: 'dist',
+    emptyOutDir: true,
+  },
   server: {
     host: '0.0.0.0',
     port: parseInt(process.env.VITE_DEV_SERVER_PORT || '3001'),
@@ -29,9 +33,6 @@ export default defineConfig({
     alias: {
       '@': path.resolve(__dirname, './src'),
     },
-  },
-  define: {
-    'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV),
   },
 });
 

@@ -5,18 +5,30 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "SKIP_TS_CHECK=true vite build --config vite.config.ts",
+    "build": "vite build",
     "preview": "vite preview",
     "lint": "eslint src --ext ts,tsx --report-unused-disable-directives"
   },
   "dependencies": {
+    "@radix-ui/react-tooltip": "^1.0.7",
+    "@radix-ui/react-dialog": "^1.0.5",
+    "@radix-ui/react-dropdown-menu": "^2.0.6",
+    "@radix-ui/react-slot": "^1.0.2",
+    "@react-three/fiber": "^8.15.19",
+    "@react-three/drei": "^9.99.7",
+    "three": "^0.162.0",
+    "@types/three": "^0.162.0",
     "@types/node": "^20.17.25",
     "framer-motion": "^11.18.2",
-    "hls.js": "^1.5.20"
+    "hls.js": "^1.5.20",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
   },
   "devDependencies": {
-    "vite": "^5.0.0",
+    "@types/react": "^18.2.0",
+    "@types/react-dom": "^18.2.0",
     "@vitejs/plugin-react": "^4.2.0",
-    "typescript": "^5.0.0"
+    "typescript": "^5.0.2",
+    "vite": "^4.5.0"
   }
 }
