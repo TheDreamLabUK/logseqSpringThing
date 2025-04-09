@@ -46,20 +46,26 @@ async fn main() -> std::io::Result<()> {
         }
     };
 
-    // --- BEGIN GPU TEST BEFORE LOGGING --- 
+    // --- BEGIN GPU TEST BEFORE LOGGING ---
+    println!("[PRE-LOGGING CHECK] Starting GPU detection test before logging is initialized");
+    // Add forced pre-test delay
+    tokio::time::sleep(Duration::from_millis(1000)).await;
+    
     match webxr::utils::gpu_compute::GPUCompute::test_gpu().await {
         Ok(_) => println!("[PRE-LOGGING CHECK] GPU test successful."),
-        Err(e) => eprintln!("[PRE-LOGGING CHECK] GPU test failed: {}", e),
+        Err(e) => {
+            eprintln!("[PRE-LOGGING CHECK] GPU test failed: {}", e);
+            eprintln!("[PRE-LOGGING CHECK] Will retry once with additional delay");
+            tokio::time::sleep(Duration::from_millis(2000)).await;
+            
+            // Retry once
+            match webxr::utils::gpu_compute::GPUCompute::test_gpu().await {
+                Ok(_) => println!("[PRE-LOGGING CHECK] GPU test successful on retry!"),
+                Err(e) => eprintln!("[PRE-LOGGING CHECK] GPU test failed on retry: {}", e),
+            }
+        }
     }
-    // --- END GPU TEST BEFORE LOGGING --- 
-
-
-    // --- BEGIN GPU TEST BEFORE LOGGING --- 
-    match webxr::utils::gpu_compute::GPUCompute::test_gpu().await {
-        Ok(_) => println!("[PRE-LOGGING CHECK] GPU test successful."),
-        Err(e) => eprintln!("[PRE-LOGGING CHECK] GPU test failed: {}", e),
-    }
-    // --- END GPU TEST BEFORE LOGGING --- 
+    // --- END GPU TEST BEFORE LOGGING ---
 
 
     // Initialize logging with settings-based configuration

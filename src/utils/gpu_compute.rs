@@ -4,7 +4,7 @@ use cudarc::driver::sys::CUdevice_attribute_enum;
 
 use std::io::{Error, ErrorKind};
 use std::sync::Arc;
-use log::{error, warn, info};
+use log::{error, warn, info, debug};
 use crate::models::graph::GraphData;
 use std::collections::HashMap;
 use crate::models::simulation_params::SimulationParams;
@@ -42,13 +42,32 @@ impl GPUCompute {
     pub async fn test_gpu() -> Result<(), Error> {
         info!("Running GPU test");
         
+        // Force a delay before GPU device creation - independent of log level
+        {
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        }
+        
+        debug!("About to create CUDA device for testing");
+        
         // Try to create a device using our helper function
         let device = Self::create_cuda_device().await?;
+        
+        debug!("Device created successfully, performing memory test");
+        
+        // Force a delay after device creation - independent of log level
+        {
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        }
         
         // Try to allocate and manipulate some memory
         let test_data: Vec<f32> = vec![1.0, 2.0, 3.0, 4.0, 5.0];
         let gpu_data = device.alloc_zeros::<f32>(5)
             .map_err(|e| Error::new(ErrorKind::Other, e.to_string()))?;
+        
+        // Force a delay before memory operation - independent of log level
+        {
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        }
         
         device.dtoh_sync_copy_into(&gpu_data, &mut test_data.clone())
             .map_err(|e| Error::new(ErrorKind::Other, e.to_string()))?;
@@ -58,8 +77,11 @@ impl GPUCompute {
     }
     
     async fn create_cuda_device() -> Result<Arc<CudaDevice>, Error> {
+        debug!("Starting CUDA device initialization sequence");
+        
         // First try to use the NVIDIA_GPU_UUID environment variable
         if let Ok(uuid) = env::var("NVIDIA_GPU_UUID") {
+            debug!("Found NVIDIA_GPU_UUID environment variable: {}", uuid);
             info!("Attempting to create CUDA device with UUID: {}", uuid);
             // Note: cudarc doesn't directly support creation by UUID, so we log it
             // but setting NVIDIA_VISIBLE_DEVICES in the container handles this instead
@@ -67,24 +89,50 @@ impl GPUCompute {
             
             // Check if CUDA_VISIBLE_DEVICES is set, which may override device index
             if let Ok(devices) = env::var("CUDA_VISIBLE_DEVICES") {
+                debug!("Found CUDA_VISIBLE_DEVICES environment variable: {}", devices);
                 info!("CUDA_VISIBLE_DEVICES is set to: {}", devices);
             }
         }
-        
+
         // Always use device index 0 within the container
         // (NVIDIA_VISIBLE_DEVICES in docker-compose.yml controls which actual GPU this is)
-        // Add a small delay to potentially mitigate timing issues
-        tokio::time::sleep(std::time::Duration::from_millis(2000)).await; // Increased delay to 2 seconds
+        debug!("Preparing to create CUDA device with index 0");
+        
+        // Add explicit forced delays independent of logging context
+        // First delay - pre-initialization delay
+        {
+            // This block ensures the delay runs regardless of log level
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        }
+        debug!("Checking CUDA device availability");
+        
+        // Second delay - pre device creation delay
+        {
+            // This block ensures the delay runs regardless of log level
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        }
+        debug!("Attempting CUDA device creation");
+        
+        // Critical delay right before CudaDevice::new()
+        {
+            // This block ensures the delay runs regardless of log level
+            tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
+        }
+        
         info!("Creating CUDA device with index 0");
+        
+        // Actual device creation
         match CudaDevice::new(0) {
             Ok(device) => {
+                debug!("CUDA device creation successful");
                 // Successfully created device
                 info!("Successfully created CUDA device with index 0 (for GPU UUID: {})", env::var("NVIDIA_GPU_UUID").unwrap_or_else(|_| "unknown".to_string()));
                 Ok(device.into()) // Use .into() to convert to Arc
             },
             Err(e) => {
+                debug!("CUDA device creation failed with error: {}", e);
                 error!("Failed to create CUDA device with index 0: {}", e);
-                Err(Error::new(ErrorKind::Other, 
+                Err(Error::new(ErrorKind::Other,
                     format!("Failed to create CUDA device: {}. Make sure CUDA drivers are installed and working, and GPU is properly detected.", e)))
             }
         }
@@ -108,52 +156,92 @@ impl GPUCompute {
         }).await
     }
     
-    fn test_gpu_capabilities() -> Result<(), Error> {
+    async fn test_gpu_capabilities() -> Result<(), Error> {
+        debug!("Starting GPU capabilities test");
         // Check if CUDA is available
         info!("Testing CUDA capabilities");
         
-        // Log environment variables for diagnostic purposes
-        match env::var("NVIDIA_GPU_UUID") {
-            Ok(uuid) => info!("NVIDIA_GPU_UUID is set to: {}", uuid),
-            Err(_) => warn!("NVIDIA_GPU_UUID environment variable is not set")
+        // Force delay before environment checks - independent of log level
+        {
+            tokio::time::sleep(std::time::Duration::from_millis(300)).await;
         }
         
+        debug!("Checking environment variables");
+        // Log environment variables for diagnostic purposes
+        match env::var("NVIDIA_GPU_UUID") {
+            Ok(uuid) => {
+                debug!("Found NVIDIA_GPU_UUID");
+                info!("NVIDIA_GPU_UUID is set to: {}", uuid)
+            },
+            Err(_) => {
+                debug!("NVIDIA_GPU_UUID not found");
+                warn!("NVIDIA_GPU_UUID environment variable is not set")
+            }
+        }
+        
+        // Force delay before device count query - independent of log level
+        {
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        }
+        
+        debug!("Querying CUDA device count");
         // Try to get CUDA device count
         match CudaDevice::count() {
             Ok(count) => {
+                debug!("Successfully retrieved CUDA device count: {}", count);
                 if count == 0 {
-                    return Err(Error::new(ErrorKind::NotFound, 
+                    debug!("No CUDA devices found, returning error");
+                    return Err(Error::new(ErrorKind::NotFound,
                         "No CUDA devices found. Check if NVIDIA drivers are installed and working."));
                 }
                 info!("Found {} CUDA device(s)", count);
+                debug!("GPU capabilities test completed successfully");
                 Ok(())
             },
             Err(e) => {
+                debug!("Failed to get CUDA device count with error: {}", e);
                 error!("Failed to get CUDA device count: {}", e);
-                Err(Error::new(ErrorKind::Other, 
+                Err(Error::new(ErrorKind::Other,
                     format!("Failed to get CUDA device count: {}. Check if NVIDIA drivers are installed and working.", e)))
             }
         }
     }
     
     fn diagnostic_cuda_info() -> Result<(), Error> {
+        debug!("Starting CUDA diagnostic information collection");
         info!("Running CUDA diagnostic checks");
         
         // Environment variables
+        debug!("Checking CUDA-related environment variables");
         info!("Checking CUDA-related environment variables:");
         for var in &["NVIDIA_GPU_UUID", "NVIDIA_VISIBLE_DEVICES", "CUDA_VISIBLE_DEVICES"] {
+            debug!("Checking environment variable: {}", var);
             match env::var(var) {
-                Ok(val) => info!("  {}={}", var, val),
-                Err(_) => info!("  {} is not set", var)
+                Ok(val) => {
+                    debug!("Found {} with value: {}", var, val);
+                    info!("  {}={}", var, val)
+                },
+                Err(_) => {
+                    debug!("{} is not set in environment", var);
+                    info!("  {} is not set", var)
+                }
             }
         }
         
         // Try to get device count
+        debug!("Attempting to get CUDA device count");
         match CudaDevice::count() {
-            Ok(count) => info!("CUDA device count: {}", count),
-            Err(e) => error!("Failed to get CUDA device count: {}", e)
+            Ok(count) => {
+                debug!("Successfully retrieved CUDA device count: {}", count);
+                info!("CUDA device count: {}", count)
+            },
+            Err(e) => {
+                debug!("Failed to get CUDA device count with error: {}", e);
+                error!("Failed to get CUDA device count: {}", e)
+            }
         }
         
+        debug!("CUDA diagnostic information collection completed");
         Ok(())
     }
     
@@ -161,7 +249,7 @@ impl GPUCompute {
         info!("GPU initialization attempt {}/{}", attempt + 1, MAX_GPU_INIT_RETRIES);
         
         // Check device capabilities
-        match Self::test_gpu_capabilities() {
+        match Self::test_gpu_capabilities().await {
             Ok(_) => info!("GPU capabilities check passed"),
             Err(e) => {
                 warn!("GPU capabilities check failed on attempt {}: {}", attempt + 1, e);
