@@ -46,6 +46,22 @@ async fn main() -> std::io::Result<()> {
         }
     };
 
+    // --- BEGIN GPU TEST BEFORE LOGGING --- 
+    match webxr::utils::gpu_compute::GPUCompute::test_gpu().await {
+        Ok(_) => println!("[PRE-LOGGING CHECK] GPU test successful."),
+        Err(e) => eprintln!("[PRE-LOGGING CHECK] GPU test failed: {}", e),
+    }
+    // --- END GPU TEST BEFORE LOGGING --- 
+
+
+    // --- BEGIN GPU TEST BEFORE LOGGING --- 
+    match webxr::utils::gpu_compute::GPUCompute::test_gpu().await {
+        Ok(_) => println!("[PRE-LOGGING CHECK] GPU test successful."),
+        Err(e) => eprintln!("[PRE-LOGGING CHECK] GPU test failed: {}", e),
+    }
+    // --- END GPU TEST BEFORE LOGGING --- 
+
+
     // Initialize logging with settings-based configuration
     let log_config = {
         let settings_read = settings.read().await;

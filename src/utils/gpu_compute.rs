@@ -39,11 +39,11 @@ pub struct GPUCompute {
 }
 
 impl GPUCompute {
-    pub fn test_gpu() -> Result<(), Error> {
+    pub async fn test_gpu() -> Result<(), Error> {
         info!("Running GPU test");
         
         // Try to create a device using our helper function
-        let device = Self::create_cuda_device()?;
+        let device = Self::create_cuda_device().await?;
         
         // Try to allocate and manipulate some memory
         let test_data: Vec<f32> = vec![1.0, 2.0, 3.0, 4.0, 5.0];
@@ -57,7 +57,7 @@ impl GPUCompute {
         Ok(())
     }
     
-    fn create_cuda_device() -> Result<Arc<CudaDevice>, Error> {
+    async fn create_cuda_device() -> Result<Arc<CudaDevice>, Error> {
         // First try to use the NVIDIA_GPU_UUID environment variable
         if let Ok(uuid) = env::var("NVIDIA_GPU_UUID") {
             info!("Attempting to create CUDA device with UUID: {}", uuid);
@@ -74,7 +74,7 @@ impl GPUCompute {
         // Always use device index 0 within the container
         // (NVIDIA_VISIBLE_DEVICES in docker-compose.yml controls which actual GPU this is)
         // Add a small delay to potentially mitigate timing issues
-        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+        tokio::time::sleep(std::time::Duration::from_millis(2000)).await; // Increased delay to 2 seconds
         info!("Creating CUDA device with index 0");
         match CudaDevice::new(0) {
             Ok(device) => {
@@ -170,7 +170,7 @@ impl GPUCompute {
         }
 
         info!("Attempting to create CUDA device (attempt {}/{})", attempt + 1, MAX_GPU_INIT_RETRIES);
-        let device = match Self::create_cuda_device() {
+        let device = match Self::create_cuda_device().await {
             Ok(dev) => {
                 info!("CUDA device created successfully");
                 let max_threads = match dev.as_ref().attribute(CUdevice_attribute_enum::CU_DEVICE_ATTRIBUTE_MAX_THREADS_PER_BLOCK as _) {
