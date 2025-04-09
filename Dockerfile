@@ -1,19 +1,23 @@
 # Stage 1: Frontend Build
 FROM node:20-slim AS frontend-builder
 
-WORKDIR /app
+WORKDIR /app/client
 
-# Copy package files and configuration
-COPY package.json package-lock.json ./
-COPY tsconfig.json tsconfig.node.json vite.config.ts ./
-COPY client ./client
+# Copy package files
+COPY client/package.json client/package-lock.json ./
 
-# Create data/public directory for build output
-RUN mkdir -p data/public
+# Install dependencies with clean install
+RUN npm ci
 
-# Install dependencies and build
-RUN npm ci && \
-    npm run build
+# Copy source files and config
+COPY client/src ./src
+COPY client/vite.config.ts ./vite.config.ts
+
+# Create dist directory
+RUN mkdir -p ../data/public/dist
+
+# Build frontend using npx to ensure we use the local vite
+RUN SKIP_TS_CHECK=true npx vite build --config vite.config.ts
 
 # Stage 2: Rust Dependencies Cache
 FROM nvidia/cuda:12.8.1-devel-ubuntu22.04 AS rust-deps-builder
@@ -80,7 +84,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONUNBUFFERED=1 \
     PATH="/app/venv/bin:${PATH}" \
     NVIDIA_DRIVER_CAPABILITIES=all \
-    RUST_LOG=info \
+    RUST_LOG=off \
     RUST_BACKTRACE=0 \
     PORT=4000 \
     BIND_ADDRESS=0.0.0.0 \

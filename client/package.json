@@ -4,14 +4,19 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "../node_modules/.bin/vite",
-    "build": "SKIP_TS_CHECK=true ../node_modules/.bin/vite build --config vite.config.js",
-    "preview": "../node_modules/.bin/vite preview",
-    "lint": "../node_modules/.bin/eslint src --ext ts,tsx --report-unused-disable-directives"
+    "dev": "vite",
+    "build": "SKIP_TS_CHECK=true vite build --config vite.config.ts",
+    "preview": "vite preview",
+    "lint": "eslint src --ext ts,tsx --report-unused-disable-directives"
   },
   "dependencies": {
     "@types/node": "^20.17.25",
     "framer-motion": "^11.18.2",
     "hls.js": "^1.5.20"
+  },
+  "devDependencies": {
+    "vite": "^5.0.0",
+    "@vitejs/plugin-react": "^4.2.0",
+    "typescript": "^5.0.0"
   }
 }
