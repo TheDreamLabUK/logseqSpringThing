@@ -14,18 +14,17 @@ log() {
 # Setup development environment
 setup_dev() {
     log "${YELLOW}Setting up development environment...${NC}"
-    mkdir -p /tmp/docker-cache
     
     # Install client dependencies
-    cd client && pnpm install
+    cd client && npm install
     cd ..
 }
 
-# Start development servers with PTX compilation in container
+# Start development servers
 start_dev() {
     log "${YELLOW}Starting development servers...${NC}"
     
-    # Build and start containers
+    # Build and start containers with updated configuration
     DOCKER_BUILDKIT=1 docker compose -f docker-compose.dev.yml up --build
 }
 

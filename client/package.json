@@ -1,44 +1,17 @@
 {
-  "name": "logseq-spring-thing",
+  "name": "logseq-spring-thing-client",
   "private": true,
-  "version": "1.0.0",
+  "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc && vite build",
-    "build:skip-ts": "vite build",
-    "build:prod": "tsc && DEPLOY_ENV=prod vite build --mode production",
-    "build:dev": "DEPLOY_ENV=dev vite build",
-    "preview": "vite preview",
-    "type-check": "tsc --noEmit",
-    "lint": "eslint . --ext .js,.ts --fix --ignore-path .gitignore",
-    "format": "prettier --write client/"
+    "dev": "../node_modules/.bin/vite",
+    "build": "SKIP_TS_CHECK=true ../node_modules/.bin/vite build --config vite.config.js",
+    "preview": "../node_modules/.bin/vite preview",
+    "lint": "../node_modules/.bin/eslint src --ext ts,tsx --report-unused-disable-directives"
   },
   "dependencies": {
-    "@mui/material": "^5.16.14",
-    "@types/pako": "^2.0.3",
-    "@types/webxr": "^0.5.21",
-    "alby-js-sdk": "^2.3.0",
-    "pako": "^2.1.0",
-    "three": "0.174.0"
-  },
-  "devDependencies": {
-    "@types/node": "^22.13.9",
-    "@types/three": "0.174.0",
-    "@typescript-eslint/eslint-plugin": "^8.26.0",
-    "@typescript-eslint/parser": "^8.26.0",
-    "eslint": "^8.57.1",
-    "prettier": "^3.5.3",
-    "terser": "^5.39.0",
-    "typescript": "~5.4.5",
-    "vite": "^5.4.14"
-  },
-  "engines": {
-    "node": ">=18.0.0"
-  },
-  "pnpm": {
-    "overrides": {
-      "vite": "^5.4.12"
-    }
+    "@types/node": "^20.17.25",
+    "framer-motion": "^11.18.2",
+    "hls.js": "^1.5.20"
   }
 }

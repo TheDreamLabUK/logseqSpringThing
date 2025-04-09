@@ -73,6 +73,8 @@ impl GPUCompute {
         
         // Always use device index 0 within the container
         // (NVIDIA_VISIBLE_DEVICES in docker-compose.yml controls which actual GPU this is)
+        // Add a small delay to potentially mitigate timing issues
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
         info!("Creating CUDA device with index 0");
         match CudaDevice::new(0) {
             Ok(device) => {

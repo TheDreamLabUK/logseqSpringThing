@@ -16,6 +16,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     g++-11 \
     pkg-config \
     libssl-dev \
+    netcat-openbsd \
     && rm -rf /var/lib/apt/lists/*
 
 # Set gcc-11 as default compiler (needed for CUDA compilation)
@@ -53,7 +54,8 @@ RUN pnpm install --prefer-offline
 WORKDIR /app
 
 # Build Rust with GPU features
-RUN cargo build --features gpu
+RUN cargo build --features gpu && \
+    cp target/debug/webxr /app/webxr
 
 # PTX compilation - now happens during container build
 COPY scripts/compile_ptx.sh ./scripts/

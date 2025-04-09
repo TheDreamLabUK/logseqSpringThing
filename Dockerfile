@@ -3,11 +3,8 @@ FROM node:20-slim AS frontend-builder
 
 WORKDIR /app
 
-# Install pnpm
-RUN npm install -g pnpm@9.14.2
-
 # Copy package files and configuration
-COPY package.json pnpm-lock.yaml ./
+COPY package.json package-lock.json ./
 COPY tsconfig.json tsconfig.node.json vite.config.ts ./
 COPY client ./client
 
@@ -15,8 +12,8 @@ COPY client ./client
 RUN mkdir -p data/public
 
 # Install dependencies and build
-RUN pnpm install --frozen-lockfile && \
-    pnpm run build
+RUN npm ci && \
+    npm run build
 
 # Stage 2: Rust Dependencies Cache
 FROM nvidia/cuda:12.8.1-devel-ubuntu22.04 AS rust-deps-builder
@@ -68,7 +65,7 @@ RUN mkdir src && \
     (sleep 2 && GIT_HASH=$(git rev-parse HEAD || echo "development") CARGO_HTTP_MULTIPLEXING=false cargo build --release --jobs $(nproc)) || \
     (sleep 5 && GIT_HASH=$(git rev-parse HEAD || echo "development") CARGO_HTTP_MULTIPLEXING=false cargo build --release --jobs 1)
 
-# Now copy the real source code and build
+# Copy the real source code and build
 COPY src ./src
 
 RUN GIT_HASH=$(git rev-parse HEAD || echo "development") \
@@ -117,92 +114,35 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /usr/share/doc/* \
     && rm -rf /usr/share/man/*
 
-# Create a non-root user for running the application
-RUN groupadd -g 1000 webxr && \
-    useradd -u 1000 -g webxr -d /app webxr
+# Create non-root user
+RUN groupadd -r webxr && useradd -r -g webxr webxr
 
-# Set up nginx configuration
-COPY nginx.conf /etc/nginx/nginx.conf.template
-RUN envsubst '${DOMAIN}' < /etc/nginx/nginx.conf.template > /etc/nginx/nginx.conf && \
-    rm /etc/nginx/nginx.conf.template && \
-    chown -R webxr:webxr /etc/nginx/nginx.conf && \
-    chmod 644 /etc/nginx/nginx.conf
+# Create necessary directories
+RUN mkdir -p /app/data/public/dist && \
+    mkdir -p /app/src/utils && \
+    chown -R webxr:webxr /app
 
-# Set up nginx directories and permissions
-RUN mkdir -p /var/lib/nginx/client_temp \
-             /var/lib/nginx/proxy_temp \
-             /var/lib/nginx/fastcgi_temp \
-             /var/lib/nginx/uwsgi_temp \
-             /var/lib/nginx/scgi_temp \
-             /var/log/nginx \
-             /var/run/nginx \
-             /var/cache/nginx && \
-    chown -R webxr:webxr /var/lib/nginx \
-                         /var/log/nginx \
-                         /var/run/nginx \
-                         /var/cache/nginx \
-                         /etc/nginx && \
-    chmod -R 755 /var/lib/nginx \
-                 /var/log/nginx \
-                 /var/run/nginx \
-                 /var/cache/nginx \
-                 /etc/nginx && \
-    touch /var/log/nginx/error.log \
-          /var/log/nginx/access.log \
-          /var/run/nginx/nginx.pid && \
-    chmod 666 /var/log/nginx/*.log \
-              /var/run/nginx/nginx.pid
-
-# Set up directory structure and permissions
-WORKDIR /app
-
-# Create required directories with proper permissions
-RUN mkdir -p /app/data/public/dist \
-             /app/data/markdown \
-             /app/data/runtime \
-             /app/compute_forces \
-             /app/data/piper \
-             /tmp/runtime && \
-    chown -R webxr:webxr /app /tmp/runtime && \
-    chmod -R 755 /app /tmp/runtime && \
-    # Ensure data/markdown is writable by webxr user
-    chmod 777 /app/data/markdown
-
-# Create necessary directories and set permissions
-RUN mkdir -p /app/data/markdown /app/data/metadata /app/user_settings && \
-    chmod -R 777 /app/data && \
-    chmod 777 /app/user_settings
+# Switch to non-root user
+USER webxr
 
 # Copy built artifacts
 COPY --from=rust-deps-builder /usr/src/app/target/release/webxr /app/
 COPY src/utils/compute_forces.ptx /app/src/utils/compute_forces.ptx
-RUN chmod 644 /app/src/utils/compute_forces.ptx
 COPY --from=frontend-builder /app/data/public/dist /app/data/public/dist
 
 # Copy start script
 COPY scripts/start.sh /app/start.sh
 
-# Set proper permissions for copied files
+# Set proper permissions
+USER root
 RUN chown -R webxr:webxr /app && \
     chmod 755 /app/start.sh && \
-    chmod -R g+w /app
-RUN touch /app/settings.yaml && \
-    chown webxr:webxr /app/settings.yaml && \
-    chmod 666 /app/settings.yaml
+    chmod -R g+w /app && \
+    chmod 644 /app/src/utils/compute_forces.ptx
+# Settings file is mounted via docker-compose, no need to touch/chmod here
 
-# Switch to non-root user
 USER webxr
 
-# Add security labels
-LABEL org.opencontainers.image.source="https://github.com/yourusername/logseq-xr" \
-      org.opencontainers.image.description="LogseqXR WebXR Graph Visualization" \
-      org.opencontainers.image.licenses="MIT" \
-      security.capabilities="cap_net_bind_service" \
-      security.privileged="false" \
-      security.allow-privilege-escalation="false"
-
-# Expose port
 EXPOSE 4000
 
-# Start application
-ENTRYPOINT ["/app/start.sh"]
+CMD ["/app/start.sh"]

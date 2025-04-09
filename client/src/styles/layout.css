@@ -1,0 +1,71 @@
+/* client/src/styles/layout.css */
+
+/* Ensure all container elements take up full height */
+html, body, #root, .app-container, .main-layout {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Ensure the main-layout takes up the full height and properly arranges children */
+.main-layout {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0; /* Important for Firefox */
+}
+
+/* The flex-1 class should expand to fill available space */
+.flex-1 {
+  flex: 1 1 auto;
+  min-height: 0; /* Important for Firefox */
+}
+
+/* Ensure the viewport container and all its descendants take up full height */
+.viewport-container,
+.viewport-container > div,
+.viewport-container > div > div {
+  width: 100%;
+  height: 100%;
+  min-height: 0; /* Important for Firefox */
+}
+
+/* Fix for Three.js canvas size */
+canvas,
+canvas[data-engine="three.js"],
+.three-canvas canvas {
+  width: 100% !important;
+  height: 100% !important;
+  outline: none;
+  touch-action: none;
+}
+
+/* Add styling for the three-canvas class */
+.three-canvas {
+  width: 100% !important;
+  height: 100% !important;
+  outline: none;
+}
+
+/* Make sure app container takes up full space */
+.app-container {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 0; /* Important for Firefox */
+}
+
+/* Fix parent elements of the canvas */
+div[style*="position: relative; width: 100%; height: 100%; overflow: hidden;"],
+div[style*="width: 100%; height: 100%;"],
+div[data-engine="three.js"] {
+  width: 100% !important;
+  height: 100% !important;
+  min-height: 0; /* Important for Firefox */
+}

@@ -1,44 +1,29 @@
 {
   "compilerOptions": {
-    "target": "ES2020",
-    "useDefineForClassFields": true,
-    "module": "ESNext",
-    "lib": [
-      "ES2020",
-      "DOM",
-      "DOM.Iterable",
-      "WebWorker",
-      "WebWorker.ImportScripts",
-      "Webworker.Iterable"
-    ],
-    "skipLibCheck": true,
-    "moduleResolution": "bundler",
-    "allowImportingTsExtensions": true,
-    "resolveJsonModule": true,
-    "isolatedModules": true,
-    "noEmit": true,
-    "strict": true,
-    "noUnusedLocals": true,
-    "noUnusedParameters": true,
-    "noFallthroughCasesInSwitch": true,
-    "noImplicitAny": true,
-    "noImplicitThis": true,
-    "noImplicitReturns": true,
-    "strictNullChecks": true,
-    "strictFunctionTypes": true,
-    "strictBindCallApply": true,
-    "strictPropertyInitialization": true,
-    "allowJs": true,
-    "checkJs": true,
-    "esModuleInterop": true,
-    "forceConsistentCasingInFileNames": true,
     "baseUrl": ".",
     "paths": {
-      "@/*": ["client/*"],
-      "three/examples/jsm/*": ["node_modules/three/examples/jsm/*"]
+      "@/*": ["src/*"],
+      "@/components/*": ["src/components/*"],
+      "@/features/*": ["src/features/*"],
+      "@/ui/*": ["src/ui/*"],
+      "@/services/*": ["src/services/*"],
+      "@/utils/*": ["src/utils/*"],
+      "@/types/*": ["src/types/*"],
+      "@/contexts/*": ["src/contexts/*"],
+      "@/store/*": ["src/store/*"]
     },
-    "types": ["vite/client", "node", "three"]
+    "jsx": "react-jsx",
+    "esModuleInterop": true,
+    "lib": ["es2020", "dom", "dom.iterable"],
+    "moduleResolution": "node",
+    "skipLibCheck": true,
+    "target": "es2020",
+    "module": "es2020",
+    "resolveJsonModule": true,
+    "allowSyntheticDefaultImports": true,
+    "typeRoots": ["./node_modules/@types", "./src/types"],
+    "noEmit": true
   },
-  "include": ["client/**/*.ts", "client/**/*.d.ts", "node_modules/three/examples/jsm/**/*.d.ts"],
-  "exclude": ["node_modules", "dist"]
+  "include": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.js", "src/**/*.jsx"],
+  "exclude": ["node_modules"]
 }

@@ -23,7 +23,7 @@ export_docker_config() {
     echo -e "\n\n## Docker Configuration\n" >> codebase.txt
     
     # Add each file with proper headers
-    for file in "../docker-compose.yml" "../Dockerfile" "../nginx.conf" "../settings.yaml" "../.dockerignore"; do
+    for file in "../docker-compose.yml" "../Dockerfile" "../nginx.conf" "../data/settings.yaml" "../.dockerignore"; do
         if [ -f "$file" ]; then
             echo -e "\n### $(basename $file)\n" >> codebase.txt
             cat "$file" >> codebase.txt

@@ -14,7 +14,7 @@ log() {
 # Security checks
 check_security() {
     log "${YELLOW}Running security checks...${NC}"
-    pnpm audit
+    npm audit
     cargo audit
 }
 
@@ -30,15 +30,18 @@ setup_environment() {
     export NVIDIA_VISIBLE_DEVICES="$NVIDIA_GPU_UUID"
 }
 
+# Build frontend
+build_frontend() {
+    log "${YELLOW}Building frontend...${NC}"
+    cd client
+    npm ci
+    npm run build
+    cd ..
+}
+
 # Main execution
 setup_environment
 check_security
+build_frontend
 
-log "${YELLOW}Building and starting services...${NC}"
-docker compose build --pull
-docker compose up -d
-
-log "${GREEN}Services started. Use these commands:${NC}"
-echo "logs:    docker compose logs -f"
-echo "stop:    docker compose down"
-echo "restart: docker compose restart"
+log "${GREEN}Launch completed successfully${NC}"

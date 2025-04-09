@@ -7,7 +7,7 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m'
 
-CONTAINER_NAME="logseqspringthing-webxr-1"
+CONTAINER_NAME="logseq_spring_thing_webxr"
 
 show_diagnostics() {
     echo -e "${YELLOW}=== Container Status ===${NC}"

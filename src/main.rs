@@ -254,7 +254,7 @@ async fn main() -> std::io::Result<()> {
             .max_age(3600)
             .supports_credentials();
 
-        App::new()
+        let mut app = App::new()
             .wrap(middleware::Logger::default())
             .wrap(cors)
             .wrap(middleware::Compress::default())
@@ -271,8 +271,17 @@ async fn main() -> std::io::Result<()> {
                     .configure(api_handler::config)
                     .service(web::scope("/health").configure(health_handler::config))
                     .service(web::scope("/pages").configure(pages_handler::config))
-            )
-            .service(Files::new("/", "/app/data/public/dist").index_file("index.html"))
+            );
+
+        // Only serve static files if not in development mode (Vite handles this in dev)
+        if std::env::var("NODE_ENV").unwrap_or_default() != "development" {
+            info!("Serving static files from /app/data/public/dist");
+            app = app.service(Files::new("/", "/app/data/public/dist").index_file("index.html"));
+        } else {
+            info!("Skipping static file service in development mode");
+        }
+        
+        app
     })
     .bind(&bind_address)?
     .run()
