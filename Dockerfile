@@ -6,8 +6,8 @@ WORKDIR /app/client
 # Copy package files
 COPY client/package.json client/package-lock.json ./
 
-# Install dependencies (using install instead of ci)
-RUN npm install
+# Clean install dependencies
+RUN npm ci
 
 # Copy source files and config
 COPY client/src ./src

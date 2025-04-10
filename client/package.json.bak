@@ -21,8 +21,6 @@
     "@types/three": "^0.162.0",
     "@types/node": "^20.17.25",
     "class-variance-authority": "^0.7.0",
-    "clsx": "^2.0.0",
-    "tailwind-merge": "^3.2.0",
     "framer-motion": "^11.18.2",
     "hls.js": "^1.5.20",
     "lucide-react": "^0.358.0",
