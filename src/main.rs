@@ -27,6 +27,7 @@ use tokio::time::Duration;
 use dotenvy::dotenv;
 use log::{error, info, debug, warn};
 use webxr::utils::logging::{init_logging_with_config, LogConfig};
+use tokio::signal::unix::{signal, SignalKind};
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
@@ -267,7 +268,7 @@ async fn main() -> std::io::Result<()> {
 
     info!("Starting HTTP server on {}", bind_address);
 
-    HttpServer::new(move || {
+    let server = HttpServer::new(move || {
         // Configure CORS
         let cors = Cors::default()
             .allow_any_origin()
@@ -306,8 +307,28 @@ async fn main() -> std::io::Result<()> {
         app
     })
     .bind(&bind_address)?
-    .run()
-    .await?;
+    .run();
+
+    let server_handle = server.handle();
+
+    // Set up signal handlers
+    let mut sigterm = signal(SignalKind::terminate())?;
+    let mut sigint = signal(SignalKind::interrupt())?;
+
+    tokio::spawn(async move {
+        tokio::select! {
+            _ = sigterm.recv() => {
+                info!("Received SIGTERM signal");
+            }
+            _ = sigint.recv() => {
+                info!("Received SIGINT signal");
+            }
+        }
+        info!("Initiating graceful shutdown");
+        server_handle.stop(true).await;
+    });
+
+    server.await?;
 
     info!("HTTP server stopped");
     Ok(())

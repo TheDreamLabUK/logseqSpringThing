@@ -17,6 +17,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     pkg-config \
     libssl-dev \
     netcat-openbsd \
+    lsof \
     && rm -rf /var/lib/apt/lists/*
 
 # Set gcc-11 as default compiler (needed for CUDA compilation)
@@ -25,8 +26,7 @@ RUN update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-11 100 \
 
 # Install Node.js
 RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
-    apt-get install -y nodejs && \
-    npm install -g pnpm@9.14.2
+    apt-get install -y nodejs
 
 # Install Rust
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
@@ -49,7 +49,7 @@ COPY client ./client
 
 # Install Node.js dependencies
 WORKDIR /app/client
-RUN pnpm install --prefer-offline
+RUN npm install
 
 WORKDIR /app
 
