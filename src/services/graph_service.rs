@@ -881,7 +881,7 @@ impl GraphService {
         params: &SimulationParams,
     ) -> std::io::Result<()> {
         {
-            info!("[calculate_layout] Starting GPU physics calculation for {} nodes, {} edges with mode {:?}", 
+            debug!("[calculate_layout] Starting GPU physics calculation for {} nodes, {} edges with mode {:?}",
                   graph.nodes.len(), graph.edges.len(), params.mode);
             
             // Get current timestamp for performance tracking
@@ -889,7 +889,7 @@ impl GraphService {
 
             let mut gpu_compute = gpu_compute.write().await;
 
-            info!("[calculate_layout] params: iterations={}, spring_strength={:.3}, repulsion={:.3}, damping={:.3}",
+            debug!("[calculate_layout] params: iterations={}, spring_strength={:.3}, repulsion={:.3}, damping={:.3}",
                  params.iterations, params.spring_strength, params.repulsion, params.damping);
             
             // Update data and parameters
@@ -918,7 +918,7 @@ impl GraphService {
             // Get updated positions
             let updated_nodes = match gpu_compute.get_node_data() {
                 Ok(nodes) => {
-                    info!("[calculate_layout] Successfully retrieved {} nodes from GPU", nodes.len());
+                    debug!("[calculate_layout] Successfully retrieved {} nodes from GPU", nodes.len());
                     nodes
                 },
                 Err(e) => {
@@ -959,7 +959,7 @@ impl GraphService {
                     format!("[{:.2},{:.2},{:.2}]", graph.nodes[0].data.position.x, graph.nodes[0].data.position.y, graph.nodes[0].data.position.z)
                 } else { "no nodes".to_string() };
             
-                info!("[calculate_layout] Updated positions for {}/{} nodes in {:?}. Sample positions: {}", nodes_updated, graph.nodes.len(), elapsed, sample_positions);
+                debug!("[calculate_layout] Updated positions for {}/{} nodes in {:?}. Sample positions: {}", nodes_updated, graph.nodes.len(), elapsed, sample_positions);
             
             Ok(())
         }

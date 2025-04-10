@@ -304,7 +304,7 @@ impl GPUCompute {
     }
 
     pub fn update_graph_data(&mut self, graph: &GraphData) -> Result<(), Error> {
-        info!("Updating graph data for {} nodes", graph.nodes.len());
+        debug!("Updating graph data for {} nodes", graph.nodes.len());
         self.node_indices.clear();
         for (idx, node) in graph.nodes.iter().enumerate() {
             self.node_indices.insert(node.id.clone(), idx);
@@ -319,10 +319,10 @@ impl GPUCompute {
         let mut node_data = Vec::with_capacity(graph.nodes.len());
         if !graph.nodes.is_empty() {
             let sample_size = std::cmp::min(3, graph.nodes.len());
-            info!("Sample of first {} nodes before GPU transfer:", sample_size);
+            debug!("Sample of first {} nodes before GPU transfer:", sample_size);
             for i in 0..sample_size {
                 let node = &graph.nodes[i];
-                info!(
+                debug!(
                     "Node[{}] id={}: pos=[{:.3},{:.3},{:.3}], vel=[{:.3},{:.3},{:.3}]",
                     i, node.id,
                     node.data.position.x, node.data.position.y, node.data.position.z,
@@ -339,7 +339,7 @@ impl GPUCompute {
                 padding: node.data.padding,
             });
             if node.id == "0" || node.id == "1" {
-                info!(
+                debug!(
                     "Node {} data prepared for GPU: pos=[{:.3},{:.3},{:.3}], vel=[{:.3},{:.3},{:.3}]",
                     node.id,
                     node.data.position.x, node.data.position.y, node.data.position.z,
@@ -347,14 +347,14 @@ impl GPUCompute {
                 );
             }
         }
-        info!("Copying {} nodes to GPU", graph.nodes.len());
+        debug!("Copying {} nodes to GPU", graph.nodes.len());
         self.device.htod_sync_copy_into(&node_data, &mut self.node_data)
             .map_err(|e| Error::new(ErrorKind::Other, format!("Failed to copy node data to GPU: {}", e)))?;
         Ok(())
     }
 
     pub fn update_simulation_params(&mut self, params: &SimulationParams) -> Result<(), Error> {
-        info!("Updating simulation parameters: {:?}", params);
+        debug!("Updating simulation parameters: {:?}", params);
         self.simulation_params = params.clone();
         Ok(())
     }
@@ -363,7 +363,7 @@ impl GPUCompute {
     pub fn compute_forces(&mut self) -> Result<(), Error> {
         // Only log detailed GPU computation info every DEBUG_THROTTLE iterations.
         if self.iteration_count % DEBUG_THROTTLE == 0 {
-            info!("Starting force computation on GPU");
+            debug!("Starting force computation on GPU");
         }
         let blocks = ((self.num_nodes + BLOCK_SIZE - 1) / BLOCK_SIZE).max(1);
         let cfg = LaunchConfig {
@@ -372,7 +372,7 @@ impl GPUCompute {
             shared_mem_bytes: SHARED_MEM_SIZE,
         };
         if self.iteration_count % DEBUG_THROTTLE == 0 {
-            info!("Launch config: blocks={}, threads={}, shared_mem={}", blocks, BLOCK_SIZE, SHARED_MEM_SIZE);
+            debug!("Launch config: blocks={}, threads={}, shared_mem={}", blocks, BLOCK_SIZE, SHARED_MEM_SIZE);
         }
         unsafe {
             self.force_kernel.clone().launch(cfg, (
@@ -395,7 +395,7 @@ impl GPUCompute {
             })?;
         }
         if self.iteration_count % DEBUG_THROTTLE == 0 {
-            info!("Force computation completed");
+            debug!("Force computation completed");
         }
         self.iteration_count += 1;
         Ok(())
@@ -413,13 +413,13 @@ impl GPUCompute {
             .map_err(|e| Error::new(ErrorKind::Other, format!("Failed to copy data from GPU: {}", e)))?;
         if !gpu_raw_data.is_empty() {
             let sample_size = std::cmp::min(5, gpu_raw_data.len());
-            info!("Sample of first {} nodes after GPU calculation:", sample_size);
+            debug!("Sample of first {} nodes after GPU calculation:", sample_size);
             for i in 0..sample_size {
                 let node = &gpu_raw_data[i];
                 let force_mag = (node.velocity.x * node.velocity.x +
                                  node.velocity.y * node.velocity.y +
                                  node.velocity.z * node.velocity.z).sqrt();
-                info!(
+                debug!(
                     "Node[{}]: force_mag={:.6}, pos=[{:.3},{:.3},{:.3}], vel=[{:.6},{:.6},{:.6}]",
                     i, force_mag,
                     node.position.x, node.position.y, node.position.z,
@@ -432,17 +432,17 @@ impl GPUCompute {
 
     /// Advances one simulation step.
     pub fn step(&mut self) -> Result<(), Error> {
-        info!("Executing physics step (iteration {})", self.iteration_count);
+        debug!("Executing physics step (iteration {})", self.iteration_count);
         self.compute_forces()?;
         if self.iteration_count % DEBUG_THROTTLE == 0 {
-            info!("Detailed simulation status:");
-            info!("  - Iteration: {}", self.iteration_count);
-            info!("  - Node count: {}", self.num_nodes);
-            info!("  - Spring strength: {}", self.simulation_params.spring_strength);
-            info!("  - Repulsion: {}", self.simulation_params.repulsion);
-            info!("  - Damping: {}", self.simulation_params.damping);
+            debug!("Detailed simulation status:");
+            debug!("  - Iteration: {}", self.iteration_count);
+            debug!("  - Node count: {}", self.num_nodes);
+            debug!("  - Spring strength: {}", self.simulation_params.spring_strength);
+            debug!("  - Repulsion: {}", self.simulation_params.repulsion);
+            debug!("  - Damping: {}", self.simulation_params.damping);
         } else {
-            info!("Physics step complete, iteration count: {}", self.iteration_count);
+            debug!("Physics step complete, iteration count: {}", self.iteration_count);
         }
         Ok(())
     }
