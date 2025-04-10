@@ -37,13 +37,16 @@ if [ $# -gt 0 ] && [ "$1" = "--no-webxr" ]; then
     START_WEBXR=false
 fi
 
-# Verify settings file permissions
+# Verify settings file permissions and ensure accessibility
 log "Verifying settings.yaml permissions..."
-if [ ! -f "/app/settings.yaml" ]; then
-    log "Error: settings.yaml not found"
+# Ensure the file is accessible by the current user before checking existence
+if [ -f "/app/settings.yaml" ]; then
+    chmod 666 /app/settings.yaml
+    log "settings.yaml permissions set to 666"
+else
+    log "Error: settings.yaml not found at /app/settings.yaml"
     exit 1
 fi
-chmod 666 /app/settings.yaml
 log "settings.yaml permissions verified"
 
 # Set up runtime environment

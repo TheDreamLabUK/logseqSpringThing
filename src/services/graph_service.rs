@@ -10,7 +10,7 @@ use serde_json;
 use std::pin::Pin;
 use std::time::{Duration, Instant};
 use futures::Future;
-use log::{info, warn, error, debug};
+use log::{info, warn, error, debug, trace};
 use scopeguard;
 
 use tokio::fs::File as TokioFile;
@@ -200,12 +200,12 @@ impl GraphService {
                 }
                 
                 // Update positions - using loop ID in logs to track which loop is running
-                debug!("[Graph:{}] Starting physics calculation iteration", loop_simulation_id);
+                trace!("[Graph:{}] Starting physics calculation iteration", loop_simulation_id);
                 let mut graph = graph_data.write().await;
                 let mut node_map = node_map.write().await;
 
                 let gpu_status = if gpu_compute.is_some() { "available" } else { "NOT available" };
-                debug!("[Graph:{}] GPU compute status: {}, physics enabled: {}", 
+                trace!("[Graph:{}] GPU compute status: {}, physics enabled: {}",
                        loop_simulation_id, gpu_status, physics_settings.enabled);
                        
                 if physics_settings.enabled {
@@ -213,27 +213,27 @@ impl GraphService {
                         if let Err(e) = Self::calculate_layout_with_retry(gpu, &mut graph, &mut node_map, &params).await {
                             error!("[Graph:{}] Error updating positions: {}", loop_simulation_id, e);
                         } else {
-                            debug!("[Graph:{}] GPU calculation completed successfully", loop_simulation_id);
-                            debug!("[Graph:{}] Successfully calculated layout for {} nodes", loop_simulation_id, graph.nodes.len());
+                            trace!("[Graph:{}] GPU calculation completed successfully", loop_simulation_id);
+                            trace!("[Graph:{}] Successfully calculated layout for {} nodes", loop_simulation_id, graph.nodes.len());
                             
                             // Broadcast position updates to all clients
                             Self::broadcast_positions(&graph_service_clone, &graph.nodes).await;
                         }
                     } else {
                         // Use CPU fallback when GPU is not available
-                        debug!("[Graph:{}] GPU compute not available - using CPU fallback for physics calculation", loop_simulation_id);
+                        trace!("[Graph:{}] GPU compute not available - using CPU fallback for physics calculation", loop_simulation_id);
                         if let Err(e) = Self::calculate_layout_cpu(&mut graph, &mut node_map, &params) {
                             error!("[Graph:{}] Error updating positions with CPU fallback: {}", loop_simulation_id, e);
                         } else {
-                            debug!("[Graph:{}] CPU calculation completed successfully", loop_simulation_id);
-                            debug!("[Graph:{}] Successfully calculated layout with CPU fallback for {} nodes", loop_simulation_id, graph.nodes.len());
+                            trace!("[Graph:{}] CPU calculation completed successfully", loop_simulation_id);
+                            trace!("[Graph:{}] Successfully calculated layout with CPU fallback for {} nodes", loop_simulation_id, graph.nodes.len());
                             
                             // Broadcast position updates to all clients
                             Self::broadcast_positions(&graph_service_clone, &graph.nodes).await;
                         }
                     }
                 } else {
-                    debug!("[Graph:{}] Physics disabled in settings - skipping physics calculation", loop_simulation_id);
+                    trace!("[Graph:{}] Physics disabled in settings - skipping physics calculation", loop_simulation_id);
                 }
                 drop(graph); // Release locks before sleep
                 drop(node_map);
@@ -302,7 +302,7 @@ impl GraphService {
             // Broadcast to all clients through the client manager
             client_manager.broadcast_node_positions(nodes_to_broadcast).await;
         } else {
-            debug!("No client manager available for broadcasting positions");
+            trace!("No client manager available for broadcasting positions");
         }
     }
 
@@ -435,16 +435,16 @@ impl GraphService {
                                 return true;
                             }
                             Err(e) => {
-                                debug!("Metadata file exists but couldn't be opened: {}", e);
+                                trace!("Metadata file exists but couldn't be opened: {}", e);
                                 // Continue waiting - might still be being written to
                             }
                         }
                     } else {
-                        debug!("Metadata file exists but is empty or not a regular file");
+                        trace!("Metadata file exists but is empty or not a regular file");
                     }
                 }
                 Err(e) => {
-                    debug!("Waiting for metadata file to be mounted: {}", e);
+                    trace!("Waiting for metadata file to be mounted: {}", e);
                 }
             }
             
@@ -462,7 +462,7 @@ impl GraphService {
     pub async fn build_graph_from_metadata(metadata: &MetadataStore) -> Result<GraphData, Box<dyn std::error::Error + Send + Sync>> {
         // Check if a rebuild is already in progress
         info!("Building graph from {} metadata entries", metadata.len());
-        debug!("Building graph from {} metadata entries", metadata.len());
+        trace!("Building graph from {} metadata entries", metadata.len());
         
         if GRAPH_REBUILD_IN_PROGRESS.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_err() {
             warn!("Graph rebuild already in progress, skipping duplicate rebuild");
@@ -485,12 +485,12 @@ impl GraphService {
 
         // First pass: Create nodes from files in metadata
         let mut valid_nodes = HashSet::new();
-        debug!("Creating nodes from {} metadata entries", metadata.len());
+        trace!("Creating nodes from {} metadata entries", metadata.len());
         for file_name in metadata.keys() {
             let node_id = file_name.trim_end_matches(".md").to_string();
             valid_nodes.insert(node_id);
         }
-        debug!("Created valid_nodes set with {} nodes", valid_nodes.len());
+        trace!("Created valid_nodes set with {} nodes", valid_nodes.len());
 
         // Create nodes for all valid node IDs
         for node_id in &valid_nodes {
@@ -556,9 +556,9 @@ impl GraphService {
         }
 
         // Store metadata in graph
-        debug!("Storing {} metadata entries in graph", metadata.len());
+        trace!("Storing {} metadata entries in graph", metadata.len());
         graph.metadata = metadata.clone();
-        debug!("Created {} nodes in graph", graph.nodes.len());
+        trace!("Created {} nodes in graph", graph.nodes.len());
         // Second pass: Create edges from topic counts
         for (source_file, metadata) in metadata.iter() {
             let source_id = source_file.trim_end_matches(".md").to_string();
@@ -569,7 +569,7 @@ impl GraphService {
             }
             let source_numeric_id = source_node.unwrap().id.clone();
             
-            debug!("Processing edges for source: {} (ID: {})", source_id, source_numeric_id);
+            trace!("Processing edges for source: {} (ID: {})", source_id, source_numeric_id);
             for (target_file, count) in &metadata.topic_counts {
                 let target_id = target_file.trim_end_matches(".md").to_string();
                 // Find the node with this metadata_id to get its numeric ID
@@ -579,7 +579,7 @@ impl GraphService {
                 }
                 let target_numeric_id = target_node.unwrap().id.clone();
 
-                debug!("  Edge: {} -> {} (weight: {})", source_numeric_id, target_numeric_id, count);
+                trace!("  Edge: {} -> {} (weight: {})", source_numeric_id, target_numeric_id, count);
 
                 // Only create edge if both nodes exist and they're different
                 if source_numeric_id != target_numeric_id {
@@ -597,12 +597,12 @@ impl GraphService {
         }
 
         // Convert edge map to edges
-        debug!("Edge map contains {} unique connections", edge_map.len());
+        trace!("Edge map contains {} unique connections", edge_map.len());
         for ((source, target), weight) in &edge_map {
-            debug!("Edge map entry: {} -- {} (weight: {})", source, target, weight);
+            trace!("Edge map entry: {} -- {} (weight: {})", source, target, weight);
         }
 
-        debug!("Converting edge map to {} edges", edge_map.len());
+        trace!("Converting edge map to {} edges", edge_map.len());
         graph.edges = edge_map.into_iter()
             .map(|((source, target), weight)| {
                 Edge::new(source, target, weight)
@@ -613,7 +613,7 @@ impl GraphService {
         Self::initialize_random_positions(&mut graph);
 
         info!("Built graph with {} nodes and {} edges", graph.nodes.len(), graph.edges.len());
-        debug!("Completed graph build: {} nodes, {} edges", graph.nodes.len(), graph.edges.len());
+        trace!("Completed graph build: {} nodes, {} edges", graph.nodes.len(), graph.edges.len());
         Ok(graph)
     }
 
@@ -638,11 +638,11 @@ impl GraphService {
         let current_graph = state.graph_service.get_graph_data_mut().await;
         let mut graph = GraphData::new();
         let mut node_map = HashMap::new();
-        debug!("Starting graph build process");
+        trace!("Starting graph build process");
 
         // Copy metadata from current graph
         graph.metadata = current_graph.metadata.clone();
-        debug!("Copied {} metadata entries from current graph", graph.metadata.len());
+        trace!("Copied {} metadata entries from current graph", graph.metadata.len());
         
         let mut edge_map = HashMap::new();
 
@@ -652,7 +652,7 @@ impl GraphService {
             let node_id = file_name.trim_end_matches(".md").to_string();
             valid_nodes.insert(node_id);
         }
-        debug!("Created valid_nodes set with {} nodes", valid_nodes.len());
+        trace!("Created valid_nodes set with {} nodes", valid_nodes.len());
 
         // Create nodes for all valid node IDs
         for node_id in &valid_nodes {
@@ -720,7 +720,7 @@ impl GraphService {
         // Create edges from metadata topic counts
         for (source_file, metadata) in graph.metadata.iter() {
             let source_id = source_file.trim_end_matches(".md").to_string();
-            debug!("Processing edges for source file: {}", source_file);
+            trace!("Processing edges for source file: {}", source_file);
             // Find the node with this metadata_id to get its numeric ID
             let source_node = graph.nodes.iter().find(|n| n.metadata_id == source_id);
             if source_node.is_none() {
@@ -733,12 +733,12 @@ impl GraphService {
                 let target_id = target_file.trim_end_matches(".md").to_string();
                 // Find the node with this metadata_id to get its numeric ID
                 let target_node = graph.nodes.iter().find(|n| n.metadata_id == target_id);
-                debug!("  Processing potential edge: {} -> {} (count: {})", source_id, target_id, count);
+                trace!("  Processing potential edge: {} -> {} (count: {})", source_id, target_id, count);
                 if target_node.is_none() {
                     continue; // Skip if node not found
                 }
                 let target_numeric_id = target_node.unwrap().id.clone();
-                debug!("  Found target node: {} (ID: {})", target_id, target_numeric_id);
+                trace!("  Found target node: {} (ID: {})", target_id, target_numeric_id);
 
                 // Only create edge if both nodes exist and they're different
                 if source_numeric_id != target_numeric_id {
@@ -748,7 +748,7 @@ impl GraphService {
                         (target_numeric_id.clone(), source_numeric_id.clone())
                     };
 
-                    debug!("  Creating/updating edge: {:?} with weight {}", edge_key, count);
+                    trace!("  Creating/updating edge: {:?} with weight {}", edge_key, count);
                     // Sum the weights for bi-directional references
                     edge_map.entry(edge_key)
                         .and_modify(|w| *w += *count as f32)
@@ -758,13 +758,13 @@ impl GraphService {
         }
 
         // Log edge_map contents before transformation
-        debug!("Edge map contains {} unique connections", edge_map.len());
+        trace!("Edge map contains {} unique connections", edge_map.len());
         for ((source, target), weight) in &edge_map {
-            debug!("Edge map entry: {} -- {} (weight: {})", source, target, weight);
+            trace!("Edge map entry: {} -- {} (weight: {})", source, target, weight);
         }
 
         // Convert edge map to edges
-        debug!("Converting edge map to {} edges", edge_map.len());
+        trace!("Converting edge map to {} edges", edge_map.len());
         graph.edges = edge_map.into_iter()
             .map(|((source, target), weight)| {
                 Edge::new(source, target, weight)
@@ -775,7 +775,7 @@ impl GraphService {
         Self::initialize_random_positions(&mut graph);
 
         info!("Built graph with {} nodes and {} edges", graph.nodes.len(), graph.edges.len());
-        debug!("Completed graph build: {} nodes, {} edges", graph.nodes.len(), graph.edges.len());
+        trace!("Completed graph build: {} nodes, {} edges", graph.nodes.len(), graph.edges.len());
         Ok(graph)
     }
 
@@ -830,7 +830,7 @@ impl GraphService {
         node_map: &mut HashMap<String, Node>, 
         params: &SimulationParams,
     ) -> std::io::Result<()> {
-        debug!("[calculate_layout_with_retry] Starting GPU calculation with retry mechanism");
+        trace!("[calculate_layout_with_retry] Starting GPU calculation with retry mechanism");
         let mut last_error: Option<Error> = None;
         
         for attempt in 0..MAX_GPU_CALCULATION_RETRIES {
@@ -838,7 +838,7 @@ impl GraphService {
                 Ok(()) => {
                     if attempt > 0 {
                         info!("[calculate_layout] Succeeded after {} retries", attempt);
-                        debug!("[calculate_layout_with_retry] GPU calculation succeeded after retries");
+                        trace!("[calculate_layout_with_retry] GPU calculation succeeded after retries");
                     }
                     return Ok(());
                 }
@@ -856,7 +856,7 @@ impl GraphService {
         }
         
         // If we get here, all attempts failed
-        debug!("[calculate_layout_with_retry] All GPU attempts failed, falling back to CPU");
+        trace!("[calculate_layout_with_retry] All GPU attempts failed, falling back to CPU");
         error!("[calculate_layout] Failed after {} attempts, falling back to CPU", MAX_GPU_CALCULATION_RETRIES);
         
         // As a fallback, try CPU calculation when GPU fails repeatedly
@@ -898,7 +898,7 @@ impl GraphService {
                       e, graph.nodes.len());
                 // Log more details about the graph for debugging
                 if !graph.nodes.is_empty() {
-                    debug!("First node: id={}, position=[{:.3},{:.3},{:.3}]", graph.nodes[0].id, graph.nodes[0].data.position.x, graph.nodes[0].data.position.y, graph.nodes[0].data.position.z);
+                    trace!("First node: id={}, position=[{:.3},{:.3},{:.3}]", graph.nodes[0].id, graph.nodes[0].data.position.x, graph.nodes[0].data.position.y, graph.nodes[0].data.position.z);
                 }
                 return Err(e);
             }
@@ -972,7 +972,7 @@ impl GraphService {
         params: &SimulationParams,
     ) -> std::io::Result<()> {
         let nodes_len = graph.nodes.len();
-        debug!("[calculate_layout_cpu] Starting CPU calculation with {} nodes", nodes_len);
+        trace!("[calculate_layout_cpu] Starting CPU calculation with {} nodes", nodes_len);
         
         // Early return if there are no nodes to process
         if nodes_len == 0 {
@@ -1146,7 +1146,7 @@ impl GraphService {
                 
                 // If cache is still fresh, use it
                 if age < Duration::from_millis(NODE_POSITION_CACHE_TTL_MS) {
-                    debug!("Using cached node positions ({} nodes, age: {:?})", 
+                    trace!("Using cached node positions ({} nodes, age: {:?})",
                            cached_nodes.len(), age);
                     return cached_nodes.clone();
                 }
@@ -1158,7 +1158,7 @@ impl GraphService {
             let graph = self.graph_data.read().await;
             
             // Only log node position data in debug level
-            debug!("get_node_positions: reading {} nodes from graph (cache miss)", graph.nodes.len());
+            trace!("get_node_positions: reading {} nodes from graph (cache miss)", graph.nodes.len());
             
             // Clone the nodes vector 
             graph.nodes.clone()
@@ -1171,12 +1171,12 @@ impl GraphService {
         }
 
         let elapsed = start_time.elapsed();
-        debug!("Node position fetch completed in {:?} for {} nodes", elapsed, nodes.len());
+        trace!("Node position fetch completed in {:?} for {} nodes", elapsed, nodes.len());
         
         // Log first 5 nodes only when debug is enabled
         let sample_size = std::cmp::min(5, nodes.len());
         if sample_size > 0 && log::log_enabled!(log::Level::Debug) {
-            debug!("Node position sample: {} samples of {} nodes", sample_size, nodes.len());
+            trace!("Node position sample: {} samples of {} nodes", sample_size, nodes.len());
         }
         nodes
     }

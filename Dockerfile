@@ -127,6 +127,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Create non-root user
 RUN groupadd -r webxr && useradd -r -g webxr webxr
 
+
+# Create Nginx directories and set permissions for the webxr group
+RUN mkdir -p /var/log/nginx /var/run/nginx && \
+    chown -R root:webxr /var/log/nginx /var/run/nginx && \
+    chmod -R 775 /var/log/nginx /var/run/nginx
+
 # Create necessary directories
 RUN mkdir -p /app/data/public/dist && \
     mkdir -p /app/src/utils && \
