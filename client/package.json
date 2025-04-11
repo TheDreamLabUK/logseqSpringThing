@@ -10,32 +10,32 @@
     "lint": "eslint src --ext ts,tsx --report-unused-disable-directives"
   },
   "dependencies": {
-    "@radix-ui/react-tooltip": "^1.0.7",
     "@radix-ui/react-dialog": "^1.0.5",
     "@radix-ui/react-dropdown-menu": "^2.0.6",
     "@radix-ui/react-slot": "^1.0.2",
     "@radix-ui/react-toast": "^1.1.5",
-    "@react-three/fiber": "^8.15.19",
+    "@radix-ui/react-tooltip": "^1.0.7",
     "@react-three/drei": "^9.99.7",
+    "@react-three/fiber": "^8.15.19",
     "@react-three/xr": "^5.7.1",
-    "three": "^0.162.0",
-    "@types/three": "^0.162.0",
     "@types/node": "^20.17.25",
+    "@types/three": "^0.162.0",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.0.0",
-    "tailwind-merge": "^3.2.0",
     "framer-motion": "^11.18.2",
     "hls.js": "^1.5.20",
     "lucide-react": "^0.358.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "react-rnd": "^10.4.1"
+    "react-rnd": "^10.4.1",
+    "tailwind-merge": "^3.2.0",
+    "three": "^0.162.0"
   },
   "devDependencies": {
     "@types/react": "^18.2.0",
     "@types/react-dom": "^18.2.0",
     "@vitejs/plugin-react": "^4.2.0",
     "typescript": "^5.0.2",
-    "vite": "^4.5.0"
+    "vite": "^6.2.6"
   }
 }

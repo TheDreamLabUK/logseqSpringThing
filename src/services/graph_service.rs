@@ -302,7 +302,8 @@ impl GraphService {
             // Broadcast to all clients through the client manager
             client_manager.broadcast_node_positions(nodes_to_broadcast).await;
         } else {
-            trace!("No client manager available for broadcasting positions");
+            // No client manager available - this is normal when there are no clients
+            trace!("[GraphService] No clients connected - skipping position broadcast");
         }
     }
 
@@ -1392,12 +1393,6 @@ impl GraphService {
     pub fn start_broadcast_loop(&self) {
         info!("[GraphService] Starting position broadcast loop for client synchronization...");
 
-        // Check if we have a client manager, if not, log and return
-        if self.client_manager.is_none() {
-            warn!("[GraphService] Cannot start broadcast loop - no client manager available");
-            return;
-        }
-
         // Clone what we need for the async task
         let service_clone = self.clone();
         let simulation_id = self.simulation_id.clone();
@@ -1417,7 +1412,7 @@ impl GraphService {
                 // Get current node positions
                 let nodes = service_clone.get_node_positions().await;
 
-                // Broadcast positions to all clients
+                // Broadcast positions to all clients if we have any
                 if !nodes.is_empty() {
                     GraphService::broadcast_positions(&service_clone, &nodes).await;
                 }

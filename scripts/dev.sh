@@ -7,27 +7,48 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m'
 
+# Get the absolute path of the script's directory
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+
+# Global variables
+DOCKER_COMPOSE_FILE="$PROJECT_ROOT/docker-compose.dev.yml"
+CONTAINER_NAME="logseq_spring_thing_webxr"
+PROJECT_IDENTIFIER="logseq_spring_thing_dev"  # Unique identifier for our project's processes
+
 log() {
     echo -e "[$(date '+%Y-%m-%d %H:%M:%S')] $1"
 }
 
-# Setup development environment
-setup_dev() {
-    log "${YELLOW}Setting up development environment...${NC}"
+# Cleanup function
+cleanup() {
+    log "${YELLOW}Cleaning up development environment...${NC}"
     
-    # Install client dependencies
-    cd client && npm install
-    cd ..
+    # Stop Docker containers
+    if docker ps -q -f name=$CONTAINER_NAME > /dev/null; then
+        log "${YELLOW}Stopping Docker containers...${NC}"
+        cd "$PROJECT_ROOT" && docker compose -f $DOCKER_COMPOSE_FILE down
+    fi
+    
+    # Host process cleanup removed as Node/Vite run inside the container
+    
+    log "${GREEN}Cleanup complete${NC}"
 }
 
+# Trap signals
+trap cleanup SIGINT SIGTERM EXIT
+
+# Setup function removed as dependencies are installed during Docker build
 # Start development servers
 start_dev() {
     log "${YELLOW}Starting development servers...${NC}"
     
     # Build and start containers with updated configuration
-    DOCKER_BUILDKIT=1 docker compose -f docker-compose.dev.yml up --build
+    log "${YELLOW}Starting Docker containers...${NC}"
+    cd "$PROJECT_ROOT" && DOCKER_BUILDKIT=1 docker compose -f $DOCKER_COMPOSE_FILE up --build
 }
 
 # Main execution
-setup_dev
+cleanup  # Clean up any existing processes first
+# setup_dev call removed
 start_dev

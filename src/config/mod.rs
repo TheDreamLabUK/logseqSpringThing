@@ -331,33 +331,44 @@ impl Settings {
     pub fn new() -> Result<Self, ConfigError> {
         debug!("Initializing settings");
 
-        // Load .env file first
+        // Load .env file first to make variables available to the Environment source
         dotenvy::dotenv().ok();
+        // --- DEBUG PRINT ---
+        println!("[CONFIG DEBUG] Checking SYSTEM_NETWORK_PORT env var: {:?}", std::env::var("SYSTEM_NETWORK_PORT"));
+        // --- END DEBUG PRINT ---
 
         let settings_path = std::env::var("SETTINGS_FILE_PATH")
             .map(PathBuf::from)
             .unwrap_or_else(|_| PathBuf::from("/app/settings.yaml"));
 
-        debug!("Loading settings from: {:?}", settings_path);
+        debug!("Loading settings from YAML file: {:?}", settings_path);
 
-        // Read and parse YAML file
-        let yaml_content = std::fs::read_to_string(&settings_path)
-            .map_err(|e| ConfigError::NotFound(format!("Failed to read settings file: {}", e)))?;
+        let builder = ConfigBuilder::<config::builder::DefaultState>::default();
 
-        debug!("Deserializing settings from YAML");
-        let mut settings: Settings = serde_yaml::from_str(&yaml_content)
-            .map_err(|e| ConfigError::Message(format!("Failed to parse YAML: {}", e)))?;
+        // 1. Add the YAML file source
+        let builder = builder.add_source(config::File::from(settings_path).required(true));
 
-        // Apply environment variables on top of YAML settings
-        if let Ok(env_settings) = Settings::from_env() {
-            settings.merge_env(env_settings);
-        }
+        // 2. Add the Environment source
+        //    This will look for env vars matching the structure (e.g., SYSTEM_NETWORK_PORT)
+        let builder = builder.add_source(
+            Environment::default() // Use default settings (no prefix)
+                .separator("_") // Use underscore as separator (e.g., SYSTEM_NETWORK_PORT)
+                // .try_parsing(true) // Removed: Let serde handle type parsing during final deserialization
+                .list_separator(",") // Optional: Define how lists are separated in env vars
+        );
 
-        Ok(settings)
+        debug!("Building configuration by layering sources (YAML -> Env Vars)");
+
+        // Build the configuration and deserialize into Settings struct
+        let config = builder.build()?;
+        debug!("Configuration built successfully");
+
+        config.try_deserialize()
     }
 
     pub fn merge_env(&mut self, _env_settings: Settings) {
-        // Environment-specific settings are now handled by their respective modules
+        // This function seems unused or intended for a different purpose.
+        // Configuration layering is handled directly in ::new() using the config crate.
     }
 
     pub fn merge(&mut self, value: Value) -> Result<(), String> {
