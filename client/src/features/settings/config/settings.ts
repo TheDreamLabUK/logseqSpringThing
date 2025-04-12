@@ -172,6 +172,7 @@ export interface VisualizationSettings {
 export interface SystemSettings {
   websocket: WebSocketSettings;
   debug: DebugSettings;
+  persistSettings: boolean; // Added to control server-side persistence
 }
 
 // Main settings interface

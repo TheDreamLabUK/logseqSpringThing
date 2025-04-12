@@ -25,12 +25,20 @@ html, body, #root, .app-container, .main-layout {
   min-height: 0; /* Important for Firefox */
 }
 
-/* Ensure the viewport container and all its descendants take up full height */
-.viewport-container,
-.viewport-container > div,
-.viewport-container > div > div {
+/* Ensure the viewport container and its descendants take up space */
+/* Relying on flex properties for height */
+.viewport-container { /* Root div of ViewportContainer component */
   width: 100%;
-  height: 100%;
+  /* height: 100%; */ /* Removed - Rely on flex: 1 */
+  min-height: 0; /* Important for Firefox */
+}
+.viewport-container > div { /* Inner div wrapping children in ViewportContainer */
+  width: 100%;
+  min-height: 0; /* Important for Firefox */
+}
+.viewport-container > div > div { /* The wrapper div added in App.tsx */
+  width: 100%;
+  /* height: 100%; */ /* Removed - Rely on flex: 1 */
   min-height: 0; /* Important for Firefox */
 }
 
@@ -39,7 +47,7 @@ canvas,
 canvas[data-engine="three.js"],
 .three-canvas canvas {
   width: 100% !important;
-  height: 100% !important;
+  height: 100%; /* Removed !important */
   outline: none;
   touch-action: none;
 }
@@ -47,7 +55,7 @@ canvas[data-engine="three.js"],
 /* Add styling for the three-canvas class */
 .three-canvas {
   width: 100% !important;
-  height: 100% !important;
+  height: 100%; /* Removed !important */
   outline: none;
 }
 
@@ -66,6 +74,6 @@ div[style*="position: relative; width: 100%; height: 100%; overflow: hidden;"],
 div[style*="width: 100%; height: 100%;"],
 div[data-engine="three.js"] {
   width: 100% !important;
-  height: 100% !important;
+  height: 100%; /* Removed !important */
   min-height: 0; /* Important for Firefox */
 }

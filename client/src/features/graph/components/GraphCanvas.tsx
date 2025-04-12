@@ -24,9 +24,9 @@ const SceneSetup = () => {
         <>
             <color attach="background" args={[0, 0, 0.8]} /> {/* Medium blue background */}
             <ambientLight intensity={0.6} />
-            <directionalLight 
-                intensity={0.8} 
-                position={[1, 1, 1]} 
+            <directionalLight
+                intensity={0.8}
+                position={[1, 1, 1]}
             />
         </>
     );
@@ -40,70 +40,60 @@ const GraphCanvas = () => {
     const xrEnabled = settings?.xr?.enabled !== false;
     const antialias = settings?.visualization?.rendering?.enableAntialiasing !== false; // Correct property name
 
+    // Removed the outer div wrapper
     return (
-        <div 
-            className="absolute inset-0 overflow-hidden"
+        <Canvas
+            ref={canvasRef}
+            className="r3f-canvas overflow-hidden" // Added overflow-hidden class here
             style={{
                 width: '100%',
                 height: '100%',
-                minHeight: '0',
-                display: 'flex',
-                flexDirection: 'column'
+                minHeight: '0', // Ensure it can shrink
+                display: 'block' // Revert to display: block
+                // Removed flex properties from Canvas style
+            }}
+            gl={{
+                antialias,
+                alpha: true,
+                powerPreference: 'high-performance',
+                failIfMajorPerformanceCaveat: false
+            }}
+            camera={{
+                fov: 75,
+                near: 0.1,
+                far: 2000, // Remove settings access, camera settings likely managed elsewhere
+                position: [0, 10, 50]
+            }}
+            onCreated={({ gl }) => {
+                if (debugState.isEnabled()) {
+                    logger.debug('Canvas created with dimensions:', {
+                        width: gl.domElement.width,
+                        height: gl.domElement.height,
+                        containerWidth: gl.domElement.parentElement?.clientWidth,
+                        containerHeight: gl.domElement.parentElement?.clientHeight
+                    });
+                }
             }}
         >
-            <Canvas
-                ref={canvasRef}
-                style={{
-                    width: '100%',
-                    height: '100%',
-                    display: 'block',
-                    minHeight: '0',
-                    flex: '1 1 auto'
-                }}
-                gl={{
-                    antialias,
-                    alpha: true,
-                    powerPreference: 'high-performance',
-                    failIfMajorPerformanceCaveat: false
-                }}
-                camera={{
-                    fov: 75,
-                    near: 0.1,
-                    far: 2000, // Remove settings access, camera settings likely managed elsewhere
-                    position: [0, 10, 50]
-                }}
-                className="r3f-canvas"
-                onCreated={({ gl }) => {
-                    if (debugState.isEnabled()) {
-                        logger.debug('Canvas created with dimensions:', {
-                            width: gl.domElement.width,
-                            height: gl.domElement.height,
-                            containerWidth: gl.domElement.parentElement?.clientWidth,
-                            containerHeight: gl.domElement.parentElement?.clientHeight
-                        });
-                    }
-                }}
-            >
-                <SceneSetup />
-                <GraphManager />
-                {xrEnabled && <XRController />}
-                {xrEnabled && <XRVisualizationConnector />}
-                <OrbitControls
-                    enableDamping={true}
-                    dampingFactor={0.1}
-                    screenSpacePanning={true}
-                    minDistance={1}
-                    maxDistance={2000}
-                    enableRotate={true}
-                    enableZoom={true}
-                    enablePan={true}
-                    rotateSpeed={1.0}
-                    zoomSpeed={1.2}
-                    panSpeed={0.8}
-                />
-                {showStats && <Stats />}
-            </Canvas>
-        </div>
+            <SceneSetup />
+            <GraphManager />
+            {xrEnabled && <XRController />}
+            {xrEnabled && <XRVisualizationConnector />}
+            <OrbitControls
+                enableDamping={true}
+                dampingFactor={0.1}
+                screenSpacePanning={true}
+                minDistance={1}
+                maxDistance={2000}
+                enableRotate={true}
+                enableZoom={true}
+                enablePan={true}
+                rotateSpeed={1.0}
+                zoomSpeed={1.2}
+                panSpeed={0.8}
+            />
+            {showStats && <Stats />}
+        </Canvas>
     );
 };
 

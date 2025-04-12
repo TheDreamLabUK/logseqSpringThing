@@ -1,4 +1,4 @@
-import React, { useEffect, useState, Component, ReactNode } from 'react'
+import React, { useEffect, useState, Component, ReactNode, useCallback } from 'react'
 import AppInitializer from './AppInitializer'
 import { ThemeProvider } from '../ui/ThemeProvider'
 import { ApplicationModeProvider } from '../contexts/ApplicationModeContext'
@@ -70,9 +70,8 @@ function App() {
   const [showTopPanel, setShowTopPanel] = useState(true)
   const [showRightPanel, setShowRightPanel] = useState(true)
   const [topPanelDense, setTopPanelDense] = useState(true)
-  const { initialized } = useSettingsStore(state => ({
-    initialized: state.initialized
-  }))
+  // Select the primitive value directly to avoid unnecessary re-renders
+  const initialized = useSettingsStore(state => state.initialized)
 
   useEffect(() => {
     if (initialized) {
@@ -80,47 +79,57 @@ function App() {
     }
   }, [initialized])
 
-  const handleInitialized = () => {
+  // Wrap handleInitialized in useCallback to stabilize its reference
+  const handleInitialized = useCallback(() => {
     const settings = useSettingsStore.getState().settings;
     const debugEnabled = settings?.system?.debug?.enabled === true;
     if (debugEnabled) {
       logger.debug('Application initialized');
     }
     setIsLoading(false)
-  }
-  
-  // Viewport control handlers
-  const handleResetCamera = () => {
+  }, []) // Dependency array is empty as it only uses setIsLoading and getState
+
+  // Viewport control handlers wrapped in useCallback
+  const handleResetCamera = useCallback(() => {
     logger.debug('Reset camera')
-  }
+  }, [])
   
-  const handleZoomIn = () => {
+  const handleZoomIn = useCallback(() => {
     logger.debug('Zoom in')
-  }
+  }, [])
   
-  const handleZoomOut = () => {
+  const handleZoomOut = useCallback(() => {
     logger.debug('Zoom out')
-  }
+  }, [])
   
-  const handleToggleFullscreen = () => {
+  const handleToggleFullscreen = useCallback(() => {
     logger.debug('Toggle fullscreen')
-  }
+  }, [])
   
-  const handleRotateView = () => {
+  const handleRotateView = useCallback(() => {
     logger.debug('Rotate view')
-  }
+  }, [])
   
-  const handleToggleLeftPanel = () => {
-    setShowLeftPanel(!showLeftPanel)
-  }
+  const handleToggleLeftPanel = useCallback(() => {
+    setShowLeftPanel(prev => !prev)
+  }, [])
   
-  const handleToggleRightPanel = () => {
-    setShowRightPanel(!showRightPanel)
-  }
+  const handleToggleRightPanel = useCallback(() => {
+    setShowRightPanel(prev => !prev)
+  }, [])
   
-  const handleToggleTopPanel = () => {
-    setShowTopPanel(!showTopPanel)
-  }
+  const handleToggleTopPanel = useCallback(() => {
+    setShowTopPanel(prev => !prev)
+  }, [])
+
+  // Define stable onResize callback for ViewportContainer
+  const handleViewportResize = useCallback((width: number, height: number) => {
+    const settings = useSettingsStore.getState().settings;
+    const debugEnabled = settings?.system?.debug?.enabled === true;
+    if (debugEnabled) {
+      logger.debug(`ViewportContainer resized: ${Math.round(width)}×${Math.round(height)}`);
+    }
+  }, []); // Empty dependency array as getState is stable
 
   return (
     <ThemeProvider defaultTheme="dark">
@@ -143,63 +152,53 @@ function App() {
                   >
                     <MainLayout
                       viewportContent={
-                        <ViewportContainer onResize={(width, height) => {
-                          const settings = useSettingsStore.getState().settings;
-                          const debugEnabled = settings?.system?.debug?.enabled === true;
-                          if (debugEnabled) {
-                            logger.debug(`ViewportContainer resized: ${Math.round(width)}×${Math.round(height)}`);
-                          }
-                        }}>
-                          <div className="relative w-full h-full">
-                            {/* Removed conflicting inline styles, using classes */}
-                            {/* Graph Canvas */}
-                            <div 
-                              style={{
-                                position: 'absolute',
-                                inset: 0,
-                                display: isLoading ? 'none' : 'block'
-                              }}
-                            >
-                              <ErrorBoundary fallback={
-                                <div className="flex items-center justify-center h-full">
-                                  <div className="p-4 bg-destructive/20 text-destructive-foreground rounded-md max-w-md">
-                                    <h2 className="text-xl font-bold mb-2">Visualization Error</h2>
-                                    <p>The 3D visualization component could not be loaded.</p>
-                                    <p className="text-sm mt-2">This may be due to WebGL compatibility issues or problems with the graph data.</p>
-                                  </div>
-                                </div>
-                              }>
-                                <GraphCanvas />
-                              </ErrorBoundary>
-                            </div>
-
-                            {/* Loading Overlay */}
-                            {isLoading && (
-                              <div className="absolute inset-0 flex items-center justify-center bg-background/80 z-10">
-                                <div className="flex flex-col items-center space-y-4">
-                                  <div className="text-2xl">Loading Graph Visualization</div>
-                                  <div className="h-2 w-48 overflow-hidden rounded-full bg-gray-700">
-                                    <div className="animate-pulse h-full bg-primary"></div>
-                                  </div>
+                        // Pass the stable callback function as the prop
+                        // Render GraphCanvas directly inside ViewportContainer
+                        <ViewportContainer onResize={handleViewportResize}>
+                          {!isLoading && (
+                            <ErrorBoundary fallback={
+                              <div className="flex items-center justify-center h-full">
+                                <div className="p-4 bg-destructive/20 text-destructive-foreground rounded-md max-w-md">
+                                  <h2 className="text-xl font-bold mb-2">Visualization Error</h2>
+                                  <p>The 3D visualization component could not be loaded.</p>
+                                  <p className="text-sm mt-2">This may be due to WebGL compatibility issues or problems with the graph data.</p>
                                 </div>
                               </div>
-                            )}
-
-                            {/* Viewport Controls Overlay */}
-                            {!isLoading && (
-                              <ViewportControls
-                                onReset={handleResetCamera}
-                                onZoomIn={handleZoomIn}
-                                onZoomOut={handleZoomOut}
-                                onToggleFullscreen={handleToggleFullscreen}
-                                onRotate={handleRotateView}
-                                onToggleLeftPanel={handleToggleLeftPanel}
-                                onToggleRightPanel={handleToggleRightPanel}
-                                onToggleTopPanel={handleToggleTopPanel}
-                              />
-                            )}
-                          </div>
+                            }>
+                              <GraphCanvas />
+                            </ErrorBoundary>
+                          )}
                         </ViewportContainer>
+                      }
+                      // Render overlays outside ViewportContainer, positioned relative to MainLayout's content area
+                      overlays={
+                        <>
+                          {/* Loading Overlay - Positioned absolutely */}
+                          {isLoading && (
+                            <div className="absolute inset-0 flex items-center justify-center bg-background/80 z-10">
+                              <div className="flex flex-col items-center space-y-4">
+                                <div className="text-2xl">Loading Graph Visualization</div>
+                                <div className="h-2 w-48 overflow-hidden rounded-full bg-gray-700">
+                                  <div className="animate-pulse h-full bg-primary"></div>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Viewport Controls Overlay - Positioned absolutely/fixed */}
+                          {!isLoading && (
+                            <ViewportControls
+                              onReset={handleResetCamera}
+                              onZoomIn={handleZoomIn}
+                              onZoomOut={handleZoomOut}
+                              onToggleFullscreen={handleToggleFullscreen}
+                              onRotate={handleRotateView}
+                              onToggleLeftPanel={handleToggleLeftPanel}
+                              onToggleRightPanel={handleToggleRightPanel}
+                              onToggleTopPanel={handleToggleTopPanel}
+                            />
+                          )}
+                        </>
                       }
                       rightDockContent={
                         !isLoading && showRightPanel && (
@@ -219,6 +218,7 @@ function App() {
                     />
                     <AppInitializer onInitialized={handleInitialized} />
                   </div>
+                  {/* Ensure Toaster is rendered outside potentially looping structures if possible */}
                   <Toaster />
                 </SafeXRProvider>
               </TooltipProvider>

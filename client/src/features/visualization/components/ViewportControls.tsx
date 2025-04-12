@@ -218,11 +218,7 @@ const ViewportControls = ({
 }: ViewportControlsProps) => {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const { mode, isXRMode } = useApplicationMode();
-  const { settings } = useSettingsStore(state => ({
-    settings: state.settings
-  }));
-  
-  const debugEnabled = settings?.system?.debug?.enabled === true;
+  const debugEnabled = useSettingsStore(state => state.settings?.system?.debug?.enabled === true);
   
   // Hide controls in XR mode
   if (isXRMode) {

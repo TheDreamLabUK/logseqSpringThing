@@ -18,18 +18,15 @@ interface ViewportContainerProps {
  * It handles resize events and coordinates with the panel system to adjust its dimensions
  * when panels are docked/undocked.
  */
-const ViewportContainer = ({ 
+const ViewportContainer = ({
   children,
-  onResize 
+  onResize
 }: ViewportContainerProps) => {
   const viewportRef = useRef<HTMLDivElement>(null);
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
-  const { initialized, settings } = useSettingsStore(state => ({
-    initialized: state.initialized,
-    settings: state.settings
-  }));
-  
-  const debugEnabled = settings?.debug?.enabled === true;
+  // Select primitive values individually to ensure stable references
+  const initialized = useSettingsStore(state => state.initialized);
+  const debugEnabled = useSettingsStore(state => state.settings?.system?.debug?.enabled === true);
 
   // Only log if debug is enabled
   if (debugEnabled) {
@@ -122,25 +119,17 @@ const ViewportContainer = ({
   return (
     <div 
       ref={viewportRef}
-      className="viewport-container flex-1 relative w-full h-full min-h-0 bg-background overflow-hidden"
+      className="viewport-container relative w-full h-full min-h-0 bg-background" // Removed flex-1 class
       data-testid="viewport-container"
       style={{
-        flex: '1 1 auto',
+        // flex: '1 1 auto', // Removed inline flex grow, rely on h-full class
         minHeight: '0',
-        display: 'flex',
-        flexDirection: 'column'
+        display: 'flex', // Keep as flex column container
+        flexDirection: 'column' // Keep as flex column container
       }}
     >
-      {/* Viewport Content (typically Three.js canvas) */}
-      <div 
-        className="flex-1 relative w-full h-full min-h-0"
-        style={{
-          flex: '1 1 auto',
-          minHeight: '0'
-        }}
-      >
-        {children}
-      </div>
+      {/* Render children directly, removing the intermediate div */}
+      {children}
       
       {/* Viewport size indicator for debugging */}
       {debugEnabled && process.env.NODE_ENV === 'development' && (

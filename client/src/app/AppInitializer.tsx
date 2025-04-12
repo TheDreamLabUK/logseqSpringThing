@@ -51,9 +51,9 @@ const AppInitializer: React.FC<AppInitializerProps> = ({ onInitialized }) => {
           // Try to initialize WebSocket
           if (typeof WebSocketService !== 'undefined' && typeof graphDataManager !== 'undefined') {
             try {
-              // Comment out WebSocket initialization
-              // await initializeWebSocket(settings); 
-              logger.info('WebSocket initialization deliberately disabled - using REST API only.');
+              // Initialize WebSocket
+              await initializeWebSocket(settings); 
+              // logger.info('WebSocket initialization deliberately disabled - using REST API only.'); // Commented out the disabling message
             } catch (wsError) {
               logger.error('WebSocket initialization failed, continuing with UI only:', createErrorMetadata(wsError));
               // We'll proceed without WebSocket connectivity

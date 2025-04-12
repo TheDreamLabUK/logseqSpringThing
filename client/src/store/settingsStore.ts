@@ -44,7 +44,8 @@ export const useSettingsStore = create<SettingsState>()(
           
           // Fetch settings from server if available
           try {
-            const response = await fetch('/api/settings')
+            // Use the endpoint for public/default settings for initial load
+            const response = await fetch('/api/user-settings')
             if (response.ok) {
               const serverSettings = await response.json()
               
@@ -193,7 +194,9 @@ export const useSettingsStore = create<SettingsState>()(
           // Save to server if appropriate
           if (state.initialized && state.settings.system?.persistSettings !== false) {
             try {
-              const response = await fetch('/api/settings', {
+              // Use the endpoint for syncing user-specific settings
+              // TODO: Add authentication headers (e.g., X-Nostr-Pubkey) when available
+              const response = await fetch('/api/user-settings/sync', {
                 method: 'POST',
                 headers: {
                   'Content-Type': 'application/json'
