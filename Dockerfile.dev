@@ -18,6 +18,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libssl-dev \
     netcat-openbsd \
     lsof \
+    gzip \
+    expect \
     && rm -rf /var/lib/apt/lists/*
 
 # Set gcc-11 as default compiler (needed for CUDA compilation)

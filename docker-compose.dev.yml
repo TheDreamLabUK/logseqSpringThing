@@ -12,6 +12,7 @@ services:
       - ./data/metadata:/app/data/metadata
       - ./data/user_settings:/app/user_settings
       - ./data/settings.yaml:/app/settings.yaml
+      - ./scripts/logs:/app/logs
       - npm-cache:/root/.npm
       - cargo-cache:/root/.cargo/registry
       - cargo-git-cache:/root/.cargo/git
@@ -24,6 +25,7 @@ services:
       - NODE_ENV=development
       - VITE_DEV_SERVER_PORT=3001
       - VITE_API_PORT=4000
+      - RUST_LOG_REDIRECT=true
     deploy:
       resources:
         reservations:
