@@ -1,0 +1,101 @@
+/* client/src/styles/simple-three-window-page.css */
+
+html, body, #root {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden; /* Prevent scrollbars on the page itself */
+}
+
+/* Ensure the direct container for the canvas also fills the space */
+#root > div {
+  width: 100%;
+  height: 100%;
+}
+
+/* Fix for the three.js canvas height issue - make more specific to catch all three.js canvas elements */
+canvas,
+canvas[data-engine="three.js"],
+.three-canvas canvas {
+  width: 100% !important;
+  height: 100% !important;
+  outline: none;
+}
+
+/* Add styling for the three-canvas class we added to the Canvas component */
+.three-canvas {
+  width: 100% !important;
+  height: 100% !important;
+  outline: none; /* Remove focus outline */
+}
+
+/* Make sure app container and main layout take up full space */
+div[data-engine="three.js"] {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.app-container {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Three-window layout specific styles */
+.three-window-container {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+  gap: 4px;
+  width: 100%;
+  height: 100%;
+  background-color: #111;
+}
+
+.graph-window {
+  position: relative;
+  background-color: #000033;
+  overflow: hidden;
+}
+
+.graph-window-1 {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+.graph-window-2 {
+  grid-column: 2;
+  grid-row: 1;
+}
+
+.graph-window-3 {
+  grid-column: 1 / span 2;
+  grid-row: 2;
+}
+
+.window-title {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  color: white;
+  font-size: 14px;
+  background-color: rgba(0, 0, 0, 0.5);
+  padding: 5px 10px;
+  border-radius: 4px;
+  z-index: 10;
+}
+
+.controls-overlay {
+  position: absolute;
+  bottom: 10px;
+  left: 10px;
+  color: white;
+  z-index: 10;
+  background: rgba(0, 0, 0, 0.5);
+  padding: 10px;
+  border-radius: 5px;
+  font-size: 12px;
+}

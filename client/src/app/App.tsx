@@ -4,7 +4,7 @@ import { ThemeProvider } from '../ui/ThemeProvider'
 import { ApplicationModeProvider } from '../contexts/ApplicationModeContext'
 import { Toaster } from '../ui/Toaster'
 import { TooltipProvider } from '../ui/Tooltip'
-import GraphCanvas from '../features/graph/components/GraphCanvas'
+import GraphCanvas from '../features/graph/components/GraphCanvas' // Revert back to GraphCanvas
 import ViewportContainer from '../components/layout/ViewportContainer'
 import SafeXRProvider from '../features/xr/providers/SafeXRProvider'
 import MainLayout from '../components/layout/MainLayout'
@@ -16,6 +16,9 @@ import SystemPanel from '../features/settings/components/panels/SystemPanel'
 import { WindowSizeProvider } from '../contexts/WindowSizeContext'
 import { useSettingsStore } from '../store/settingsStore'
 import { createLogger, createErrorMetadata } from '../utils/logger'
+import SimpleThreeWindowPage from '../pages/SimpleThreeWindowPage'
+import SimpleGraphPage from '../pages/SimpleGraphPage'
+
 import '../styles/tokens.css'
 import '../styles/layout.css'
 
@@ -28,22 +31,22 @@ interface ErrorBoundaryProps {
 }
 
 class ErrorBoundary extends Component<ErrorBoundaryProps, { hasError: boolean; error: Error | null; errorInfo: any }> {
-  state = { hasError: false, error: null, errorInfo: null };  
-  
+  state = { hasError: false, error: null, errorInfo: null };
+
   static getDerivedStateFromError(error: any) {
     return { hasError: true, error };
   }
-  
+
   componentDidCatch(error: any, errorInfo: any) {
     logger.error('React error boundary caught error:', {
       ...createErrorMetadata(error),
-      component: errorInfo?.componentStack 
-        ? errorInfo.componentStack.split('\n')[1]?.trim() 
+      component: errorInfo?.componentStack
+        ? errorInfo.componentStack.split('\n')[1]?.trim()
         : 'Unknown component'
     });
     this.setState({ errorInfo });
   }
-  
+
   render() {
     if (this.state.hasError) {
       return this.props.fallback || (
@@ -52,8 +55,8 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, { hasError: boolean; e
           <p className="mb-4">The application encountered an error. Try refreshing the page.</p>
           {process.env.NODE_ENV === 'development' && (
             <pre className="bg-muted p-2 rounded text-sm overflow-auto">
-              {this.state.error 
-                ? (this.state.error.message || String(this.state.error)) 
+              {this.state.error
+                ? (this.state.error.message || String(this.state.error))
                 : 'No error details available'}
             </pre>
           )}
@@ -70,6 +73,8 @@ function App() {
   const [showTopPanel, setShowTopPanel] = useState(true)
   const [showRightPanel, setShowRightPanel] = useState(true)
   const [topPanelDense, setTopPanelDense] = useState(true)
+  // Check for simple mode in URL
+  const [isSimpleMode, setIsSimpleMode] = useState(false)
   // Select the primitive value directly to avoid unnecessary re-renders
   const initialized = useSettingsStore(state => state.initialized)
 
@@ -77,6 +82,10 @@ function App() {
     if (initialized) {
       setIsLoading(false)
     }
+
+    // Check URL parameters for simple mode
+    const urlParams = new URLSearchParams(window.location.search)
+    setIsSimpleMode(urlParams.has('simple'))
   }, [initialized])
 
   // Wrap handleInitialized in useCallback to stabilize its reference
@@ -93,31 +102,31 @@ function App() {
   const handleResetCamera = useCallback(() => {
     logger.debug('Reset camera')
   }, [])
-  
+
   const handleZoomIn = useCallback(() => {
     logger.debug('Zoom in')
   }, [])
-  
+
   const handleZoomOut = useCallback(() => {
     logger.debug('Zoom out')
   }, [])
-  
+
   const handleToggleFullscreen = useCallback(() => {
     logger.debug('Toggle fullscreen')
   }, [])
-  
+
   const handleRotateView = useCallback(() => {
     logger.debug('Rotate view')
   }, [])
-  
+
   const handleToggleLeftPanel = useCallback(() => {
     setShowLeftPanel(prev => !prev)
   }, [])
-  
+
   const handleToggleRightPanel = useCallback(() => {
     setShowRightPanel(prev => !prev)
   }, [])
-  
+
   const handleToggleTopPanel = useCallback(() => {
     setShowTopPanel(prev => !prev)
   }, [])
@@ -131,6 +140,11 @@ function App() {
     }
   }, []); // Empty dependency array as getState is stable
 
+  // Render the simple three-window page if in simple mode
+  if (isSimpleMode) {
+    return <SimpleGraphPage />
+  }
+
   return (
     <ThemeProvider defaultTheme="dark">
       <WindowSizeProvider>
@@ -139,7 +153,7 @@ function App() {
             <PanelProvider>
               <TooltipProvider>
                 <SafeXRProvider>
-                  <div 
+                  <div
                     className="app-container"
                     style={{
                       display: 'flex',
