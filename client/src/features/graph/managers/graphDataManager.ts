@@ -433,7 +433,10 @@ class GraphDataManager {
 
       // Notify position update listeners with the Float32Array
       this.notifyPositionUpdateListeners(positionArray);
-      
+
+      // Also notify graph data listeners so components using graphData state get updated positions
+      this.notifyGraphDataListeners();
+
       if (debugState.isDataDebugEnabled()) {
         logger.debug(`Updated positions for ${updatedNodes} out of ${nodeUpdates.length} nodes (${this.data.nodes.length} total nodes in graph)`);
       }

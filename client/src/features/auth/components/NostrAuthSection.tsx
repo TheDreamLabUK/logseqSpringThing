@@ -15,7 +15,8 @@ const NostrAuthSection: React.FC = () => {
   }, []);
 
   return (
-    <Card>
+    // Explicitly set dark background and text for the card to ensure theme consistency
+    <Card className="bg-card text-card-foreground border-border">
       <CardHeader>
         <CardTitle>Nostr Authentication</CardTitle>
         <CardDescription>Authenticate with your Nostr key to unlock advanced features.</CardDescription>

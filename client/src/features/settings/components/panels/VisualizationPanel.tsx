@@ -1,9 +1,16 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react'; // Combined imports
 import { useSettingsStore } from '../../../../store/settingsStore'; // Corrected path
-import { formatSettingLabel } from '../../types/settingsSchema';
-import { UISetting, isUISetting } from '../../types/uiSetting';
+import { formatSettingLabel } from '../../types/settingsSchema'; // Keep for label formatting
+// UISetting and isUISetting are no longer needed here as we're not using UI definitions
+// import { UISetting, isUISetting } from '../../types/uiSetting';
 import { createLogger } from '../../../../utils/logger'; // Corrected path
-import { Eye, CircleDashed, Circle, BrushIcon, MoveHorizontal } from 'lucide-react';
+// Removing problematic icons for now - keeping ones that work
+import { Eye, CircleDashed, Circle, MoveHorizontal } from 'lucide-react';
+// Import UI components
+import { Input } from '../../../../ui/Input';
+import { Switch } from '../../../../ui/Switch';
+import { Slider } from '../../../../ui/Slider';
+import { Label } from '../../../../ui/Label'; // Use Label component
 
 const logger = createLogger('VisualizationPanel');
 
@@ -12,8 +19,11 @@ const VISUALIZATION_SUBSECTIONS = [
   { id: 'rendering', title: 'Rendering', icon: <Eye className="h-4 w-4" /> },
   { id: 'nodes', title: 'Nodes', icon: <Circle className="h-4 w-4" /> },
   { id: 'edges', title: 'Edges', icon: <MoveHorizontal className="h-4 w-4" /> },
-  { id: 'labels', title: 'Labels', icon: <BrushIcon className="h-4 w-4" /> },
+  { id: 'labels', title: 'Labels' /* icon removed */ }, // Removed Paintbrush
   { id: 'physics', title: 'Physics', icon: <CircleDashed className="h-4 w-4" /> },
+  { id: 'bloom', title: 'Bloom' /* icon removed */ }, // Removed Wand2
+  { id: 'hologram', title: 'Hologram' /* icon removed */ }, // Removed Radio
+  { id: 'animations', title: 'Animations' /* icon removed */ }, // Removed Clapperboard
 ];
 
 interface VisualizationPanelProps {
@@ -22,7 +32,7 @@ interface VisualizationPanelProps {
    * Panel ID is no longer needed.
    */
   // panelId: string; // Removed panelId prop
-   
+
   /**
    * Horizontal layout is no longer relevant.
    */
@@ -38,39 +48,45 @@ const VisualizationPanel = ({
   // horizontal // Prop removed
 }: VisualizationPanelProps) => {
   const [activeSubsection, setActiveSubsection] = useState('rendering');
-  
+
   const settings = useSettingsStore(state => state.settings);
-  const setSettings = useSettingsStore(state => state.set);
-  
-  // Get visualization settings for the active subsection
-  const visualizationSettings: Record<string, UISetting> = 
-    settings.visualization && 
-    settings.visualization[activeSubsection] ? 
-    settings.visualization[activeSubsection] as Record<string, UISetting> : {};
-  
-  // Update a specific setting
+  const setSettings = useSettingsStore(state => state.set); // Keep setSettings
+
+  // Get the actual settings *values* for the active subsection using useMemo
+  const activeSettingsValues = useMemo(() => {
+    const vizSettings = settings?.visualization;
+    if (!vizSettings || !activeSubsection || !(activeSubsection in vizSettings)) {
+      logger.warn(`Subsection '${activeSubsection}' not found in visualization settings.`);
+      return {};
+    }
+    // Type assertion might be needed if TypeScript can't infer the structure
+    return vizSettings[activeSubsection as keyof typeof vizSettings] || {};
+  }, [settings, activeSubsection]);
+
+
+  // Update a specific setting (remains the same)
   const updateSetting = (path: string, value: any) => {
     const fullPath = `visualization.${activeSubsection}.${path}`;
     logger.debug(`Updating setting: ${fullPath}`, value);
     setSettings(fullPath, value);
   };
-  
+
   return (
-    <React.Fragment>
+    // Apply dark theme classes directly to the fragment's container div
+    <div className="bg-card text-card-foreground dark:bg-gray-900 dark:text-gray-100 h-full">
       {/* Panel Content */}
       {/* Assume vertical flex layout */}
       <div className="h-full flex flex-col">
         {/* Subsection Tabs - Horizontal layout when in top panel */}
         {/* Assume standard bottom border for tabs */}
-        <div className="flex border-b border-border overflow-auto">
+        <div className="flex border-b border-border dark:border-gray-700 overflow-auto bg-card dark:bg-gray-800">
           {VISUALIZATION_SUBSECTIONS.map(subsection => (
             <button
               key={subsection.id}
-              // Comment removed from inside button tag
-              className={`flex items-center px-3 py-2 ${
+              className={`flex items-center px-4 py-3 transition-colors ${
                 activeSubsection === subsection.id
-                  ? 'border-b-2 border-primary font-medium'
-                  : 'text-muted-foreground hover:text-foreground'
+                  ? 'border-b-2 border-primary text-primary font-medium dark:text-blue-400 dark:border-blue-400'
+                  : 'text-muted-foreground hover:text-foreground dark:text-gray-400 dark:hover:text-gray-200'
               }`}
               onClick={() => setActiveSubsection(subsection.id)}
             >
@@ -79,128 +95,153 @@ const VisualizationPanel = ({
             </button>
           ))}
         </div>
-        
-        {/* Settings Content */}
-        {/* Assume standard vertical spacing */}
-        <div className="flex-1 min-h-0 overflow-auto p-4 space-y-6">
-          {/* Dynamic Settings Renderer */}
-          {Object.entries(visualizationSettings).map(([key, setting]) => {
-            if (typeof setting !== 'object' || setting === null) {
+
+        {/* Settings Content - Render based on activeSettingsValues */}
+        <div className="flex-1 min-h-0 overflow-auto p-4 space-y-4 dark:bg-gray-900"> {/* Added dark theme */}
+          {/* Enhanced Input Renderer */}
+          {Object.entries(activeSettingsValues).map(([key, value]) => {
+            const label = formatSettingLabel(key); // Format the key for display
+
+            // Determine input type based on value type
+            let inputType: React.HTMLInputTypeAttribute = 'text';
+            // Initialize controlValue without assigning 'value' yet
+            let controlValue: string | number | boolean | undefined = undefined;
+            let additionalProps: Record<string, any> = {};
+
+            if (typeof value === 'boolean') {
+              inputType = 'checkbox';
+              controlValue = value; // Assign directly, type is known
+            } else if (typeof value === 'number') {
+              inputType = 'number';
+              controlValue = value; // Assign directly, type is known
+              // Basic step for numbers
+              additionalProps.step = 0.1;
+            } else if (typeof value === 'string' && /^#([0-9A-F]{3}){1,2}$/i.test(value)) {
+              inputType = 'color';
+              controlValue = value; // Assign directly, type is known
+            } else if (typeof value === 'string') {
+              inputType = 'text';
+              controlValue = value; // Assign directly, type is known
+            } else {
+              // Skip complex types like arrays/objects for now
               return null;
             }
-            
-            // Skip if this is a nested object of settings (handled separately)
-            // Use the type guard for better type safety
-            if (!isUISetting(setting)) {
-              return null;
+
+            // Determine default slider range/step based on key or value
+            let sliderMin = 0;
+            let sliderMax = 100;
+            let sliderStep = 1;
+            if (typeof controlValue === 'number') {
+              if (controlValue >= 0 && controlValue <= 1) {
+                sliderMax = 1;
+                sliderStep = 0.01;
+              } else if (controlValue >= 0 && controlValue <= 10) {
+                 sliderMax = 10;
+                 sliderStep = 0.1;
+              } else if (controlValue > 100) {
+                 sliderMax = Math.max(sliderMax, controlValue * 1.5); // Adjust max if value is large
+              }
             }
-            
-            // Format the label
-            const label = formatSettingLabel(key);
-            
-            // Render appropriate control based on setting type
+
+            // Add specific overrides based on key name if needed
+            if (key.toLowerCase().includes('opacity') || key.toLowerCase().includes('intensity') || key.toLowerCase().includes('strength') || key.toLowerCase().includes('damping')) {
+                sliderMax = Math.max(1, sliderMax); // Ensure max is at least 1 for these
+                sliderStep = 0.01;
+            }
+            if (key.toLowerCase().includes('size') || key.toLowerCase().includes('width') || key.toLowerCase().includes('radius') || key.toLowerCase().includes('distance')) {
+                sliderMax = Math.max(10, sliderMax); // Ensure max is at least 10
+                sliderStep = 0.1;
+            }
+            if (key.toLowerCase().includes('count') || key.toLowerCase().includes('iterations')) {
+                sliderMin = 0;
+                sliderMax = Math.max(100, sliderMax); // Ensure max is at least 100
+                sliderStep = 1;
+            }
+
+            // Create a unique ID for each control
+            const controlId = `viz-${activeSubsection}-${key}`;
+
             return (
-              // Comment removed from inside div tag
-              <div key={key} className="space-y-2 setting-container">
-                <div className="flex justify-between items-center">
-                  <label className="text-sm font-medium" htmlFor={key}>
-                    {label}
-                  </label>
-                  
-                  {/* Optional help text rendered as tooltip icon */}
-                  {setting.help && (
-                    <span className="text-muted-foreground text-xs">
-                      {setting.help}
-                    </span>
-                  )}
-                </div>
-                
-                {/* Type-specific control rendering */}
-                {setting.type === 'slider' && (
-                  <div className="flex items-center space-x-2">
-                    <input
-                      id={key}
-                      type="range"
-                      value={setting.value}
-                      min={setting.min || 0}
-                      max={setting.max || 100}
-                      step={setting.step || 1}
-                      className="w-full"
-                      onChange={(e) => updateSetting(key, parseFloat(e.target.value))}
-                    />
-                    <span className="text-sm text-muted-foreground w-12 text-right">
-                      {setting.value}{setting.unit || ''}
-                    </span>
-                  </div>
-                )}
-                
-                {setting.type === 'checkbox' && (
-                  <div className="flex items-center space-x-2">
-                    <input
-                      id={key}
-                      type="checkbox"
-                      checked={setting.value}
-                      className="rounded"
-                      onChange={(e) => updateSetting(key, e.target.checked)}
-                    />
-                    <span className="text-sm text-muted-foreground">
-                      {setting.value ? 'Enabled' : 'Disabled'}
-                    </span>
-                  </div>
-                )}
-                
-                {setting.type === 'color' && (
-                  <div className="flex items-center space-x-2">
-                    <input
-                      id={key}
-                      type="color"
-                      value={setting.value}
-                      className="w-8 h-8 rounded cursor-pointer"
+              <div key={key} className="grid grid-cols-3 items-center gap-4 text-sm border-b border-border/50 pb-3 dark:border-gray-700">
+                <Label
+                  htmlFor={controlId}
+                  className="font-medium text-foreground/90 col-span-1 dark:text-gray-200"
+                >
+                  {label}
+                </Label>
+                <div className="col-span-2 flex items-center space-x-3"> {/* Increased spacing */}
+                  {inputType === 'checkbox' ? (
+                    <div className="flex items-center space-x-2">
+                      <Switch
+                        id={controlId}
+                        checked={controlValue as boolean}
+                        onCheckedChange={(checked: boolean) => updateSetting(key, checked)}
+                      />
+                      <span className="text-sm text-muted-foreground dark:text-gray-400">
+                        {(controlValue as boolean) ? 'Enabled' : 'Disabled'}
+                      </span>
+                    </div>
+                  ) : inputType === 'color' ? (
+                    <div className="flex items-center space-x-3">
+                      <Input
+                        id={controlId}
+                        type="color"
+                        value={controlValue as string}
+                        className="w-10 h-10 p-0 border-none rounded cursor-pointer bg-transparent"
+                        onChange={(e) => updateSetting(key, e.target.value)}
+                      />
+                      <span className="text-sm font-mono dark:text-gray-300">
+                        {controlValue as string}
+                      </span>
+                    </div>
+                  ) : inputType === 'number' ? (
+                    <div className="flex flex-col w-full space-y-2">
+                      <div className="flex items-center justify-between w-full">
+                        <Slider
+                          id={controlId}
+                          value={[controlValue as number]} // Slider expects an array
+                          min={sliderMin}
+                          max={sliderMax}
+                          step={sliderStep}
+                          onValueChange={(value: number[]) => updateSetting(key, value[0])}
+                          className="flex-1 mr-4" // Allow slider to take space
+                        />
+                        <Input
+                          type="number"
+                          value={controlValue as number}
+                          className="w-20 text-right dark:bg-gray-800 dark:text-gray-200"
+                          onChange={(e) => {
+                            const newValue = parseFloat(e.target.value);
+                            if (!isNaN(newValue)) {
+                              updateSetting(key, newValue);
+                            }
+                          }}
+                          step={sliderStep}
+                          min={sliderMin}
+                          max={sliderMax}
+                        />
+                      </div>
+                      <div className="flex justify-between text-xs text-muted-foreground dark:text-gray-500">
+                        <span>{sliderMin}</span>
+                        <span>{sliderMax}</span>
+                      </div>
+                    </div>
+                  ) : ( // Default to text input
+                    <Input
+                      id={controlId}
+                      type="text" // Always text for non-specific strings
+                      value={controlValue as string}
+                      className="flex-1 dark:bg-gray-800 dark:text-gray-200 dark:border-gray-700"
                       onChange={(e) => updateSetting(key, e.target.value)}
                     />
-                    <span className="text-sm font-mono text-muted-foreground">
-                      {setting.value}
-                    </span>
-                  </div>
-                )}
-                
-                {setting.type === 'text' && (
-                  <input
-                    id={key}
-                    type="text"
-                    value={setting.value}
-                    className="w-full rounded-md border border-input bg-transparent px-3 py-1"
-                    onChange={(e) => updateSetting(key, e.target.value)}
-                  />
-                )}
-                
-                {setting.type === 'select' && setting.options && (
-                  <select
-                    id={key}
-                    value={setting.value}
-                    className="w-full rounded-md border border-input bg-transparent px-3 py-1"
-                    onChange={(e) => updateSetting(key, e.target.value)}
-                  >
-                    {setting.options.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                )}
-                
-                {/* Setting description */}
-                {setting.description && (
-                  <p className="text-xs text-muted-foreground">
-                    {setting.description}
-                  </p>
-                )}
+                  )}
+                </div>
               </div>
             );
           })}
         </div>
       </div>
-    </React.Fragment>
+    </div> // Close the themed container div
   );
 };
 

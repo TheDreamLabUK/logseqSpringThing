@@ -33,7 +33,8 @@ const Tabs: React.FC<TabsProps> = ({
   }
 
   return (
-    <div className={cn('flex flex-col h-full', className)}>
+    // Added default dark theme classes
+    <div className={cn('flex flex-col h-full bg-card text-card-foreground dark:bg-gray-900 dark:text-gray-100', className)}>
       {/* Tab List */}
       <div
         className={cn(
@@ -46,11 +47,18 @@ const Tabs: React.FC<TabsProps> = ({
             key={index}
             onClick={() => setActiveTab(index)}
             className={cn(
-              'flex items-center px-3 py-2 text-muted-foreground hover:text-foreground focus:outline-none whitespace-nowrap',
-              tabButtonClassName,
-              activeTab === index &&
-                'border-b-2 border-primary font-medium text-foreground',
-              activeTab === index && activeTabButtonClassName
+              // Base styles for dark theme button appearance
+              'appearance-none border-none bg-transparent', // Remove default browser styling
+              'flex items-center px-4 py-2', // Adjusted padding
+              'text-sm font-medium', // Consistent font styling
+              'text-muted-foreground hover:text-foreground', // Text colors
+              'focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background', // Focus ring for accessibility
+              'whitespace-nowrap transition-colors duration-150 ease-in-out', // Smooth transition
+              // Remove default bottom border, apply only to active
+              tabButtonClassName, // Allow overrides
+              // Active tab styles
+              activeTab === index && 'border-b-2 border-primary text-foreground',
+              activeTab === index && activeTabButtonClassName // Allow overrides for active state
             )}
             aria-selected={activeTab === index}
             role="tab"
@@ -61,9 +69,9 @@ const Tabs: React.FC<TabsProps> = ({
         ))}
       </div>
 
-      {/* Tab Content */}
+      {/* Tab Content - Added default dark theme classes */}
       <div
-        className={cn('flex-1 min-h-0 overflow-y-auto p-4 space-y-6', tabContentClassName)}
+        className={cn('flex-1 min-h-0 overflow-y-auto p-4 space-y-6 bg-card text-card-foreground dark:bg-gray-900 dark:text-gray-100', tabContentClassName)}
         role="tabpanel"
       >
         {tabs[activeTab]?.content}

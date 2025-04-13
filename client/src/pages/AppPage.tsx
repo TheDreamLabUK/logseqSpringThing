@@ -103,11 +103,12 @@ const AppPage: React.FC = () => { // Renamed component
       return <div style={{ padding: '2rem', color: 'red', backgroundColor: '#222' }}>Error loading graph data: {error}</div>;
     }
 
-    // Simplified structure: Canvas container + Settings Panel below
+    // Structure for fixed canvas and scrollable panel
     return (
-      <div className="flex flex-col w-full min-h-screen overflow-y-auto">
-        {/* Main Canvas Container */}
-        <div className="relative" style={{ height: '80vh' }}>
+      // Main container: Full height, flex column, overflow hidden to prevent whole page scroll
+      <div className="flex flex-col w-full h-screen overflow-hidden bg-background text-foreground">
+        {/* Main Canvas Container - Fixed height */}
+        <div className="relative flex-shrink-0" style={{ height: '70vh' }}> {/* Reduced height to give more space to settings */}
           <Canvas
             className="three-canvas"
             style={{ display: 'block', width: '100%', height: '100%' }}
@@ -151,17 +152,17 @@ const AppPage: React.FC = () => { // Renamed component
           {/* Toggle button removed - settings panel is always visible */}
         </div>
 
-        {/* Settings Panel Below Visualization - Always Visible */}
-          <div className="w-full bg-black text-white border-t border-gray-800 py-10">
-            <div className="container mx-auto px-4">
+        {/* Settings Panel Container - Takes remaining space and scrolls internally */}
+          <div className="flex-1 w-full bg-background text-foreground border-t border-gray-800 overflow-y-auto"> {/* Using theme variables */}
+            <div className="container mx-auto px-4 py-6"> {/* Reduced padding */}
               {/* Header with gradient underline */}
-              <div className="mb-12 text-center">
+              <div className="mb-6 text-center"> {/* Reduced margin */}
                 <h2 className="text-3xl font-bold mb-2">Control Panel</h2>
                 <div className="h-1 w-24 bg-gradient-to-r from-blue-500 to-purple-500 mx-auto"></div>
               </div>
 
               {/* Tabbed Settings Area */}
-              <div className="bg-gray-900 rounded-lg overflow-hidden shadow-xl border border-gray-800 min-h-[400px]"> {/* Ensure minimum height */}
+              <div className="bg-card rounded-lg overflow-hidden shadow-xl border border-border min-h-[300px]"> {/* Using theme variables */}
                 <Tabs
                   tabs={[
                     {
@@ -190,9 +191,9 @@ const AppPage: React.FC = () => { // Renamed component
                       content: <AIPanel />,
                     },
                   ]}
-                  tabListClassName="bg-gradient-to-r from-gray-800 to-gray-700 px-4" // Style tab list
+                  tabListClassName="bg-card px-4" // Use theme variables
                   tabButtonClassName="py-3" // Adjust button padding
-                  tabContentClassName="bg-gray-900" // Ensure content area matches theme
+                  tabContentClassName="bg-card text-card-foreground" // Ensure content area matches theme
                 />
               </div> {/* Correct placement for the closing div of the tabbed area */}
 
