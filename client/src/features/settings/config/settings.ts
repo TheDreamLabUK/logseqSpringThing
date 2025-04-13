@@ -175,9 +175,58 @@ export interface SystemSettings {
   persistSettings: boolean; // Added to control server-side persistence
 }
 
+// RAGFlow settings
+export interface RAGFlowSettings {
+  api_key?: string;
+  agent_id?: string;
+  api_base_url?: string;
+  timeout?: number;
+  max_retries?: number;
+  chat_id?: string;
+}
+
+// Perplexity settings
+export interface PerplexitySettings {
+  api_key?: string;
+  model?: string;
+  api_url?: string;
+  max_tokens?: number;
+  temperature?: number;
+  top_p?: number;
+  presence_penalty?: number;
+  frequency_penalty?: number;
+  timeout?: number;
+  rate_limit?: number;
+}
+
+// OpenAI settings
+export interface OpenAISettings {
+  api_key?: string;
+  base_url?: string;
+  timeout?: number;
+  rate_limit?: number;
+}
+
+// Kokoro TTS settings
+export interface KokoroSettings {
+  api_url?: string;
+  default_voice?: string;
+  default_format?: string;
+  default_speed?: number;
+  timeout?: number;
+  stream?: boolean;
+  return_timestamps?: boolean;
+  sample_rate?: number;
+}
+
+
 // Main settings interface
 export interface Settings {
   visualization: VisualizationSettings;
   system: SystemSettings;
   xr: XRSettings;
+  ragflow?: RAGFlowSettings; // Add optional AI settings
+  perplexity?: PerplexitySettings;
+  openai?: OpenAISettings;
+  kokoro?: KokoroSettings;
 }

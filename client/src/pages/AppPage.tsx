@@ -17,8 +17,13 @@ import NostrAuthSection from '../features/auth/components/NostrAuthSection';
 import SystemPanel from '../features/settings/components/panels/SystemPanel';
 import VisualizationPanel from '../features/settings/components/panels/VisualizationPanel';
 import XRPanel from '../features/settings/components/panels/XRPanel';
+import AIPanel from '../features/settings/components/panels/AIPanel'; // Import AIPanel
+import Tabs from '../ui/Tabs'; // Import Tabs component
 import { HologramVisualization } from '../features/visualization/components/HologramVisualization';
 import CameraController from '../features/visualization/components/CameraController';
+// Import icons for tabs (using available lucide-react icons)
+// Temporarily using only Settings icon to debug import issues
+import { Settings, Eye } from 'lucide-react';
 
 const logger = createLogger('SimpleGraphPage');
 
@@ -155,48 +160,41 @@ const AppPage: React.FC = () => { // Renamed component
                 <div className="h-1 w-24 bg-gradient-to-r from-blue-500 to-purple-500 mx-auto"></div>
               </div>
 
-              {/* Main content area */}
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                {/* Authentication Section - 1/3 width on large screens */}
-                <div className="bg-gray-900 rounded-lg overflow-hidden shadow-xl border border-gray-800">
-                  <div className="bg-gradient-to-r from-blue-900 to-blue-800 px-6 py-4">
-                    <h3 className="text-xl font-bold">Authentication</h3>
-                  </div>
-                  <div className="p-6">
-                    <NostrAuthSection />
-                  </div>
-                </div>
-
-                {/* System & Visualization Settings - 2/3 width on large screens */}
-                <div className="lg:col-span-2 bg-gray-900 rounded-lg overflow-hidden shadow-xl border border-gray-800">
-                  <div className="bg-gradient-to-r from-purple-900 to-purple-800 px-6 py-4">
-                    <h3 className="text-xl font-bold">System Settings</h3>
-                  </div>
-                  <div className="p-6">
-                    <SystemPanel panelId="main-settings-system" />
-                  </div>
-                </div>
-
-                {/* Visualization Settings - Full width */}
-                <div className="lg:col-span-3 bg-gray-900 rounded-lg overflow-hidden shadow-xl border border-gray-800">
-                  <div className="bg-gradient-to-r from-green-900 to-green-800 px-6 py-4">
-                    <h3 className="text-xl font-bold">Visualization</h3>
-                  </div>
-                  <div className="p-6">
-                    <VisualizationPanel />
-                  </div>
-                </div>
-
-                {/* XR Settings - Full width */}
-                <div className="lg:col-span-3 bg-gray-900 rounded-lg overflow-hidden shadow-xl border border-gray-800">
-                  <div className="bg-gradient-to-r from-red-900 to-red-800 px-6 py-4">
-                    <h3 className="text-xl font-bold">XR Settings</h3>
-                  </div>
-                  <div className="p-6">
-                    <XRPanel panelId="main-settings-xr" />
-                  </div>
-                </div>
-              </div>
+              {/* Tabbed Settings Area */}
+              <div className="bg-gray-900 rounded-lg overflow-hidden shadow-xl border border-gray-800 min-h-[400px]"> {/* Ensure minimum height */}
+                <Tabs
+                  tabs={[
+                    {
+                      label: 'Auth',
+                      icon: <Settings className="h-4 w-4" />, // Temp: Use Settings
+                      content: <NostrAuthSection />,
+                    },
+                    {
+                      label: 'System',
+                      icon: <Settings className="h-4 w-4" />,
+                      content: <SystemPanel panelId="main-settings-system" />,
+                    },
+                    {
+                      label: 'Visualization',
+                      icon: <Eye className="h-4 w-4" />, // Keep Eye as it seems okay
+                      content: <VisualizationPanel />,
+                    },
+                    {
+                      label: 'XR',
+                      icon: <Settings className="h-4 w-4" />, // Temp: Use Settings
+                      content: <XRPanel panelId="main-settings-xr" />,
+                    },
+                    {
+                      label: 'AI Services',
+                      icon: <Settings className="h-4 w-4" />, // Temp: Use Settings
+                      content: <AIPanel />,
+                    },
+                  ]}
+                  tabListClassName="bg-gradient-to-r from-gray-800 to-gray-700 px-4" // Style tab list
+                  tabButtonClassName="py-3" // Adjust button padding
+                  tabContentClassName="bg-gray-900" // Ensure content area matches theme
+                />
+              </div> {/* Correct placement for the closing div of the tabbed area */}
 
               {/* Footer with version info */}
               <div className="mt-12 text-center text-gray-500 text-sm">

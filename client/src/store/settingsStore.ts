@@ -4,8 +4,9 @@ import { defaultSettings } from '../features/settings/config/defaultSettings'
 import { Settings, SettingsPath } from '../features/settings/config/settings'
 import { createLogger, createErrorMetadata } from '../utils/logger'
 import { debugState } from '../utils/debugState'
-import { deepMerge } from '../utils/deepMerge'
-import { settingsService } from '../services/settingsService'
+import { deepMerge } from '../utils/deepMerge';
+import { settingsService } from '../services/settingsService';
+import { produce } from 'immer'; // Import produce from immer
 
 const logger = createLogger('SettingsStore')
 
@@ -22,8 +23,9 @@ interface SettingsState {
   setUser: (user: { isPowerUser: boolean; pubkey: string } | null) => void
   get: <T>(path: SettingsPath) => T
   set: <T>(path: SettingsPath, value: T) => void
-  subscribe: (path: SettingsPath, callback: () => void, immediate?: boolean) => () => void
-  unsubscribe: (path: SettingsPath, callback: () => void) => void
+  subscribe: (path: SettingsPath, callback: () => void, immediate?: boolean) => () => void;
+  unsubscribe: (path: SettingsPath, callback: () => void) => void;
+  updateSettings: (updater: (draft: Settings) => void) => void; // Add updateSettings signature
 }
 
 export const useSettingsStore = create<SettingsState>()(
@@ -282,7 +284,76 @@ export const useSettingsStore = create<SettingsState>()(
 
           return { subscribers }
         })
-      }
+      },
+
+      // Corrected updateSettings implementation using Immer
+      updateSettings: (updater) => {
+        // Correct usage: produce takes the current state and the updater function
+        set((state) => produce(state, (draft) => {
+          // Apply the updater function to the draft state
+          updater(draft.settings); // Pass only the settings part of the draft to the updater
+        }));
+
+        // Trigger save/notification logic (remains the same)
+        const notifySubscribers = async () => {
+          const state = get();
+          // Notify all subscribers for simplicity, or refine later
+          const allCallbacks = new Set<() => void>();
+          state.subscribers.forEach(callbacks => {
+            callbacks.forEach(cb => allCallbacks.add(cb));
+          });
+
+          Array.from(allCallbacks).forEach(callback => {
+            try {
+              callback();
+            } catch (error) {
+              logger.error(`Error in settings subscriber during updateSettings:`, createErrorMetadata(error));
+            }
+          });
+
+          // Save to server if appropriate (copied from set, consider refactoring)
+          if (state.initialized && state.settings.system?.persistSettings !== false) {
+            try {
+              const headers: Record<string, string> = {};
+              try {
+                const { nostrAuth } = await import('../services/nostrAuthService');
+                if (nostrAuth.isAuthenticated()) {
+                  const user = nostrAuth.getCurrentUser();
+                  const token = nostrAuth.getSessionToken();
+                  if (user && token) {
+                    headers['X-Nostr-Pubkey'] = user.pubkey;
+                    headers['Authorization'] = `Bearer ${token}`;
+                  }
+                }
+              } catch (error) {
+                logger.warn('Error getting Nostr authentication for updateSettings:', createErrorMetadata(error));
+              }
+
+              const updatedSettings = await settingsService.saveSettings(state.settings, headers);
+              if (!updatedSettings) {
+                throw new Error('Failed to save settings to server via updateSettings');
+              }
+              if (debugState.isEnabled()) {
+                logger.info('Settings saved to server successfully via updateSettings');
+              }
+            } catch (error) {
+              logger.error('Failed to save settings to server via updateSettings:', createErrorMetadata(error));
+            }
+          }
+        };
+
+        // Debounce saving settings (copied from set)
+        if (typeof window !== 'undefined') {
+          if (window.settingsSaveTimeout) {
+            clearTimeout(window.settingsSaveTimeout);
+          }
+          window.settingsSaveTimeout = setTimeout(notifySubscribers, 300);
+        } else {
+          notifySubscribers();
+        }
+      },
+
+      // The subscribe and unsubscribe functions below were duplicated and are removed by this change.
     }),
     {
       name: 'graph-viz-settings',
