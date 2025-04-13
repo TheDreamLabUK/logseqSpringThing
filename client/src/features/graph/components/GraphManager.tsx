@@ -148,20 +148,24 @@ const GraphManager = () => {
 
   // Node labels component using settings from YAML
   const NodeLabels = () => {
-    // Get label settings from the settings store
+    // Get label settings from the settings store (in camelCase)
     const labelSettings = settings?.visualization?.labels || {
-      enable_labels: true,
-      desktop_font_size: 0.2, // Fallback to a small size if not specified
-      text_color: '#000000',
-      text_outline_color: '#ffffff',
-      text_outline_width: 0.1
+      enabled: true,
+      desktopFontSize: 0.1, // Fallback to a small size if not specified
+      textColor: '#000000',
+      textOutlineColor: '#ffffff',
+      textOutlineWidth: 0.01,
+      textPadding: 0.3,
+      textResolution: 32,
+      billboardMode: 'camera'
     }
 
     // Don't render if labels are disabled
-    if (!labelSettings.enable_labels) return null
+    if (!labelSettings.enabled) return null
 
-    // Use the desktop_font_size directly from settings without any conversion
-    const fontSize = labelSettings.desktop_font_size || 5
+    // Use the desktopFontSize (camelCase) from settings
+    // The settings are converted from snake_case to camelCase when loaded
+    const fontSize = labelSettings.desktopFontSize || 0.1
 
     return (
       <group>
@@ -169,26 +173,25 @@ const GraphManager = () => {
           // Skip nodes without position or label
           if (!node.position || !node.label) return null
 
-          // Use the exact font size from settings without distance scaling
-          const textSize = fontSize
+          // Use the font size directly from settings without any scaling
 
           return (
             <Billboard
               key={node.id}
-              position={[node.position.x, node.position.y + (labelSettings.text_padding || 1), node.position.z]} // Use text_padding from settings
-              follow={labelSettings.billboard_mode === 'camera'} // Use billboard_mode from settings
+              position={[node.position.x, node.position.y + (labelSettings.textPadding || 0.3), node.position.z]} // Use textPadding from settings
+              follow={labelSettings.billboardMode === 'camera'} // Use billboardMode from settings
             >
               <Text
-                fontSize={textSize}
-                color={labelSettings.text_color || '#000000'}
+                fontSize={fontSize}
+                color={labelSettings.textColor || '#000000'}
                 anchorX="center"
                 anchorY="middle"
-                outlineWidth={labelSettings.text_outline_width || 0.1}
-                outlineColor={labelSettings.text_outline_color || '#ffffff'}
+                outlineWidth={labelSettings.textOutlineWidth || 0.01}
+                outlineColor={labelSettings.textOutlineColor || '#ffffff'}
                 outlineOpacity={1.0} // Full opacity for outline
                 renderOrder={10}
                 material-depthTest={false}
-                maxWidth={labelSettings.text_resolution || 16} // Use text_resolution for max width
+                maxWidth={labelSettings.textResolution || 32} // Use textResolution for max width
               >
                 {node.label}
               </Text>

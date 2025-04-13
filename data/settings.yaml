@@ -54,13 +54,13 @@ visualization:
     pulse_strength: 0.6
     wave_speed: 0.5
   labels:
-    desktop_font_size: 0.5
+    desktop_font_size: 0.3
     enable_labels: true
     text_color: '#000000'
     text_outline_color: '#ffffff'
-    text_outline_width: 0.05
+    text_outline_width: 0.01
     text_resolution: 32
-    text_padding: 0.5
+    text_padding: 0.3
     billboard_mode: camera
   bloom:
     edge_bloom_strength: 0.4

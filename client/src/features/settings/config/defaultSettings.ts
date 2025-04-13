@@ -27,11 +27,13 @@ export const defaultSettings: Settings = {
     },
     labels: {
       enabled: true,
-      size: 0.5,
-      color: '#ffffff',
-      backgroundColor: '#00000080',
-      showDistance: 50,
-      fadeDistance: 100
+      desktopFontSize: 0.1,
+      textColor: '#000000',
+      textOutlineColor: '#ffffff',
+      textOutlineWidth: 0.01,
+      textPadding: 0.3,
+      textResolution: 32,
+      billboardMode: 'camera'
     },
     icons: {
       enabled: true,
