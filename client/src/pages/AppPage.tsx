@@ -11,6 +11,12 @@ import AppInitializer from '../app/AppInitializer';
 import { useSettingsStore } from '../store/settingsStore';
 import { ThemeProvider } from '../ui/ThemeProvider';
 import { TooltipProvider } from '../ui/Tooltip';
+import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '../ui/Collapsible'; // Added for UI
+import NostrAuthSection from '../features/auth/components/NostrAuthSection'; // Added Auth
+import SystemPanel from '../features/settings/components/panels/SystemPanel'; // Added Settings
+import VisualizationPanel from '../features/settings/components/panels/VisualizationPanel'; // Added Settings
+import XRPanel from '../features/settings/components/panels/XRPanel'; // Added Settings
+import { HologramVisualization } from '../features/visualization/components/HologramVisualization'; // Added Hologram
 // Removed WindowSizeProvider, MainLayout, PanelProvider imports
 // Removed layout.css, globals.css, tokens.css imports
 
@@ -87,9 +93,7 @@ const SimpleGraphPage: React.FC = () => {
     }
   }, []);
   const handleRotateView = useCallback(() => { logger.debug('Rotate view'); }, []);
-  const handleToggleLeftPanel = useCallback(() => {}, []);
-  const handleToggleRightPanel = useCallback(() => {}, []);
-  const handleToggleTopPanel = useCallback(() => {}, []);
+  // Removed handleToggleLeftPanel, handleToggleRightPanel, handleToggleTopPanel callbacks
 
   // Callback for AppInitializer
   const handleInitialized = useCallback(() => {
@@ -112,11 +116,14 @@ const SimpleGraphPage: React.FC = () => {
     }
     // Simplified structure: Canvas container + ViewportControls + New Controls
     return (
-      <div className="relative w-full h-full"> {/* Basic container */}
-        <div className="absolute inset-0"> {/* Canvas Container */}
+      // Main container using Flexbox for side-by-side layout
+      <div className="flex w-full h-full overflow-hidden">
+
+        {/* Canvas Container - takes most of the space */}
+        <div className="flex-grow h-full relative">
           <Canvas
             className="three-canvas"
-            style={{ display: 'block' }}
+            style={{ display: 'block', width: '100%', height: '100%' }} // Ensure canvas fills container
             camera={{ position: [0, 0, 50], fov: 50, near: 0.1, far: 2000 }}
             gl={{ antialias: true, alpha: true, powerPreference: 'high-performance' }}
             dpr={[1, 2]}
@@ -137,43 +144,50 @@ const SimpleGraphPage: React.FC = () => {
             />
             <Suspense fallback={null}>
               <GraphManager />
+              {/* Add the 3D Hologram into the scene */}
+              <HologramVisualization standalone={false} position={[0, 0, -20]} size={10} />
             </Suspense>
             <axesHelper args={[2]} />
             <Stats />
           </Canvas>
+
+          {/* ViewportControls positioned absolutely INSIDE the relative canvas container */}
+          <ViewportControls
+            className="absolute top-2 left-2 z-10" // Positioning relative to the div above
+            onReset={handleResetCamera}
+            onZoomIn={handleZoomIn}
+            onZoomOut={handleZoomOut}
+            onToggleFullscreen={handleToggleFullscreen}
+            onRotate={handleRotateView}
+            // Removed defunct panel toggle props: onToggleLeftPanel, onToggleRightPanel, onToggleTopPanel
+          />
         </div> {/* End Canvas Container */}
 
-        {/* ViewportControls rendered as a sibling, positioning might be off */}
-        <ViewportControls
-          onReset={handleResetCamera}
-          onZoomIn={handleZoomIn}
-          onZoomOut={handleZoomOut}
-          onToggleFullscreen={handleToggleFullscreen}
-          onRotate={handleRotateView}
-          onToggleLeftPanel={handleToggleLeftPanel}
-          onToggleRightPanel={handleToggleRightPanel}
-          onToggleTopPanel={handleToggleTopPanel}
-        />
+        {/* Right sidebar for controls - collapsible */}
+        <div className="flex-shrink-0 w-80 h-full border-l border-border bg-background overflow-y-auto">
+          <div className="p-4 space-y-4">
+            <Collapsible defaultOpen={true}>
+              <CollapsibleTrigger className="text-lg font-semibold w-full text-left p-1 hover:bg-muted rounded">Authentication</CollapsibleTrigger>
+              <CollapsibleContent className="p-2 border rounded mt-1">
+                <NostrAuthSection />
+              </CollapsibleContent>
+            </Collapsible>
 
-        {/* New Simple Controls Placeholder */}
-        <div style={{
-          position: 'absolute',
-          bottom: '10px',
-          left: '10px',
-          zIndex: 1001, // Ensure it's above canvas/other elements if needed
-          background: 'rgba(255, 255, 255, 0.7)',
-          padding: '5px',
-          borderRadius: '4px',
-          display: 'flex',
-          gap: '5px'
-        }}>
-          <button>Zoom In</button>
-          <button>Zoom Out</button>
-          <button>Reset</button>
-          <button>Full</button>
-        </div>
+            <Collapsible defaultOpen={true}>
+              <CollapsibleTrigger className="text-lg font-semibold w-full text-left p-1 hover:bg-muted rounded mt-2">Settings</CollapsibleTrigger>
+              <CollapsibleContent className="p-2 border rounded mt-1 space-y-4">
+                {/* Pass a dummy panelId, might need adjustment if component relies heavily on it */}
+                <SystemPanel panelId="main-settings-system" />
+                <VisualizationPanel /> {/* Removed panelId prop */}
+                <XRPanel panelId="main-settings-xr" />
+              </CollapsibleContent>
+            </Collapsible>
 
-      </div> // End Basic container
+            {/* Add other feature components here as needed */}
+          </div>
+        </div> {/* End Right Sidebar */}
+
+      </div> // End Main Flex container
     );
   };
 

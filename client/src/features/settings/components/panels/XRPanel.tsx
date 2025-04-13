@@ -1,11 +1,10 @@
 import { useState } from 'react';
-import { useSettingsStore } from '../../../lib/stores/settings-store';
-import Panel from '../../panel/Panel';
-import PanelToolbar from '../../panel/PanelToolbar';
-import { formatSettingLabel } from '../../../lib/types/settings-schema';
-import { createLogger } from '../../../lib/utils/logger';
-import { UISetting, isUISetting } from '../../../lib/types/ui-setting';
-import { FormGroup, FormGroupControl } from '../../ui/form-group';
+import { useSettingsStore } from '../../../../store/settingsStore'; // Corrected path
+// Removed imports for deleted Panel and PanelToolbar components
+import { formatSettingLabel } from '../../types/settingsSchema'; // Corrected path
+import { createLogger } from '../../../../utils/logger'; // Corrected path
+import { UISetting, isUISetting } from '../../types/uiSetting'; // Corrected path
+import { FormGroup, FormGroupControl } from '../../../../ui/formGroup/FormGroup'; // Corrected path
 
 const logger = createLogger('XRPanel');
 
@@ -24,9 +23,13 @@ interface XRPanelProps {
 
 /**
  * XRPanel provides settings for XR (VR/AR) modes, including controls and environment settings.
+ * Panel ID is no longer needed.
+ * Panel ID is no longer needed.
  */
-const XRPanel = ({ 
-  panelId 
+// panelId: string; // Removed panelId prop definition
+// panelId: string; // Removed panelId prop
+const XRPanel = ({
+  // panelId // Prop removed
 }: XRPanelProps) => {
   const [activeSubsection, setActiveSubsection] = useState('controls');
   
@@ -54,20 +57,9 @@ const XRPanel = ({
     }
   };
   
+  // Return the content directly without Panel wrapper or Toolbar
   return (
-    <Panel id={panelId}>
-      {/* Panel Header */}
-      <PanelToolbar 
-        panelId={panelId}
-        title="VR/AR Settings" 
-        icon={
-          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-          </svg>
-        }
-      />
-      
-      {/* Panel Content */}
+      // The div below is now the top-level returned element
       <div className="flex flex-col h-full">
         {/* Subsection Tabs */}
         <div className="flex border-b border-border overflow-x-auto">
@@ -97,7 +89,8 @@ const XRPanel = ({
                   return null;
                 }
                 
-                if (!('type' in setting)) {
+                // Use the type guard to ensure 'setting' is a UISetting
+                if (!isUISetting(setting)) {
                   return null;
                 }
                 
@@ -191,7 +184,8 @@ const XRPanel = ({
                   return null;
                 }
                 
-                if (!('type' in setting)) {
+                // Use the type guard to ensure 'setting' is a UISetting
+                if (!isUISetting(setting)) {
                   return null;
                 }
                 
@@ -254,7 +248,7 @@ const XRPanel = ({
           )}
         </div>
       </div>
-    </Panel>
+    // No closing tag needed here as the div above is the root
   );
 };
 

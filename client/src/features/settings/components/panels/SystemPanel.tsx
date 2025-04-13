@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useSettingsStore } from '../../../../store/settingsStore';
-import Panel from '../../../panel/components/Panel';
-import PanelToolbar from '../../../panel/components/PanelToolbar';
+// Removed imports for deleted Panel and PanelToolbar components
 import { formatSettingLabel } from '../../types/settingsSchema';
 import { FormGroup, FormGroupControl } from '../../../../ui/formGroup/FormGroup';
 import { UISetting, isUISetting } from '../../types/uiSetting';
@@ -25,9 +24,13 @@ interface SystemPanelProps {
 
 /**
  * SystemPanel provides access to system-level settings and debug options.
+ * Panel ID is no longer needed as it's not rendered in the panel system.
+ * Panel ID is no longer needed.
  */
-const SystemPanel = ({ 
-  panelId 
+// panelId: string; // Removed panelId prop definition
+// panelId: string; // Removed panelId prop
+const SystemPanel = ({
+  // panelId // Prop removed
 }: SystemPanelProps) => {
   const [activeSubsection, setActiveSubsection] = useState('api');
   const [apiStatus, setApiStatus] = useState({
@@ -132,21 +135,9 @@ const SystemPanel = ({
     }
   };
 
+  // Return the content directly without Panel wrapper or Toolbar
   return (
-    <Panel id={panelId}>
-      {/* Panel Header */}
-      <PanelToolbar 
-        panelId={panelId}
-        title="System Settings" 
-        icon={
-          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-          </svg>
-        }
-      />
-      
-      {/* Panel Content */}
+      // The div below is now the top-level returned element
       <div className="flex flex-col h-full">
         {/* Subsection Tabs */}
         <div className="flex border-b border-border overflow-x-auto">
@@ -308,7 +299,7 @@ const SystemPanel = ({
           )}
         </div>
       </div>
-    </Panel>
+    // No closing tag needed here as the div above is the root
   );
 };
 

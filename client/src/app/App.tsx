@@ -4,24 +4,16 @@ import { ThemeProvider } from '../ui/ThemeProvider'
 import { ApplicationModeProvider } from '../contexts/ApplicationModeContext'
 import { Toaster } from '../ui/Toaster'
 import { TooltipProvider } from '../ui/Tooltip'
-import GraphCanvas from '../features/graph/components/GraphCanvas' // Revert back to GraphCanvas
-import ViewportContainer from '../components/layout/ViewportContainer'
 import SafeXRProvider from '../features/xr/providers/SafeXRProvider'
-import MainLayout from '../components/layout/MainLayout'
-import DockingZone from '../features/panel/components/DockingZone'
-import ViewportControls from '../features/visualization/components/ViewportControls'
-import { PanelProvider } from '../features/panel/components/PanelContext'
-import Panel from '../features/panel/components/Panel'
-import SystemPanel from '../features/settings/components/panels/SystemPanel'
-import { WindowSizeProvider } from '../contexts/WindowSizeContext'
+// Removed GraphCanvas, ViewportContainer, MainLayout, DockingZone, ViewportControls, PanelProvider, Panel, SystemPanel, WindowSizeProvider
 import { useSettingsStore } from '../store/settingsStore'
 import { createLogger, createErrorMetadata } from '../utils/logger'
-import SimpleThreeWindowPage from '../pages/SimpleThreeWindowPage'
-import SimpleGraphPage from '../pages/SimpleGraphPage'
+// Removed SimpleThreeWindowPage import as it's not used
+// Removed SimpleThreeWindowPage import
+import SimpleGraphPage from '../pages/AppPage' // Corrected path: SimpleGraphPage is exported from AppPage.tsx
 
 import '../styles/tokens.css'
-import '../styles/layout.css'
-
+// Removed layout.css import
 const logger = createLogger('App')
 
 // Error boundary component to catch rendering errors
@@ -68,24 +60,13 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, { hasError: boolean; e
 }
 
 function App() {
-  const [isLoading, setIsLoading] = useState(true)
-  const [showLeftPanel, setShowLeftPanel] = useState(false)
-  const [showTopPanel, setShowTopPanel] = useState(true)
-  const [showRightPanel, setShowRightPanel] = useState(true)
-  const [topPanelDense, setTopPanelDense] = useState(true)
-  // Check for simple mode in URL
-  const [isSimpleMode, setIsSimpleMode] = useState(false)
+  // Removed isLoading, panel visibility states, isSimpleMode state
   // Select the primitive value directly to avoid unnecessary re-renders
   const initialized = useSettingsStore(state => state.initialized)
 
+  // Simplified useEffect, only checking initialization
   useEffect(() => {
-    if (initialized) {
-      setIsLoading(false)
-    }
-
-    // Check URL parameters for simple mode
-    const urlParams = new URLSearchParams(window.location.search)
-    setIsSimpleMode(urlParams.has('simple'))
+    // No need to set isLoading here if AppInitializer handles it or SimpleGraphPage has its own loading state
   }, [initialized])
 
   // Wrap handleInitialized in useCallback to stabilize its reference
@@ -95,151 +76,34 @@ function App() {
     if (debugEnabled) {
       logger.debug('Application initialized');
     }
-    setIsLoading(false)
-  }, []) // Dependency array is empty as it only uses setIsLoading and getState
+    // No need for setIsLoading(false) here if SimpleGraphPage handles its own loading
+  }, []) // Dependency array is empty as it only uses getState
 
-  // Viewport control handlers wrapped in useCallback
-  const handleResetCamera = useCallback(() => {
-    logger.debug('Reset camera')
-  }, [])
+  // Removed viewport control handlers (handleResetCamera, etc.) as they belong in SimpleGraphPage or its children
+  // Removed panel toggle handlers (handleToggleLeftPanel, etc.)
+  // Removed handleViewportResize callback
 
-  const handleZoomIn = useCallback(() => {
-    logger.debug('Zoom in')
-  }, [])
-
-  const handleZoomOut = useCallback(() => {
-    logger.debug('Zoom out')
-  }, [])
-
-  const handleToggleFullscreen = useCallback(() => {
-    logger.debug('Toggle fullscreen')
-  }, [])
-
-  const handleRotateView = useCallback(() => {
-    logger.debug('Rotate view')
-  }, [])
-
-  const handleToggleLeftPanel = useCallback(() => {
-    setShowLeftPanel(prev => !prev)
-  }, [])
-
-  const handleToggleRightPanel = useCallback(() => {
-    setShowRightPanel(prev => !prev)
-  }, [])
-
-  const handleToggleTopPanel = useCallback(() => {
-    setShowTopPanel(prev => !prev)
-  }, [])
-
-  // Define stable onResize callback for ViewportContainer
-  const handleViewportResize = useCallback((width: number, height: number) => {
-    const settings = useSettingsStore.getState().settings;
-    const debugEnabled = settings?.system?.debug?.enabled === true;
-    if (debugEnabled) {
-      logger.debug(`ViewportContainer resized: ${Math.round(width)}×${Math.round(height)}`);
-    }
-  }, []); // Empty dependency array as getState is stable
-
-  // Render the simple three-window page if in simple mode
-  if (isSimpleMode) {
-    return <SimpleGraphPage />
-  }
+  // No longer need the isSimpleMode check, always render SimpleGraphPage
 
   return (
     <ThemeProvider defaultTheme="dark">
-      <WindowSizeProvider>
-        <ErrorBoundary>
-          <ApplicationModeProvider>
-            <PanelProvider>
-              <TooltipProvider>
-                <SafeXRProvider>
-                  <div
-                    className="app-container"
-                    style={{
-                      display: 'flex',
-                      flexDirection: 'column',
-                      width: '100%',
-                      height: '100%',
-                      minHeight: '0',
-                      overflow: 'hidden'
-                    }}
-                  >
-                    <MainLayout
-                      viewportContent={
-                        // Pass the stable callback function as the prop
-                        // Render GraphCanvas directly inside ViewportContainer
-                        <ViewportContainer onResize={handleViewportResize}>
-                          {!isLoading && (
-                            <ErrorBoundary fallback={
-                              <div className="flex items-center justify-center h-full">
-                                <div className="p-4 bg-destructive/20 text-destructive-foreground rounded-md max-w-md">
-                                  <h2 className="text-xl font-bold mb-2">Visualization Error</h2>
-                                  <p>The 3D visualization component could not be loaded.</p>
-                                  <p className="text-sm mt-2">This may be due to WebGL compatibility issues or problems with the graph data.</p>
-                                </div>
-                              </div>
-                            }>
-                              <GraphCanvas />
-                            </ErrorBoundary>
-                          )}
-                        </ViewportContainer>
-                      }
-                      // Render overlays outside ViewportContainer, positioned relative to MainLayout's content area
-                      overlays={
-                        <>
-                          {/* Loading Overlay - Positioned absolutely */}
-                          {isLoading && (
-                            <div className="absolute inset-0 flex items-center justify-center bg-background/80 z-10">
-                              <div className="flex flex-col items-center space-y-4">
-                                <div className="text-2xl">Loading Graph Visualization</div>
-                                <div className="h-2 w-48 overflow-hidden rounded-full bg-gray-700">
-                                  <div className="animate-pulse h-full bg-primary"></div>
-                                </div>
-                              </div>
-                            </div>
-                          )}
-
-                          {/* Viewport Controls Overlay - Positioned absolutely/fixed */}
-                          {!isLoading && (
-                            <ViewportControls
-                              onReset={handleResetCamera}
-                              onZoomIn={handleZoomIn}
-                              onZoomOut={handleZoomOut}
-                              onToggleFullscreen={handleToggleFullscreen}
-                              onRotate={handleRotateView}
-                              onToggleLeftPanel={handleToggleLeftPanel}
-                              onToggleRightPanel={handleToggleRightPanel}
-                              onToggleTopPanel={handleToggleTopPanel}
-                            />
-                          )}
-                        </>
-                      }
-                      rightDockContent={
-                        !isLoading && showRightPanel && (
-                          <DockingZone
-                            position="right"
-                            className="active"
-                            defaultSize={350}
-                            expandable={true}
-                            autoSize={false}
-                          >
-                            <Panel id="system-right">
-                              <SystemPanel panelId="system-right" />
-                            </Panel>
-                          </DockingZone>
-                        )
-                      }
-                    />
-                    <AppInitializer onInitialized={handleInitialized} />
-                  </div>
-                  {/* Ensure Toaster is rendered outside potentially looping structures if possible */}
-                  <Toaster />
-                </SafeXRProvider>
-              </TooltipProvider>
-            </PanelProvider>
-          </ApplicationModeProvider>
-        </ErrorBoundary>
-      </WindowSizeProvider>
+      {/* Removed WindowSizeProvider */}
+      <ErrorBoundary>
+        <ApplicationModeProvider>
+          {/* Removed PanelProvider */}
+          <TooltipProvider>
+            <SafeXRProvider>
+              {/* Simplified structure: Render SimpleGraphPage directly */}
+              <div className="app-container" style={{ width: '100%', height: '100%', overflow: 'hidden' }}>
+                <SimpleGraphPage />
+                <AppInitializer onInitialized={handleInitialized} />
+                {/* Toaster remains at the top level */}
+                <Toaster />
+              </div>
+            </SafeXRProvider>
+          </TooltipProvider>
+        </ApplicationModeProvider>
+      </ErrorBoundary>
     </ThemeProvider>
   )
 }

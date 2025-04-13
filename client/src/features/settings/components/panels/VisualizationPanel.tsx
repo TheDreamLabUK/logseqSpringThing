@@ -19,23 +19,23 @@ const VISUALIZATION_SUBSECTIONS = [
 interface VisualizationPanelProps {
   /**
    * Panel ID for the panel system
+   * Panel ID is no longer needed.
    */
-  panelId: string;
-  
+  // panelId: string; // Removed panelId prop
+   
   /**
-   * Whether this panel is displayed in a horizontal layout (top/bottom)
-   * Automatically detected from panel ID if not specified
+   * Horizontal layout is no longer relevant.
    */
-  horizontal?: boolean;
-}
+  // horizontal?: boolean; // Removed horizontal prop
+ }
 
 /**
  * VisualizationPanel provides a comprehensive interface for managing all visualization settings.
  * This includes rendering options, node/edge appearance, and physics simulation parameters.
  */
-const VisualizationPanel = ({ 
-  panelId,
-  horizontal = panelId.includes('-top') || panelId.includes('horizontal') 
+const VisualizationPanel = ({
+  // panelId, // Prop removed
+  // horizontal // Prop removed
 }: VisualizationPanelProps) => {
   const [activeSubsection, setActiveSubsection] = useState('rendering');
   
@@ -58,17 +58,18 @@ const VisualizationPanel = ({
   return (
     <React.Fragment>
       {/* Panel Content */}
-      <div className={`h-full flex ${horizontal ? 'flex-row' : 'flex-col'}`}>
+      {/* Assume vertical flex layout */}
+      <div className="h-full flex flex-col">
         {/* Subsection Tabs - Horizontal layout when in top panel */}
-        <div className={`flex ${horizontal ? 'flex-col border-r' : 'border-b'} border-border overflow-auto`}>
+        {/* Assume standard bottom border for tabs */}
+        <div className="flex border-b border-border overflow-auto">
           {VISUALIZATION_SUBSECTIONS.map(subsection => (
             <button
               key={subsection.id}
+              // Comment removed from inside button tag
               className={`flex items-center px-3 py-2 ${
                 activeSubsection === subsection.id
-                  ? horizontal 
-                    ? 'border-r-2 border-primary font-medium' 
-                    : 'border-b-2 border-primary font-medium'
+                  ? 'border-b-2 border-primary font-medium'
                   : 'text-muted-foreground hover:text-foreground'
               }`}
               onClick={() => setActiveSubsection(subsection.id)}
@@ -80,7 +81,8 @@ const VisualizationPanel = ({
         </div>
         
         {/* Settings Content */}
-        <div className={`flex-1 min-h-0 overflow-auto p-4 ${horizontal ? 'grid grid-cols-2 gap-4' : 'space-y-6'}`}>
+        {/* Assume standard vertical spacing */}
+        <div className="flex-1 min-h-0 overflow-auto p-4 space-y-6">
           {/* Dynamic Settings Renderer */}
           {Object.entries(visualizationSettings).map(([key, setting]) => {
             if (typeof setting !== 'object' || setting === null) {
@@ -88,7 +90,8 @@ const VisualizationPanel = ({
             }
             
             // Skip if this is a nested object of settings (handled separately)
-            if (!('type' in setting)) {
+            // Use the type guard for better type safety
+            if (!isUISetting(setting)) {
               return null;
             }
             
@@ -97,7 +100,8 @@ const VisualizationPanel = ({
             
             // Render appropriate control based on setting type
             return (
-              <div key={key} className={`${horizontal ? 'mb-4' : 'space-y-2'} setting-container`}>
+              // Comment removed from inside div tag
+              <div key={key} className="space-y-2 setting-container">
                 <div className="flex justify-between items-center">
                   <label className="text-sm font-medium" htmlFor={key}>
                     {label}

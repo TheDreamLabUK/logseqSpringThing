@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { useSettingsStore } from '../stores/settings-store';
-import { createLogger, createErrorMetadata } from '../utils/logger';
+import { useSettingsStore } from '../../../store/settingsStore';
+import { createLogger, createErrorMetadata } from '../../../utils/logger';
 
 const logger = createLogger('useAuth');
 

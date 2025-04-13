@@ -1,8 +1,10 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
-import { HologramManager, HologramRing, HologramSphere } from '../lib/rendering/HologramManager';
-import { useSettingsStore } from '../lib/stores/settings-store';
+import * as THREE from 'three';
+// Removed direct import of MeshStandardMaterial
+import { HologramManager, HologramRing, HologramSphere } from '../renderers/HologramManager';
+import { useSettingsStore } from '../../../store/settingsStore';
 
 // Helper component to handle material properties imperatively to avoid TypeScript errors
 const HologramMeshMaterial: React.FC<{
@@ -18,7 +20,7 @@ const HologramMeshMaterial: React.FC<{
   transparent = true,
   opacity = 0.7
 }) => {
-  const materialRef = useRef<THREE.MeshStandardMaterial>();
+  const materialRef = useRef<THREE.MeshStandardMaterial>(); // Reverted to use THREE namespace
   
   useEffect(() => {
     if (materialRef.current) {
@@ -60,7 +62,7 @@ export const HologramVisualization: React.FC<HologramVisualizationProps> = ({
   
   // Content that's rendered inside the hologram
   const HologramContent = () => (
-    <group position={position as any} scale={size}>
+    <group position={position} scale={[size, size, size]}> {/* Use array for scale, remove 'as any' */}
       {children || (
         <>
           {/* Default content if no children provided */}
@@ -69,9 +71,9 @@ export const HologramVisualization: React.FC<HologramVisualizationProps> = ({
           {/* Optional additional content */}
           <mesh position={[0, 0, 0]}>
             <icosahedronGeometry args={[0.4, 1]} />
-            <HologramMeshMaterial 
-              color={settings?.color || '#00ffff'}
-              emissiveColor={settings?.color || '#00ffff'}
+            <HologramMeshMaterial
+              color={settings?.ringColor || '#00ffff'} // Use ringColor
+              emissiveColor={settings?.ringColor || '#00ffff'} // Use ringColor
               emissiveIntensity={0.5}
               transparent={true}
               opacity={0.7}
