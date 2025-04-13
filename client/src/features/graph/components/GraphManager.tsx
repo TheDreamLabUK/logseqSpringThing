@@ -1,8 +1,9 @@
 import React, { useRef, useEffect, useState, useMemo } from 'react'
-import { useThree } from '@react-three/fiber'
+import { useThree, useFrame } from '@react-three/fiber'
 import { Line } from '@react-three/drei/core/Line'
+import { Text, Billboard } from '@react-three/drei'
 import { graphDataManager, type GraphData, type Node as GraphNode } from '../managers/graphDataManager'
-import { createLogger } from '../../../utils/logger'
+import { createLogger, createErrorMetadata } from '../../../utils/logger'
 import { debugState } from '../../../utils/debugState'
 import { useSettingsStore } from '../../../store/settingsStore'
 
@@ -79,9 +80,10 @@ const GraphManager = () => {
     mesh.count = nodeCount
 
     for (let i = 0; i < nodeCount; i++) {
-      const x = positions[i * 4]
-      const y = positions[i * 4 + 1]
-      const z = positions[i * 4 + 2]
+      const nodeId = positions[i * 4]
+      const x = positions[i * 4 + 1]
+      const y = positions[i * 4 + 2]
+      const z = positions[i * 4 + 3]
 
       if (isNaN(x) || isNaN(y) || isNaN(z)) {
         mesh.setMatrixAt(i, new Float32Array([
@@ -91,11 +93,22 @@ const GraphManager = () => {
           0,0,0,1
         ]))
       } else {
+        // Find the node in graphData to get its size from metadata
+        const node = graphData.nodes.find(n => parseInt(n.id) === nodeId)
+        // Default size if not found or no metadata
+        let nodeSize = 0.2
+
+        // Use node size from metadata if available
+        if (node?.metadata?.size) {
+          nodeSize = parseFloat(node.metadata.size as string) / 100 // Scale down from server size
+        }
+
+        // Apply size to matrix
         mesh.setMatrixAt(i, new Float32Array([
-          0.2,0,0,0,
-          0,0.2,0,0,
-          0,0,0.2,0,
-          x,y,z,1
+          nodeSize, 0, 0, 0,
+          0, nodeSize, 0, 0,
+          0, 0, nodeSize, 0,
+          x, y, z, 1
         ]))
       }
     }
@@ -132,6 +145,45 @@ const GraphManager = () => {
     return points
   }, [graphData.nodes, graphData.edges, nodesAreAtOrigin])
 
+  // Node labels component
+  const NodeLabels = () => {
+    const labelSettings = settings?.visualization?.labels || { enabled: true, size: 0.5 }
+
+    // Don't render if labels are disabled
+    if (!labelSettings.enabled) return null
+
+    return (
+      <group>
+        {graphData.nodes.map(node => {
+          // Skip nodes without position or label
+          if (!node.position || !node.label) return null
+
+          return (
+            <Billboard
+              key={node.id}
+              position={[node.position.x, node.position.y + 0.7, node.position.z]}
+              follow={true}
+            >
+              <Text
+                fontSize={labelSettings.size || 0.5}
+                color={labelSettings.color || '#ffffff'}
+                anchorX="center"
+                anchorY="middle"
+                outlineWidth={0.02}
+                outlineColor="#000000"
+                outlineOpacity={0.8}
+                renderOrder={10}
+                material-depthTest={false}
+              >
+                {node.label}
+              </Text>
+            </Billboard>
+          )
+        })}
+      </group>
+    )
+  }
+
   return (
     <>
       <instancedMesh
@@ -141,11 +193,13 @@ const GraphManager = () => {
       >
         <sphereGeometry args={[0.5, 16, 16]} />
         <meshStandardMaterial
-          color="#ffffff"
-          emissive="#00ffff"
+          color={settings?.visualization?.nodes?.baseColor || "#ffffff"}
+          emissive={settings?.visualization?.nodes?.baseColor || "#00ffff"}
           emissiveIntensity={0.8}
-          metalness={0.2}
-          roughness={0.3}
+          metalness={settings?.visualization?.nodes?.metalness || 0.2}
+          roughness={settings?.visualization?.nodes?.roughness || 0.3}
+          opacity={settings?.visualization?.nodes?.opacity || 1.0}
+          transparent={true}
           toneMapped={false} // Important for bloom effect
         />
       </instancedMesh>
@@ -153,13 +207,15 @@ const GraphManager = () => {
       {edgePoints.length > 0 && (
         <Line
           points={edgePoints}
-          color="#00ffff"
-          lineWidth={1.0}
+          color={settings?.visualization?.edges?.color || "#00ffff"}
+          lineWidth={settings?.visualization?.edges?.baseWidth || 1.0}
           transparent
-          opacity={0.6}
+          opacity={settings?.visualization?.edges?.opacity || 0.6}
           toneMapped={false} // Important for bloom effect
         />
       )}
+
+      <NodeLabels />
     </>
   )
 }
