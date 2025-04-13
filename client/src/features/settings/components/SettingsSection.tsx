@@ -1,8 +1,8 @@
 import { useState } from 'react'
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from './ui/collapsible'
-import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '../../../ui/Collapsible'
+import { Card, CardContent, CardHeader, CardTitle } from '../../../ui/Card'
 import { ChevronDown, ChevronUp, Minimize, Maximize } from 'lucide-react'
-import { Button } from './ui/button'
+import { Button } from '../../../ui/Button'
 import { SettingsSectionProps } from './types'
 import { SettingsSubsection } from './SettingsSubsection'
 // Fix the import for react-draggable (it doesn't export useDrag)
@@ -13,7 +13,7 @@ export function SettingsSection({ id, title, settings, advanced = false }: Setti
   const [isOpen, setIsOpen] = useState(true)
   const [isDetached, setIsDetached] = useState(false)
   const { advancedMode } = useControlPanelContext()
-  
+
   // If advanced section and not in advanced mode, don't render
   if (advanced && !advancedMode) {
     return null
@@ -33,8 +33,8 @@ export function SettingsSection({ id, title, settings, advanced = false }: Setti
 
   if (isDetached) {
     return (
-      <DetachedSection 
-        title={title} 
+      <DetachedSection
+        title={title}
         onReattach={handleDetach}
         sectionId={id}
       >
@@ -63,9 +63,9 @@ export function SettingsSection({ id, title, settings, advanced = false }: Setti
                 {isOpen ? <ChevronUp className="ml-2 h-4 w-4" /> : <ChevronDown className="ml-2 h-4 w-4" />}
               </Button>
             </CollapsibleTrigger>
-            <Button 
-              variant="ghost" 
-              size="icon" 
+            <Button
+              variant="ghost"
+              size="icon"
               className="h-6 w-6"
               onClick={handleDetach}
               title="Detach section"
@@ -73,7 +73,7 @@ export function SettingsSection({ id, title, settings, advanced = false }: Setti
               <Maximize className="h-3 w-3" />
             </Button>
           </div>
-          
+
           <CollapsibleContent>
             <CardContent className="p-2 pt-2">
               <div className="space-y-4">
@@ -95,39 +95,44 @@ export function SettingsSection({ id, title, settings, advanced = false }: Setti
 }
 
 // Detached floating section component
-function DetachedSection({ 
-  children, 
-  title, 
+function DetachedSection({
+  children,
+  title,
   onReattach,
   sectionId
-}: { 
+}: {
   children: React.ReactNode;
   title: string;
   onReattach: () => void;
   sectionId: string;
 }) {
   const [position, setPosition] = useState({ x: 100, y: 100 })
-  
+
   const handleDrag = (e: any, data: { x: number; y: number }) => {
     setPosition({ x: data.x, y: data.y })
   }
 
   return (
-    <div 
-      className="detached-panel absolute z-50 min-w-[250px]"
-      style={{ 
-        left: `${position.x}px`, 
-        top: `${position.y}px`,
-      }}
-      data-section-id={sectionId}
+    <Draggable
+      position={position}
+      onDrag={handleDrag}
+      bounds="parent"
     >
+      <div
+        className="detached-panel absolute z-[3000] min-w-[250px]"
+        style={{
+          boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
+          border: '1px solid var(--border)'
+        }}
+        data-section-id={sectionId}
+      >
       <div className="flex items-center justify-between border-b border-border p-2">
         <div className="cursor-move flex-1 text-sm font-medium">
           {title}
         </div>
-        <Button 
-          variant="ghost" 
-          size="icon" 
+        <Button
+          variant="ghost"
+          size="icon"
           className="h-6 w-6"
           onClick={onReattach}
           title="Reattach section"
@@ -139,5 +144,6 @@ function DetachedSection({
         {children}
       </div>
     </div>
+    </Draggable>
   )
 }

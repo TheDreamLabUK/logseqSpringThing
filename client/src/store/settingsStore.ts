@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
+// Removed incorrect import: import { requestProvider } from '@getalby/sdk';
 import { defaultSettings } from '../features/settings/config/defaultSettings'
 import { Settings, SettingsPath } from '../features/settings/config/settings'
 import { createLogger, createErrorMetadata } from '../utils/logger'
@@ -195,12 +196,34 @@ export const useSettingsStore = create<SettingsState>()(
           if (state.initialized && state.settings.system?.persistSettings !== false) {
             try {
               // Use the endpoint for syncing user-specific settings
-              // TODO: Add authentication headers (e.g., X-Nostr-Pubkey) when available
+              const headers: HeadersInit = {
+                'Content-Type': 'application/json',
+              };
+
+              // Attempt to get Nostr pubkey via WebLN (e.g., Alby)
+              try {
+                // Check if the WebLN provider is available on the window object
+                if (typeof window !== 'undefined' && window.webln) {
+                  // Request permission to enable the provider if needed
+                  await window.webln.enable();
+                  const pubkey = await window.webln.getPublicKey();
+                  if (pubkey) {
+                    headers['X-Nostr-Pubkey'] = pubkey;
+                    logger.info('Using Nostr pubkey for settings sync.');
+                  } else {
+                     logger.warn('Could not retrieve Nostr pubkey using window.webln.');
+                  }
+                } else {
+                   logger.info('window.webln not found, proceeding without Nostr auth.');
+                }
+              } catch (error) {
+                logger.warn('Error interacting with window.webln:', createErrorMetadata(error));
+                // Proceed without auth header if there's an error
+              }
+
               const response = await fetch('/api/user-settings/sync', {
                 method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json'
-                },
+                headers: headers,
                 body: JSON.stringify(state.settings)
               })
               
@@ -282,7 +305,13 @@ export const useSettingsStore = create<SettingsState>()(
 
 // Add to Window interface
 declare global {
+  // Extend the Window interface to include the webln provider
   interface Window {
     settingsSaveTimeout: ReturnType<typeof setTimeout>;
+    webln?: { // Make webln optional as it might not be present
+      enable: () => Promise<void>;
+      getPublicKey: () => Promise<string>;
+      // Add other WebLN methods if needed
+    };
   }
 }

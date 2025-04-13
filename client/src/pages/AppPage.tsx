@@ -7,6 +7,7 @@ import { graphDataManager } from '../features/graph/managers/graphDataManager';
 import GraphManager from '../features/graph/components/GraphManager';
 import ViewportControls from '../features/visualization/components/ViewportControls';
 import { ApplicationModeProvider } from '../contexts/ApplicationModeContext';
+import { ControlPanelProvider } from '../features/settings/components/control-panel-context';
 import { createLogger } from '../utils/logger';
 import AppInitializer from '../app/AppInitializer';
 import { useSettingsStore } from '../store/settingsStore';
@@ -18,24 +19,15 @@ import SystemPanel from '../features/settings/components/panels/SystemPanel'; //
 import VisualizationPanel from '../features/settings/components/panels/VisualizationPanel'; // Added Settings
 import XRPanel from '../features/settings/components/panels/XRPanel'; // Added Settings
 import { HologramVisualization } from '../features/visualization/components/HologramVisualization'; // Added Hologram
+import CameraController from '../features/visualization/components/CameraController'; // Import extracted component
 // Removed WindowSizeProvider, MainLayout, PanelProvider imports
 // Removed layout.css, globals.css, tokens.css imports
 
 const logger = createLogger('SimpleGraphPage');
 
-// Camera controller
-const CameraController = ({ center, size }: { center: [number, number, number], size: number }) => {
-  const { camera } = useThree();
-  useEffect(() => {
-    console.log(`Setting camera to look at center: [${center}] with distance: ${size*2}`);
-    camera.position.set(center[0], center[1] + 10, center[2] + size*2);
-    camera.lookAt(center[0], center[1], center[2]);
-    camera.updateProjectionMatrix();
-  }, [camera, center, size]);
-  return null;
-};
+// Removed inline CameraController definition
 
-const SimpleGraphPage: React.FC = () => {
+const AppPage: React.FC = () => { // Renamed component
   // State variables
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -53,9 +45,9 @@ const SimpleGraphPage: React.FC = () => {
   useEffect(() => {
     const initializeGraph = async () => {
       try {
-        console.log('SimpleGraphPage: Fetching initial graph data...');
+        // Removed console.log
         await graphDataManager.fetchInitialData();
-        console.log('SimpleGraphPage: Initial graph data fetched successfully.');
+        // Removed console.log
         const data = graphDataManager.getGraphData();
         let minX = Infinity, minY = Infinity, minZ = Infinity;
         let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
@@ -109,7 +101,7 @@ const SimpleGraphPage: React.FC = () => {
     const settings = useSettingsStore.getState().settings;
     const debugEnabled = settings?.system?.debug?.enabled === true;
     if (debugEnabled) {
-      logger.debug('App Initialized (SimpleGraphPage context)');
+      logger.debug('App Initialized (AppPage context)'); // Updated log context
     }
   }, []);
 
@@ -125,14 +117,12 @@ const SimpleGraphPage: React.FC = () => {
     }
     // Simplified structure: Canvas container + ViewportControls + New Controls
     return (
-      // Main container using Flexbox for side-by-side layout
-      <div className="flex w-full h-full overflow-hidden" style={{ height: '100vh' }}>
-
-        {/* Canvas Container - takes most of the space */}
-        <div className="flex-grow h-full relative" style={{ height: '100vh' }}>
+      <div className="flex w-full h-full" style={{ height: '100vh' }}>
+        {/* Main Canvas Container */}
+        <div className="flex-grow relative" style={{ height: '100vh' }}>
           <Canvas
             className="three-canvas"
-            style={{ display: 'block', width: '100%', height: '100%', position: 'absolute', top: 0, left: 0 }} // Ensure canvas fills container
+            style={{ display: 'block', width: '100%', height: '100%' }}
             camera={{ position: [0, 10, 50], fov: 75, near: 0.1, far: 2000 }}
             gl={{ antialias: true, alpha: true, powerPreference: 'high-performance' }}
             dpr={[1, 2]}
@@ -153,7 +143,6 @@ const SimpleGraphPage: React.FC = () => {
             />
             <Suspense fallback={null}>
               <GraphManager />
-              {/* Add the 3D Hologram into the scene */}
               <HologramVisualization standalone={false} position={[0, 0, 0]} size={20} />
             </Suspense>
             <axesHelper args={[2]} />
@@ -169,63 +158,80 @@ const SimpleGraphPage: React.FC = () => {
             </EffectComposer>
           </Canvas>
 
-          {/* ViewportControls positioned absolutely INSIDE the relative canvas container */}
+          {/* ViewportControls */}
           <ViewportControls
-            className="absolute top-2 left-2 z-10" // Positioning relative to the div above
+            className="absolute top-2 left-2 z-10"
             onReset={handleResetCamera}
             onZoomIn={handleZoomIn}
             onZoomOut={handleZoomOut}
             onToggleFullscreen={handleToggleFullscreen}
-            onRotate={handleRotateView}
+            onRotate={handleRotateView} // Correctly passing the handler now
           />
 
-          {/* Sidebar toggle button - always visible */}
+          {/* Sidebar toggle button */}
           <button
             onClick={toggleSidebar}
-            className="absolute top-2 right-2 z-50 inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 hover:bg-accent hover:text-accent-foreground h-8 w-8 bg-background/80 backdrop-blur-sm"
+            className="fixed top-4 right-4 z-[3000] inline-flex items-center justify-center rounded-md text-sm font-medium h-12 w-12 bg-primary text-primary-foreground shadow-lg"
             aria-label={sidebarVisible ? "Hide Sidebar" : "Show Sidebar"}
+            style={{ boxShadow: '0 0 10px rgba(0,0,0,0.5)', border: '2px solid white' }}
           >
             {sidebarVisible ? (
-              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5">
                 <path d="M19 12H5"/>
                 <path d="M12 19l-7-7 7-7"/>
               </svg>
             ) : (
-              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5">
                 <path d="M5 12h14"/>
                 <path d="M12 5l7 7-7 7"/>
               </svg>
             )}
           </button>
-        </div> {/* End Canvas Container */}
+        </div>
 
-        {/* Right sidebar for controls - collapsible */}
+        {/* Right sidebar - Enhanced Styling */}
         {sidebarVisible && (
-          <div className="flex-shrink-0 w-80 h-full border-l border-border bg-background overflow-y-auto" style={{ height: '100vh' }}>
-            <div className="p-4 space-y-4">
-              <Collapsible defaultOpen={true}>
-                <CollapsibleTrigger className="text-lg font-semibold w-full text-left p-1 hover:bg-muted rounded">Authentication</CollapsibleTrigger>
-                <CollapsibleContent className="p-2 border rounded mt-1">
+          <div className="w-80 h-screen flex flex-col border-l border-border bg-background z-[2000]"> {/* Use h-screen, flex column, increased z-index */}
+            <div className="flex-1 p-4 space-y-6 overflow-y-auto"> {/* Add more vertical space (space-y-6), allow content scroll */}
+              {/* Authentication Section */}
+              <Collapsible defaultOpen={true} className="border rounded-lg p-3">
+                <CollapsibleTrigger className="flex justify-between items-center text-lg font-semibold w-full text-left hover:bg-muted rounded p-2">
+                  Authentication
+                  {/* Add a chevron icon or similar indicator if available */}
+                </CollapsibleTrigger>
+                <CollapsibleContent className="pt-3 px-2"> {/* Add padding top */}
                   <NostrAuthSection />
                 </CollapsibleContent>
               </Collapsible>
 
-              <Collapsible defaultOpen={true}>
-                <CollapsibleTrigger className="text-lg font-semibold w-full text-left p-1 hover:bg-muted rounded mt-2">Settings</CollapsibleTrigger>
-                <CollapsibleContent className="p-2 border rounded mt-1 space-y-4">
-                  {/* Pass a dummy panelId, might need adjustment if component relies heavily on it */}
-                  <SystemPanel panelId="main-settings-system" />
-                  <VisualizationPanel /> {/* Removed panelId prop */}
-                  <XRPanel panelId="main-settings-xr" />
+              {/* Settings Section */}
+              <Collapsible defaultOpen={true} className="border rounded-lg p-3">
+                <CollapsibleTrigger className="flex justify-between items-center text-lg font-semibold w-full text-left hover:bg-muted rounded p-2">
+                  Settings
+                  {/* Add a chevron icon or similar indicator if available */}
+                </CollapsibleTrigger>
+                <CollapsibleContent className="pt-3 px-2 space-y-4"> {/* Add padding top and space between panels */}
+                  {/* Wrap each panel for potential future styling/grouping */}
+                  <div>
+                    <h4 className="text-md font-medium mb-2 text-muted-foreground">System</h4>
+                    <SystemPanel panelId="main-settings-system" />
+                  </div>
+                  <hr className="my-3 border-border" /> {/* Divider */}
+                  <div>
+                    <h4 className="text-md font-medium mb-2 text-muted-foreground">Visualization</h4>
+                    <VisualizationPanel />
+                  </div>
+                  <hr className="my-3 border-border" /> {/* Divider */}
+                  <div>
+                    <h4 className="text-md font-medium mb-2 text-muted-foreground">XR</h4>
+                    <XRPanel panelId="main-settings-xr" />
+                  </div>
                 </CollapsibleContent>
               </Collapsible>
-
-              {/* Add other feature components here as needed */}
             </div>
           </div>
-        )} {/* End Right Sidebar */}
-
-      </div> // End Main Flex container
+        )}
+      </div>
     );
   };
 
@@ -234,12 +240,14 @@ const SimpleGraphPage: React.FC = () => {
     <ThemeProvider defaultTheme="dark">
       <TooltipProvider>
         <ApplicationModeProvider>
-          {renderContent()}
-          <AppInitializer onInitialized={handleInitialized} />
+          <ControlPanelProvider>
+            {renderContent()}
+            <AppInitializer onInitialized={handleInitialized} />
+          </ControlPanelProvider>
         </ApplicationModeProvider>
       </TooltipProvider>
     </ThemeProvider>
   );
 };
 
-export default SimpleGraphPage;
+export default AppPage; // Updated export

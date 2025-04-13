@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import React from 'react';
+import { ReactThreeFiber } from '@react-three/fiber'; // Import R3F namespace for types
 
 declare module '@react-three/fiber' {
   // Core React Three Fiber hooks and components
@@ -71,4 +72,19 @@ declare module '@react-three/drei' {
   export type MeshTransmissionMaterialType = THREE.Material & {
     // Add specific props of the material implementation if needed
   };
+}
+
+
+// Augment the JSX namespace to include R3F primitives
+declare global {
+  namespace JSX {
+    interface IntrinsicElements {
+      color: ReactThreeFiber.Node<THREE.Color, typeof THREE.Color>;
+      ambientLight: ReactThreeFiber.Node<THREE.AmbientLight, typeof THREE.AmbientLight>;
+      directionalLight: ReactThreeFiber.Node<THREE.DirectionalLight, typeof THREE.DirectionalLight>;
+      pointLight: ReactThreeFiber.Node<THREE.PointLight, typeof THREE.PointLight>;
+      axesHelper: ReactThreeFiber.Node<THREE.AxesHelper, typeof THREE.AxesHelper>;
+      // Add other R3F primitives here as needed
+    }
+  }
 }

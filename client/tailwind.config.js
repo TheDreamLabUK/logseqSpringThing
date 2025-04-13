@@ -46,6 +46,20 @@ export default {
         md: "calc(var(--radius) - 2px)",
         sm: "calc(var(--radius) - 4px)",
       },
+      animation: {
+        "collapsible-down": "collapsible-down 0.2s ease-out",
+        "collapsible-up": "collapsible-up 0.2s ease-out",
+      },
+      keyframes: {
+        "collapsible-down": {
+          "0%": { height: "0" },
+          "100%": { height: "var(--radix-collapsible-content-height)" },
+        },
+        "collapsible-up": {
+          "0%": { height: "var(--radix-collapsible-content-height)" },
+          "100%": { height: "0" },
+        },
+      },
     },
   },
   plugins: [],
