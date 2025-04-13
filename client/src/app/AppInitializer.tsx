@@ -113,6 +113,9 @@ const AppInitializer: React.FC<AppInitializerProps> = ({ onInitialized }) => {
       websocketService.onBinaryMessage((data) => {
         if (data instanceof ArrayBuffer) {
           try {
+            // Log receipt of binary data
+            logger.info(`Received binary data from WebSocket: ${data.byteLength} bytes`);
+
             // Process binary position update through graph data manager
             graphDataManager.updateNodePositions(data);
             if (debugState.isDataDebugEnabled()) {
@@ -173,8 +176,16 @@ const AppInitializer: React.FC<AppInitializerProps> = ({ onInitialized }) => {
               // WebSocket is fully ready, now it's safe to enable binary updates
               logger.info('WebSocket is connected and fully established - enabling binary updates');
               graphDataManager.setBinaryUpdatesEnabled(true);
+
+              // Subscribe to position updates
+              logger.info('Sending subscribe_position_updates message to server');
+              websocketService.sendMessage('subscribe_position_updates', {
+                binary: true,
+                interval: settings?.system?.websocket?.updateRate || 60
+              });
+
               if (debugState.isDataDebugEnabled()) {
-                logger.debug('Binary updates enabled');
+                logger.debug('Binary updates enabled and subscribed to position updates');
               }
             } else {
               logger.info('WebSocket connected but not fully established yet - waiting for readiness');
@@ -182,6 +193,23 @@ const AppInitializer: React.FC<AppInitializerProps> = ({ onInitialized }) => {
               // We'll let graphDataManager handle the binary updates enablement
               // through its retry mechanism that now checks for websocket readiness
               graphDataManager.enableBinaryUpdates();
+
+              // Set up a listener for the 'connection_established' message
+              const unsubscribe = websocketService.onMessage((message) => {
+                if (message.type === 'connection_established') {
+                  // Now that we're fully connected, subscribe to position updates
+                  logger.info('Connection established message received, sending subscribe_position_updates');
+                  websocketService.sendMessage('subscribe_position_updates', {
+                    binary: true,
+                    interval: settings?.system?.websocket?.updateRate || 60
+                  });
+                  unsubscribe(); // Remove this one-time listener
+
+                  if (debugState.isDataDebugEnabled()) {
+                    logger.debug('Connection established, subscribed to position updates');
+                  }
+                }
+              });
             }
           } catch (connectionError) {
             logger.error('Error during WebSocket status change handling:', createErrorMetadata(connectionError));
