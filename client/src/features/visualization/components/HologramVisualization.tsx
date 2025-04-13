@@ -1,9 +1,9 @@
-import React, { useRef, useEffect, useState } from 'react';
+import React, { useRef, useEffect } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
-import * as THREE from 'three';
-// Removed direct import of MeshStandardMaterial
-import { HologramManager, HologramRing, HologramSphere } from '../renderers/HologramManager';
+// THREE is used implicitly in the JSX
+// Import only what we need
+import { HologramManager } from '../renderers/HologramManager';
 import { useSettingsStore } from '../../../store/settingsStore';
 
 // Helper component to handle material properties imperatively to avoid TypeScript errors
@@ -20,8 +20,8 @@ const HologramMeshMaterial: React.FC<{
   transparent = true,
   opacity = 0.7
 }) => {
-  const materialRef = useRef<THREE.MeshStandardMaterial>(); // Reverted to use THREE namespace
-  
+  const materialRef = useRef<any>(); // Using any type to avoid TypeScript errors
+
   useEffect(() => {
     if (materialRef.current) {
       const material = materialRef.current;
@@ -33,8 +33,9 @@ const HologramMeshMaterial: React.FC<{
       material.opacity = opacity;
     }
   }, [color, emissiveColor, emissiveIntensity, transparent, opacity]);
-  
-  return <meshStandardMaterial ref={materialRef as any} />;
+
+  // Using any type to avoid TypeScript errors with newer Three.js properties
+  return <meshStandardMaterial ref={materialRef as any} {...{ toneMapped: false, wireframe: true } as any} />;
 };
 
 interface HologramVisualizationProps {
@@ -47,7 +48,7 @@ interface HologramVisualizationProps {
 /**
  * HologramVisualization - A component that renders a hologram visualization
  * using the modern approach based on @react-three/fiber and @react-three/drei
- * 
+ *
  * Can be used in two ways:
  * 1. As a standalone component with its own canvas (standalone=true)
  * 2. As a component inside an existing canvas (standalone=false)
@@ -59,7 +60,7 @@ export const HologramVisualization: React.FC<HologramVisualizationProps> = ({
   children
 }) => {
   const settings = useSettingsStore(state => state.settings?.visualization?.hologram);
-  
+
   // Content that's rendered inside the hologram
   const HologramContent = () => (
     <group position={position} scale={[size, size, size]}> {/* Use array for scale, remove 'as any' */}
@@ -67,7 +68,7 @@ export const HologramVisualization: React.FC<HologramVisualizationProps> = ({
         <>
           {/* Default content if no children provided */}
           <HologramManager />
-          
+
           {/* Optional additional content */}
           <mesh position={[0, 0, 0]}>
             <icosahedronGeometry args={[0.4, 1]} />
@@ -83,7 +84,7 @@ export const HologramVisualization: React.FC<HologramVisualizationProps> = ({
       )}
     </group>
   );
-  
+
   // For standalone use, provide a Canvas
   if (standalone) {
     return (
@@ -100,7 +101,7 @@ export const HologramVisualization: React.FC<HologramVisualizationProps> = ({
       </div>
     );
   }
-  
+
   // For embedded use, just render the content
   return <HologramContent />;
 };
@@ -119,7 +120,7 @@ export const HologramOverlay: React.FC<{
   glowColor = '#00ffff'
 }) => {
   return (
-    <div 
+    <div
       className={`relative rounded-lg overflow-hidden ${className}`}
       style={{
         background: 'rgba(0, 10, 20, 0.7)',
@@ -128,7 +129,7 @@ export const HologramOverlay: React.FC<{
       }}
     >
       {/* Scanline effect */}
-      <div 
+      <div
         className="absolute inset-0 pointer-events-none z-10"
         style={{
           background: 'linear-gradient(transparent 50%, rgba(0, 255, 255, 0.05) 50%)',
@@ -136,20 +137,20 @@ export const HologramOverlay: React.FC<{
           animation: 'hologramScanline 1s linear infinite',
         }}
       />
-      
+
       {/* Flickering effect */}
-      <div 
+      <div
         className="absolute inset-0 pointer-events-none opacity-20 z-20"
         style={{
           animation: 'hologramFlicker 4s linear infinite',
         }}
       />
-      
+
       {/* Content */}
       <div className="relative z-30 p-4 text-cyan-400">
         {children}
       </div>
-      
+
       {/* CSS for animations */}
       <style>
         {`
@@ -161,7 +162,7 @@ export const HologramOverlay: React.FC<{
               transform: translateY(100%);
             }
           }
-          
+
           @keyframes hologramFlicker {
             0% { opacity: 0.1; }
             5% { opacity: 0.2; }
@@ -199,7 +200,7 @@ export const HologramExample: React.FC = () => {
       <div className="flex-1 h-[500px] rounded-lg overflow-hidden">
         <HologramVisualization standalone size={1.2} />
       </div>
-      
+
       {/* UI Hologram */}
       <div className="flex-1 flex items-center justify-center">
         <HologramOverlay className="max-w-md">
@@ -218,9 +219,9 @@ export const HologramExample: React.FC = () => {
               <span>Active</span>
             </div>
             <div className="w-full h-2 bg-blue-900 mt-4 rounded-full overflow-hidden">
-              <div 
-                className="h-full bg-cyan-400" 
-                style={{ 
+              <div
+                className="h-full bg-cyan-400"
+                style={{
                   width: '87%',
                   animation: 'hologramPulse 3s infinite'
                 }}
@@ -229,7 +230,7 @@ export const HologramExample: React.FC = () => {
           </div>
         </HologramOverlay>
       </div>
-      
+
       {/* Animation for progress bar */}
       <style>
         {`

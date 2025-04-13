@@ -40,7 +40,7 @@ export const HologramRing: React.FC<{
   return (
     <mesh rotation={rotation}>
       <ringGeometry args={[size * 0.8, size, segments]} />
-      <HologramMaterial color={color} opacity={opacity} />
+      <meshBasicMaterial color={color} transparent={true} opacity={opacity} wireframe={true} />
     </mesh>
   );
 };
@@ -58,7 +58,7 @@ export const HologramSphere: React.FC<{
   color = '#00ffff',
   opacity = 0.5,
   detail = 1,
-  wireframe = true,
+  wireframe = true, // Always true for wireframe effect
   rotationSpeed = 0.2
 }) => {
   // Use state for rotation instead of imperatively updating refs
@@ -74,7 +74,13 @@ export const HologramSphere: React.FC<{
   return (
     <mesh rotation={[0, rotationY, 0]}>
       <icosahedronGeometry args={[size, detail]} />
-      <HologramMaterial color={color} opacity={opacity} edgeOnly={wireframe} />
+      <meshBasicMaterial
+        color={color}
+        transparent={true}
+        opacity={opacity}
+        wireframe={true}
+        toneMapped={false}
+      />
     </mesh>
   );
 };

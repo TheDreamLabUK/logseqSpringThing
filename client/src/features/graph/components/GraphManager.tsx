@@ -10,17 +10,17 @@ const logger = createLogger('GraphManager')
 
 // Function to get random position if node is at origin
 const getPositionForNode = (node: GraphNode, index: number): [number, number, number] => {
-  if (!node.position || 
+  if (!node.position ||
       (node.position.x === 0 && node.position.y === 0 && node.position.z === 0)) {
     // All nodes are at (0,0,0), so generate a random position in a sphere
     const radius = 10
     const phi = Math.acos(2 * Math.random() - 1)
     const theta = Math.random() * Math.PI * 2
-    
+
     const x = radius * Math.sin(phi) * Math.cos(theta)
     const y = radius * Math.sin(phi) * Math.sin(theta)
     const z = radius * Math.cos(phi)
-    
+
     // Update the original node position so edges will work
     if (node.position) {
       node.position.x = x
@@ -29,10 +29,10 @@ const getPositionForNode = (node: GraphNode, index: number): [number, number, nu
     } else {
       node.position = { x, y, z }
     }
-    
+
     return [x, y, z]
   }
-  
+
   return [node.position.x, node.position.y, node.position.z]
 }
 
@@ -46,9 +46,9 @@ const GraphManager = () => {
   useEffect(() => {
     const handleGraphDataChange = (newData: GraphData) => {
       setGraphData(newData)
-      
+
       // Check if nodes are all at origin
-      const allAtOrigin = newData.nodes.every(node => 
+      const allAtOrigin = newData.nodes.every(node =>
         !node.position || (node.position.x === 0 && node.position.y === 0 && node.position.z === 0)
       )
       setNodesAreAtOrigin(allAtOrigin)
@@ -106,7 +106,7 @@ const GraphManager = () => {
   // Memoize edge points
   const edgePoints = useMemo(() => {
     if (!graphData.nodes || !graphData.edges) return []
-    
+
     const points: [number, number, number][] = []
     const { nodes, edges } = graphData
 
@@ -139,22 +139,25 @@ const GraphManager = () => {
         args={[null, null, graphData.nodes.length]}
         frustumCulled={false}
       >
-        <sphereGeometry args={[0.2, 8, 8]} />
+        <sphereGeometry args={[0.5, 16, 16]} />
         <meshStandardMaterial
-          // vertexColors // Removed, not a valid prop for meshStandardMaterial
-          metalness={0.1}
-          roughness={0.5}
-          emissive="#222222"
+          color="#ffffff"
+          emissive="#00ffff"
+          emissiveIntensity={0.8}
+          metalness={0.2}
+          roughness={0.3}
+          toneMapped={false} // Important for bloom effect
         />
       </instancedMesh>
 
       {edgePoints.length > 0 && (
         <Line
           points={edgePoints}
-          color="white"
-          lineWidth={0.5}
+          color="#00ffff"
+          lineWidth={1.0}
           transparent
-          opacity={0.3}
+          opacity={0.6}
+          toneMapped={false} // Important for bloom effect
         />
       )}
     </>

@@ -1,6 +1,8 @@
 import React, { Suspense, useEffect, useState, useCallback } from 'react';
 import { Canvas, useThree } from '@react-three/fiber';
 import { OrbitControls, Stats } from '@react-three/drei';
+// Import postprocessing effects
+import { EffectComposer, Bloom } from '@react-three/postprocessing';
 import { graphDataManager } from '../features/graph/managers/graphDataManager';
 import GraphManager from '../features/graph/components/GraphManager';
 import ViewportControls from '../features/visualization/components/ViewportControls';
@@ -156,6 +158,15 @@ const SimpleGraphPage: React.FC = () => {
             </Suspense>
             <axesHelper args={[2]} />
             <Stats />
+
+            {/* Add bloom effect */}
+            <EffectComposer>
+              <Bloom
+                luminanceThreshold={0.2}
+                luminanceSmoothing={0.9}
+                intensity={1.5}
+              />
+            </EffectComposer>
           </Canvas>
 
           {/* ViewportControls positioned absolutely INSIDE the relative canvas container */}
