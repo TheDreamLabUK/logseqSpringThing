@@ -3,7 +3,7 @@ import AppInitializer from './AppInitializer'
 import { ThemeProvider } from '../ui/ThemeProvider'
 import { ApplicationModeProvider } from '../contexts/ApplicationModeContext'
 import { Toaster } from '../ui/Toaster'
-import { TooltipProvider } from '../ui/Tooltip'
+// import { TooltipProvider } from '../ui/Tooltip'
 import SafeXRProvider from '../features/xr/providers/SafeXRProvider'
 // Removed GraphCanvas, ViewportContainer, MainLayout, DockingZone, ViewportControls, PanelProvider, Panel, SystemPanel, WindowSizeProvider
 import { useSettingsStore } from '../store/settingsStore'
@@ -91,17 +91,15 @@ function App() {
       <ErrorBoundary>
         <ApplicationModeProvider>
           {/* Removed PanelProvider */}
-          <TooltipProvider>
-            <SafeXRProvider>
-              {/* Simplified structure: Render SimpleGraphPage directly */}
-              <div className="app-container" style={{ width: '100%', height: '100vh', overflow: 'hidden' }}>
-                <SimpleGraphPage />
-                <AppInitializer onInitialized={handleInitialized} />
-                {/* Toaster remains at the top level */}
-                <Toaster />
-              </div>
-            </SafeXRProvider>
-          </TooltipProvider>
+          <SafeXRProvider>
+            {/* Simplified structure: Render SimpleGraphPage directly */}
+            <div className="app-container" style={{ width: '100%', height: '100vh', overflow: 'hidden' }}>
+              <SimpleGraphPage />
+              <AppInitializer onInitialized={handleInitialized} />
+              {/* Toaster remains at the top level */}
+              <Toaster />
+            </div>
+          </SafeXRProvider>
         </ApplicationModeProvider>
       </ErrorBoundary>
     </ThemeProvider>

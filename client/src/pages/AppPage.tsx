@@ -1,45 +1,39 @@
 import React, { Suspense, useEffect, useState, useCallback } from 'react';
-import { Canvas, useThree } from '@react-three/fiber';
+import { Canvas } from '@react-three/fiber';
 import { OrbitControls, Stats } from '@react-three/drei';
 // Import postprocessing effects
 import { EffectComposer, Bloom } from '@react-three/postprocessing';
 import { graphDataManager } from '../features/graph/managers/graphDataManager';
 import GraphManager from '../features/graph/components/GraphManager';
-import ViewportControls from '../features/visualization/components/ViewportControls';
-import { ApplicationModeProvider } from '../contexts/ApplicationModeContext';
-import { ControlPanelProvider } from '../features/settings/components/control-panel-context';
+// ViewportControls removed
 import { createLogger } from '../utils/logger';
-import AppInitializer from '../app/AppInitializer';
 import { useSettingsStore } from '../store/settingsStore';
 import { ThemeProvider } from '../ui/ThemeProvider';
-import { TooltipProvider } from '../ui/Tooltip';
-import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '../ui/Collapsible'; // Added for UI
-import NostrAuthSection from '../features/auth/components/NostrAuthSection'; // Added Auth
-import SystemPanel from '../features/settings/components/panels/SystemPanel'; // Added Settings
-import VisualizationPanel from '../features/settings/components/panels/VisualizationPanel'; // Added Settings
-import XRPanel from '../features/settings/components/panels/XRPanel'; // Added Settings
-import { HologramVisualization } from '../features/visualization/components/HologramVisualization'; // Added Hologram
-import CameraController from '../features/visualization/components/CameraController'; // Import extracted component
-// Removed WindowSizeProvider, MainLayout, PanelProvider imports
-// Removed layout.css, globals.css, tokens.css imports
+import { ApplicationModeProvider } from '../contexts/ApplicationModeContext';
+import { ControlPanelProvider } from '../features/settings/components/control-panel-context';
+import AppInitializer from '../app/AppInitializer';
+// Removed unused Collapsible imports
+import NostrAuthSection from '../features/auth/components/NostrAuthSection';
+import SystemPanel from '../features/settings/components/panels/SystemPanel';
+import VisualizationPanel from '../features/settings/components/panels/VisualizationPanel';
+import XRPanel from '../features/settings/components/panels/XRPanel';
+import { HologramVisualization } from '../features/visualization/components/HologramVisualization';
+import CameraController from '../features/visualization/components/CameraController';
 
 const logger = createLogger('SimpleGraphPage');
 
 // Removed inline CameraController definition
 
 const AppPage: React.FC = () => { // Renamed component
+  console.log('AppPage rendering');
+
   // State variables
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [graphCenter, setGraphCenter] = useState<[number, number, number]>([0, 0, 0]);
   const [graphSize, setGraphSize] = useState(50);
-  const [sidebarVisible, setSidebarVisible] = useState(true);
 
-  // Function to ensure sidebar toggle button is always visible
-  const toggleSidebar = useCallback(() => {
-    setSidebarVisible(prev => !prev);
-    logger.debug(`Sidebar visibility toggled to: ${!sidebarVisible}`);
-  }, [sidebarVisible]);
+  // Settings panel is now always visible, no toggle needed
 
   // Fetch initial graph data
   useEffect(() => {
@@ -80,19 +74,7 @@ const AppPage: React.FC = () => { // Renamed component
     initializeGraph();
   }, []);
 
-  // Viewport control handlers (kept for ViewportControls)
-  const handleResetCamera = useCallback(() => { logger.debug('Reset camera'); }, []);
-  const handleZoomIn = useCallback(() => { logger.debug('Zoom in'); }, []);
-  const handleZoomOut = useCallback(() => { logger.debug('Zoom out'); }, []);
-  const handleToggleFullscreen = useCallback(() => {
-    logger.debug('Toggle fullscreen');
-    if (!document.fullscreenElement) {
-      document.documentElement.requestFullscreen().catch(err => logger.error(`Fullscreen error: ${err.message}`));
-    } else if (document.exitFullscreen) {
-      document.exitFullscreen();
-    }
-  }, []);
-  const handleRotateView = useCallback(() => { logger.debug('Rotate view'); }, []);
+  // Viewport control handlers removed
 
   // Removed unused handleToggleSidebar function
 
@@ -115,11 +97,12 @@ const AppPage: React.FC = () => { // Renamed component
     if (error) {
       return <div style={{ padding: '2rem', color: 'red', backgroundColor: '#222' }}>Error loading graph data: {error}</div>;
     }
-    // Simplified structure: Canvas container + ViewportControls + New Controls
+
+    // Simplified structure: Canvas container + Settings Panel below
     return (
-      <div className="flex w-full h-full" style={{ height: '100vh' }}>
+      <div className="flex flex-col w-full min-h-screen overflow-y-auto">
         {/* Main Canvas Container */}
-        <div className="flex-grow relative" style={{ height: '100vh' }}>
+        <div className="relative" style={{ height: '80vh' }}>
           <Canvas
             className="three-canvas"
             style={{ display: 'block', width: '100%', height: '100%' }}
@@ -158,79 +141,69 @@ const AppPage: React.FC = () => { // Renamed component
             </EffectComposer>
           </Canvas>
 
-          {/* ViewportControls */}
-          <ViewportControls
-            className="absolute top-2 left-2 z-10"
-            onReset={handleResetCamera}
-            onZoomIn={handleZoomIn}
-            onZoomOut={handleZoomOut}
-            onToggleFullscreen={handleToggleFullscreen}
-            onRotate={handleRotateView} // Correctly passing the handler now
-          />
+          {/* ViewportControls removed */}
 
-          {/* Sidebar toggle button */}
-          <button
-            onClick={toggleSidebar}
-            className="fixed top-4 right-4 z-[3000] inline-flex items-center justify-center rounded-md text-sm font-medium h-12 w-12 bg-primary text-primary-foreground shadow-lg"
-            aria-label={sidebarVisible ? "Hide Sidebar" : "Show Sidebar"}
-            style={{ boxShadow: '0 0 10px rgba(0,0,0,0.5)', border: '2px solid white' }}
-          >
-            {sidebarVisible ? (
-              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5">
-                <path d="M19 12H5"/>
-                <path d="M12 19l-7-7 7-7"/>
-              </svg>
-            ) : (
-              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5">
-                <path d="M5 12h14"/>
-                <path d="M12 5l7 7-7 7"/>
-              </svg>
-            )}
-          </button>
+          {/* Toggle button removed - settings panel is always visible */}
         </div>
 
-        {/* Right sidebar - Enhanced Styling */}
-        {sidebarVisible && (
-          <div className="w-80 h-screen flex flex-col border-l border-border bg-background z-[2000]"> {/* Use h-screen, flex column, increased z-index */}
-            <div className="flex-1 p-4 space-y-6 overflow-y-auto"> {/* Add more vertical space (space-y-6), allow content scroll */}
-              {/* Authentication Section */}
-              <Collapsible defaultOpen={true} className="border rounded-lg p-3">
-                <CollapsibleTrigger className="flex justify-between items-center text-lg font-semibold w-full text-left hover:bg-muted rounded p-2">
-                  Authentication
-                  {/* Add a chevron icon or similar indicator if available */}
-                </CollapsibleTrigger>
-                <CollapsibleContent className="pt-3 px-2"> {/* Add padding top */}
-                  <NostrAuthSection />
-                </CollapsibleContent>
-              </Collapsible>
+        {/* Settings Panel Below Visualization - Always Visible */}
+          <div className="w-full bg-black text-white border-t border-gray-800 py-10">
+            <div className="container mx-auto px-4">
+              {/* Header with gradient underline */}
+              <div className="mb-12 text-center">
+                <h2 className="text-3xl font-bold mb-2">Control Panel</h2>
+                <div className="h-1 w-24 bg-gradient-to-r from-blue-500 to-purple-500 mx-auto"></div>
+              </div>
 
-              {/* Settings Section */}
-              <Collapsible defaultOpen={true} className="border rounded-lg p-3">
-                <CollapsibleTrigger className="flex justify-between items-center text-lg font-semibold w-full text-left hover:bg-muted rounded p-2">
-                  Settings
-                  {/* Add a chevron icon or similar indicator if available */}
-                </CollapsibleTrigger>
-                <CollapsibleContent className="pt-3 px-2 space-y-4"> {/* Add padding top and space between panels */}
-                  {/* Wrap each panel for potential future styling/grouping */}
-                  <div>
-                    <h4 className="text-md font-medium mb-2 text-muted-foreground">System</h4>
+              {/* Main content area */}
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                {/* Authentication Section - 1/3 width on large screens */}
+                <div className="bg-gray-900 rounded-lg overflow-hidden shadow-xl border border-gray-800">
+                  <div className="bg-gradient-to-r from-blue-900 to-blue-800 px-6 py-4">
+                    <h3 className="text-xl font-bold">Authentication</h3>
+                  </div>
+                  <div className="p-6">
+                    <NostrAuthSection />
+                  </div>
+                </div>
+
+                {/* System & Visualization Settings - 2/3 width on large screens */}
+                <div className="lg:col-span-2 bg-gray-900 rounded-lg overflow-hidden shadow-xl border border-gray-800">
+                  <div className="bg-gradient-to-r from-purple-900 to-purple-800 px-6 py-4">
+                    <h3 className="text-xl font-bold">System Settings</h3>
+                  </div>
+                  <div className="p-6">
                     <SystemPanel panelId="main-settings-system" />
                   </div>
-                  <hr className="my-3 border-border" /> {/* Divider */}
-                  <div>
-                    <h4 className="text-md font-medium mb-2 text-muted-foreground">Visualization</h4>
+                </div>
+
+                {/* Visualization Settings - Full width */}
+                <div className="lg:col-span-3 bg-gray-900 rounded-lg overflow-hidden shadow-xl border border-gray-800">
+                  <div className="bg-gradient-to-r from-green-900 to-green-800 px-6 py-4">
+                    <h3 className="text-xl font-bold">Visualization</h3>
+                  </div>
+                  <div className="p-6">
                     <VisualizationPanel />
                   </div>
-                  <hr className="my-3 border-border" /> {/* Divider */}
-                  <div>
-                    <h4 className="text-md font-medium mb-2 text-muted-foreground">XR</h4>
+                </div>
+
+                {/* XR Settings - Full width */}
+                <div className="lg:col-span-3 bg-gray-900 rounded-lg overflow-hidden shadow-xl border border-gray-800">
+                  <div className="bg-gradient-to-r from-red-900 to-red-800 px-6 py-4">
+                    <h3 className="text-xl font-bold">XR Settings</h3>
+                  </div>
+                  <div className="p-6">
                     <XRPanel panelId="main-settings-xr" />
                   </div>
-                </CollapsibleContent>
-              </Collapsible>
+                </div>
+              </div>
+
+              {/* Footer with version info */}
+              <div className="mt-12 text-center text-gray-500 text-sm">
+                <p>LogseqSpringThing v0.1.0 | Made with ❤️ by the community</p>
+              </div>
             </div>
           </div>
-        )}
       </div>
     );
   };
@@ -238,14 +211,12 @@ const AppPage: React.FC = () => { // Renamed component
   // Main component return with essential providers
   return (
     <ThemeProvider defaultTheme="dark">
-      <TooltipProvider>
-        <ApplicationModeProvider>
-          <ControlPanelProvider>
-            {renderContent()}
-            <AppInitializer onInitialized={handleInitialized} />
-          </ControlPanelProvider>
-        </ApplicationModeProvider>
-      </TooltipProvider>
+      <ApplicationModeProvider>
+        <ControlPanelProvider>
+          {renderContent()}
+          <AppInitializer onInitialized={handleInitialized} />
+        </ControlPanelProvider>
+      </ApplicationModeProvider>
     </ThemeProvider>
   );
 };

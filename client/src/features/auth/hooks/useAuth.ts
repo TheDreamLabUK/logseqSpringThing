@@ -1,17 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useSettingsStore } from '../../../store/settingsStore';
 import { createLogger, createErrorMetadata } from '../../../utils/logger';
+import { nostrAuthService } from '../../../services/nostrAuthService';
 
 const logger = createLogger('useAuth');
-
-interface AuthResult {
-  authenticated: boolean;
-  user?: {
-    isPowerUser: boolean;
-    pubkey: string;
-  };
-  error?: string;
-}
 
 const useAuth = () => {
   const { setAuthenticated, setUser, authenticated, user } = useSettingsStore();
@@ -20,20 +12,18 @@ const useAuth = () => {
   const login = async () => {
     try {
       setAuthError(null);
-      // Replace with actual Nostr authentication logic
-      const authResult: AuthResult = await new Promise((resolve) => {
-        setTimeout(() => {
-          resolve({ authenticated: true, user: { isPowerUser: true, pubkey: 'mocked_pubkey' } });
-        }, 1000);
+
+      // Use the Nostr auth service to login
+      const authResponse = await nostrAuthService.login();
+
+      // Update the settings store with the user info
+      setAuthenticated(true);
+      setUser({
+        isPowerUser: authResponse.user.isPowerUser,
+        pubkey: authResponse.user.pubkey
       });
 
-      if (authResult.authenticated && authResult.user) {
-        setAuthenticated(true);
-        setUser(authResult.user);
-        logger.info('Login successful');
-      } else {
-        throw new Error(authResult.error || 'Login failed');
-      }
+      logger.info('Login successful');
     } catch (error) {
       logger.error('Login failed:', createErrorMetadata(error));
       setAuthError(error instanceof Error ? error.message : 'Login failed');
@@ -43,10 +33,14 @@ const useAuth = () => {
   const logout = async () => {
     try {
       setAuthError(null);
-      // Replace with actual Nostr logout logic
-      await new Promise((resolve) => setTimeout(resolve, 500));
+
+      // Use the Nostr auth service to logout
+      await nostrAuthService.logout();
+
+      // Update the settings store
       setAuthenticated(false);
       setUser(null);
+
       logger.info('Logout successful');
     } catch (error) {
       logger.error('Logout failed:', createErrorMetadata(error));
