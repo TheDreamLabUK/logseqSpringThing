@@ -16,6 +16,15 @@ export interface AuthResponse {
   features: string[];
 }
 
+export interface AuthState {
+  authenticated: boolean;
+  user?: {
+    isPowerUser: boolean;
+    pubkey: string;
+  };
+  error?: string;
+}
+
 export interface NostrEvent {
   id: string;
   pubkey: string;
@@ -26,10 +35,14 @@ export interface NostrEvent {
   tags: string[][];
 }
 
+type AuthStateListener = (state: AuthState) => void;
+
 class NostrAuthService {
   private static instance: NostrAuthService;
   private sessionToken: string | null = null;
   private currentUser: NostrUser | null = null;
+  private authStateListeners: AuthStateListener[] = [];
+  private initialized = false;
 
   private constructor() {}
 
@@ -41,32 +54,85 @@ class NostrAuthService {
   }
 
   /**
+   * Initialize the auth service
+   */
+  public async initialize(): Promise<void> {
+    try {
+      // Check for stored session token
+      const storedToken = localStorage.getItem('nostr_session_token');
+      const storedUser = localStorage.getItem('nostr_user');
+
+      if (storedToken && storedUser) {
+        // Verify the token with the server
+        try {
+          const response = await apiService.post<AuthResponse>('/auth/nostr/verify', {
+            pubkey: JSON.parse(storedUser).pubkey,
+            token: storedToken
+          });
+
+          if (response) {
+            this.sessionToken = storedToken;
+            this.currentUser = response.user;
+            this.notifyListeners({
+              authenticated: true,
+              user: {
+                isPowerUser: response.user.isPowerUser,
+                pubkey: response.user.pubkey
+              }
+            });
+          }
+        } catch (error) {
+          // Token is invalid, clear storage
+          localStorage.removeItem('nostr_session_token');
+          localStorage.removeItem('nostr_user');
+          logger.warn('Stored session token is invalid, cleared local storage');
+        }
+      }
+
+      this.initialized = true;
+    } catch (error) {
+      logger.error('Failed to initialize Nostr auth service:', createErrorMetadata(error));
+      throw error;
+    }
+  }
+
+  /**
    * Login with Alby or other Nostr provider
    */
-  public async login(): Promise<AuthResponse> {
+  public async login(): Promise<AuthState> {
     try {
       // Check if WebLN is available (Alby browser extension)
       if (!window.webln) {
-        throw new Error('WebLN provider not found. Please install Alby extension.');
+        const error = 'WebLN provider not found. Please install Alby extension.';
+        this.notifyListeners({
+          authenticated: false,
+          error
+        });
+        throw new Error(error);
       }
 
       // Enable WebLN
       await window.webln.enable();
-      
+
       // Get public key
       const pubkey = await window.webln.getPublicKey();
       if (!pubkey) {
-        throw new Error('Failed to get public key from WebLN provider');
+        const error = 'Failed to get public key from WebLN provider';
+        this.notifyListeners({
+          authenticated: false,
+          error
+        });
+        throw new Error(error);
       }
 
       logger.info(`Got pubkey from WebLN: ${pubkey}`);
 
       // Create a challenge message
       const challenge = `Login to LogseqSpringThing at ${Date.now()}`;
-      
+
       // Sign the challenge
       const signature = await window.webln.signMessage(challenge);
-      
+
       // Create a Nostr event
       const event: NostrEvent = {
         id: crypto.randomUUID(),
@@ -80,14 +146,34 @@ class NostrAuthService {
 
       // Send the event to the server
       const response = await apiService.post<AuthResponse>('/auth/nostr', event);
-      
+
       // Store the session token and user
       this.sessionToken = response.token;
       this.currentUser = response.user;
-      
-      return response;
+
+      // Store in localStorage for persistence
+      localStorage.setItem('nostr_session_token', response.token);
+      localStorage.setItem('nostr_user', JSON.stringify(response.user));
+
+      const authState: AuthState = {
+        authenticated: true,
+        user: {
+          isPowerUser: response.user.isPowerUser,
+          pubkey: response.user.pubkey
+        }
+      };
+
+      this.notifyListeners(authState);
+      return authState;
     } catch (error) {
       logger.error('Nostr login failed:', createErrorMetadata(error));
+
+      const authState: AuthState = {
+        authenticated: false,
+        error: error instanceof Error ? error.message : 'Login failed'
+      };
+
+      this.notifyListeners(authState);
       throw error;
     }
   }
@@ -102,13 +188,57 @@ class NostrAuthService {
           'Authorization': `Bearer ${this.sessionToken}`
         });
       }
-      
+
       this.sessionToken = null;
       this.currentUser = null;
+
+      // Clear localStorage
+      localStorage.removeItem('nostr_session_token');
+      localStorage.removeItem('nostr_user');
+
+      this.notifyListeners({
+        authenticated: false
+      });
     } catch (error) {
       logger.error('Nostr logout failed:', createErrorMetadata(error));
       throw error;
     }
+  }
+
+  /**
+   * Register a listener for auth state changes
+   */
+  public onAuthStateChanged(listener: AuthStateListener): () => void {
+    this.authStateListeners.push(listener);
+
+    // Immediately notify with current state
+    if (this.initialized) {
+      listener({
+        authenticated: this.isAuthenticated(),
+        user: this.currentUser ? {
+          isPowerUser: this.currentUser.isPowerUser,
+          pubkey: this.currentUser.pubkey
+        } : undefined
+      });
+    }
+
+    // Return unsubscribe function
+    return () => {
+      this.authStateListeners = this.authStateListeners.filter(l => l !== listener);
+    };
+  }
+
+  /**
+   * Notify all listeners of auth state changes
+   */
+  private notifyListeners(state: AuthState): void {
+    this.authStateListeners.forEach(listener => {
+      try {
+        listener(state);
+      } catch (error) {
+        logger.error('Error in auth state listener:', createErrorMetadata(error));
+      }
+    });
   }
 
   /**
@@ -144,4 +274,4 @@ declare global {
   }
 }
 
-export const nostrAuthService = NostrAuthService.getInstance();
+export const nostrAuth = NostrAuthService.getInstance();

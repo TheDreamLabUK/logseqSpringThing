@@ -4,11 +4,23 @@ import { debugState } from '../utils/debugState';
 import { useSettingsStore } from '../store/settingsStore';
 import WebSocketService from '../services/WebSocketService';
 import { graphDataManager } from '../features/graph/managers/graphDataManager';
+import { initializeAuth } from '../features/auth/initAuth';
 
-// Compatibility function to maintain compatibility with code expecting a loadServices function
+// Load and initialize all services
 const loadServices = async (): Promise<void> => {
   if (debugState.isEnabled()) {
-    logger.info('Services pre-loaded via direct imports');
+    logger.info('Initializing services...');
+  }
+
+  try {
+    // Initialize auth system
+    await initializeAuth();
+
+    if (debugState.isEnabled()) {
+      logger.info('Auth system initialized');
+    }
+  } catch (error) {
+    logger.error('Error initializing services:', createErrorMetadata(error));
   }
 }
 
@@ -25,7 +37,7 @@ const AppInitializer: React.FC<AppInitializerProps> = ({ onInitialized }) => {
     const initApp = async () => {
       // Load services first
       await loadServices();
-      
+
       if (debugState.isEnabled()) {
         logger.info('Starting application initialization...');
         }
@@ -33,7 +45,7 @@ const AppInitializer: React.FC<AppInitializerProps> = ({ onInitialized }) => {
         try {
           // Initialize settings
           const settings = await initialize();
-  
+
           // Apply debug settings safely
           if (settings.system?.debug) {
             try {
@@ -52,7 +64,7 @@ const AppInitializer: React.FC<AppInitializerProps> = ({ onInitialized }) => {
           if (typeof WebSocketService !== 'undefined' && typeof graphDataManager !== 'undefined') {
             try {
               // Initialize WebSocket
-              await initializeWebSocket(settings); 
+              await initializeWebSocket(settings);
               // logger.info('WebSocket initialization deliberately disabled - using REST API only.'); // Commented out the disabling message
             } catch (wsError) {
               logger.error('WebSocket initialization failed, continuing with UI only:', createErrorMetadata(wsError));
@@ -61,7 +73,7 @@ const AppInitializer: React.FC<AppInitializerProps> = ({ onInitialized }) => {
           } else {
             logger.warn('WebSocket services not available, continuing with UI only');
           }
-          
+
           // Fetch initial graph data AFTER settings and BEFORE signaling completion
           try {
             logger.info('Fetching initial graph data via REST API');
@@ -74,14 +86,14 @@ const AppInitializer: React.FC<AppInitializerProps> = ({ onInitialized }) => {
             // Initialize with empty data as fallback
             graphDataManager.setGraphData({ nodes: [], edges: [] });
           }
-          
+
           if (debugState.isEnabled()) {
             logger.info('Application initialized successfully');
           }
-        
+
           // Signal that initialization is complete
           onInitialized();
-        
+
       } catch (error) {
           logger.error('Failed to initialize application components:', createErrorMetadata(error));
           // Even if initialization fails, try to signal completion to show UI
@@ -96,7 +108,7 @@ const AppInitializer: React.FC<AppInitializerProps> = ({ onInitialized }) => {
   const initializeWebSocket = async (settings: any): Promise<void> => {
     try {
       const websocketService = WebSocketService.getInstance();
-      
+
       // Handle binary position updates from WebSocket
       websocketService.onBinaryMessage((data) => {
         if (data instanceof ArrayBuffer) {
@@ -108,24 +120,24 @@ const AppInitializer: React.FC<AppInitializerProps> = ({ onInitialized }) => {
             }
           } catch (error) {
             logger.error('Failed to process binary position update:', createErrorMetadata(error));
-            
+
             // Add diagnostic info in debug mode
             if (debugState.isEnabled()) {
               // Display basic info about the data
               logger.debug(`Binary data size: ${data.byteLength} bytes`);
-              
+
               // Display the first few bytes for debugging - helps detect compression headers
               try {
                 const view = new DataView(data);
                 const hexBytes = [];
                 const maxBytesToShow = Math.min(16, data.byteLength);
-                
+
                 for (let i = 0; i < maxBytesToShow; i++) {
                   hexBytes.push(view.getUint8(i).toString(16).padStart(2, '0'));
                 }
-                
+
                 logger.debug(`First ${maxBytesToShow} bytes: ${hexBytes.join(' ')}`);
-                
+
                 // Check if data might be compressed (zlib headers)
                 if (data.byteLength >= 2) {
                   const firstByte = view.getUint8(0);
@@ -137,7 +149,7 @@ const AppInitializer: React.FC<AppInitializerProps> = ({ onInitialized }) => {
               } catch (e) {
                 logger.debug('Could not display binary data preview');
               }
-              
+
               // Check if the data length is a multiple of expected formats
               const nodeSize = 26; // 2 bytes (ID) + 12 bytes (position) + 12 bytes (velocity)
               if (data.byteLength % nodeSize !== 0) {
@@ -147,7 +159,7 @@ const AppInitializer: React.FC<AppInitializerProps> = ({ onInitialized }) => {
           }
         }
       });
-      
+
       // Set up connection status handler
       websocketService.onConnectionStatusChange((connected) => {
         if (debugState.isEnabled()) {
@@ -166,7 +178,7 @@ const AppInitializer: React.FC<AppInitializerProps> = ({ onInitialized }) => {
               }
             } else {
               logger.info('WebSocket connected but not fully established yet - waiting for readiness');
-              
+
               // We'll let graphDataManager handle the binary updates enablement
               // through its retry mechanism that now checks for websocket readiness
               graphDataManager.enableBinaryUpdates();
@@ -176,7 +188,7 @@ const AppInitializer: React.FC<AppInitializerProps> = ({ onInitialized }) => {
           }
         }
       });
-      
+
       // Configure GraphDataManager with WebSocket service (adapter pattern)
       if (websocketService) {
         const wsAdapter = {
@@ -187,7 +199,7 @@ const AppInitializer: React.FC<AppInitializerProps> = ({ onInitialized }) => {
         };
         graphDataManager.setWebSocketService(wsAdapter);
       }
-      
+
       try {
         // Connect WebSocket
         await websocketService.connect();
