@@ -1,12 +1,11 @@
 import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
-// Removed incorrect import: import { requestProvider } from '@getalby/sdk';
 import { defaultSettings } from '../features/settings/config/defaultSettings'
 import { Settings, SettingsPath } from '../features/settings/config/settings'
 import { createLogger, createErrorMetadata } from '../utils/logger'
 import { debugState } from '../utils/debugState'
 import { deepMerge } from '../utils/deepMerge'
-import { convertSnakeToCamelCase } from '../utils/caseConversion'
+import { settingsService } from '../services/settingsService'
 
 const logger = createLogger('SettingsStore')
 
@@ -47,15 +46,12 @@ export const useSettingsStore = create<SettingsState>()(
 
           // Fetch settings from server if available
           try {
-            // Use the endpoint for public/default settings for initial load
-            const response = await fetch('/api/user-settings')
-            if (response.ok) {
-              // Get the server settings and convert from snake_case to camelCase
-              const rawServerSettings = await response.json()
-              const serverSettings = convertSnakeToCamelCase(rawServerSettings)
+            // Use the settings service to fetch settings
+            const serverSettings = await settingsService.fetchSettings()
 
+            if (serverSettings) {
               if (debugState.isEnabled()) {
-                logger.info('Server settings after case conversion:', { serverSettings })
+                logger.info('Fetched settings from server:', { serverSettings })
               }
 
               // Merge server settings with defaults and current settings using deep merge
@@ -194,10 +190,8 @@ export const useSettingsStore = create<SettingsState>()(
           // Save to server if appropriate
           if (state.initialized && state.settings.system?.persistSettings !== false) {
             try {
-              // Use the endpoint for syncing user-specific settings
-              const headers: HeadersInit = {
-                'Content-Type': 'application/json',
-              };
+              // Prepare authentication headers
+              const headers: Record<string, string> = {};
 
               // Add Nostr authentication if available
               try {
@@ -223,25 +217,15 @@ export const useSettingsStore = create<SettingsState>()(
                 // Proceed without auth header if there's an error
               }
 
-              // Convert settings to camelCase before sending to server
-              const settingsToSend = convertSnakeToCamelCase(state.settings)
+              // Use the settings service to save settings
+              const updatedSettings = await settingsService.saveSettings(state.settings, headers)
 
-              if (debugState.isEnabled()) {
-                logger.info('Sending settings to server:', { settingsToSend })
-              }
-
-              const response = await fetch('/api/user-settings/sync', {
-                method: 'POST',
-                headers: headers,
-                body: JSON.stringify(settingsToSend)
-              })
-
-              if (!response.ok) {
-                throw new Error(`Failed to save settings: ${response.status} ${response.statusText}`)
+              if (!updatedSettings) {
+                throw new Error('Failed to save settings to server')
               }
 
               if (debugState.isEnabled()) {
-                logger.info('Settings saved to server')
+                logger.info('Settings saved to server successfully')
               }
             } catch (error) {
               logger.error('Failed to save settings to server:', createErrorMetadata(error))
