@@ -1,4 +1,4 @@
-import React, { useEffect, useState, Component, ReactNode, useCallback } from 'react'
+import { useEffect, Component, ReactNode, useCallback } from 'react'
 import AppInitializer from './AppInitializer'
 import { ThemeProvider } from '../ui/ThemeProvider'
 import { ApplicationModeProvider } from '../contexts/ApplicationModeContext'
@@ -94,7 +94,7 @@ function App() {
           <TooltipProvider>
             <SafeXRProvider>
               {/* Simplified structure: Render SimpleGraphPage directly */}
-              <div className="app-container" style={{ width: '100%', height: '100%', overflow: 'hidden' }}>
+              <div className="app-container" style={{ width: '100%', height: '100vh', overflow: 'hidden' }}>
                 <SimpleGraphPage />
                 <AppInitializer onInitialized={handleInitialized} />
                 {/* Toaster remains at the top level */}

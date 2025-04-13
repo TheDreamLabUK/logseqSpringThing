@@ -1,7 +1,6 @@
 import React, { Suspense, useEffect, useState, useCallback } from 'react';
 import { Canvas, useThree } from '@react-three/fiber';
 import { OrbitControls, Stats } from '@react-three/drei';
-import * as THREE from 'three';
 import { graphDataManager } from '../features/graph/managers/graphDataManager';
 import GraphManager from '../features/graph/components/GraphManager';
 import ViewportControls from '../features/visualization/components/ViewportControls';
@@ -40,6 +39,7 @@ const SimpleGraphPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [graphCenter, setGraphCenter] = useState<[number, number, number]>([0, 0, 0]);
   const [graphSize, setGraphSize] = useState(50);
+  const [sidebarVisible, setSidebarVisible] = useState(true);
 
   // Fetch initial graph data
   useEffect(() => {
@@ -93,7 +93,12 @@ const SimpleGraphPage: React.FC = () => {
     }
   }, []);
   const handleRotateView = useCallback(() => { logger.debug('Rotate view'); }, []);
-  // Removed handleToggleLeftPanel, handleToggleRightPanel, handleToggleTopPanel callbacks
+
+  // Toggle sidebar visibility
+  const handleToggleSidebar = useCallback(() => {
+    setSidebarVisible(prev => !prev);
+    logger.debug('Toggle sidebar');
+  }, []);
 
   // Callback for AppInitializer
   const handleInitialized = useCallback(() => {
@@ -117,13 +122,13 @@ const SimpleGraphPage: React.FC = () => {
     // Simplified structure: Canvas container + ViewportControls + New Controls
     return (
       // Main container using Flexbox for side-by-side layout
-      <div className="flex w-full h-full overflow-hidden">
+      <div className="flex w-full h-full overflow-hidden" style={{ height: '100vh' }}>
 
         {/* Canvas Container - takes most of the space */}
-        <div className="flex-grow h-full relative">
+        <div className="flex-grow h-full relative" style={{ height: '100vh' }}>
           <Canvas
             className="three-canvas"
-            style={{ display: 'block', width: '100%', height: '100%' }} // Ensure canvas fills container
+            style={{ display: 'block', width: '100%', height: '100%', position: 'absolute', top: 0, left: 0 }} // Ensure canvas fills container
             camera={{ position: [0, 0, 50], fov: 50, near: 0.1, far: 2000 }}
             gl={{ antialias: true, alpha: true, powerPreference: 'high-performance' }}
             dpr={[1, 2]}
@@ -159,33 +164,53 @@ const SimpleGraphPage: React.FC = () => {
             onZoomOut={handleZoomOut}
             onToggleFullscreen={handleToggleFullscreen}
             onRotate={handleRotateView}
-            // Removed defunct panel toggle props: onToggleLeftPanel, onToggleRightPanel, onToggleTopPanel
           />
+
+          {/* Sidebar toggle button */}
+          <button
+            onClick={handleToggleSidebar}
+            className="absolute top-2 right-2 z-10 inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 hover:bg-accent hover:text-accent-foreground h-8 w-8"
+            aria-label={sidebarVisible ? "Hide Sidebar" : "Show Sidebar"}
+          >
+            {sidebarVisible ? (
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
+                <path d="M19 12H5"/>
+                <path d="M12 19l-7-7 7-7"/>
+              </svg>
+            ) : (
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
+                <path d="M5 12h14"/>
+                <path d="M12 5l7 7-7 7"/>
+              </svg>
+            )}
+          </button>
         </div> {/* End Canvas Container */}
 
         {/* Right sidebar for controls - collapsible */}
-        <div className="flex-shrink-0 w-80 h-full border-l border-border bg-background overflow-y-auto">
-          <div className="p-4 space-y-4">
-            <Collapsible defaultOpen={true}>
-              <CollapsibleTrigger className="text-lg font-semibold w-full text-left p-1 hover:bg-muted rounded">Authentication</CollapsibleTrigger>
-              <CollapsibleContent className="p-2 border rounded mt-1">
-                <NostrAuthSection />
-              </CollapsibleContent>
-            </Collapsible>
+        {sidebarVisible && (
+          <div className="flex-shrink-0 w-80 h-full border-l border-border bg-background overflow-y-auto" style={{ height: '100vh' }}>
+            <div className="p-4 space-y-4">
+              <Collapsible defaultOpen={true}>
+                <CollapsibleTrigger className="text-lg font-semibold w-full text-left p-1 hover:bg-muted rounded">Authentication</CollapsibleTrigger>
+                <CollapsibleContent className="p-2 border rounded mt-1">
+                  <NostrAuthSection />
+                </CollapsibleContent>
+              </Collapsible>
 
-            <Collapsible defaultOpen={true}>
-              <CollapsibleTrigger className="text-lg font-semibold w-full text-left p-1 hover:bg-muted rounded mt-2">Settings</CollapsibleTrigger>
-              <CollapsibleContent className="p-2 border rounded mt-1 space-y-4">
-                {/* Pass a dummy panelId, might need adjustment if component relies heavily on it */}
-                <SystemPanel panelId="main-settings-system" />
-                <VisualizationPanel /> {/* Removed panelId prop */}
-                <XRPanel panelId="main-settings-xr" />
-              </CollapsibleContent>
-            </Collapsible>
+              <Collapsible defaultOpen={true}>
+                <CollapsibleTrigger className="text-lg font-semibold w-full text-left p-1 hover:bg-muted rounded mt-2">Settings</CollapsibleTrigger>
+                <CollapsibleContent className="p-2 border rounded mt-1 space-y-4">
+                  {/* Pass a dummy panelId, might need adjustment if component relies heavily on it */}
+                  <SystemPanel panelId="main-settings-system" />
+                  <VisualizationPanel /> {/* Removed panelId prop */}
+                  <XRPanel panelId="main-settings-xr" />
+                </CollapsibleContent>
+              </Collapsible>
 
-            {/* Add other feature components here as needed */}
+              {/* Add other feature components here as needed */}
+            </div>
           </div>
-        </div> {/* End Right Sidebar */}
+        )} {/* End Right Sidebar */}
 
       </div> // End Main Flex container
     );
