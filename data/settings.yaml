@@ -5,7 +5,7 @@ visualization:
     opacity: 1.0
     roughness: 0.7
     size_range:
-    - 0.5
+    - 0.2
     - 10.0
     quality: medium
     enable_instancing: false
@@ -54,13 +54,13 @@ visualization:
     pulse_strength: 0.6
     wave_speed: 0.5
   labels:
-    desktop_font_size: 5
+    desktop_font_size: 0.5
     enable_labels: true
     text_color: '#000000'
     text_outline_color: '#ffffff'
-    text_outline_width: 0.1
-    text_resolution: 16
-    text_padding: 1
+    text_outline_width: 0.05
+    text_resolution: 32
+    text_padding: 0.5
     billboard_mode: camera
   bloom:
     edge_bloom_strength: 0.4

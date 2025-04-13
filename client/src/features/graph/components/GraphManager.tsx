@@ -2,6 +2,7 @@ import React, { useRef, useEffect, useState, useMemo } from 'react'
 import { useThree, useFrame } from '@react-three/fiber'
 import { Line } from '@react-three/drei/core/Line'
 import { Text, Billboard } from '@react-three/drei'
+import * as THREE from 'three'
 import { graphDataManager, type GraphData, type Node as GraphNode } from '../managers/graphDataManager'
 import { createLogger, createErrorMetadata } from '../../../utils/logger'
 import { debugState } from '../../../utils/debugState'
@@ -145,12 +146,22 @@ const GraphManager = () => {
     return points
   }, [graphData.nodes, graphData.edges, nodesAreAtOrigin])
 
-  // Node labels component
+  // Node labels component using settings from YAML
   const NodeLabels = () => {
-    const labelSettings = settings?.visualization?.labels || { enabled: true, size: 0.5 }
+    // Get label settings from the settings store
+    const labelSettings = settings?.visualization?.labels || {
+      enable_labels: true,
+      desktop_font_size: 0.2, // Fallback to a small size if not specified
+      text_color: '#000000',
+      text_outline_color: '#ffffff',
+      text_outline_width: 0.1
+    }
 
     // Don't render if labels are disabled
-    if (!labelSettings.enabled) return null
+    if (!labelSettings.enable_labels) return null
+
+    // Use the desktop_font_size directly from settings without any conversion
+    const fontSize = labelSettings.desktop_font_size || 5
 
     return (
       <group>
@@ -158,22 +169,26 @@ const GraphManager = () => {
           // Skip nodes without position or label
           if (!node.position || !node.label) return null
 
+          // Use the exact font size from settings without distance scaling
+          const textSize = fontSize
+
           return (
             <Billboard
               key={node.id}
-              position={[node.position.x, node.position.y + 0.7, node.position.z]}
-              follow={true}
+              position={[node.position.x, node.position.y + (labelSettings.text_padding || 1), node.position.z]} // Use text_padding from settings
+              follow={labelSettings.billboard_mode === 'camera'} // Use billboard_mode from settings
             >
               <Text
-                fontSize={labelSettings.size || 0.5}
-                color={labelSettings.color || '#ffffff'}
+                fontSize={textSize}
+                color={labelSettings.text_color || '#000000'}
                 anchorX="center"
                 anchorY="middle"
-                outlineWidth={0.02}
-                outlineColor="#000000"
-                outlineOpacity={0.8}
+                outlineWidth={labelSettings.text_outline_width || 0.1}
+                outlineColor={labelSettings.text_outline_color || '#ffffff'}
+                outlineOpacity={1.0} // Full opacity for outline
                 renderOrder={10}
                 material-depthTest={false}
+                maxWidth={labelSettings.text_resolution || 16} // Use text_resolution for max width
               >
                 {node.label}
               </Text>
