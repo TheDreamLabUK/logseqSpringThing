@@ -25,8 +25,8 @@ const logger = createLogger('SimpleGraphPage');
 const CameraController = ({ center, size }: { center: [number, number, number], size: number }) => {
   const { camera } = useThree();
   useEffect(() => {
-    console.log(`Setting camera to look at center: [${center}] with distance: ${size*1.5}`);
-    camera.position.set(center[0], center[1], center[2] + size*1.5);
+    console.log(`Setting camera to look at center: [${center}] with distance: ${size*2}`);
+    camera.position.set(center[0], center[1] + 10, center[2] + size*2);
     camera.lookAt(center[0], center[1], center[2]);
     camera.updateProjectionMatrix();
   }, [camera, center, size]);
@@ -40,6 +40,12 @@ const SimpleGraphPage: React.FC = () => {
   const [graphCenter, setGraphCenter] = useState<[number, number, number]>([0, 0, 0]);
   const [graphSize, setGraphSize] = useState(50);
   const [sidebarVisible, setSidebarVisible] = useState(true);
+
+  // Function to ensure sidebar toggle button is always visible
+  const toggleSidebar = useCallback(() => {
+    setSidebarVisible(prev => !prev);
+    logger.debug(`Sidebar visibility toggled to: ${!sidebarVisible}`);
+  }, [sidebarVisible]);
 
   // Fetch initial graph data
   useEffect(() => {
@@ -94,11 +100,7 @@ const SimpleGraphPage: React.FC = () => {
   }, []);
   const handleRotateView = useCallback(() => { logger.debug('Rotate view'); }, []);
 
-  // Toggle sidebar visibility
-  const handleToggleSidebar = useCallback(() => {
-    setSidebarVisible(prev => !prev);
-    logger.debug('Toggle sidebar');
-  }, []);
+  // Removed unused handleToggleSidebar function
 
   // Callback for AppInitializer
   const handleInitialized = useCallback(() => {
@@ -109,7 +111,7 @@ const SimpleGraphPage: React.FC = () => {
     }
   }, []);
 
-  const blueBackgroundColor = '#0000cd';
+  const backgroundColor = '#000000'; // Black background
 
   // Render content based on state
   const renderContent = () => {
@@ -129,12 +131,12 @@ const SimpleGraphPage: React.FC = () => {
           <Canvas
             className="three-canvas"
             style={{ display: 'block', width: '100%', height: '100%', position: 'absolute', top: 0, left: 0 }} // Ensure canvas fills container
-            camera={{ position: [0, 0, 50], fov: 50, near: 0.1, far: 2000 }}
+            camera={{ position: [0, 10, 50], fov: 75, near: 0.1, far: 2000 }}
             gl={{ antialias: true, alpha: true, powerPreference: 'high-performance' }}
             dpr={[1, 2]}
             shadows
           >
-            <color attach="background" args={[blueBackgroundColor]} />
+            <color attach="background" args={[backgroundColor]} />
             <CameraController center={graphCenter} size={graphSize} />
             <ambientLight intensity={0.6} />
             <directionalLight position={[10, 10, 5]} intensity={1} castShadow />
@@ -150,7 +152,7 @@ const SimpleGraphPage: React.FC = () => {
             <Suspense fallback={null}>
               <GraphManager />
               {/* Add the 3D Hologram into the scene */}
-              <HologramVisualization standalone={false} position={[0, 0, -20]} size={10} />
+              <HologramVisualization standalone={false} position={[0, 0, 0]} size={20} />
             </Suspense>
             <axesHelper args={[2]} />
             <Stats />
@@ -166,10 +168,10 @@ const SimpleGraphPage: React.FC = () => {
             onRotate={handleRotateView}
           />
 
-          {/* Sidebar toggle button */}
+          {/* Sidebar toggle button - always visible */}
           <button
-            onClick={handleToggleSidebar}
-            className="absolute top-2 right-2 z-10 inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 hover:bg-accent hover:text-accent-foreground h-8 w-8"
+            onClick={toggleSidebar}
+            className="absolute top-2 right-2 z-50 inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 hover:bg-accent hover:text-accent-foreground h-8 w-8 bg-background/80 backdrop-blur-sm"
             aria-label={sidebarVisible ? "Hide Sidebar" : "Show Sidebar"}
           >
             {sidebarVisible ? (
