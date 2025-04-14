@@ -2,7 +2,7 @@ tunnel: logseqXR
 
 ingress:
   - hostname: www.visionflow.info
-    service: http://webxr-client:4000
+    service: http://webxr:4000
     originRequest:
       noTLSVerify: true
       connectTimeout: 30s

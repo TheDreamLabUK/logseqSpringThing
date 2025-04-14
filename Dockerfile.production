@@ -42,7 +42,8 @@ COPY client ./client
 
 # Build client (production mode)
 WORKDIR /build/client
-RUN npm ci && \
+# Temporarily set NODE_ENV=development for install to ensure devDeps, then run build
+RUN NODE_ENV=development npm install && \
     npm run build
 
 # Build Rust server (release mode with GPU features)
@@ -51,7 +52,7 @@ RUN cargo build --release --features gpu
 
 # Handle PTX compilation
 # First try to copy existing PTX file
-COPY src/utils/compute_forces.ptx ./src/utils/compute_forces.ptx || true
+COPY src/utils/compute_forces.ptx ./src/utils/compute_forces.ptx
 
 # Compile PTX if needed (if REBUILD_PTX=true or if the copy failed)
 ARG REBUILD_PTX=false

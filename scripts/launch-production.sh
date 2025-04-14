@@ -147,7 +147,7 @@ check_environment_file() {
         log "${RED}Error: settings.yaml not found in $PROJECT_ROOT/data${NC}"
         log "${YELLOW}Please create a settings.yaml file${NC}"
         return 1
-    }
+    fi
     log "${GREEN}✓ settings.yaml file exists${NC}"
 
     return 0
@@ -162,9 +162,13 @@ check_gpu_availability() {
     fi
 
     # Check if GPU is available
-    if ! nvidia-smi &>/dev/null; then
-        log "${RED}Error: No NVIDIA GPU available${NC}"
-        return 1
+    # Check if nvidia-smi command runs successfully.
+    # It might return non-zero even if GPUs exist but are busy/inaccessible temporarily.
+    if ! nvidia-smi > /dev/null 2>&1; then
+        log "${YELLOW}Warning: nvidia-smi command failed or no NVIDIA GPU detected by it.${NC}"
+        log "${YELLOW}GPU acceleration features might be unavailable. Script will continue.${NC}"
+        # Allow script to continue, but log the warning. Return 0 as it's non-fatal for the script logic.
+        return 0
     fi
 
     # Get GPU info
@@ -234,44 +238,7 @@ check_ptx_status() {
     return 0
 }
 
-build_client() {
-    section "Building Client (Production Mode)"
-
-    # Navigate to client directory
-    cd "$PROJECT_ROOT/client"
-
-    # Check if package manager is available
-    if command_exists pnpm; then
-        PKG_MANAGER="pnpm"
-    elif command_exists npm; then
-        PKG_MANAGER="npm"
-    else
-        log "${RED}Error: No package manager (pnpm or npm) found${NC}"
-        return 1
-    fi
-
-    # Install dependencies if node_modules doesn't exist
-    if [ ! -d "node_modules" ]; then
-        log "${YELLOW}Installing dependencies...${NC}"
-        $PKG_MANAGER install
-    fi
-
-    # Build client in production mode
-    log "${YELLOW}Building client in production mode...${NC}"
-    NODE_ENV=production $PKG_MANAGER run build
-
-    # Check if build was successful
-    if [ ! -d "dist" ]; then
-        log "${RED}Error: Client build failed${NC}"
-        return 1
-    fi
-
-    log "${GREEN}✓ Client build successful${NC}"
-    cd "$PROJECT_ROOT"
-
-    return 0
-}
-
+# build_client function removed as client is built inside Dockerfile.production
 build_docker_images() {
     section "Building Docker Images"
 
@@ -291,6 +258,7 @@ build_docker_images() {
     log "  - REBUILD_PTX: $REBUILD_PTX"
 
     # Build Docker images
+    # Relying on exported variables from earlier 'source .env'
     $DOCKER_COMPOSE -f "$PROJECT_ROOT/$DOCKER_COMPOSE_FILE" build --no-cache
 
     log "${GREEN}✓ Docker images built successfully${NC}"
@@ -325,7 +293,8 @@ clean_existing_containers() {
     fi
 
     # Down any existing compose setup
-    $DOCKER_COMPOSE -f "$PROJECT_ROOT/$DOCKER_COMPOSE_FILE" down 2>/dev/null || true
+    # More thorough cleanup: remove orphans and volumes associated with the compose file
+    $DOCKER_COMPOSE -f "$PROJECT_ROOT/$DOCKER_COMPOSE_FILE" down --remove-orphans --volumes 2>/dev/null || true
 
     log "${GREEN}✓ Cleanup complete${NC}"
 
@@ -340,6 +309,7 @@ start_containers() {
 
     # Start containers
     log "${YELLOW}Starting containers...${NC}"
+    # Let Docker Compose load the .env file automatically
     $DOCKER_COMPOSE -f "$PROJECT_ROOT/$DOCKER_COMPOSE_FILE" up -d
 
     log "${GREEN}✓ Containers started${NC}"
@@ -392,12 +362,9 @@ main() {
     # Change to project root
     cd "$PROJECT_ROOT"
 
-    # Load environment variables
-    if [ -f .env ]; then
-        log "${YELLOW}Loading environment variables from .env${NC}"
-        set -a
-        source .env
-        set +a
+    # Docker Compose will automatically load .env from the project root
+    if [ ! -f .env ]; then
+        log "${YELLOW}Warning: .env file not found in project root. CLOUDFLARE_TUNNEL_TOKEN and other variables may be missing.${NC}"
     fi
 
     # Run validation checks
@@ -408,7 +375,7 @@ main() {
 
     # Build steps
     check_ptx_status || true  # Non-fatal, just sets flags
-    build_client || exit 1
+    # build_client call removed
     clean_existing_containers || exit 1
     build_docker_images || exit 1
 

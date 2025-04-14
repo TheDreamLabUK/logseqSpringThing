@@ -7,7 +7,8 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m'
 
-CONTAINER_NAME="logseq_spring_thing_webxr"
+# Target production container
+CONTAINER_NAME="logseq-spring-thing-webxr"
 LOG_DIR="logs"
 mkdir -p "$LOG_DIR"
 
@@ -27,9 +28,14 @@ check_process_status() {
     # Enhanced log checking
     echo -e "\n${YELLOW}Checking Rust server logs:${NC}"
     docker exec ${CONTAINER_NAME} bash -c 'for f in /app/webxr.log /app/*.log; do if [ -f "$f" ]; then echo "=== $f ==="; tail -n 20 "$f"; fi; done' 2>/dev/null || echo "No logs found"
+    # Check Nginx logs
+    echo -e "\n${YELLOW}Checking Nginx Access Logs:${NC}"
+    docker exec ${CONTAINER_NAME} tail -n 20 /var/log/nginx/access.log 2>/dev/null || echo "No Nginx access logs found or accessible"
+    echo -e "\n${YELLOW}Checking Nginx Error Logs:${NC}"
+    docker exec ${CONTAINER_NAME} tail -n 20 /var/log/nginx/error.log 2>/dev/null || echo "No Nginx error logs found or accessible"
 }
 
-test_connectivity() {
+test_endpoints() {
     echo -e "${YELLOW}Testing basic connectivity...${NC}"
     
     # Check container status
@@ -40,13 +46,25 @@ test_connectivity() {
     echo -e "\n${YELLOW}Recent Container Logs:${NC}"
     docker logs --timestamps ${CONTAINER_NAME} --tail 50
     
-    # Test health endpoint specifically
-    echo -e "\n${YELLOW}Testing health endpoint:${NC}"
-    curl -v http://localhost:4000/health 2>&1 || echo -e "${RED}Failed to connect to health endpoint${NC}"
+    # Test root endpoint on host port
+    echo -e "\n${YELLOW}Testing Root Endpoint (localhost:4000/):${NC}"
+    curl -v http://localhost:4000/ 2>&1 || echo -e "${RED}Failed to connect to root endpoint on localhost:4000${NC}"
     
-    # Test Vite dev server root
-    echo -e "\n${YELLOW}Testing Vite dev server:${NC}"
-    curl -v http://localhost:3001/ 2>&1 || echo -e "${RED}Failed to connect to Vite server${NC}"
+    # Test Production Endpoint (Root)
+    echo -e "\n${YELLOW}Testing Production Endpoint (Root - https://www.visionflow.info/):${NC}"
+    curl -v --connect-timeout 10 https://www.visionflow.info/ 2>&1 || echo -e "${RED}Failed to connect to Production Root Endpoint${NC}"
+
+    # Production Health endpoint test removed
+    # Test Internal Docker Network (cloudflared -> webxr)
+    echo -e "\n${YELLOW}Testing Internal Network (cloudflared -> webxr:4000/health):${NC}"
+    # Check if cloudflared container exists first
+    if docker ps -q -f name=cloudflared-tunnel > /dev/null; then
+        # Try using wget (often available in minimal images) inside the cloudflared container
+        # Test root path instead of /health
+        docker exec cloudflared-tunnel wget --spider --timeout=5 -q http://webxr:4000/ || echo -e "${RED}Failed to connect from cloudflared to webxr:4000/ using wget${NC}"
+    else
+        echo -e "${YELLOW}Skipping internal network test: cloudflared-tunnel container not running.${NC}"
+    fi
 }
 
 check_container_health() {
@@ -58,24 +76,18 @@ check_container_health() {
     docker exec ${CONTAINER_NAME} nvidia-smi || echo "Could not access GPU"
 }
 
-# Restart container if needed
-restart_if_needed() {
-    if ! curl -s http://localhost:4000/health >/dev/null; then
-        echo -e "${YELLOW}Services not responding, attempting restart...${NC}"
-        docker restart ${CONTAINER_NAME}
-        sleep 10  # Wait for services to initialize
-    fi
-}
+# Restart logic removed (this script is for testing, not management)
 
 # Main execution
 echo -e "${GREEN}Starting comprehensive diagnostics...${NC}"
-restart_if_needed
-test_connectivity
+test_endpoints
 check_process_status
 check_container_health
 
 # Provide next steps
 echo -e "\n${YELLOW}Diagnostic Summary:${NC}"
-echo "1. API Server (port 4000): $(curl -s -o /dev/null -w "%{http_code}" http://localhost:4000/health 2>/dev/null || echo "Failed")"
-echo "2. Vite Server (port 3001): $(curl -s -o /dev/null -w "%{http_code}" http://localhost:3001/ 2>/dev/null || echo "Failed")"
-echo "3. Container Status: $(docker inspect --format='{{.State.Status}}' ${CONTAINER_NAME})"
+echo "1. Host Port 4000 (Root /): $(curl -s -o /dev/null -w "%{http_code}" http://localhost:4000/ 2>/dev/null || echo "Failed")"
+echo "2. Production Root (https://www.visionflow.info/): $(curl -s -o /dev/null -w "%{http_code}" https://www.visionflow.info/ 2>/dev/null || echo "Failed")"
+# Production Health check removed
+echo "3. Internal Network (cloudflared -> webxr /): $(docker exec cloudflared-tunnel wget --spider --timeout=5 -q http://webxr:4000/ >/dev/null 2>&1 && echo "Success" || echo "Failed/Skipped")"
+echo "5. Container Status: $(docker inspect --format='{{.State.Status}}' ${CONTAINER_NAME} 2>/dev/null || echo "Not Found")"

@@ -9,6 +9,8 @@ services:
       args:
         CUDA_ARCH: ${CUDA_ARCH:-89}
         REBUILD_PTX: ${REBUILD_PTX:-false}
+    env_file:
+      - .env # Load all variables from .env file into the container
     environment:
       - NVIDIA_VISIBLE_DEVICES=${NVIDIA_VISIBLE_DEVICES:-GPU-553dc306-dab3-32e2-c69b-28175a6f4da6}
       - NVIDIA_GPU_UUID=${NVIDIA_GPU_UUID:-GPU-553dc306-dab3-32e2-c69b-28175a6f4da6}
@@ -45,6 +47,7 @@ services:
     image: cloudflare/cloudflared:latest
     command: tunnel --no-autoupdate run
     environment:
+      # Use the standard variable name, expecting it from the .env file loaded by Compose
       - TUNNEL_TOKEN=${CLOUDFLARE_TUNNEL_TOKEN}
     volumes:
       - ./config.yml:/etc/cloudflared/config.yml:ro
