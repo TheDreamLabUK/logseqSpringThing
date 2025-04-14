@@ -1,16 +1,15 @@
-import React, { useState, useMemo } from 'react'; // Combined imports
-import { useSettingsStore } from '../../../../store/settingsStore'; // Corrected path
-import { formatSettingLabel } from '../../types/settingsSchema'; // Keep for label formatting
-// UISetting and isUISetting are no longer needed here as we're not using UI definitions
-// import { UISetting, isUISetting } from '../../types/uiSetting';
-import { createLogger } from '../../../../utils/logger'; // Corrected path
-// Removing problematic icons for now - keeping ones that work
+import React, { useState, useMemo } from 'react';
+import { useSettingsStore } from '../../../../store/settingsStore';
+import { formatSettingLabel } from '../../types/settingsSchema';
+import { createLogger } from '../../../../utils/logger';
 import { Eye, CircleDashed, Circle, MoveHorizontal } from 'lucide-react';
 // Import UI components
 import { Input } from '../../../../ui/Input';
 import { Switch } from '../../../../ui/Switch';
 import { Slider } from '../../../../ui/Slider';
-import { Label } from '../../../../ui/Label'; // Use Label component
+import { Label } from '../../../../ui/Label';
+import { RadioGroup, RadioGroupItem } from '../../../../ui/RadioGroup';
+import { useTheme } from '../../../../ui/ThemeProvider';
 
 const logger = createLogger('VisualizationPanel');
 
@@ -19,11 +18,11 @@ const VISUALIZATION_SUBSECTIONS = [
   { id: 'rendering', title: 'Rendering', icon: <Eye className="h-4 w-4" /> },
   { id: 'nodes', title: 'Nodes', icon: <Circle className="h-4 w-4" /> },
   { id: 'edges', title: 'Edges', icon: <MoveHorizontal className="h-4 w-4" /> },
-  { id: 'labels', title: 'Labels' /* icon removed */ }, // Removed Paintbrush
+  { id: 'labels', title: 'Labels', icon: <Circle className="h-4 w-4" /> },
   { id: 'physics', title: 'Physics', icon: <CircleDashed className="h-4 w-4" /> },
-  { id: 'bloom', title: 'Bloom' /* icon removed */ }, // Removed Wand2
-  { id: 'hologram', title: 'Hologram' /* icon removed */ }, // Removed Radio
-  { id: 'animations', title: 'Animations' /* icon removed */ }, // Removed Clapperboard
+  { id: 'bloom', title: 'Bloom', icon: <Circle className="h-4 w-4" /> },
+  { id: 'hologram', title: 'Hologram', icon: <Circle className="h-4 w-4" /> },
+  { id: 'animations', title: 'Animations', icon: <Circle className="h-4 w-4" /> },
 ];
 
 interface VisualizationPanelProps {
@@ -71,19 +70,24 @@ const VisualizationPanel = ({
     setSettings(fullPath, value);
   };
 
+  // Use the theme context to ensure dark mode is applied
+  const { theme } = useTheme();
+
+  // Create a class based on the current theme
+  const themeClass = theme === 'dark' ? 'dark' : '';
+
   return (
     // Apply dark theme classes directly to the fragment's container div
-    <div className="bg-card text-card-foreground dark:bg-gray-900 dark:text-gray-100 h-full">
+    <div className={`${themeClass} bg-card text-card-foreground dark:bg-gray-900 dark:text-gray-100 h-full`}>
       {/* Panel Content */}
-      {/* Assume vertical flex layout */}
+      {/* Vertical flex layout with proper height constraints */}
       <div className="h-full flex flex-col">
-        {/* Subsection Tabs - Horizontal layout when in top panel */}
-        {/* Assume standard bottom border for tabs */}
-        <div className="flex border-b border-border dark:border-gray-700 overflow-auto bg-card dark:bg-gray-800">
+        {/* Subsection Tabs - Horizontal scrollable tabs */}
+        <div className="flex border-b border-border dark:border-gray-700 overflow-x-auto bg-card dark:bg-gray-800 no-scrollbar">
           {VISUALIZATION_SUBSECTIONS.map(subsection => (
             <button
               key={subsection.id}
-              className={`flex items-center px-4 py-3 transition-colors ${
+              className={`flex items-center px-4 py-3 transition-colors whitespace-nowrap ${
                 activeSubsection === subsection.id
                   ? 'border-b-2 border-primary text-primary font-medium dark:text-blue-400 dark:border-blue-400'
                   : 'text-muted-foreground hover:text-foreground dark:text-gray-400 dark:hover:text-gray-200'
@@ -96,19 +100,35 @@ const VisualizationPanel = ({
           ))}
         </div>
 
-        {/* Settings Content - Render based on activeSettingsValues */}
-        <div className="flex-1 min-h-0 overflow-auto p-4 space-y-4 dark:bg-gray-900"> {/* Added dark theme */}
+        {/* Settings Content - Improved scrolling with custom scrollbar */}
+        <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-4 dark:bg-gray-900 settings-panel-scroll">
           {/* Enhanced Input Renderer */}
           {Object.entries(activeSettingsValues).map(([key, value]) => {
             const label = formatSettingLabel(key); // Format the key for display
 
-            // Determine input type based on value type
+            // Determine input type based on value type and key name
             let inputType: React.HTMLInputTypeAttribute = 'text';
             // Initialize controlValue without assigning 'value' yet
             let controlValue: string | number | boolean | undefined = undefined;
             let additionalProps: Record<string, any> = {};
 
-            if (typeof value === 'boolean') {
+            // Check if this setting should use a radio button
+            const radioOptions: string[] = [];
+
+            // Identify settings that should use radio buttons
+            if (key === 'billboardMode' && typeof value === 'string') {
+              inputType = 'radio';
+              controlValue = value;
+              radioOptions.push('camera', 'fixed', 'horizontal');
+            } else if (key === 'quality' && typeof value === 'string') {
+              inputType = 'radio';
+              controlValue = value;
+              radioOptions.push('low', 'medium', 'high');
+            } else if (key === 'position' && typeof value === 'string') {
+              inputType = 'radio';
+              controlValue = value;
+              radioOptions.push('top-left', 'top-right', 'bottom-left', 'bottom-right');
+            } else if (typeof value === 'boolean') {
               inputType = 'checkbox';
               controlValue = value; // Assign directly, type is known
             } else if (typeof value === 'number') {
@@ -181,6 +201,24 @@ const VisualizationPanel = ({
                         {(controlValue as boolean) ? 'Enabled' : 'Disabled'}
                       </span>
                     </div>
+                  ) : inputType === 'radio' ? (
+                    <RadioGroup
+                      value={controlValue as string}
+                      onValueChange={(value: string) => updateSetting(key, value)}
+                      className="flex flex-col space-y-1"
+                    >
+                      {radioOptions.map((option) => (
+                        <div key={option} className="flex items-center space-x-2">
+                          <RadioGroupItem value={option} id={`${controlId}-${option}`} />
+                          <Label
+                            htmlFor={`${controlId}-${option}`}
+                            className="text-sm font-normal cursor-pointer dark:text-gray-300"
+                          >
+                            {formatSettingLabel(option)}
+                          </Label>
+                        </div>
+                      ))}
+                    </RadioGroup>
                   ) : inputType === 'color' ? (
                     <div className="flex items-center space-x-3">
                       <Input

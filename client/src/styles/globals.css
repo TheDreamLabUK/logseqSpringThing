@@ -34,7 +34,7 @@
     padding: 0;
     box-sizing: border-box;
   }
-  
+
   html, body, #root {
     width: 100%;
     height: 100%;
@@ -89,4 +89,37 @@
 
 .detached-panel {
   @apply absolute cursor-move rounded-md border border-border bg-card shadow-lg;
+}
+
+/* Custom scrollbar styles */
+@layer utilities {
+  /* Hide scrollbar for Chrome, Safari and Opera */
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* Hide scrollbar for IE, Edge and Firefox */
+  .no-scrollbar {
+    -ms-overflow-style: none;  /* IE and Edge */
+    scrollbar-width: none;  /* Firefox */
+  }
+
+  /* Custom scrollbar for settings panels */
+  .settings-panel-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(100, 116, 139, 0.5) transparent;
+  }
+
+  .settings-panel-scroll::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  .settings-panel-scroll::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .settings-panel-scroll::-webkit-scrollbar-thumb {
+    background-color: rgba(100, 116, 139, 0.5);
+    border-radius: 20px;
+  }
 }
