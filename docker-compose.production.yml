@@ -1,0 +1,59 @@
+version: '3.8'
+
+services:
+  webxr:
+    container_name: logseq-spring-thing-webxr
+    build:
+      context: .
+      dockerfile: Dockerfile.production
+      args:
+        CUDA_ARCH: ${CUDA_ARCH:-89}
+        REBUILD_PTX: ${REBUILD_PTX:-false}
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=${NVIDIA_VISIBLE_DEVICES:-GPU-553dc306-dab3-32e2-c69b-28175a6f4da6}
+      - NVIDIA_GPU_UUID=${NVIDIA_GPU_UUID:-GPU-553dc306-dab3-32e2-c69b-28175a6f4da6}
+      - RUST_LOG=${RUST_LOG:-info}
+      - NODE_ENV=production
+      - GIT_HASH=${GIT_HASH:-production}
+    volumes:
+      # Only mount data directories, not code
+      - ./data/markdown:/app/data/markdown
+      - ./data/metadata:/app/data/metadata
+      - ./data/user_settings:/app/user_settings
+      - ./data/settings.yaml:/app/settings.yaml
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              capabilities: [compute,utility]
+              device_ids: ['0']
+    ports:
+      - "4000:4000"  # Expose API port
+    networks:
+      - docker_ragflow
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  cloudflared:
+    container_name: cloudflared-tunnel
+    image: cloudflare/cloudflared:latest
+    command: tunnel --no-autoupdate run
+    environment:
+      - TUNNEL_TOKEN=${CLOUDFLARE_TUNNEL_TOKEN}
+    volumes:
+      - ./config.yml:/etc/cloudflared/config.yml:ro
+    depends_on:
+      - webxr
+    networks:
+      - docker_ragflow
+    restart: unless-stopped
+
+networks:
+  docker_ragflow:
+    external: true

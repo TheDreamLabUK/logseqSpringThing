@@ -1,0 +1,120 @@
+FROM nvidia/cuda:12.8.1-devel-ubuntu22.04 as builder
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    RUST_LOG=info \
+    PATH="/root/.cargo/bin:${PATH}" \
+    NVIDIA_DRIVER_CAPABILITIES=all \
+    CUDA_HOME=/usr/local/cuda \
+    NODE_ENV=production
+
+# Install build dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    git \
+    build-essential \
+    gcc-11 \
+    g++-11 \
+    pkg-config \
+    libssl-dev \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set gcc-11 as default compiler (needed for CUDA compilation)
+RUN update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-11 100 \
+    && update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-11 100
+
+# Install Node.js
+RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
+    apt-get install -y nodejs
+
+# Install Rust
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+
+# Create app directory
+WORKDIR /build
+
+# Copy Rust files for server build
+COPY Cargo.toml Cargo.lock ./
+COPY src ./src
+
+# Copy client files for frontend build
+COPY client ./client
+
+# Build client (production mode)
+WORKDIR /build/client
+RUN npm ci && \
+    npm run build
+
+# Build Rust server (release mode with GPU features)
+WORKDIR /build
+RUN cargo build --release --features gpu
+
+# Handle PTX compilation
+# First try to copy existing PTX file
+COPY src/utils/compute_forces.ptx ./src/utils/compute_forces.ptx || true
+
+# Compile PTX if needed (if REBUILD_PTX=true or if the copy failed)
+ARG REBUILD_PTX=false
+ARG CUDA_ARCH=89
+RUN if [ "$REBUILD_PTX" = "true" ] || [ ! -f "./src/utils/compute_forces.ptx" ]; then \
+        echo "Compiling PTX file for sm_${CUDA_ARCH}..." && \
+        nvcc \
+            -arch=sm_${CUDA_ARCH} \
+            -O3 \
+            --use_fast_math \
+            -ptx \
+            -rdc=true \
+            --compiler-options -fPIC \
+            ./src/utils/compute_forces.cu \
+            -o ./src/utils/compute_forces.ptx && \
+        chmod 644 ./src/utils/compute_forces.ptx && \
+        echo "PTX compilation successful"; \
+    else \
+        echo "Using existing PTX file"; \
+    fi
+
+# Second stage: runtime image
+FROM nvidia/cuda:12.8.1-runtime-ubuntu22.04
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    RUST_LOG=info \
+    NODE_ENV=production \
+    NVIDIA_DRIVER_CAPABILITIES=all
+
+# Install runtime dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    nginx \
+    ca-certificates \
+    nodejs \
+    npm \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create app directory
+WORKDIR /app
+
+# Create necessary directories
+RUN mkdir -p /app/data/markdown \
+    /app/data/metadata \
+    /app/data/runtime \
+    /app/user_settings \
+    /app/client/dist \
+    /app/src/utils
+
+# Copy built artifacts from builder stage
+COPY --from=builder /build/target/release/webxr /app/webxr
+COPY --from=builder /build/client/dist /app/client/dist
+COPY --from=builder /build/src/utils/compute_forces.ptx /app/src/utils/compute_forces.ptx
+
+# Copy nginx configuration
+COPY nginx.conf /etc/nginx/nginx.conf
+
+# Copy startup script
+COPY scripts/start.sh /app/start.sh
+RUN chmod +x /app/start.sh
+
+# Expose port
+EXPOSE 4000
+
+# Set entrypoint
+ENTRYPOINT ["/app/start.sh"]
