@@ -44,27 +44,35 @@ test_endpoints() {
     
     # Check container logs with timestamp
     echo -e "\n${YELLOW}Recent Container Logs:${NC}"
-    docker logs --timestamps ${CONTAINER_NAME} --tail 50
+    docker logs --timestamps ${CONTAINER_NAME} --tail 20
+
+    # Check cloudflared logs
+    echo -e "\n${YELLOW}Recent Cloudflared Logs:${NC}"
+    if docker ps -q -f name=cloudflared-tunnel > /dev/null; then
+        docker logs --timestamps cloudflared-tunnel --tail 20
+    else
+        echo -e "${YELLOW}Skipping cloudflared logs: container not running.${NC}"
+    fi
     
     # Test root endpoint on host port
     echo -e "\n${YELLOW}Testing Root Endpoint (localhost:4000/):${NC}"
     curl -v http://localhost:4000/ 2>&1 || echo -e "${RED}Failed to connect to root endpoint on localhost:4000${NC}"
+
+    # Test API endpoint on host port
+    echo -e "\n${YELLOW}Testing API Endpoint (localhost:4000/api/settings):${NC}"
+    curl -v http://localhost:4000/api/settings 2>&1 || echo -e "${RED}Failed to connect to API endpoint on localhost:4000${NC}"
     
     # Test Production Endpoint (Root)
     echo -e "\n${YELLOW}Testing Production Endpoint (Root - https://www.visionflow.info/):${NC}"
     curl -v --connect-timeout 10 https://www.visionflow.info/ 2>&1 || echo -e "${RED}Failed to connect to Production Root Endpoint${NC}"
 
+    # Test Production Endpoint (API)
+    echo -e "\n${YELLOW}Testing Production Endpoint (API - https://www.visionflow.info/api/settings):${NC}"
+    curl -v --connect-timeout 10 https://www.visionflow.info/api/settings 2>&1 || echo -e "${RED}Failed to connect to Production API Endpoint${NC}"
+
     # Production Health endpoint test removed
-    # Test Internal Docker Network (cloudflared -> webxr)
-    echo -e "\n${YELLOW}Testing Internal Network (cloudflared -> webxr:4000/health):${NC}"
-    # Check if cloudflared container exists first
-    if docker ps -q -f name=cloudflared-tunnel > /dev/null; then
-        # Try using wget (often available in minimal images) inside the cloudflared container
-        # Test root path instead of /health
-        docker exec cloudflared-tunnel wget --spider --timeout=5 -q http://webxr:4000/ || echo -e "${RED}Failed to connect from cloudflared to webxr:4000/ using wget${NC}"
-    else
-        echo -e "${YELLOW}Skipping internal network test: cloudflared-tunnel container not running.${NC}"
-    fi
+    # Internal network test removed (cannot execute commands in cloudflared image easily)
+    echo -e "\n${YELLOW}Skipping Internal Network Test (cannot execute commands in cloudflared image easily)${NC}"
 }
 
 check_container_health() {
@@ -87,7 +95,9 @@ check_container_health
 # Provide next steps
 echo -e "\n${YELLOW}Diagnostic Summary:${NC}"
 echo "1. Host Port 4000 (Root /): $(curl -s -o /dev/null -w "%{http_code}" http://localhost:4000/ 2>/dev/null || echo "Failed")"
-echo "2. Production Root (https://www.visionflow.info/): $(curl -s -o /dev/null -w "%{http_code}" https://www.visionflow.info/ 2>/dev/null || echo "Failed")"
+echo "2. Host Port 4000 (API /api/settings): $(curl -s -o /dev/null -w "%{http_code}" http://localhost:4000/api/settings 2>/dev/null || echo "Failed")"
+echo "3. Production Root (https://www.visionflow.info/): $(curl -s -o /dev/null -w "%{http_code}" https://www.visionflow.info/ 2>/dev/null || echo "Failed")"
+echo "4. Production API (https://www.visionflow.info/api/settings): $(curl -s -o /dev/null -w "%{http_code}" https://www.visionflow.info/api/settings 2>/dev/null || echo "Failed")"
 # Production Health check removed
-echo "3. Internal Network (cloudflared -> webxr /): $(docker exec cloudflared-tunnel wget --spider --timeout=5 -q http://webxr:4000/ >/dev/null 2>&1 && echo "Success" || echo "Failed/Skipped")"
-echo "5. Container Status: $(docker inspect --format='{{.State.Status}}' ${CONTAINER_NAME} 2>/dev/null || echo "Not Found")"
+# Internal network test summary line removed again
+echo "5. Container Status: $(docker inspect --format='{{.State.Status}}' ${CONTAINER_NAME} 2>/dev/null || echo "Not Found")" # Renumber again

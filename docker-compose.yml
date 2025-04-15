@@ -9,8 +9,7 @@ services:
     networks:
       ragflow:
         aliases:
-          - logseq-xr-webxr
-          - webxr-client
+          - webxr-client # Removed logseq-xr-webxr alias
     deploy:
       resources:
         limits:
@@ -65,33 +64,7 @@ services:
       retries: 3
       start_period: 10s
 
-  cloudflared:
-    image: cloudflare/cloudflared:latest
-    container_name: cloudflared-tunnel
-    networks:
-      ragflow:
-        aliases:
-          - cloudflared
-    volumes:
-      - ./config.yml:/etc/cloudflared/config.yml:ro
-    command: tunnel --loglevel info --config /etc/cloudflared/config.yml run
-    restart: unless-stopped
-    stop_grace_period: 10s
-    init: true
-    depends_on: []  # Remove dependency on webxr
-    environment:
-      - TUNNEL_TOKEN=$TUNNEL_TOKEN
-      - TUNNEL_METRICS=0.0.0.0:2000
-      - TUNNEL_DNS_UPSTREAM=https://1.1.1.1/dns-query,https://1.0.0.1/dns-query
-      - TUNNEL_TRANSPORT_PROTOCOL=http2
-      - TUNNEL_ORIGIN_SERVER=http://logseq-xr-webxr:4000  # Use container name to ensure proper DNS resolution
-      - TUNNEL_WEBSOCKET_ENABLE=true
-      - TUNNEL_WEBSOCKET_HEARTBEAT_INTERVAL=30s  # Match our heartbeat interval
-      - TUNNEL_WEBSOCKET_TIMEOUT=3600s  # Match our max timeout
-      - TUNNEL_RETRIES=5
-      - TUNNEL_GRACE_PERIOD=30s
-    env_file:
-      - .env
+# Removed cloudflared service definition - now defined in docker-compose.production.yml
 networks:
   ragflow:
     external: true

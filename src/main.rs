@@ -297,12 +297,11 @@ async fn main() -> std::io::Result<()> {
             );
 
         // Only serve static files if not in development mode (Vite handles this in dev)
-        if std::env::var("NODE_ENV").unwrap_or_default() != "development" {
-            info!("Serving static files from /app/data/public/dist");
-            app = app.service(Files::new("/", "/app/data/public/dist").index_file("index.html"));
-        } else {
-            info!("Skipping static file service in development mode");
-        }
+        // Removed redundant static file serving logic. Nginx handles this in production.
+        // The actix app should only configure API routes.
+        // Assuming the 'else' block below is not needed or handled elsewhere.
+        // If there was specific dev-only setup here, it needs separate handling.
+        // Extraneous brace and log message removed after deleting if/else block
         
         app
     })
