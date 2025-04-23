@@ -24,6 +24,6 @@
     "typeRoots": ["./node_modules/@types", "./src/types"],
     "noEmit": true
   },
-  "include": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.js", "src/**/*.jsx"],
+  "include": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.js", "src/**/*.jsx", "src/types/react-three-fiber.d.ts"],
   "exclude": ["node_modules"]
 }

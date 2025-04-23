@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import React from 'react';
-import { ReactThreeFiber } from '@react-three/fiber'; // Import R3F namespace for types
+import { ReactThreeFiber, Object3DNode } from '@react-three/fiber'; // Import R3F namespace for types
 
 declare module '@react-three/fiber' {
   // Core React Three Fiber hooks and components
@@ -44,6 +44,7 @@ declare module '@react-three/fiber' {
     emissive?: string | number | THREE.Color;
     // Add other color properties as needed
   }
+
 }
 
 // Define MeshTransmissionMaterial props
@@ -74,17 +75,18 @@ declare module '@react-three/drei' {
   };
 }
 
-
-// Augment the JSX namespace to include R3F primitives
+// Augment the global JSX namespace
 declare global {
   namespace JSX {
     interface IntrinsicElements {
-      color: ReactThreeFiber.Node<THREE.Color, typeof THREE.Color>;
-      ambientLight: ReactThreeFiber.Node<THREE.AmbientLight, typeof THREE.AmbientLight>;
-      directionalLight: ReactThreeFiber.Node<THREE.DirectionalLight, typeof THREE.DirectionalLight>;
-      pointLight: ReactThreeFiber.Node<THREE.PointLight, typeof THREE.PointLight>;
-      axesHelper: ReactThreeFiber.Node<THREE.AxesHelper, typeof THREE.AxesHelper>;
-      // Add other R3F primitives here as needed
+      // built-in three.js lights
+      ambientLight:    Object3DNode<THREE.AmbientLight,    typeof THREE.AmbientLight>
+      directionalLight: Object3DNode<THREE.DirectionalLight, typeof THREE.DirectionalLight>
+      pointLight:      Object3DNode<THREE.PointLight,      typeof THREE.PointLight>
+      // helper / misc
+      axesHelper:      Object3DNode<THREE.AxesHelper,      typeof THREE.AxesHelper>
+      color:           Object3DNode<THREE.Color,           typeof THREE.Color>
+      // ...add any others you need (e.g. GridHelper, etc.)
     }
   }
 }

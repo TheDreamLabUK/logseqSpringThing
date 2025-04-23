@@ -3,8 +3,8 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
-import { cn } from '../../lib/utils';
-import { Button } from '../ui/button';
+import { cn } from '@/utils/cn';
+import { Button } from '@/ui/Button';
 import { Copy, Check, Edit, Save, Play, ExternalLink } from 'lucide-react';
 
 // Interactive code block component
@@ -146,14 +146,14 @@ const MarkdownRenderer = ({ content, className }) => {
           h3: ({ node, ...props }) => <h3 className="text-lg font-bold mt-4 mb-2" {...props} />,
           h4: ({ node, ...props }) => <h4 className="text-base font-bold mt-3 mb-2" {...props} />,
           p: ({ node, ...props }) => <p className="my-2" {...props} />,
-          a: ({ node, href, ...props }) => <InteractiveLink href={href} {...props} />,
+          a: ({ node, href, children, ...props }) => <InteractiveLink href={href} {...props}>{children}</InteractiveLink>,
           ul: ({ node, ...props }) => <ul className="list-disc pl-6 my-2" {...props} />,
           ol: ({ node, ...props }) => <ol className="list-decimal pl-6 my-2" {...props} />,
           li: ({ node, ...props }) => <li className="my-1" {...props} />,
           blockquote: ({ node, ...props }) => (
             <blockquote className="border-l-4 border-primary pl-4 italic my-4" {...props} />
           ),
-          code: ({ node, inline, className, children, ...props }) => {
+          code: ({ node, className, children, ...props }) => { // Removed 'inline' from destructuring
             const match = /language-(\w+)/.exec(className || '');
             const language = match ? match[1] : '';
             const codeContent = String(children).replace(/\n$/, '');
@@ -162,7 +162,9 @@ const MarkdownRenderer = ({ content, className }) => {
             const isInteractive = codeContent.includes('// @interactive') ||
                                   codeContent.includes('# @interactive');
             
-            return !inline ? (
+            const isBlock = className && /language-(\w+)/.test(className);
+
+            return isBlock ? (
               isInteractive ? (
                 <InteractiveCodeBlock
                   language={language}

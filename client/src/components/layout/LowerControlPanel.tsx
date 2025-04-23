@@ -44,7 +44,7 @@ const LowerControlPanel: React.FC = () => {
 
       {/* Two-Pane Container */}
       {/* Uses flex row, card styling, and flex-1 to fill available vertical space */}
-      <div className="flex flex-row bg-card rounded-lg overflow-hidden shadow-xl border border-border min-h-[300px] flex-1">
+      <div className="flex flex-row bg-card rounded-lg overflow-hidden shadow-xl border border-border flex-1">
 
         {/* Left Pane: Settings Tabs */}
         {/* Uses flex-col to stack tab list and content */}
