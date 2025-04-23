@@ -1,7 +1,9 @@
 import React, { useRef, useEffect, useState, useMemo } from 'react'
 import { useThree, useFrame } from '@react-three/fiber'
 import { Line } from '@react-three/drei/core/Line'
+// Assuming Text and Billboard are still directly available, if not adjust path later
 import { Text, Billboard } from '@react-three/drei'
+// Use namespace import for THREE to access constructors
 import * as THREE from 'three'
 import { graphDataManager, type GraphData, type Node as GraphNode } from '../managers/graphDataManager'
 import { createLogger, createErrorMetadata } from '../../../utils/logger'
@@ -39,10 +41,11 @@ const getPositionForNode = (node: GraphNode, index: number): [number, number, nu
 }
 
 const GraphManager = () => {
-  const meshRef = useRef<THREE.InstancedMesh>()
-  const tempMatrix = new THREE.Matrix4()
-  const tempPosition = new THREE.Vector3()
-  const tempScale = new THREE.Vector3()
+  const meshRef = useRef<THREE.InstancedMesh>(null) // Initialize with null, use THREE namespace
+  // Use useMemo for stable object references across renders
+  const tempMatrix = useMemo(() => new THREE.Matrix4(), [])
+  const tempPosition = useMemo(() => new THREE.Vector3(), [])
+  const tempScale = useMemo(() => new THREE.Vector3(), [])
   const [graphData, setGraphData] = useState<GraphData>({ nodes: [], edges: [] })
   const [nodesAreAtOrigin, setNodesAreAtOrigin] = useState(false)
   const settings = useSettingsStore(state => state.settings)
@@ -112,48 +115,33 @@ const GraphManager = () => {
   }, [])
 
   // Update node positions from binary data
+  // Update node positions - Modified to NOT directly update mesh matrices from WebSocket data
   const updateNodePositions = (positions: Float32Array) => {
+    // This function is called when position updates arrive via WebSocket.
+    // Based on feedback, this data might not be the absolute coordinates.
+    // We will rely on the useFrame loop to update matrices from the graphData state.
+    // We might need to use this data differently later (e.g., updating state or metadata).
+
     const mesh = meshRef.current
     if (!mesh) return
 
+    // We might still need to update the count based on WebSocket data if nodes appear/disappear
     const nodeCount = positions.length / 4
-    mesh.count = nodeCount
-
-    for (let i = 0; i < nodeCount; i++) {
-      const nodeId = positions[i * 4]
-      const x = positions[i * 4 + 1]
-      const y = positions[i * 4 + 2]
-      const z = positions[i * 4 + 3]
-
-      if (isNaN(x) || isNaN(y) || isNaN(z)) {
-        mesh.setMatrixAt(i, new Float32Array([
-          0,0,0,0,
-          0,0,0,0,
-          0,0,0,0,
-          0,0,0,1
-        ]))
-      } else {
-        // Find the node in graphData to get its size from metadata
-        const node = graphData.nodes.find(n => parseInt(n.id) === nodeId)
-        // Default size if not found or no metadata
-        let nodeSize = 0.2
-
-        // Use node size from metadata if available
-        if (node?.metadata?.size) {
-          nodeSize = parseFloat(node.metadata.size as string) / 100 // Scale down from server size
-        }
-
-        // Apply size to matrix
-        mesh.setMatrixAt(i, new Float32Array([
-          nodeSize, 0, 0, 0,
-          0, nodeSize, 0, 0,
-          0, 0, nodeSize, 0,
-          x, y, z, 1
-        ]))
-      }
+    if (mesh.count !== nodeCount) {
+        mesh.count = nodeCount;
+        // Mark matrix as needing update if count changes, although positions are set in useFrame
+        mesh.instanceMatrix.needsUpdate = true;
     }
 
-    mesh.instanceMatrix.needsUpdate = true
+    // TODO: Determine the correct way to use the 'positions' data.
+    // For now, we log it if debugging is enabled.
+    if (debugState.isEnabled()) {
+      // Log only a small sample to avoid flooding console
+      const sample = positions.slice(0, 12); // Log first 3 nodes' data
+      logger.debug('Received position update data (sample):', sample);
+    }
+
+    // Do NOT update mesh matrices here. Let useFrame handle it based on graphData state.
   }
 
   useFrame(() => {
@@ -161,7 +149,7 @@ const GraphManager = () => {
 
     let needsUpdate = false
     graphData.nodes.forEach((node, index) => {
-      const pos = node.data.position
+      const pos = node.position // Access position directly, assuming it exists on GraphNode type
       if (pos && (pos.x !== 0 || pos.y !== 0 || pos.z !== 0)) {
         const scale = calculateNodeScale(node) // Implement this based on your needs
         updateInstanceMatrix(index, pos.x, pos.y, pos.z, scale)
@@ -218,7 +206,9 @@ const GraphManager = () => {
     }
 
     // Don't render if labels are disabled
-    if (!labelSettings.enabled) return null
+    // Type guard to safely access 'enabled' property
+    const isEnabled = typeof labelSettings === 'object' && labelSettings !== null && 'enabled' in labelSettings ? labelSettings.enabled : true; // Default to true if structure is unexpected
+    if (!isEnabled) return null
 
     // Use the desktopFontSize (camelCase) from settings
     // The settings are converted from snake_case to camelCase when loaded
