@@ -13,17 +13,13 @@ import { ApplicationModeProvider } from '../contexts/ApplicationModeContext';
 import { ControlPanelProvider } from '../features/settings/components/control-panel-context';
 import AppInitializer from '../app/AppInitializer';
 // Removed unused Collapsible imports
-import NostrAuthSection from '../features/auth/components/NostrAuthSection';
-import SystemPanel from '../features/settings/components/panels/SystemPanel';
-import VisualizationPanel from '../features/settings/components/panels/VisualizationPanel';
-import XRPanel from '../features/settings/components/panels/XRPanel';
-import AIPanel from '../features/settings/components/panels/AIPanel'; // Import AIPanel
-import Tabs from '../ui/Tabs'; // Import Tabs component
+// Removed panel/tab component imports - now handled by LowerControlPanel
 import { HologramVisualization } from '../features/visualization/components/HologramVisualization';
 import CameraController from '../features/visualization/components/CameraController';
-// Import icons for tabs (using available lucide-react icons)
-// Temporarily using only Settings icon to debug import issues
-import { Settings, Eye } from 'lucide-react';
+// Removed icon imports - now handled by LowerControlPanel
+// Import type definitions to fix JSX element errors
+import '../types/react-three-fiber.d.ts';
+import LowerControlPanel from '../components/layout/LowerControlPanel'; // Import the new component
 
 const logger = createLogger('SimpleGraphPage');
 
@@ -152,57 +148,11 @@ const AppPage: React.FC = () => { // Renamed component
           {/* Toggle button removed - settings panel is always visible */}
         </div>
 
-        {/* Settings Panel Container - Takes remaining space and scrolls internally */}
-          <div className="flex-1 w-full bg-background text-foreground border-t border-gray-800 overflow-y-auto"> {/* Using theme variables */}
-            <div className="container mx-auto px-4 py-6"> {/* Reduced padding */}
-              {/* Header with gradient underline */}
-              <div className="mb-6 text-center"> {/* Reduced margin */}
-                <h2 className="text-3xl font-bold mb-2">Control Panel</h2>
-                <div className="h-1 w-24 bg-gradient-to-r from-blue-500 to-purple-500 mx-auto"></div>
-              </div>
-
-              {/* Tabbed Settings Area */}
-              <div className="bg-card rounded-lg overflow-hidden shadow-xl border border-border min-h-[300px]"> {/* Using theme variables */}
-                <Tabs
-                  tabs={[
-                    {
-                      label: 'Auth',
-                      icon: <Settings className="h-4 w-4" />, // Temp: Use Settings
-                      content: <NostrAuthSection />,
-                    },
-                    {
-                      label: 'System',
-                      icon: <Settings className="h-4 w-4" />,
-                      content: <SystemPanel panelId="main-settings-system" />,
-                    },
-                    {
-                      label: 'Visualization',
-                      icon: <Eye className="h-4 w-4" />, // Keep Eye as it seems okay
-                      content: <VisualizationPanel />,
-                    },
-                    {
-                      label: 'XR',
-                      icon: <Settings className="h-4 w-4" />, // Temp: Use Settings
-                      content: <XRPanel panelId="main-settings-xr" />,
-                    },
-                    {
-                      label: 'AI Services',
-                      icon: <Settings className="h-4 w-4" />, // Temp: Use Settings
-                      content: <AIPanel />,
-                    },
-                  ]}
-                  tabListClassName="bg-card px-4" // Use theme variables
-                  tabButtonClassName="py-3" // Adjust button padding
-                  tabContentClassName="bg-card text-card-foreground" // Ensure content area matches theme
-                />
-              </div> {/* Correct placement for the closing div of the tabbed area */}
-
-              {/* Footer with version info */}
-              <div className="mt-12 text-center text-gray-500 text-sm">
-                <p>LogseqSpringThing v0.1.0 | Made with ❤️ by the community</p>
-              </div>
-            </div>
-          </div>
+        {/* Lower Panel Container - Takes remaining space (flex-1) and handles overall scrolling */}
+        <div className="flex-1 w-full border-t border-gray-800 overflow-y-auto"> {/* Removed bg/text - handled by LowerControlPanel */}
+          {/* Render the new LowerControlPanel component */}
+          <LowerControlPanel />
+        </div>
       </div>
     );
   };
