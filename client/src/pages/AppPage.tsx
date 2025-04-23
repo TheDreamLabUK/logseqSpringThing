@@ -20,7 +20,7 @@ import CameraController from '../features/visualization/components/CameraControl
 // Import type definitions to fix JSX element errors
 import '../types/react-three-fiber.d.ts';
 // Ensure Three.js types are properly loaded
-import * as THREE from 'three';
+// THREE is used indirectly through JSX elements
 import LowerControlPanel from '../components/layout/LowerControlPanel'; // Import the new component
 
 const logger = createLogger('SimpleGraphPage');
@@ -115,10 +115,14 @@ const AppPage: React.FC = () => { // Renamed component
             dpr={[1, 2]}
             shadows
           >
+            {/* @ts-ignore - These are valid Three.js elements */}
             <color attach="background" args={[backgroundColor]} />
             <CameraController center={graphCenter} size={graphSize} />
+            {/* @ts-ignore */}
             <ambientLight intensity={0.6} />
+            {/* @ts-ignore */}
             <directionalLight position={[10, 10, 5]} intensity={1} castShadow />
+            {/* @ts-ignore */}
             <pointLight position={[-10, -10, -5]} intensity={0.5} />
             <OrbitControls
               makeDefault
@@ -132,6 +136,7 @@ const AppPage: React.FC = () => { // Renamed component
               <GraphManager />
               <HologramVisualization standalone={false} position={[0, 0, 0]} size={20} />
             </Suspense>
+            {/* @ts-ignore */}
             <axesHelper args={[2]} />
             <Stats />
 
@@ -150,8 +155,8 @@ const AppPage: React.FC = () => { // Renamed component
           {/* Toggle button removed - settings panel is always visible */}
         </div>
 
-        {/* Lower Panel Container - Takes remaining space (flex-1) and handles overall scrolling */}
-        <div className="flex-1 w-full border-t border-gray-700 overflow-y-auto bg-gray-900 text-white" style={{ backgroundColor: '#111827', color: 'white', overflowY: 'auto' }}> {/* Using direct color classes and inline styles */}
+        {/* Lower Panel Container - Takes remaining space (flex-1) */}
+        <div className="flex-1 w-full border-t border-gray-700 bg-gray-900 text-white" style={{ backgroundColor: '#111827', color: 'white' }}> {/* Removed overflow-y-auto to let child components handle scrolling */}
           {/* Render the new LowerControlPanel component */}
           <LowerControlPanel />
         </div>

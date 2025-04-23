@@ -29,13 +29,22 @@ greet('World');
 \`\`\`
 
 Visit [Narrative Gold Mine](https://narrativegoldmine.com).
+
+## Extra Content to Force Scrolling
+
+${'- This is a repeated line to force scrolling\n'.repeat(50)}
+
+### More Content
+
+${'- Another repeated line with different text\n'.repeat(50)}
 `;
 
 const LowerControlPanel: React.FC = () => {
-  // Add custom scrollbar styles for WebKit browsers
+  // Add custom scrollbar styles and smooth scrolling behavior
   useEffect(() => {
     const style = document.createElement('style');
     style.textContent = `
+      /* Custom scrollbar styling */
       .custom-scrollbar::-webkit-scrollbar {
         width: 8px;
         height: 8px;
@@ -47,9 +56,29 @@ const LowerControlPanel: React.FC = () => {
         background-color: #4B5563;
         border-radius: 4px;
       }
+
+      /* Improve scrolling behavior */
+      .custom-scrollbar {
+        scroll-behavior: smooth;
+        scrollbar-gutter: stable;
+      }
+
+      /* Ensure tab content areas are scrollable */
+      .left-pane-content, .right-pane-content {
+        overflow-y: auto;
+        max-height: 100%;
+        height: 100%;
+      }
+
+      /* Ensure content fills available space */
+      .tab-content-container {
+        display: flex;
+        flex-direction: column;
+        height: 100%;
+      }
     `;
     document.head.appendChild(style);
-    
+
     return () => {
       document.head.removeChild(style);
     };
@@ -68,19 +97,19 @@ const LowerControlPanel: React.FC = () => {
       {/* Two-Pane Container */}
       {/* Uses flex row, card styling, and flex-1 to fill available vertical space */}
       {/* Ensure flex-1 is present so this container grows vertically */}
-      <div className="flex flex-row bg-gray-800 rounded-lg overflow-hidden shadow-xl border border-gray-700 min-h-[300px] flex-1" style={{ display: 'flex', flexDirection: 'row', backgroundColor: '#1f2937', color: 'white' }}>
+      <div className="flex flex-row bg-gray-800 rounded-lg overflow-hidden shadow-xl border border-gray-700 min-h-[300px]" style={{ display: 'flex', flexDirection: 'row', backgroundColor: '#1f2937', color: 'white' }}>
 
         {/* Left Pane: Settings Tabs */}
         {/* Uses flex-col to stack tab list and content */}
-        <div className="w-1/2 h-full border-r border-gray-700 flex flex-col overflow-y-auto custom-scrollbar" style={{
+        <div className="w-1/2 border-r border-gray-700 flex flex-col overflow-y-auto custom-scrollbar" style={{
           width: '50%',
           display: 'flex',
           flexDirection: 'column',
-          maxHeight: '100%',
           overflowY: 'auto',
           scrollbarWidth: 'thin',
           scrollbarColor: '#4B5563 #1F2937'
         }}>
+          {/* Removed manual scroll buttons - using mouse wheel instead */}
           <Tabs
             tabs={[
               { label: 'Auth', icon: <Settings className="h-4 w-4" />, content: <NostrAuthSection /> },
@@ -93,23 +122,23 @@ const LowerControlPanel: React.FC = () => {
             tabListClassName="bg-gray-800 px-4 flex-shrink-0 border-b border-gray-700"
             tabButtonClassName="py-3"
             // Allow tab content to grow and scroll internally, add padding
-            tabContentClassName="bg-gray-800 text-white flex-1 overflow-y-auto p-4 custom-scrollbar"
+            tabContentClassName="bg-gray-800 text-white p-4 custom-scrollbar left-pane-content overflow-y-auto"
           />
         </div>
 
         {/* Right Pane: New Feature Tabs */}
         {/* Uses flex-col to stack tab list and content */}
-        <div className="w-1/2 h-full flex flex-col bg-gray-800 overflow-y-auto custom-scrollbar" style={{
+        <div className="w-1/2 flex flex-col bg-gray-800 overflow-y-auto custom-scrollbar" style={{
           width: '50%',
           display: 'flex',
           flexDirection: 'column',
-          maxHeight: '100%',
           backgroundColor: '#1f2937',
           overflowY: 'auto',
           color: 'white',
           scrollbarWidth: 'thin',
           scrollbarColor: '#4B5563 #1F2937'
         }}>
+          {/* Removed manual scroll buttons - using mouse wheel instead */}
           <Tabs
             tabs={[
               {
@@ -117,7 +146,7 @@ const LowerControlPanel: React.FC = () => {
                 icon: <Anchor className="h-4 w-4" />, // Use Anchor icon (declared)
                 content: (
                   // Container ensures iframe takes full height of the tab content area
-                  <div className="w-full h-full flex flex-col">
+                  <div className="w-full h-full flex flex-col tab-content-container">
                     <iframe
                       src="https://narrativegoldmine.com"
                       className="flex-1 border-none" // Simplified: flex-1 handles filling space
@@ -133,14 +162,14 @@ const LowerControlPanel: React.FC = () => {
                 label: 'Markdown',
                 icon: <Settings className="h-4 w-4" />, // Use Settings icon (placeholder, File not declared)
                 // Pass content, add padding via className to the renderer's wrapper
-                content: <MarkdownRenderer content={placeholderMarkdown} className="p-4" />,
+                content: <div className="tab-content-container"><MarkdownRenderer content={placeholderMarkdown} className="p-4" /></div>,
               },
               {
                 label: 'LLM Query',
                 icon: <Send className="h-4 w-4" />, // Use Send icon (declared)
                 content: (
                   // Container ensures elements stack correctly and use full height
-                  <div className="p-4 flex flex-col h-full">
+                  <div className="p-4 flex flex-col h-full tab-content-container">
                     {/* Using standard HTML textarea with Tailwind classes */}
                     <textarea
                       className="flex-1 mb-2 p-2 border border-border rounded bg-input text-foreground resize-none focus:outline-none focus:ring-2 focus:ring-primary"
@@ -155,7 +184,7 @@ const LowerControlPanel: React.FC = () => {
             tabListClassName="bg-gray-800 px-4 flex-shrink-0 border-b border-gray-700"
             tabButtonClassName="py-3"
             // Allow tab content to grow and scroll internally. Padding handled by individual content wrappers.
-            tabContentClassName="bg-gray-800 text-white flex-1 overflow-y-auto custom-scrollbar"
+            tabContentClassName="bg-gray-800 text-white custom-scrollbar right-pane-content overflow-y-auto"
           />
         </div>
       </div>

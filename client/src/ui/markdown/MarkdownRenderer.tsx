@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
@@ -15,21 +15,21 @@ const InteractiveCodeBlock = ({ language, code, className }) => {
   const [copied, setCopied] = useState(false);
   const [executing, setExecuting] = useState(false);
   const [output, setOutput] = useState(null);
-  
+
   const handleEdit = () => {
     setEditable(true);
   };
-  
+
   const handleSave = () => {
     setEditable(false);
   };
-  
+
   const handleCopy = () => {
     navigator.clipboard.writeText(value);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
-  
+
   const handleExecute = () => {
     setExecuting(true);
     // Simulate code execution
@@ -38,9 +38,9 @@ const InteractiveCodeBlock = ({ language, code, className }) => {
       setExecuting(false);
     }, 1000);
   };
-  
+
   const isExecutable = ['javascript', 'js', 'typescript', 'ts', 'python', 'py'].includes(language);
-  
+
   return (
     <div className="relative group">
       {editable ? (
@@ -74,7 +74,7 @@ const InteractiveCodeBlock = ({ language, code, className }) => {
           >
             {value}
           </SyntaxHighlighter>
-          
+
           <div className="absolute top-2 right-2 flex space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
             <Button
               variant="ghost"
@@ -112,7 +112,7 @@ const InteractiveCodeBlock = ({ language, code, className }) => {
           </div>
         </div>
       )}
-      
+
       {output && (
         <div className="mt-2 p-3 bg-muted/50 rounded-md border border-border">
           <div className="text-xs font-medium mb-1">Output:</div>
@@ -126,7 +126,7 @@ const InteractiveCodeBlock = ({ language, code, className }) => {
 // Interactive link component
 const InteractiveLink = ({ href, children }) => {
   const isExternal = href.startsWith('http');
-  
+
   return (
     <a
       href={href}
@@ -163,11 +163,11 @@ const MarkdownRenderer = ({ content, className }) => {
             const match = /language-(\w+)/.exec(className || '');
             const language = match ? match[1] : '';
             const codeContent = String(children).replace(/\n$/, '');
-            
+
             // Check for special comment to make code block interactive
             const isInteractive = codeContent.includes('// @interactive') ||
                                   codeContent.includes('# @interactive');
-            
+
             const isBlock = className && /language-(\w+)/.test(className);
 
             return isBlock ? (
