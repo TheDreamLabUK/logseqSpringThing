@@ -22,6 +22,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     expect \
     && rm -rf /var/lib/apt/lists/*
 
+# Create Nginx log directory
+RUN mkdir -p /var/log/nginx
+
 # Set gcc-11 as default compiler (needed for CUDA compilation)
 RUN update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-11 100 \
     && update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-11 100
@@ -55,6 +58,9 @@ RUN npm install
 
 WORKDIR /app
 
+# Copy Nginx config
+COPY nginx.dev.conf /etc/nginx/nginx.conf
+
 # Build Rust with GPU features
 RUN cargo build --features gpu && \
     cp target/debug/webxr /app/webxr
@@ -70,6 +76,6 @@ RUN chmod +x ./scripts/compile_ptx.sh && \
 COPY scripts/dev-entrypoint.sh ./
 RUN chmod +x ./dev-entrypoint.sh
 
-EXPOSE 3001 4000
+EXPOSE 3001 4000 5173 24678
 
 ENTRYPOINT ["./dev-entrypoint.sh"]

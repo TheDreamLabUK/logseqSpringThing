@@ -1,139 +1,120 @@
 #!/bin/bash
-set -e
+set -e # Exit immediately if a command exits with a non-zero status.
 
 # Configure log paths
 LOGS_DIR="/app/logs"
 RUST_LOG_FILE="${LOGS_DIR}/rust.log"
-MAX_LOG_SIZE_MB=1
+VITE_LOG_FILE="${LOGS_DIR}/vite.log"
+NGINX_ACCESS_LOG="/var/log/nginx/access.log"
+NGINX_ERROR_LOG="/var/log/nginx/error.log"
+MAX_LOG_SIZE_MB=10 # Increased size for dev logs
 MAX_LOG_FILES=3
 
-# Create logs directory if it doesn't exist
+# Create directories if they don't exist
 mkdir -p "${LOGS_DIR}"
+mkdir -p /var/log/nginx # Ensure nginx log dir exists (also done in Dockerfile)
+touch ${NGINX_ACCESS_LOG} ${NGINX_ERROR_LOG} # Ensure log files exist
 
 # Function to log messages with timestamps
 log() {
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1"
+    echo "[ENTRYPOINT][$(date '+%Y-%m-%d %H:%M:%S')] $1"
 }
 
-# Function to rotate logs
-rotate_logs() {
-    if [ -f "${RUST_LOG_FILE}" ]; then
-        # Get file size in bytes and convert to MB
-        local size_bytes=$(stat -c %s "${RUST_LOG_FILE}" 2>/dev/null || echo 0)
+# Function to rotate logs (simplified for entrypoint)
+rotate_log_file() {
+    local log_file=$1
+    if [ -f "${log_file}" ]; then
+        local size_bytes=$(stat -c %s "${log_file}" 2>/dev/null || echo 0)
         local size_mb=$((size_bytes / 1024 / 1024))
 
         if [ "${size_mb}" -ge "${MAX_LOG_SIZE_MB}" ]; then
-            log "Rotating logs (current size: ${size_mb}MB)"
-
-            # Remove oldest log if it exists
-            if [ -f "${RUST_LOG_FILE}.${MAX_LOG_FILES}" ]; then
-                rm "${RUST_LOG_FILE}.${MAX_LOG_FILES}"
-            fi
-
-            # Shift all logs
-            for (( i=${MAX_LOG_FILES}-1; i>=1; i-- )); do
-                j=$((i+1))
-                if [ -f "${RUST_LOG_FILE}.${i}" ]; then
-                    mv "${RUST_LOG_FILE}.${i}" "${RUST_LOG_FILE}.${j}"
-                fi
-            done
-
-            # Move current log to .1
-            cp "${RUST_LOG_FILE}" "${RUST_LOG_FILE}.1"
-
-            # Clear current log
-            > "${RUST_LOG_FILE}"
-
-            log "Log rotation complete"
+            log "Rotating log: ${log_file} (current size: ${size_mb}MB)"
+            # Simple rotation: just move current to .1 and clear current
+            mv "${log_file}" "${log_file}.1" 2>/dev/null || true
+            touch "${log_file}"
         fi
     fi
 }
 
-# Add cleanup function
+# Cleanup function
 cleanup() {
     log "Shutting down services..."
-    if [ -n "${RUST_PID:-}" ]; then
-        kill -TERM $RUST_PID || true
-        wait $RUST_PID 2>/dev/null || true
-    fi
-    if [ -n "${VITE_PID:-}" ]; then
-        kill -TERM $VITE_PID || true
-        wait $VITE_PID 2>/dev/null || true
-    fi
+    # Send TERM signal to child processes
+    if [ -n "${NGINX_PID:-}" ]; then kill -TERM $NGINX_PID 2>/dev/null || true; fi
+    if [ -n "${RUST_PID:-}" ]; then kill -TERM $RUST_PID 2>/dev/null || true; fi
+    if [ -n "${VITE_PID:-}" ]; then kill -TERM $VITE_PID 2>/dev/null || true; fi
+    # Wait briefly for processes to terminate gracefully
+    sleep 2
+    # Force kill if still running
+    if [ -n "${NGINX_PID:-}" ]; then kill -KILL $NGINX_PID 2>/dev/null || true; fi
+    if [ -n "${RUST_PID:-}" ]; then kill -KILL $RUST_PID 2>/dev/null || true; fi
+    if [ -n "${VITE_PID:-}" ]; then kill -KILL $VITE_PID 2>/dev/null || true; fi
+    log "Cleanup complete."
     exit 0
 }
 
-# Set up trap for cleanup
+# Set up trap for cleanup on receiving signals
 trap cleanup SIGTERM SIGINT SIGQUIT
 
-# Verify ports are not in use
-check_ports() {
-    if lsof -i:4000 || lsof -i:3001; then
-        log "Error: Required ports are in use"
+# Start the Rust server in the background
+start_rust_server() {
+    log "Starting Rust server (logging to ${RUST_LOG_FILE})..."
+    # Rotate log before starting
+    rotate_log_file "${RUST_LOG_FILE}"
+    # Start Rust server, redirect stdout/stderr to its log file
+    /app/webxr --gpu-debug > "${RUST_LOG_FILE}" 2>&1 &
+    RUST_PID=$!
+    log "Rust server started (PID: $RUST_PID)"
+    # Basic check if process started
+    sleep 2
+    if ! kill -0 $RUST_PID 2>/dev/null; then
+        log "ERROR: Rust server failed to start. Check ${RUST_LOG_FILE}."
         exit 1
     fi
 }
 
-# Start the Rust server in the background with output redirected to log file
-start_rust_server() {
-    log "Checking PTX file..."
-    ls -l /app/src/utils/compute_forces.ptx
-    log "Starting Rust server (output redirected to ${RUST_LOG_FILE})..."
-
-    # Start Rust server with output redirected to log file
-    /app/webxr --gpu-debug > "${RUST_LOG_FILE}" 2>&1 &
-    RUST_PID=$!
-
-    # Wait for the Rust server to be ready
-    for i in {1..30}; do
-        if kill -0 $RUST_PID 2>/dev/null; then
-            log "Rust server process is running (PID: $RUST_PID)"
-            return 0
-        fi
-        log "Waiting for Rust server process... (attempt $i/30)"
-        sleep 1
-    done
-
-    log "Error: Rust server process failed to start"
-    exit 1
-}
-
-# Start Vite dev server with output to console
+# Start Vite dev server in the background
 start_vite() {
     cd /app/client
-    log "Starting Vite dev server..."
-
-    # Run npm directly with environment variables to enhance output
-
-    # Run with all output to console and enhanced debugging
-    FORCE_COLOR=1 DEBUG=vite:* npm run dev 2>&1 &
+    log "Starting Vite dev server (logging to ${VITE_LOG_FILE})..."
+    # Rotate log before starting
+    rotate_log_file "${VITE_LOG_FILE}"
+    # Start Vite, redirect stdout/stderr to its log file
+    # Use --host 0.0.0.0 to ensure it's accessible within the container network
+    FORCE_COLOR=1 npm run dev -- --host 0.0.0.0 --port 5173 > "${VITE_LOG_FILE}" 2>&1 &
     VITE_PID=$!
-
-    # Give Vite a moment to start up
-    sleep 2
     log "Vite dev server started (PID: $VITE_PID)"
-    log "You can now access the Vite dev server at http://localhost:3001"
+    # Basic check if process started
+    sleep 5 # Vite can take a bit longer to spin up
+    if ! kill -0 $VITE_PID 2>/dev/null; then
+        log "ERROR: Vite server failed to start. Check ${VITE_LOG_FILE}."
+        exit 1
+    fi
+    cd /app # Go back to app root
 }
 
-# Main execution
-check_ports
+# Start Nginx in the foreground
+start_nginx() {
+    log "Starting Nginx..."
+    # Ensure Nginx config is valid before starting
+    nginx -t
+    # Start Nginx in foreground mode
+    nginx -g 'daemon off;' &
+    NGINX_PID=$!
+    log "Nginx started (PID: $NGINX_PID)"
+    log "Development environment accessible at http://localhost:3001"
+}
+
+# --- Main Execution ---
+log "Starting development environment services..."
+
 start_rust_server
 start_vite
+start_nginx
 
-# Monitor child processes and rotate logs
-while true; do
-    if ! kill -0 $RUST_PID 2>/dev/null; then
-        log "Rust server died unexpectedly"
-        cleanup
-    fi
-    if ! kill -0 $VITE_PID 2>/dev/null; then
-        log "Vite server died unexpectedly"
-        cleanup
-    fi
+# Wait for Nginx (foreground process) to exit
+wait $NGINX_PID
 
-    # Check if logs need rotation
-    rotate_logs
-
-    sleep 5
-done
-
+# If Nginx exits, trigger cleanup
+log "Nginx process ended. Initiating cleanup..."
+cleanup

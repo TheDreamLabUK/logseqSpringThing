@@ -1,1435 +1,429 @@
-diff --git a/.direnv/CACHEDIR.TAG b/.direnv/CACHEDIR.TAG
-deleted file mode 100644
-index d8864874..00000000
---- a/.direnv/CACHEDIR.TAG
-+++ /dev/null
-@@ -1,4 +0,0 @@
--Signature: 8a477f597d28d172789f06886806bc55
--# This file is a cache directory tag created by direnv.
--# For information about cache directory tags, see:
--#	http://www.brynosaurus.com/cachedir/
-diff --git a/.env_template b/.env_template
-index 9f733b97..790fcda4 100755
---- a/.env_template
-+++ b/.env_template
-@@ -69,5 +69,5 @@ KOKORO_DEFAULT_SPEED=1.0
- KOKORO_TIMEOUT=30
- KOKORO_STREAM=true
- KOKORO_RETURN_TIMESTAMPS=true
--KOKORO_SAMPLE_RATE=24001
-+KOKORO_SAMPLE_RATE=24000
- 
-diff --git a/.envrc b/.envrc
-deleted file mode 100644
-index 175de894..00000000
---- a/.envrc
-+++ /dev/null
-@@ -1 +0,0 @@
--layout python
-diff --git a/.gitignore b/.gitignore
-index 79dbb1b3..01e86f3c 100755
---- a/.gitignore
-+++ b/.gitignore
-@@ -117,4 +117,3 @@ __pycache__/
- scripts/local/
- client/visualization/effects/custom/
- .qodo
--.venv/
-diff --git a/Dockerfile b/Dockerfile
-index b946b911..560dd692 100755
---- a/Dockerfile
-+++ b/Dockerfile
-@@ -92,7 +92,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
-     NVIDIA_DRIVER_CAPABILITIES=all \
-     RUST_LOG=off \
-     RUST_BACKTRACE=0 \
--    PORT=4001 \
-+    PORT=4000 \
-     BIND_ADDRESS=0.0.0.0 \
-     NODE_ENV=production \
-     DOMAIN=localhost
-@@ -159,6 +159,6 @@ RUN chown -R webxr:webxr /app && \
- 
- USER webxr
- 
--EXPOSE 4001
-+EXPOSE 4000
- 
- CMD ["/app/start.sh"]
-diff --git a/Dockerfile.dev b/Dockerfile.dev
-index a8ea8eb9..e39f4674 100644
---- a/Dockerfile.dev
-+++ b/Dockerfile.dev
-@@ -70,6 +70,6 @@ RUN chmod +x ./scripts/compile_ptx.sh && \
- COPY scripts/dev-entrypoint.sh ./
- RUN chmod +x ./dev-entrypoint.sh
- 
--EXPOSE 3001 4001
-+EXPOSE 3001 4000
- 
- ENTRYPOINT ["./dev-entrypoint.sh"]
-diff --git a/Dockerfile.production b/Dockerfile.production
-index b92ca50e..c31e1573 100644
---- a/Dockerfile.production
-+++ b/Dockerfile.production
-@@ -115,7 +115,7 @@ COPY scripts/start.sh /app/start.sh
- RUN chmod +x /app/start.sh
- 
- # Expose port
--EXPOSE 4001
-+EXPOSE 4000
- 
- # Set entrypoint
- ENTRYPOINT ["/app/start.sh"]
-diff --git a/client/src/app/App.tsx b/client/src/app/App.tsx
-index d19a8722..42cb227c 100644
---- a/client/src/app/App.tsx
-+++ b/client/src/app/App.tsx
-@@ -1,273 +1,109 @@
--import React, { Suspense, useEffect, useState, useRef, useCallback } from "react";
--// Import type definitions to fix JSX element errors
--import 'types/react-three-fiber.d.ts';
--import { Canvas } from "@react-three/fiber";
--import { Stats } from "@react-three/drei";
--import { EffectComposer, Bloom } from "@react-three/postprocessing";
--import GraphManager from "../features/graph/components/GraphManager";
--import { graphDataManager } from "../features/graph/managers/graphDataManager";
--import { ThemeProvider } from "../ui/ThemeProvider";
--import { Toaster } from "../ui/Toaster";
--import NostrAuthSection from "../features/auth/components/NostrAuthSection";
--import SystemPanel from "../features/settings/components/panels/SystemPanel";
--import VisualizationPanel from "../features/settings/components/panels/VisualizationPanel";
--import XRPanel from "../features/settings/components/panels/XRPanel";
--import AIPanel from "../features/settings/components/panels/AIPanel";
--import Tabs from "../ui/Tabs";
--import { Eye, Settings, RefreshCw, ExternalLink } from "lucide-react";
--import CameraController from "../features/visualization/components/CameraController";
--import { useSettingsStore } from "../store/settingsStore";
--import AppInitializer from "./AppInitializer";
-+import { useEffect, Component, ReactNode, useCallback } from 'react'
-+import AppInitializer from './AppInitializer'
-+import { ThemeProvider } from '../ui/ThemeProvider'
-+import { ApplicationModeProvider } from '../contexts/ApplicationModeContext'
-+import { Toaster } from '../ui/Toaster'
-+// import { TooltipProvider } from '../ui/Tooltip'
-+import SafeXRProvider from '../features/xr/providers/SafeXRProvider'
-+// Removed GraphCanvas, ViewportContainer, MainLayout, DockingZone, ViewportControls, PanelProvider, Panel, SystemPanel, WindowSizeProvider
-+import { useSettingsStore } from '../store/settingsStore'
-+import { createLogger, createErrorMetadata } from '../utils/logger'
-+// Removed SimpleThreeWindowPage import as it's not used
-+// Removed SimpleThreeWindowPage import
-+import SimpleGraphPage from '../pages/AppPage' // Corrected path: SimpleGraphPage is exported from AppPage.tsx
- 
--const App: React.FC = () => {
--  // Visualization state
--  const [, setIsLoading] = useState(true); // Unused isLoading state but setter is used
--  const [, setError] = useState<string | null>(null); // Unused error state but setter is used
--  const [graphCenter, setGraphCenter] = useState<[number, number, number]>([0, 0, 0]);
--  const [graphSize, setGraphSize] = useState(50);
-+import '../styles/tokens.css'
-+// Removed layout.css import
-+const logger = createLogger('App')
- 
--  // Iframe state
--  const [iframeLoading, setIframeLoading] = useState(true);
--  const [iframeError, setIframeError] = useState(false);
--  const iframeRef = useRef<HTMLIFrameElement>(null);
-+// Error boundary component to catch rendering errors
-+interface ErrorBoundaryProps {
-+  children: ReactNode;
-+  fallback?: ReactNode;
-+}
- 
--  // Fetch initial graph data
--  useEffect(() => {
--    const initializeGraph = async () => {
--      try {
--        await graphDataManager.fetchInitialData();
--        const data = graphDataManager.getGraphData();
--        let minX = Infinity, minY = Infinity, minZ = Infinity;
--        let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
--        data.nodes.forEach((node) => {
--          if (node.position) {
--            minX = Math.min(minX, node.position.x);
--            maxX = Math.max(maxX, node.position.x);
--            minY = Math.min(minY, node.position.y);
--            maxY = Math.max(maxY, node.position.y);
--            minZ = Math.min(minZ, node.position.z);
--            maxZ = Math.max(maxZ, node.position.z);
--          }
--        });
--        const centerX = (maxX + minX) / 2 || 0;
--        const centerY = (maxY + minY) / 2 || 0;
--        const centerZ = (maxZ + minZ) / 2 || 0;
--        const width = maxX - minX || 1;
--        const height = maxY - minY || 1;
--        const depth = maxZ - minZ || 1;
--        const maxDimension = Math.max(width, height, depth);
--        setGraphCenter([centerX, centerY, centerZ]);
--        setGraphSize(maxDimension > 0 ? maxDimension : 50);
--        setIsLoading(false);
--      } catch (err) {
--        setError(err instanceof Error ? err.message : "An unknown error occurred during data fetch.");
--        setIsLoading(false);
--      }
--    };
--    initializeGraph();
--  }, []);
-+class ErrorBoundary extends Component<ErrorBoundaryProps, { hasError: boolean; error: Error | null; errorInfo: any }> {
-+  state = { hasError: false, error: null, errorInfo: null };
- 
--  // Iframe loading timeout
--  useEffect(() => {
--    const timeoutId = setTimeout(() => {
--      if (iframeLoading) {
--        setIframeLoading(false);
--        setIframeError(true);
--      }
--    }, 10000);
--    return () => clearTimeout(timeoutId);
--  }, [iframeLoading]);
-+  static getDerivedStateFromError(error: any) {
-+    return { hasError: true, error };
-+  }
- 
--  const tryLoadIframe = useCallback((url: string) => {
--    setIframeError(false);
--    setIframeLoading(true);
--    if (iframeRef.current) {
--      iframeRef.current.src = url;
-+  componentDidCatch(error: any, errorInfo: any) {
-+    logger.error('React error boundary caught error:', {
-+      ...createErrorMetadata(error),
-+      component: errorInfo?.componentStack
-+        ? errorInfo.componentStack.split('\n')[1]?.trim()
-+        : 'Unknown component'
-+    });
-+    this.setState({ errorInfo });
-+  }
-+
-+  render() {
-+    if (this.state.hasError) {
-+      return this.props.fallback || (
-+        <div className="p-4 bg-destructive text-destructive-foreground rounded-md">
-+          <h2 className="text-xl font-bold mb-2">Something went wrong</h2>
-+          <p className="mb-4">The application encountered an error. Try refreshing the page.</p>
-+          {process.env.NODE_ENV === 'development' && (
-+            <pre className="bg-muted p-2 rounded text-sm overflow-auto">
-+              {this.state.error
-+                ? (this.state.error.message || String(this.state.error))
-+                : 'No error details available'}
-+            </pre>
-+          )}
-+        </div>
-+      );
-     }
--  }, []);
-+    return this.props.children;
-+  }
-+}
-+
-+function App() {
-+  // Removed isLoading, panel visibility states, isSimpleMode state
-+  // Select the primitive value directly to avoid unnecessary re-renders
-+  const initialized = useSettingsStore(state => state.initialized)
-+
-+  // Simplified useEffect, only checking initialization
-+  useEffect(() => {
-+    // No need to set isLoading here if AppInitializer handles it or SimpleGraphPage has its own loading state
-+  }, [initialized])
- 
--  // AppInitializer callback
-+  // Wrap handleInitialized in useCallback to stabilize its reference
-   const handleInitialized = useCallback(() => {
-     const settings = useSettingsStore.getState().settings;
-     const debugEnabled = settings?.system?.debug?.enabled === true;
-     if (debugEnabled) {
--      // Optionally log initialization
-+      logger.debug('Application initialized');
-     }
--  }, []);
-+    // No need for setIsLoading(false) here if SimpleGraphPage handles its own loading
-+  }, []) // Dependency array is empty as it only uses getState
-+
-+  // Removed viewport control handlers (handleResetCamera, etc.) as they belong in SimpleGraphPage or its children
-+  // Removed panel toggle handlers (handleToggleLeftPanel, etc.)
-+  // Removed handleViewportResize callback
-+
-+  // No longer need the isSimpleMode check, always render SimpleGraphPage
- 
--  // Layout
-   return (
-     <ThemeProvider defaultTheme="dark">
--      <div className="flex flex-col w-full h-screen overflow-hidden bg-background text-foreground">
--        {/* Visualization Panel */}
--        <div className="relative flex-shrink-0" style={{ height: "70vh" }}>
--          <Canvas
--            className="three-canvas"
--            style={{ display: "block", width: "100%", height: "100%" }}
--            camera={{ position: [0, 10, 50], fov: 75, near: 0.1, far: 2000 }}
--            gl={{ antialias: true, alpha: true, powerPreference: "high-performance" }}
--            dpr={[1, 2]}
--            shadows
--          >
--            {/* @ts-ignore - These are valid Three.js elements */}
--            <color attach="background" args={["#000"]} />
--            {/* @ts-ignore */}
--            <CameraController center={graphCenter} size={graphSize} />
--            {/* @ts-ignore */}
--            <ambientLight intensity={0.6} />
--            {/* @ts-ignore */}
--            <directionalLight position={[10, 10, 5]} intensity={1} castShadow />
--            {/* @ts-ignore */}
--            <pointLight position={[-10, -10, -5]} intensity={0.5} />
--            <Suspense fallback={null}>
--              <GraphManager />
--            </Suspense>
--            <Stats />
--            <EffectComposer>
--              <Bloom luminanceThreshold={0.2} luminanceSmoothing={0.9} intensity={1.5} />
--            </EffectComposer>
--          </Canvas>
--        </div>
--
--        {/* Lower Panel: Control + Iframe */}
--        <div className="flex-1 w-full bg-background text-foreground border-t border-gray-800 overflow-y-auto flex flex-row min-h-[300px]">
--          {/* Control Panel */}
--          <div className="w-1/2 h-full flex flex-col border-r border-border dark:border-gray-700">
--            <Tabs
--              tabs={[
--                {
--                  label: "Auth",
--                  icon: <Settings className="h-4 w-4" />,
--                  content: <NostrAuthSection />,
--                },
--                {
--                  label: "System",
--                  icon: <Settings className="h-4 w-4" />,
--                  content: <SystemPanel panelId="main-settings-system" />,
--                },
--                {
--                  label: "Visualization",
--                  icon: <Eye className="h-4 w-4" />,
--                  content: <VisualizationPanel />,
--                },
--                {
--                  label: "XR",
--                  icon: <Settings className="h-4 w-4" />,
--                  content: <XRPanel panelId="main-settings-xr" />,
--                },
--                {
--                  label: "AI Services",
--                  icon: <Settings className="h-4 w-4" />,
--                  content: <AIPanel />,
--                },
--              ]}
--              tabListClassName="bg-card px-4 flex-shrink-0"
--              tabButtonClassName="py-3"
--              tabContentClassName="bg-card text-card-foreground flex-1 overflow-y-auto"
--            />
--          </div>
--          {/* Iframe Panel */}
--          <div className="w-1/2 h-full relative bg-black text-white flex flex-col">
--            <div className="p-3 bg-black border-b border-gray-700 flex justify-between items-center flex-shrink-0">
--              <h3 className="text-sm font-medium text-white">Narrative Gold Mine</h3>
--              <div className="flex space-x-2">
--                <button
--                  onClick={() => {
--                    const currentSrc = iframeRef.current?.src || "https://narrativegoldmine.com";
--                    if (iframeRef.current) {
--                      iframeRef.current.src = "";
--                    }
--                    setTimeout(() => tryLoadIframe(currentSrc), 100);
--                  }}
--                  className="p-1 rounded-full hover:bg-gray-800 transition-colors"
--                  title="Refresh"
--                >
--                  <RefreshCw className="h-4 w-4 text-white" />
--                </button>
--                <a
--                  href="https://www.narrativegoldmine.com"
--                  target="_blank"
--                  rel="noopener noreferrer"
--                  className="p-1 rounded-full hover:bg-gray-800 transition-colors"
--                  title="Open in new tab"
--                >
--                  <ExternalLink className="h-4 w-4 text-white" />
--                </a>
--              </div>
--            </div>
--            <div className="flex-1 relative flex items-center justify-center overflow-hidden">
--              {iframeLoading && !iframeError && (
--                <div className="absolute inset-0 flex items-center justify-center bg-black z-10">
--                  <div className="flex flex-col items-center">
--                    <div className="w-12 h-12 border-4 border-t-blue-500 border-gray-900 rounded-full animate-spin mb-4"></div>
--                    <p className="text-sm text-white">Loading Narrative Gold Mine...</p>
--                  </div>
--                </div>
--              )}
--              {iframeError && (
--                <div className="absolute inset-0 flex items-center justify-center bg-black z-10">
--                  <div className="flex flex-col items-center text-center p-6">
--                    <div className="w-16 h-16 text-red-500 mb-4">
--                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
--                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
--                      </svg>
--                    </div>
--                    <h3 className="text-lg font-medium text-white mb-2">Unable to load website</h3>
--                    <p className="text-sm text-gray-300 mb-4">The website may not allow embedding in iframes.</p>
--                    <div className="flex flex-col space-y-3">
--                      <a
--                        href="https://narrativegoldmine.com"
--                        target="_blank"
--                        rel="noopener noreferrer"
--                        className="inline-flex items-center px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors"
--                      >
--                        <span>Visit Website</span>
--                        <ExternalLink className="ml-2 h-4 w-4" />
--                      </a>
--                      <div className="flex flex-col space-y-2">
--                        <div className="flex space-x-2">
--                          <button
--                            onClick={() => tryLoadIframe("https://www.narrativegoldmine.com")}
--                            className="inline-flex items-center px-4 py-2 bg-gray-800 text-white rounded-md hover:bg-gray-700 transition-colors"
--                          >
--                            <RefreshCw className="mr-2 h-4 w-4" />
--                            <span>Try Alternative URL</span>
--                          </button>
--                          <button
--                            onClick={() => tryLoadIframe("https://cors-anywhere.herokuapp.com/https://narrativegoldmine.com")}
--                            className="inline-flex items-center px-4 py-2 bg-gray-800 text-white rounded-md hover:bg-gray-700 transition-colors"
--                          >
--                            <RefreshCw className="mr-2 h-4 w-4" />
--                            <span>Try Proxy</span>
--                          </button>
--                        </div>
--                      </div>
--                    </div>
--                  </div>
--                </div>
--              )}
--              <iframe
--                ref={iframeRef}
--                src="https://narrativegoldmine.com"
--                className="w-full h-full border-none"
--                title="Narrative Gold Mine"
--                sandbox="allow-scripts allow-same-origin allow-popups allow-forms allow-downloads"
--                loading="lazy"
--                referrerPolicy="no-referrer"
--                onLoad={() => setIframeLoading(false)}
--                onError={() => {
--                  setIframeLoading(false);
--                  setIframeError(true);
--                }}
--              />
-+      {/* Removed WindowSizeProvider */}
-+      <ErrorBoundary>
-+        <ApplicationModeProvider>
-+          {/* Removed PanelProvider */}
-+          <SafeXRProvider>
-+            {/* Simplified structure: Render SimpleGraphPage directly */}
-+            <div className="app-container" style={{ width: '100%', height: '100vh', overflow: 'hidden' }}>
-+              <SimpleGraphPage />
-+              <AppInitializer onInitialized={handleInitialized} />
-+              {/* Toaster remains at the top level */}
-+              <Toaster />
-             </div>
--          </div>
--        </div>
--        <AppInitializer onInitialized={handleInitialized} />
--        <Toaster />
--      </div>
-+          </SafeXRProvider>
-+        </ApplicationModeProvider>
-+      </ErrorBoundary>
-     </ThemeProvider>
--  );
--};
-+  )
-+}
- 
--export default App;
-+export default App
 diff --git a/client/src/app/main.tsx b/client/src/app/main.tsx
-index 48619764..280bafd6 100644
+index 280bafd6..56fabf79 100644
 --- a/client/src/app/main.tsx
 +++ b/client/src/app/main.tsx
-@@ -1,23 +1,4 @@
- import React from 'react';
--
--// Suppress errors from custom.js in iframe (e.g., logseq not defined)
--window.addEventListener('error', function (event) {
--  if (event.filename && event.filename.includes('custom.js')) {
--    event.stopImmediatePropagation();
--    return false;
--  }
--}, true);
--
--window.addEventListener('unhandledrejection', function (event) {
--  if (
--    event.reason &&
--    typeof event.reason === 'object' &&
--    event.reason.stack &&
--    event.reason.stack.includes('custom.js')
--  ) {
--    event.preventDefault();
--  }
--});
- import ReactDOM from 'react-dom/client';
- import App from './App';
- import '../styles/tokens.css'; // Use relative path
-diff --git a/client/src/features/graph/components/GraphCanvas.tsx b/client/src/features/graph/components/GraphCanvas.tsx
-index 6d0371a0..c16203c7 100644
---- a/client/src/features/graph/components/GraphCanvas.tsx
-+++ b/client/src/features/graph/components/GraphCanvas.tsx
-@@ -80,7 +80,6 @@ const GraphCanvas = () => {
-             {xrEnabled && <XRController />}
-             {xrEnabled && <XRVisualizationConnector />}
-             <OrbitControls
--                makeDefault
-                 enableDamping={true}
-                 dampingFactor={0.1}
-                 screenSpacePanning={true}
-diff --git a/client/src/features/settings/components/panels/VisualizationPanel.tsx b/client/src/features/settings/components/panels/VisualizationPanel.tsx
-index 15d8f80f..c4d0f400 100644
---- a/client/src/features/settings/components/panels/VisualizationPanel.tsx
-+++ b/client/src/features/settings/components/panels/VisualizationPanel.tsx
-@@ -47,10 +47,9 @@ const VisualizationPanel = ({
-   // horizontal // Prop removed
- }: VisualizationPanelProps) => {
-   const [activeSubsection, setActiveSubsection] = useState('rendering');
--  // Removed iframeLoading state and iframeRef
+@@ -5,6 +5,29 @@ import '../styles/tokens.css'; // Use relative path
+ // Removed import for layout.css as the file was deleted
+ import '../styles/globals.css'; // Use relative path
  
-   const settings = useSettingsStore(state => state.settings);
--  const setSettings = useSettingsStore(state => state.set);
-+  const setSettings = useSettingsStore(state => state.set); // Keep setSettings
++// Suppress errors from custom.js in iframe (e.g., logseq not defined)
++window.addEventListener('error', function (event) {
++  if (event.filename && (
++    event.filename.includes('custom.js') || 
++    event.message.includes('logseq is not defined')
++  )) {
++    event.stopImmediatePropagation();
++    return false;
++  }
++}, true);
++
++window.addEventListener('unhandledrejection', function (event) {
++  if (
++    event.reason &&
++    typeof event.reason === 'object' &&
++    event.reason.stack &&
++    (event.reason.stack.includes('custom.js') || 
++     event.reason.message?.includes('logseq is not defined'))
++  ) {
++    event.preventDefault();
++  }
++});
++
+ ReactDOM.createRoot(document.getElementById('root')!).render(
+   <React.StrictMode>
+     <App />
+diff --git a/client/src/services/WebSocketService.ts b/client/src/services/WebSocketService.ts
+index cd13fa34..61077f28 100644
+--- a/client/src/services/WebSocketService.ts
++++ b/client/src/services/WebSocketService.ts
+@@ -84,17 +84,14 @@ class WebSocketService {
+   }
  
-   // Get the actual settings *values* for the active subsection using useMemo
-   const activeSettingsValues = useMemo(() => {
-@@ -101,8 +100,8 @@ const VisualizationPanel = ({
-           ))}
-         </div>
- 
--        {/* Settings Controls Container - Takes full width and scrolls */}
--        <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-4 settings-panel-scroll">
-+        {/* Settings Content - Improved scrolling with custom scrollbar */}
-+        <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-4 dark:bg-gray-900 settings-panel-scroll">
-           {/* Enhanced Input Renderer */}
-           {Object.entries(activeSettingsValues).map(([key, value]) => {
-             const label = formatSettingLabel(key); // Format the key for display
-@@ -278,9 +277,9 @@ const VisualizationPanel = ({
-               </div>
-             );
-           })}
--        </div> {/* Close Settings Controls Container */}
--      </div> {/* Close Panel Content */}
--    </div>
-+        </div>
-+      </div>
-+    </div> // Close the themed container div
-   );
- };
- 
-diff --git a/client/src/features/visualization/components/CameraController.tsx b/client/src/features/visualization/components/CameraController.tsx
-index b636a639..5e56433c 100644
---- a/client/src/features/visualization/components/CameraController.tsx
-+++ b/client/src/features/visualization/components/CameraController.tsx
-@@ -1,7 +1,6 @@
- import { useEffect } from 'react';
- import { useThree } from '@react-three/fiber';
- import * as THREE from 'three'; // Use namespace import
--import type { PerspectiveCamera, Vector3 } from 'three';
- 
- interface CameraControllerProps {
-   center: [number, number, number];
-@@ -12,26 +11,19 @@ const CameraController: React.FC<CameraControllerProps> = ({ center, size }) =>
-   const { camera } = useThree();
- 
-   useEffect(() => {
--// @ts-ignore
-     // Ensure camera is PerspectiveCamera before accessing specific properties or methods
-     if (camera instanceof THREE.PerspectiveCamera) {
-         // Adjust position based on graph bounds
--// @ts-ignore
--// @ts-ignore
-         camera.position.set(center[0], center[1] + 10, center[2] + size * 2);
--// @ts-ignore
--        camera.lookAt(new THREE.Vector3(center[0], center[1], center[2])); // Use Vector3
-+        camera.lookAt(new THREE.Vector3(center[0], center[1], center[2])); // Use THREE.Vector3
-         camera.updateProjectionMatrix();
-     } else {
-          console.warn("CameraController expects a PerspectiveCamera.");
-          // Attempt basic adjustment anyway
--// @ts-ignore
--// @ts-ignore
-          camera.position.set(center[0], center[1] + 10, center[2] + size * 2);
--// @ts-ignore
-          camera.lookAt(new THREE.Vector3(center[0], center[1], center[2]));
+   private determineWebSocketUrl(): string {
+-    // In development, use the Vite dev server proxy
+-    // The proxy will forward the WebSocket connection to the backend
+-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+-    const host = window.location.hostname;
+-    // Use the current port, Vite handles proxying
+-    const port = window.location.port;
+-    const url = `${protocol}//${host}:${port}/wss`; // Path defined in vite proxy config
+-    if (debugState.isEnabled()) { // Log only if debug is enabled
+-        logger.info(`Determined WebSocket URL for dev: ${url}`);
++    if (process.env.NODE_ENV === 'development') {
++      // In development, connect to the WebSocket through the Vite proxy
++      return `ws://${window.location.hostname}:${window.location.port}/ws`;
++    } else {
++      // In production, use relative path
++      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
++      return `${protocol}//${window.location.host}/ws`;
      }
--  }, [center, size]);
-+  }, [camera, center, size]);
+-    return url;
+   }
  
-   return null; // This component does not render anything itself
- };
-diff --git a/client/src/pages/AppPage.tsx b/client/src/pages/AppPage.tsx
-index de686c76..93c304ec 100644
---- a/client/src/pages/AppPage.tsx
-+++ b/client/src/pages/AppPage.tsx
-@@ -1,4 +1,4 @@
--import React, { Suspense, useEffect, useState, useCallback, useRef } from 'react';
-+import React, { Suspense, useEffect, useState, useCallback } from 'react';
- import { Canvas } from '@react-three/fiber';
- import { OrbitControls, Stats } from '@react-three/drei';
- // Import postprocessing effects
-@@ -8,13 +8,10 @@ import GraphManager from '../features/graph/components/GraphManager';
- // ViewportControls removed
- import { createLogger } from '../utils/logger';
- import { useSettingsStore } from '../store/settingsStore';
--// These imports are used in the JSX below
- import { ThemeProvider } from '../ui/ThemeProvider';
- import { ApplicationModeProvider } from '../contexts/ApplicationModeContext';
- import { ControlPanelProvider } from '../features/settings/components/control-panel-context';
- import AppInitializer from '../app/AppInitializer';
--// Import type definitions to fix JSX element errors
--import '../types/react-three-fiber';
- // Removed unused Collapsible imports
- import NostrAuthSection from '../features/auth/components/NostrAuthSection';
- import SystemPanel from '../features/settings/components/panels/SystemPanel';
-@@ -26,14 +23,13 @@ import { HologramVisualization } from '../features/visualization/components/Holo
- import CameraController from '../features/visualization/components/CameraController';
- // Import icons for tabs (using available lucide-react icons)
- // Temporarily using only Settings icon to debug import issues
--import { Settings, Eye, RefreshCw, ExternalLink } from 'lucide-react';
-+import { Settings, Eye } from 'lucide-react';
- 
- const logger = createLogger('SimpleGraphPage');
- 
- // Removed inline CameraController definition
- 
--// Using React.FC without generic parameter
--const AppPage = () => { // Renamed component
-+const AppPage: React.FC = () => { // Renamed component
-   console.log('AppPage rendering');
- 
-   // State variables
-@@ -41,24 +37,9 @@ const AppPage = () => { // Renamed component
-   const [error, setError] = useState<string | null>(null);
-   const [graphCenter, setGraphCenter] = useState<[number, number, number]>([0, 0, 0]);
-   const [graphSize, setGraphSize] = useState(50);
--  const [iframeLoading, setIframeLoading] = useState(true); // Added for iframe
--  const [iframeError, setIframeError] = useState(false); // Track iframe loading errors
--  const iframeRef = useRef<HTMLIFrameElement>(null); // Added for iframe
- 
-   // Settings panel is now always visible, no toggle needed
- 
--  // Add timeout for iframe loading
--  useEffect(() => {
--    const timeoutId = setTimeout(() => {
--      if (iframeLoading) {
--        setIframeLoading(false);
--        setIframeError(true);
--      }
--    }, 10000); // 10 second timeout
--
--    return () => clearTimeout(timeoutId);
--  }, [iframeLoading]);
--
-   // Fetch initial graph data
-   useEffect(() => {
-     const initializeGraph = async () => {
-@@ -102,15 +83,6 @@ const AppPage = () => { // Renamed component
- 
-   // Removed unused handleToggleSidebar function
- 
--  // Function to try different approaches for loading the iframe
--  const tryLoadIframe = useCallback((url: string) => {
--    setIframeError(false);
--    setIframeLoading(true);
--    if (iframeRef.current) {
--      iframeRef.current.src = url;
--    }
--  }, []);
--
-   // Callback for AppInitializer
-   const handleInitialized = useCallback(() => {
-     const settings = useSettingsStore.getState().settings;
-@@ -118,7 +90,7 @@ const AppPage = () => { // Renamed component
-     if (debugEnabled) {
-       logger.debug('App Initialized (AppPage context)'); // Updated log context
-     }
--  }, []); // This is used in the JSX below
-+  }, []);
- 
-   const backgroundColor = '#000000'; // Black background
- 
-@@ -132,8 +104,8 @@ const AppPage = () => { // Renamed component
-     }
- 
-     // Structure for fixed canvas and scrollable panel
--    // Main container: Full height, flex column, overflow hidden to prevent whole page scroll
-     return (
-+      // Main container: Full height, flex column, overflow hidden to prevent whole page scroll
-       <div className="flex flex-col w-full h-screen overflow-hidden bg-background text-foreground">
-         {/* Main Canvas Container - Fixed height */}
-         <div className="relative flex-shrink-0" style={{ height: '70vh' }}> {/* Reduced height to give more space to settings */}
-@@ -145,14 +117,10 @@ const AppPage = () => { // Renamed component
-             dpr={[1, 2]}
-             shadows
-           >
--            {/* @ts-ignore - These are valid Three.js elements */}
-             <color attach="background" args={[backgroundColor]} />
-             <CameraController center={graphCenter} size={graphSize} />
--            {/* @ts-ignore */}
-             <ambientLight intensity={0.6} />
--            {/* @ts-ignore */}
-             <directionalLight position={[10, 10, 5]} intensity={1} castShadow />
--            {/* @ts-ignore */}
-             <pointLight position={[-10, -10, -5]} intensity={0.5} />
-             <OrbitControls
-               makeDefault
-@@ -166,7 +134,6 @@ const AppPage = () => { // Renamed component
-               <GraphManager />
-               <HologramVisualization standalone={false} position={[0, 0, 0]} size={20} />
-             </Suspense>
--            {/* @ts-ignore */}
-             <axesHelper args={[2]} />
-             <Stats />
- 
-@@ -186,20 +153,19 @@ const AppPage = () => { // Renamed component
-         </div>
- 
-         {/* Settings Panel Container - Takes remaining space and scrolls internally */}
--          <div className="flex flex-1 w-full bg-background text-foreground border-t border-gray-800 overflow-y-auto"> {/* Using theme variables */}
--            {/* Header with gradient underline */}
--            <div className="mb-6 text-center"> {/* Reduced margin */}
--              <h2 className="text-3xl font-bold mb-2">Control Panel</h2>
--              <div className="h-1 w-24 bg-gradient-to-r from-blue-500 to-purple-500 mx-auto"></div>
--            </div>
-+          <div className="flex-1 w-full bg-background text-foreground border-t border-gray-800 overflow-y-auto"> {/* Using theme variables */}
-+            <div className="container mx-auto px-4 py-6"> {/* Reduced padding */}
-+              {/* Header with gradient underline */}
-+              <div className="mb-6 text-center"> {/* Reduced margin */}
-+                <h2 className="text-3xl font-bold mb-2">Control Panel</h2>
-+                <div className="h-1 w-24 bg-gradient-to-r from-blue-500 to-purple-500 mx-auto"></div>
-+              </div>
- 
--            {/* Split Panel Area */}
--            <div className="flex flex-1 min-h-[300px] bg-card rounded-lg overflow-hidden shadow-xl border border-border">
--                {/* Left Side: Tabbed Settings */}
--                <div className="w-1/2 h-full flex flex-col border-r border-border dark:border-gray-700">
--                  <Tabs
--                    tabs={[
--                      {
-+              {/* Tabbed Settings Area */}
-+              <div className="bg-card rounded-lg overflow-hidden shadow-xl border border-border min-h-[300px]"> {/* Using theme variables */}
-+                <Tabs
-+                  tabs={[
-+                    {
-                       label: 'Auth',
-                       icon: <Settings className="h-4 w-4" />, // Temp: Use Settings
-                       content: <NostrAuthSection />,
-@@ -224,154 +190,12 @@ const AppPage = () => { // Renamed component
-                       icon: <Settings className="h-4 w-4" />, // Temp: Use Settings
-                       content: <AIPanel />,
-                     },
--                    ]}
--                    // Moved props inside the Tabs component tag
--                    tabListClassName="bg-card px-4 flex-shrink-0" // Use theme variables, prevent shrinking
--                    tabButtonClassName="py-3" // Adjust button padding
--                    tabContentClassName="bg-card text-card-foreground flex-1 overflow-y-auto" // Ensure content area matches theme and scrolls
--                  />
--                  {/* Removed duplicated props and closing bracket */}
--                </div>
--
--                {/* Right Side: Iframe */}
--                <div className="w-1/2 h-full relative bg-gray-100 dark:bg-gray-800 flex flex-col">
--                  <div className="p-3 bg-gray-200 dark:bg-gray-700 border-b border-gray-300 dark:border-gray-600 flex justify-between items-center flex-shrink-0">
--                    <h3 className="text-sm font-medium text-gray-800 dark:text-gray-200">Narrative Gold Mine</h3>
--                    <div className="flex space-x-2">
--                      <button
--                        onClick={() => {
--                          const currentSrc = iframeRef.current?.src || "https://narrativegoldmine.com";
--                          // Force reload by setting to empty and then back
--                          if (iframeRef.current) {
--                            iframeRef.current.src = '';
--                          }
--                          setTimeout(() => tryLoadIframe(currentSrc), 100);
--                        }}
--                        className="p-1 rounded-full hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
--                        title="Refresh"
--                      >
--                        <RefreshCw className="h-4 w-4 text-gray-600 dark:text-gray-300" />
--                      </button>
--                      <a
--                        href="https://www.narrativegoldmine.com"
--                        target="_blank"
--                        rel="noopener noreferrer"
--                        className="p-1 rounded-full hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
--                        title="Open in new tab"
--                      >
--                        <ExternalLink className="h-4 w-4 text-gray-600 dark:text-gray-300" />
--                      </a>
--                    </div>
--                  </div>
--                  <div className="flex-1 relative flex items-center justify-center overflow-hidden">
--                    {/* Loading indicator */}
--                    {iframeLoading && !iframeError && (
--                      <div className="absolute inset-0 flex items-center justify-center bg-gray-100 dark:bg-gray-800 z-10">
--                        <div className="flex flex-col items-center">
--                          <div className="w-12 h-12 border-4 border-t-blue-500 border-gray-200 rounded-full animate-spin mb-4"></div>
--                          <p className="text-sm text-gray-600 dark:text-gray-300">Loading Narrative Gold Mine...</p>
--                        </div>
--                      </div>
--                    )}
--
--                    {/* Error state */}
--                    {iframeError && (
--                      <div className="absolute inset-0 flex items-center justify-center bg-gray-100 dark:bg-gray-800 z-10">
--                        <div className="flex flex-col items-center text-center p-6">
--                          <div className="w-16 h-16 text-red-500 mb-4">
--                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
--                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
--                            </svg>
--                          </div>
--                          <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100 mb-2">Unable to load website</h3>
--                          <p className="text-sm text-gray-600 dark:text-gray-300 mb-4">The website may not allow embedding in iframes.</p>
--                          <div className="flex flex-col space-y-3">
--                            <a
--                              href="https://narrativegoldmine.com"
--                              target="_blank"
--                              rel="noopener noreferrer"
--                              className="inline-flex items-center px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors"
--                            >
--                              <span>Visit Website</span>
--                              <ExternalLink className="ml-2 h-4 w-4" />
--                            </a>
--                            <div className="flex flex-col space-y-2">
--                              <div className="flex space-x-2">
--                                <button
--                                  onClick={() => tryLoadIframe("https://www.narrativegoldmine.com")}
--                                  className="inline-flex items-center px-4 py-2 bg-gray-200 text-gray-800 dark:bg-gray-700 dark:text-gray-200 rounded-md hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
--                                >
--                                  <RefreshCw className="mr-2 h-4 w-4" />
--                                  <span>Try Alternative URL</span>
--                                </button>
--                                <button
--                                  onClick={() => tryLoadIframe("https://cors-anywhere.herokuapp.com/https://narrativegoldmine.com")}
--                                  className="inline-flex items-center px-4 py-2 bg-gray-200 text-gray-800 dark:bg-gray-700 dark:text-gray-200 rounded-md hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
--                                >
--                                  <RefreshCw className="mr-2 h-4 w-4" />
--                                  <span>Try Proxy</span>
--                                </button>
--                              </div>
--                              <button
--                                onClick={() => {
--                                  // Create a fallback content div instead of iframe
--                                  setIframeError(false);
--                                  setIframeLoading(false);
--                                  const container = iframeRef.current?.parentElement;
--                                  if (container) {
--                                    // Hide the iframe
--                                    if (iframeRef.current) {
--                                      iframeRef.current.style.display = 'none';
--                                    }
--
--                                    // Create fallback content
--                                    const fallbackDiv = document.createElement('div');
--                                    fallbackDiv.className = 'w-full h-full p-6 overflow-auto bg-white dark:bg-gray-800';
--                                    fallbackDiv.innerHTML = `
--                                      <div class="prose dark:prose-invert max-w-none">
--                                        <h2>Narrative Gold Mine</h2>
--                                        <p>Narrative Gold Mine is a platform that helps you discover and explore narrative patterns in your data.</p>
--                                        <p>Key features:</p>
--                                        <ul>
--                                          <li>Identify narrative structures in text</li>
--                                          <li>Visualize connections between concepts</li>
--                                          <li>Extract insights from complex information</li>
--                                        </ul>
--                                        <p>Visit <a href="https://narrativegoldmine.com" target="_blank" rel="noopener noreferrer" class="text-blue-500 hover:underline">narrativegoldmine.com</a> to learn more.</p>
--                                      </div>
--                                    `;
--
--                                    // Append to container
--                                    container.appendChild(fallbackDiv);
--                                  }
--                                }}
--                                className="inline-flex items-center px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors"
--                              >
--                                <span>Show Fallback Content</span>
--                              </button>
--                            </div>
--                          </div>
--                        </div>
--                      </div>
--                    )}
--
--                    <iframe
--                      ref={iframeRef}
--                      src="https://narrativegoldmine.com"
--                      className="w-full h-full border-none"
--                      title="Narrative Gold Mine"
--                      sandbox="allow-scripts allow-same-origin allow-popups allow-forms allow-downloads"
--                      loading="lazy"
--                      referrerPolicy="no-referrer"
--                      onLoad={() => setIframeLoading(false)}
--                      onError={() => {
--                        setIframeLoading(false);
--                        setIframeError(true);
--                      }}
--                    />
--                  </div>
--                </div>
--              </div> {/* Close Split Panel Area */}
-+                  ]}
-+                  tabListClassName="bg-card px-4" // Use theme variables
-+                  tabButtonClassName="py-3" // Adjust button padding
-+                  tabContentClassName="bg-card text-card-foreground" // Ensure content area matches theme
-+                />
-+              </div> {/* Correct placement for the closing div of the tabbed area */}
- 
-               {/* Footer with version info */}
-               <div className="mt-12 text-center text-gray-500 text-sm">
-@@ -379,8 +203,9 @@ const AppPage = () => { // Renamed component
-               </div>
-             </div>
-           </div>
--      )
--    }
-+      </div>
-+    );
-+  };
- 
-   // Main component return with essential providers
-   return (
-@@ -393,6 +218,6 @@ const AppPage = () => { // Renamed component
-       </ApplicationModeProvider>
-     </ThemeProvider>
-   );
--}
-+};
- 
- export default AppPage; // Updated export
-diff --git a/client/src/types/lucide-react.d.ts b/client/src/types/lucide-react.d.ts
-index 3b134d49..bde22167 100644
---- a/client/src/types/lucide-react.d.ts
-+++ b/client/src/types/lucide-react.d.ts
-@@ -22,7 +22,7 @@ declare module 'lucide-react' {
-   export const CircleDashed: Icon;
-   export const BrushIcon: Icon;
-   export const MoveHorizontal: Icon;
--
-+  
-   // Additional icons used in PanelManager
-   export const Settings: Icon;
-   export const LayoutGrid: Icon;
-@@ -41,8 +41,7 @@ declare module 'lucide-react' {
-   export const Send: Icon;
-   export const Download: Icon;
-   export const Anchor: Icon;
--  export const ExternalLink: Icon;
--
-+  
-   // Add any other icons that might be used in your project
-   // This is not an exhaustive list, just including the ones I've seen so far
- }
-\ No newline at end of file
+   /**
 diff --git a/client/vite.config.ts b/client/vite.config.ts
-index 611e9192..58e49f18 100644
+index 58e49f18..5f07a903 100644
 --- a/client/vite.config.ts
 +++ b/client/vite.config.ts
-@@ -100,7 +100,7 @@ export default defineConfig({
+@@ -3,127 +3,46 @@ import { defineConfig } from 'vite';
+ import react from '@vitejs/plugin-react';
+ import path from 'path';
+ 
+-// Custom plugin to capture client-side console logs
+-const captureClientLogs = () => {
+-  return {
+-    name: 'capture-client-logs',
+-    transformIndexHtml(html) {
+-      return html.replace(
+-        '</head>',
+-        `<script>
+-          // Override console methods to ensure client logs are visible in the terminal
+-          const originalConsole = {
+-            log: console.log,
+-            info: console.info,
+-            warn: console.warn,
+-            error: console.error,
+-            debug: console.debug
+-          };
+-
+-          // Send logs to the server
+-          function sendLogToServer(level, args) {
+-            try {
+-              const message = args.map(arg =>
+-                typeof arg === 'object' ? JSON.stringify(arg) : String(arg)
+-              ).join(' ');
+-
+-              fetch('/api/__log', {
+-                method: 'POST',
+-                headers: { 'Content-Type': 'application/json' },
+-                body: JSON.stringify({ level, message }),
+-              }).catch(() => {});
+-            } catch (e) {}
+-          }
+-
+-          // Override console methods
+-          console.log = function(...args) {
+-            originalConsole.log.apply(console, args);
+-            sendLogToServer('log', args);
+-          };
+-          console.info = function(...args) {
+-            originalConsole.info.apply(console, args);
+-            sendLogToServer('info', args);
+-          };
+-          console.warn = function(...args) {
+-            originalConsole.warn.apply(console, args);
+-            sendLogToServer('warn', args);
+-          };
+-          console.error = function(...args) {
+-            originalConsole.error.apply(console, args);
+-            sendLogToServer('error', args);
+-          };
+-          console.debug = function(...args) {
+-            originalConsole.debug.apply(console, args);
+-            sendLogToServer('debug', args);
+-          };
+-        </script></head>`
+-      );
+-    },
+-    configureServer(server) {
+-      // Add endpoint to receive logs from client
+-      server.middlewares.use((req, res, next) => {
+-        if (req.url === '/api/__log' && req.method === 'POST') {
+-          let body = '';
+-          req.on('data', chunk => { body += chunk.toString(); });
+-          req.on('end', () => {
+-            try {
+-              const { level, message } = JSON.parse(body);
+-              console.log(`[CLIENT] [${level.toUpperCase()}] ${message}`);
+-              res.statusCode = 200;
+-              res.end('OK');
+-            } catch (e) {
+-              res.statusCode = 400;
+-              res.end('Bad Request');
+-            }
+-          });
+-        } else {
+-          next();
+-        }
+-      });
+-    }
+-  };
+-};
+-
+ export default defineConfig({
+-  plugins: [react(), captureClientLogs()],
+-  build: {
+-    outDir: 'dist',
+-    emptyOutDir: true,
+-  },
++  plugins: [react()],
+   server: {
+     host: '0.0.0.0',
+     port: parseInt(process.env.VITE_DEV_SERVER_PORT || '3001'),
+     strictPort: true,
+     hmr: {
+-      port: 24678,
++      port: parseInt(process.env.VITE_HMR_PORT || '24678'),
+       protocol: 'ws',
++      host: 'localhost',
      },
      proxy: {
        '/api': {
--        target: `http://localhost:${process.env.VITE_API_PORT || '4001'}`,
-+        target: `http://localhost:${process.env.VITE_API_PORT || '4000'}`,
+         target: `http://localhost:${process.env.VITE_API_PORT || '4000'}`,
          changeOrigin: true,
++        secure: false,
++        rewrite: (path) => path.replace(/^\/api/, ''),
          configure: (proxy, _options) => {
            proxy.on('error', (err, _req, _res) => {
-@@ -109,21 +109,20 @@ export default defineConfig({
+             console.log('[PROXY ERROR]', err);
+           });
          },
        },
-       '/ws': {
--        target: `ws://localhost:${process.env.VITE_API_PORT || '4001'}`,
--        ws: true,
--        changeOrigin: true,
--      },
--      '/wss': {
--        target: `ws://localhost:${process.env.VITE_API_PORT || '4001'}/ws`,
-+        target: `ws://localhost:${process.env.VITE_API_PORT || '4000'}`,
+-      '/ws': {
++      '/wss': {
+         target: `ws://localhost:${process.env.VITE_API_PORT || '4000'}`,
          ws: true,
          changeOrigin: true,
++        secure: false,
++      },
++      '/ws': {
++        target: `ws://localhost:${process.env.VITE_HMR_PORT || '24678'}`,
++        ws: true,
++        changeOrigin: true,
++        secure: false,
        }
-     },
-+    // Log all server events
-+    logger: {
-+      level: 'info',
-+      timestamp: true,
-+    },
+-    },
+-    // Log all server events
+-    logger: {
+-      level: 'info',
+-      timestamp: true,
+-    },
++    }
    },
    resolve: {
      alias: {
        '@': path.resolve(__dirname, './src'),
--      'types': path.resolve(__dirname, './src/types'),
-     },
-   },
+-    },
+-  },
++    }
++  }
  });
-diff --git a/config.yml b/config.yml
-index d782a51f..f0f355a6 100644
---- a/config.yml
-+++ b/config.yml
-@@ -2,7 +2,7 @@ tunnel: logseqXR
- 
- ingress:
-   - hostname: www.visionflow.info
--    service: http://webxr::4001
-+    service: http://webxr:4000
-     originRequest:
-       noTLSVerify: true
-       connectTimeout: 30s
-diff --git a/data/settings.yaml b/data/settings.yaml
-index 6b9c6700..3b8cc4c7 100644
---- a/data/settings.yaml
-+++ b/data/settings.yaml
-@@ -96,7 +96,7 @@ system:
-     enable_tls: false
-     max_request_size: 10485760
-     min_tls_version: ''
--    port: 3001 # Changed from 4001 to avoid conflict with Nginx
-+    port: 3001 # Changed from 4000 to avoid conflict with Nginx
-     rate_limit_requests: 10000
-     rate_limit_window: 600
-     tunnel_id: dummy
-@@ -215,4 +215,4 @@ kokoro:
-   timeout: 30
-   stream: true
-   return_timestamps: true
--  sample_rate: 24001
-+  sample_rate: 24000
+-
 diff --git a/docker-compose.dev.yml b/docker-compose.dev.yml
-index 6ba1269b..fd292506 100644
+index fd292506..83d0cc51 100644
 --- a/docker-compose.dev.yml
 +++ b/docker-compose.dev.yml
-@@ -24,11 +24,11 @@ services:
-       - RUST_LOG=off
+@@ -25,9 +25,9 @@ services:
        - NODE_ENV=development
        - VITE_DEV_SERVER_PORT=3001
--      - VITE_API_PORT=4001
-+      - VITE_API_PORT=4000
+       - VITE_API_PORT=4000
++      - VITE_HMR_PORT=24678
        - RUST_LOG_REDIRECT=true
-       # Override the port from settings.yaml for development environment
--      # Ensure Rust backend listens on 4001, which Vite proxies to.
--      - SYSTEM_NETWORK_PORT=4001
-+      # Ensure Rust backend listens on 4000, which Vite proxies to.
-+      - SYSTEM_NETWORK_PORT=4000
+-      # Override the port from settings.yaml for development environment
+-      # Ensure Rust backend listens on 4000, which Vite proxies to.
++      # Ensure WebSocket endpoint is available
+       - SYSTEM_NETWORK_PORT=4000
      deploy:
        resources:
-         reservations:
-@@ -38,7 +38,7 @@ services:
+@@ -38,8 +38,8 @@ services:
                device_ids: ['0']
      ports:
        - "3001:3001"  # Vite dev server
--      - "4001:4001"  # Nginx/Backend API
-+      - "4000:4000"  # Nginx/Backend API
-       - "24678:24678"  # Vite HMR
+-      - "4000:4000"  # Nginx/Backend API
+-      - "24678:24678"  # Vite HMR
++      - "4000:4000"  # Backend API/WebSocket
++      - "24678:24678"  # Vite HMR (exposed directly)
      networks:
        - docker_ragflow
-diff --git a/docker-compose.production.yml b/docker-compose.production.yml
-index cab57bdc..e0c8a9aa 100644
---- a/docker-compose.production.yml
-+++ b/docker-compose.production.yml
-@@ -31,13 +31,13 @@ services:
-               capabilities: [compute,utility]
-               device_ids: ['0']
-     ports:
--      - "4001:4001"  # Expose API port
-+      - "4000:4000"  # Expose API port
-     networks:
-       - docker_ragflow # Revert to simple network list item
-     restart: unless-stopped
-     healthcheck:
-       # Check root path which Nginx serves, indicating Nginx is up
--      test: ["CMD", "curl", "-f", "http://localhost:4001/"]
-+      test: ["CMD", "curl", "-f", "http://localhost:4000/"]
-       interval: 30s
-       timeout: 10s
-       retries: 3
-diff --git a/docker-compose.yml b/docker-compose.yml
-index 1b897118..eb15224e 100755
---- a/docker-compose.yml
-+++ b/docker-compose.yml
-@@ -21,15 +21,15 @@ services:
-               device_ids: ['0']  # Explicitly use GPU 0
-               capabilities: [compute, utility]
-     expose:
--      - "4001"
-+      - "4000"
-     ports:
--      - "4001:4001"  # Map container nginx port 4001 to host port 4001
-+      - "4000:4000"  # Map container nginx port 4000 to host port 4000
-     environment:
-       - RUST_LOG=off                 # Changed from info
-       - RUST_BACKTRACE=1
-       - BIND_ADDRESS=0.0.0.0
-       - PORT=3001  # Explicitly set Rust backend to use port 3001
--      - NGINX_PORT=4001  # Set nginx to use port 4001
-+      - NGINX_PORT=4000  # Set nginx to use port 4000
-       - NVIDIA_GPU_UUID=GPU-553dc306-dab3-32e2-c69b-28175a6f4da6  # Direct UUID value for the specific GPU
-       - NVIDIA_VISIBLE_DEVICES=GPU-553dc306-dab3-32e2-c69b-28175a6f4da6  # Pass the GPU UUID directly
-       - NVIDIA_DRIVER_CAPABILITIES=compute,utility
-@@ -58,7 +58,7 @@ services:
-         max-size: "1g"
-         max-file: "5"
-     healthcheck:
--      test: ["CMD", "curl", "-f", "http://localhost:4001/"]
-+      test: ["CMD", "curl", "-f", "http://localhost:4000/"]
-       interval: 10s
-       timeout: 5s
-       retries: 3
-diff --git a/nginx.conf b/nginx.conf
-index 16899dc3..a1a57c94 100755
---- a/nginx.conf
-+++ b/nginx.conf
-@@ -59,7 +59,7 @@ http {
  
-     # Main server configuration
-     server {
--        listen 4001 default_server;  # Listen on port 4001 for external connections
-+        listen 4000 default_server;  # Listen on port 4000 for external connections
-         server_name _;  # Accept any server name
-         root /app/client/dist;  # Set root to built client files directory
- 
-@@ -73,54 +73,34 @@ http {
- 
-         # WebSocket endpoint
-         location /wss {
--            proxy_pass http://backend/ws;
-+            proxy_pass http://backend;
-             proxy_http_version 1.1;
-             proxy_set_header Upgrade $http_upgrade;
-             proxy_set_header Connection $connection_upgrade;
-             proxy_set_header Host $host;
--
-+            
-             # Pass through Cloudflare headers
-             proxy_set_header CF-Connecting-IP $http_cf_connecting_ip;
-             proxy_set_header CF-Ray $http_cf_ray;
-             proxy_set_header CF-Visitor $http_cf_visitor;
--
-+            
-             # Standard proxy headers
-             proxy_set_header X-Real-IP $remote_addr;
-             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-             proxy_set_header X-Forwarded-Proto $http_x_forwarded_proto;
--
-+            
-             # WebSocket timeouts
-             proxy_read_timeout 600m;  # Increased from 3600s to 600m (10 hours) to match websocketIdleTimeout
-             proxy_send_timeout 3600s;
-             proxy_connect_timeout 75s;
-             proxy_buffering off;
-             proxy_cache off;
--
-+            
-             # Debug logging
-             access_log /var/log/nginx/websocket.log debug_format;
-             error_log /var/log/nginx/websocket-error.log debug;
-         }
- 
--        # Vite HMR WebSocket
--        location ~ ^/\?token=.* {
--            proxy_pass http://localhost:3001;
--            proxy_http_version 1.1;
--            proxy_set_header Upgrade $http_upgrade;
--            proxy_set_header Connection $connection_upgrade;
--            proxy_set_header Host $host;
--            proxy_cache_bypass $http_upgrade;
--        }
--
--        # Vite WebSocket on port 24678
--        location /ws {
--            proxy_pass http://localhost:24678;
--            proxy_http_version 1.1;
--            proxy_set_header Upgrade $http_upgrade;
--            proxy_set_header Connection $connection_upgrade;
--            proxy_set_header Host $host;
--            proxy_cache_bypass $http_upgrade;
--        }
--
-         # API endpoints
-         location /api {
-             proxy_pass http://backend;
-@@ -129,7 +109,7 @@ http {
-             proxy_set_header X-Real-IP $remote_addr;
-             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-             proxy_set_header X-Forwarded-Proto $scheme;
--
-+            
-             # API specific settings
-             proxy_read_timeout 120s;  # Increased for larger graph data
-             proxy_send_timeout 120s;  # Increased for larger graph data
-diff --git a/scripts/dev-entrypoint.sh b/scripts/dev-entrypoint.sh
-index ff045ba9..3a61ba01 100755
---- a/scripts/dev-entrypoint.sh
-+++ b/scripts/dev-entrypoint.sh
-@@ -68,7 +68,7 @@ trap cleanup SIGTERM SIGINT SIGQUIT
- 
- # Verify ports are not in use
- check_ports() {
--    if lsof -i:4001 || lsof -i:3001; then
-+    if lsof -i:4000 || lsof -i:3001; then
-         log "Error: Required ports are in use"
-         exit 1
-     fi
+diff --git a/nginx.dev.conf b/nginx.dev.conf
+new file mode 100644
+index 00000000..1a26c393
+--- /dev/null
++++ b/nginx.dev.conf
+@@ -0,0 +1,54 @@
++# Development-specific Nginx configuration
++map $http_upgrade $connection_upgrade {
++    default upgrade;
++    '' close;
++}
++
++upstream backend {
++    server localhost:4000;
++}
++
++upstream vite {
++    server localhost:3001;
++}
++
++upstream hmr {
++    server localhost:24678;
++}
++
++server {
++    listen 3001;
++    server_name localhost;
++
++    # Vite HMR WebSocket
++    location /ws {
++        proxy_pass http://hmr;
++        proxy_http_version 1.1;
++        proxy_set_header Upgrade $http_upgrade;
++        proxy_set_header Connection $connection_upgrade;
++        proxy_set_header Host $host;
++    }
++
++    # Backend WebSocket
++    location /wss {
++        proxy_pass http://backend;
++        proxy_http_version 1.1;
++        proxy_set_header Upgrade $http_upgrade;
++        proxy_set_header Connection $connection_upgrade;
++        proxy_set_header Host $host;
++    }
++
++    # API endpoints
++    location /api {
++        proxy_pass http://backend;
++        proxy_http_version 1.1;
++        proxy_set_header Host $host;
++    }
++
++    # Everything else goes to Vite
++    location / {
++        proxy_pass http://vite;
++        proxy_http_version 1.1;
++        proxy_set_header Host $host;
++    }
++}
+\ No newline at end of file
 diff --git a/scripts/dev.sh b/scripts/dev.sh
-index 2065c503..4a3d0373 100755
+index 4a3d0373..49ab0b8f 100755
 --- a/scripts/dev.sh
 +++ b/scripts/dev.sh
-@@ -20,7 +20,7 @@ log() {
+@@ -20,6 +20,24 @@ log() {
      echo -e "[$(date '+%Y-%m-%d %H:%M:%S')] $1"
  }
  
--# Enhanced cleanup function
-+# Cleanup function
++# Check if ports are available
++check_ports() {
++    local ports=(3001 4000 24678)
++    local port_check_failed=false
++
++    for port in "${ports[@]}"; do
++        if lsof -i ":$port" > /dev/null 2>&1; then
++            log "${RED}Port $port is already in use${NC}"
++            port_check_failed=true
++        fi
++    done
++
++    if [ "$port_check_failed" = true ]; then
++        log "${RED}One or more required ports are in use. Please free them before continuing.${NC}"
++        exit 1
++    fi
++}
++
+ # Cleanup function
  cleanup() {
      log "${YELLOW}Cleaning up development environment...${NC}"
-     
-@@ -30,47 +30,11 @@ cleanup() {
+@@ -30,25 +48,66 @@ cleanup() {
          cd "$PROJECT_ROOT" && docker compose -f $DOCKER_COMPOSE_FILE down
      fi
      
--    # Check and kill any Vite processes running on the host
--    local vite_pids=$(pgrep -f "vite")
--    if [ -n "${vite_pids}" ]; then
--        log "${YELLOW}Found stray Vite processes on host, cleaning up...${NC}"
--        echo "${vite_pids}" | xargs kill -9 || true
--    fi
+-    # Host process cleanup removed as Node/Vite run inside the container
 -    
--    # Check if ports are in use
--    for port in 3001 4001 24678; do
--        if lsof -i ":$port" >/dev/null 2>&1; then
--            log "${YELLOW}Freeing up port $port...${NC}"
--            lsof -ti ":$port" | xargs kill -9 || true
--        fi
--    done
-+    # Host process cleanup removed as Node/Vite run inside the container
-     
      log "${GREEN}Cleanup complete${NC}"
  }
  
--# Enhanced port check function
--check_ports() {
--    local ports_in_use=false
--    for port in 3001 4001 24678; do
--        if lsof -i ":$port" >/dev/null 2>&1; then
--            log "${RED}Port $port is already in use${NC}"
--            ports_in_use=true
--        fi
--    done
--    
--    if [ "$ports_in_use" = true ]; then
--        log "${YELLOW}Attempting to free up ports...${NC}"
--        cleanup
--        # Double check ports after cleanup
--        for port in 3001 4001 24678; do
--            if lsof -i ":$port" >/dev/null 2>&1; then
--                log "${RED}Failed to free up port $port. Please check manually.${NC}"
--                exit 1
--            fi
--        done
--    fi
--}
--
  # Trap signals
  trap cleanup SIGINT SIGTERM EXIT
  
-@@ -79,9 +43,6 @@ trap cleanup SIGINT SIGTERM EXIT
+-# Setup function removed as dependencies are installed during Docker build
++# Check Docker network
++check_docker_network() {
++    if ! docker network ls | grep -q "docker_ragflow"; then
++        log "${YELLOW}Creating docker_ragflow network...${NC}"
++        docker network create docker_ragflow || {
++            log "${RED}Failed to create docker_ragflow network${NC}"
++            exit 1
++        }
++    fi
++}
++
+ # Start development servers
  start_dev() {
      log "${YELLOW}Starting development servers...${NC}"
      
--    # Check ports before starting
--    check_ports
--    
++    # Check ports before starting
++    check_ports
++    
++    # Ensure Docker network exists
++    check_docker_network
++    
      # Build and start containers with updated configuration
      log "${YELLOW}Starting Docker containers...${NC}"
      cd "$PROJECT_ROOT" && DOCKER_BUILDKIT=1 docker compose -f $DOCKER_COMPOSE_FILE up --build
-diff --git a/scripts/diagnostics.sh b/scripts/diagnostics.sh
-index ec98c110..d292b4f4 100755
---- a/scripts/diagnostics.sh
-+++ b/scripts/diagnostics.sh
-@@ -36,9 +36,9 @@ show_diagnostics() {
- check_endpoints() {
-     echo -e "${YELLOW}=== Testing Endpoints ===${NC}"
-     endpoints=(
--        "http://localhost:4001/api/health"
--        "http://localhost:4001/api/graph/data"
--        "http://localhost:4001/api/files/fetch"
-+        "http://localhost:4000/api/health"
-+        "http://localhost:4000/api/graph/data"
-+        "http://localhost:4000/api/files/fetch"
-     )
++
++    # Wait for services to be ready
++    local max_attempts=30
++    local attempt=1
++    local services_ready=false
++
++    while [ $attempt -le $max_attempts ]; do
++        if curl -s http://localhost:3001 >/dev/null && \
++           curl -s http://localhost:4000/api/health >/dev/null && \
++           nc -z localhost 24678; then
++            services_ready=true
++            break
++        fi
++        log "${YELLOW}Waiting for services to be ready (attempt $attempt/$max_attempts)...${NC}"
++        sleep 1
++        ((attempt++))
++    done
++
++    if [ "$services_ready" = true ]; then
++        log "${GREEN}All services are ready!${NC}"
++        log "${GREEN}Development server running at: http://localhost:3001${NC}"
++        log "${GREEN}API endpoint available at: http://localhost:4000${NC}"
++        log "${GREEN}HMR WebSocket available at: ws://localhost:24678${NC}"
++    else
++        log "${RED}Services failed to start properly${NC}"
++        cleanup
++        exit 1
++    fi
+ }
  
-     for endpoint in "${endpoints[@]}"; do
-diff --git a/scripts/launch-production.sh b/scripts/launch-production.sh
-index 238a1b29..fb2b51ea 100755
---- a/scripts/launch-production.sh
-+++ b/scripts/launch-production.sh
-@@ -336,7 +336,7 @@ check_application_readiness() {
-         fi
+ # Main execution
+ cleanup  # Clean up any existing processes first
+-# setup_dev call removed
+ start_dev
+diff --git a/src/main.rs b/src/main.rs
+index 6f9775ee..efca667e 100755
+--- a/src/main.rs
++++ b/src/main.rs
+@@ -278,19 +278,14 @@ async fn main() -> std::io::Result<()> {
+             .supports_credentials();
  
-         # Check if HTTP endpoint is accessible
--        if ! curl -s http://localhost:4001/health >/dev/null; then
-+        if ! curl -s http://localhost:4000/health >/dev/null; then
-             log "${YELLOW}Attempt $attempt/$max_attempts: HTTP endpoint not ready${NC}"
-             sleep "$wait_secs"
-             attempt=$((attempt + 1))
-@@ -393,8 +393,8 @@ main() {
- 
-     # Show endpoints
-     log "\n${YELLOW}Endpoints:${NC}"
--    echo "HTTP:      http://localhost:4001"
--    echo "WebSocket: wss://localhost:4001/wss"
-+    echo "HTTP:      http://localhost:4000"
-+    echo "WebSocket: wss://localhost:4000/wss"
- 
-     # Show useful commands
-     log "\n${YELLOW}Useful Commands:${NC}"
-diff --git a/scripts/test.sh b/scripts/test.sh
-index 3bc1e42c..b04db57c 100755
---- a/scripts/test.sh
-+++ b/scripts/test.sh
-@@ -55,12 +55,12 @@ test_endpoints() {
-     fi
-     
-     # Test root endpoint on host port
--    echo -e "\n${YELLOW}Testing Root Endpoint (localhost:4001/):${NC}"
--    curl -v http://localhost:4001/ 2>&1 || echo -e "${RED}Failed to connect to root endpoint on localhost:4001${NC}"
-+    echo -e "\n${YELLOW}Testing Root Endpoint (localhost:4000/):${NC}"
-+    curl -v http://localhost:4000/ 2>&1 || echo -e "${RED}Failed to connect to root endpoint on localhost:4000${NC}"
- 
-     # Test API endpoint on host port
--    echo -e "\n${YELLOW}Testing API Endpoint (localhost:4001/api/settings):${NC}"
--    curl -v http://localhost:4001/api/settings 2>&1 || echo -e "${RED}Failed to connect to API endpoint on localhost:4001${NC}"
-+    echo -e "\n${YELLOW}Testing API Endpoint (localhost:4000/api/settings):${NC}"
-+    curl -v http://localhost:4000/api/settings 2>&1 || echo -e "${RED}Failed to connect to API endpoint on localhost:4000${NC}"
-     
-     # Test Production Endpoint (Root)
-     echo -e "\n${YELLOW}Testing Production Endpoint (Root - https://www.visionflow.info/):${NC}"
-@@ -94,8 +94,8 @@ check_container_health
- 
- # Provide next steps
- echo -e "\n${YELLOW}Diagnostic Summary:${NC}"
--echo "1. Host Port 4001 (Root /): $(curl -s -o /dev/null -w "%{http_code}" http://localhost:4001/ 2>/dev/null || echo "Failed")"
--echo "2. Host Port 4001 (API /api/settings): $(curl -s -o /dev/null -w "%{http_code}" http://localhost:4001/api/settings 2>/dev/null || echo "Failed")"
-+echo "1. Host Port 4000 (Root /): $(curl -s -o /dev/null -w "%{http_code}" http://localhost:4000/ 2>/dev/null || echo "Failed")"
-+echo "2. Host Port 4000 (API /api/settings): $(curl -s -o /dev/null -w "%{http_code}" http://localhost:4000/api/settings 2>/dev/null || echo "Failed")"
- echo "3. Production Root (https://www.visionflow.info/): $(curl -s -o /dev/null -w "%{http_code}" https://www.visionflow.info/ 2>/dev/null || echo "Failed")"
- echo "4. Production API (https://www.visionflow.info/api/settings): $(curl -s -o /dev/null -w "%{http_code}" https://www.visionflow.info/api/settings 2>/dev/null || echo "Failed")"
- # Production Health check removed
-diff --git a/src/config/mod.rs b/src/config/mod.rs
-index ac55b56f..0a2cbdc0 100644
---- a/src/config/mod.rs
-+++ b/src/config/mod.rs
-@@ -676,7 +676,7 @@ impl Default for Settings {
-                 timeout: 30,
-                 stream: true,
-                 return_timestamps: true,
--                sample_rate: 24001,
-+                sample_rate: 24000,
-             },
-         }
-     }
-diff --git a/src/utils/compute_forces.ptx b/src/utils/compute_forces.ptx
-index 8fcee280..83f9dce3 100644
---- a/src/utils/compute_forces.ptx
-+++ b/src/utils/compute_forces.ptx
-@@ -147,7 +147,7 @@ $L__BB0_11:
- 	div.approx.ftz.f32 	%f24, %f20, %f23;
- 	div.approx.ftz.f32 	%f25, %f21, %f23;
- 	div.approx.ftz.f32 	%f26, %f22, %f23;
--	add.ftz.f32 	%f155, %f23, 0fC0400100;
-+	add.ftz.f32 	%f155, %f23, 0fC0400000;
- 	fma.rn.ftz.f32 	%f27, %f155, 0f3DCCCCCD, 0f3F800000;
- 	setp.lt.ftz.f32 	%p9, %f23, %f124;
- 	@%p9 bra 	$L__BB0_14;
-@@ -174,7 +174,7 @@ $L__BB0_13:
- 	mul.ftz.f32 	%f157, %f13, %f156;
- 	neg.ftz.f32 	%f158, %f157;
- 	mul.ftz.f32 	%f159, %f289, %f293;
--	setp.gt.ftz.f32 	%p10, %f23, 0f40400100;
-+	setp.gt.ftz.f32 	%p10, %f23, 0f40400000;
- 	mul.ftz.f32 	%f160, %f27, %f158;
- 	selp.f32 	%f161, %f160, %f158, %p10;
- 	mul.ftz.f32 	%f162, %f159, %f161;
-@@ -217,7 +217,7 @@ $L__BB0_18:
- 	div.approx.ftz.f32 	%f43, %f39, %f42;
- 	div.approx.ftz.f32 	%f44, %f40, %f42;
- 	div.approx.ftz.f32 	%f45, %f41, %f42;
--	add.ftz.f32 	%f186, %f42, 0fC0400100;
-+	add.ftz.f32 	%f186, %f42, 0fC0400000;
- 	fma.rn.ftz.f32 	%f46, %f186, 0f3DCCCCCD, 0f3F800000;
- 	setp.lt.ftz.f32 	%p14, %f42, %f124;
- 	@%p14 bra 	$L__BB0_21;
-@@ -244,7 +244,7 @@ $L__BB0_20:
- 	mul.ftz.f32 	%f188, %f13, %f187;
- 	neg.ftz.f32 	%f189, %f188;
- 	mul.ftz.f32 	%f190, %f289, %f297;
--	setp.gt.ftz.f32 	%p15, %f42, 0f40400100;
-+	setp.gt.ftz.f32 	%p15, %f42, 0f40400000;
- 	mul.ftz.f32 	%f191, %f46, %f189;
- 	selp.f32 	%f192, %f191, %f189, %p15;
- 	mul.ftz.f32 	%f193, %f190, %f192;
-@@ -301,10 +301,10 @@ $L__BB0_27:
- 	add.ftz.f32 	%f217, %f67, 0fBF800000;
- 	mul.ftz.f32 	%f218, %f13, %f217;
- 	neg.ftz.f32 	%f219, %f218;
--	add.ftz.f32 	%f220, %f67, 0fC0400100;
-+	add.ftz.f32 	%f220, %f67, 0fC0400000;
- 	fma.rn.ftz.f32 	%f221, %f220, 0f3DCCCCCD, 0f3F800000;
- 	mul.ftz.f32 	%f222, %f221, %f219;
--	setp.gt.ftz.f32 	%p21, %f67, 0f40400100;
-+	setp.gt.ftz.f32 	%p21, %f67, 0f40400000;
- 	selp.f32 	%f71, %f222, %f219, %p21;
- 	setp.lt.ftz.f32 	%p22, %f67, %f124;
- 	@%p22 bra 	$L__BB0_30;
-@@ -341,10 +341,10 @@ $L__BB0_31:
- 	fma.rn.ftz.f32 	%f239, %f5, %f5, %f238;
- 	fma.rn.ftz.f32 	%f240, %f7, %f7, %f239;
- 	sqrt.approx.ftz.f32 	%f81, %f240;
--	setp.leu.ftz.f32 	%p23, %f81, 0f40400100;
-+	setp.leu.ftz.f32 	%p23, %f81, 0f40400000;
- 	@%p23 bra 	$L__BB0_33;
- 
--	add.ftz.f32 	%f241, %f81, 0fC0400100;
-+	add.ftz.f32 	%f241, %f81, 0fC0400000;
- 	mul.ftz.f32 	%f242, %f289, 0f3C75C28F;
- 	mul.ftz.f32 	%f243, %f287, %f242;
- 	mul.ftz.f32 	%f244, %f243, %f241;
-@@ -361,13 +361,13 @@ $L__BB0_33:
- 	fma.rn.ftz.f32 	%f250, %f294, %f294, %f249;
- 	fma.rn.ftz.f32 	%f251, %f296, %f296, %f250;
- 	sqrt.approx.ftz.f32 	%f88, %f251;
--	setp.leu.ftz.f32 	%p24, %f88, 0f40400100;
-+	setp.leu.ftz.f32 	%p24, %f88, 0f40400000;
- 	add.u64 	%rd11, %SP, 0;
- 	add.u64 	%rd5, %SPL, 0;
- 	@%p24 bra 	$L__BB0_36;
- 
- 	setp.gt.s32 	%p25, %r10, 4;
--	mov.f32 	%f252, 0f40400100;
-+	mov.f32 	%f252, 0f40400000;
- 	div.approx.ftz.f32 	%f253, %f252, %f88;
- 	mul.ftz.f32 	%f294, %f294, %f253;
- 	mul.ftz.f32 	%f295, %f295, %f253;
-@@ -403,9 +403,9 @@ $L__BB0_36:
- 	mov.f32 	%f254, 0f3F800000;
- 	sub.ftz.f32 	%f255, %f254, %f288;
- 	selp.f32 	%f256, 0f00000000, %f8, %p28;
--	mov.f32 	%f257, 0fC0400100;
-+	mov.f32 	%f257, 0fC0400000;
- 	max.ftz.f32 	%f258, %f257, %f294;
--	mov.f32 	%f259, 0f40400100;
-+	mov.f32 	%f259, 0f40400000;
- 	min.ftz.f32 	%f260, %f259, %f258;
- 	mul.ftz.f32 	%f261, %f260, %f123;
- 	fma.rn.ftz.f32 	%f320, %f255, %f256, %f261;
+         let mut app = App::new()
+-            .wrap(middleware::Logger::default())
+             .wrap(cors)
+-            .wrap(middleware::Compress::default())
+-            .app_data(settings_data.clone())
+-            .app_data(web::Data::new(github_client.clone()))
+-            .app_data(web::Data::new(content_api.clone()))
+-            .app_data(app_state_data.clone())  // Add the complete AppState
+-            .app_data(app_state_data.nostr_service.clone().unwrap())
+-            .app_data(app_state_data.feature_access.clone())
+-            .route("/wss", web::get().to(socket_flow_handler))
+-            .route("/speech", web::get().to(speech_socket_handler))
++            .wrap(middleware::Logger::default())
++            .service(
++                web::scope("/ws")
++                    .route("", web::get().to(socket_flow_handler))
++            )
+             .service(
+-                web::scope("")
++                web::scope("/api")
+                     .configure(api_handler::config)
+                     .service(web::scope("/health").configure(health_handler::config))
+                     .service(web::scope("/pages").configure(pages_handler::config))

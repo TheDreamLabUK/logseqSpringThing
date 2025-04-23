@@ -12,6 +12,8 @@ services:
       - ./data/metadata:/app/data/metadata
       - ./data/user_settings:/app/user_settings
       - ./data/settings.yaml:/app/settings.yaml
+      - ./nginx.dev.conf:/etc/nginx/nginx.conf:ro # Mount dev Nginx config (read-only)
+      - ./logs/nginx:/var/log/nginx # Mount nginx logs to host
       - ./scripts/logs:/app/logs
       - npm-cache:/root/.npm
       - cargo-cache:/root/.cargo/registry
@@ -23,31 +25,32 @@ services:
       - NVIDIA_GPU_UUID=GPU-553dc306-dab3-32e2-c69b-28175a6f4da6
       - RUST_LOG=off
       - NODE_ENV=development
-      - VITE_DEV_SERVER_PORT=3001
+      - VITE_DEV_SERVER_PORT=5173 # Internal Vite port, accessed via Nginx
       - VITE_API_PORT=4000
+      - VITE_HMR_PORT=24678 # Internal HMR port, accessed via Nginx
       - RUST_LOG_REDIRECT=true
       # Override the port from settings.yaml for development environment
       # Ensure Rust backend listens on 4000, which Vite proxies to.
       - SYSTEM_NETWORK_PORT=4000
-    deploy:
+    deploy: # Indentation: 4 spaces
       resources:
         reservations:
           devices:
             - driver: nvidia
               capabilities: [compute,utility]
               device_ids: ['0']
-    ports:
-      - "3001:3001"  # Vite dev server
-      - "4000:4000"  # Nginx/Backend API
-      - "24678:24678"  # Vite HMR
-    networks:
+    ports: # Indentation: 4 spaces
+      # Expose only Nginx port 3001 to the host.
+      # Other services (Vite 5173, Rust 4000, HMR 24678) are accessed via Nginx proxy.
+      - "3001:3001"  # Nginx entry point
+    networks: # Indentation: 4 spaces
       - docker_ragflow
 
-networks:
+networks: # Indentation: 2 spaces
   docker_ragflow:
     external: true
 
-volumes:
+volumes: # Indentation: 2 spaces
   npm-cache:
   cargo-cache:
   cargo-git-cache:

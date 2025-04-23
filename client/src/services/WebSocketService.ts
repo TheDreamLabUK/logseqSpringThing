@@ -84,15 +84,11 @@ class WebSocketService {
   }
 
   private determineWebSocketUrl(): string {
-    // In development, use the Vite dev server proxy
-    // The proxy will forward the WebSocket connection to the backend
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const host = window.location.hostname;
-    // Use the current port, Vite handles proxying
-    const port = window.location.port;
-    const url = `${protocol}//${host}:${port}/wss`; // Path defined in vite proxy config
+    // Always use a relative path. Nginx handles proxying in dev,
+    // and the browser resolves it correctly in production.
+    const url = '/wss';
     if (debugState.isEnabled()) { // Log only if debug is enabled
-        logger.info(`Determined WebSocket URL for dev: ${url}`);
+        logger.info(`Determined WebSocket URL (relative): ${url}`);
     }
     return url;
   }
