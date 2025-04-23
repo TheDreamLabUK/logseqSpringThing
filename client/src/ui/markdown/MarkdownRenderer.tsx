@@ -5,7 +5,8 @@ import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { cn } from '@/utils/cn';
 import { Button } from '@/ui/Button';
-import { Copy, Check, Edit, Save, Play, ExternalLink } from 'lucide-react';
+// Using icons available in types/lucide-react.d.ts
+import { Download, Check, Settings, Terminal, Anchor } from 'lucide-react';
 
 // Interactive code block component
 const InteractiveCodeBlock = ({ language, code, className }) => {
@@ -58,7 +59,8 @@ const InteractiveCodeBlock = ({ language, code, className }) => {
               onClick={handleSave}
               aria-label="Save"
             >
-              <Save className="h-3 w-3" />
+              {/* Using Check for Save */}
+              <Check className="h-3 w-3" />
             </Button>
           </div>
         </div>
@@ -81,7 +83,8 @@ const InteractiveCodeBlock = ({ language, code, className }) => {
               onClick={handleCopy}
               aria-label="Copy code"
             >
-              {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+              {/* Using Download for Copy */}
+              {copied ? <Check className="h-3 w-3" /> : <Download className="h-3 w-3" />}
             </Button>
             <Button
               variant="ghost"
@@ -90,7 +93,8 @@ const InteractiveCodeBlock = ({ language, code, className }) => {
               onClick={handleEdit}
               aria-label="Edit code"
             >
-              <Edit className="h-3 w-3" />
+              {/* Using Settings for Edit */}
+              <Settings className="h-3 w-3" />
             </Button>
             {isExecutable && (
               <Button
@@ -101,7 +105,8 @@ const InteractiveCodeBlock = ({ language, code, className }) => {
                 aria-label="Execute code"
                 disabled={executing}
               >
-                <Play className="h-3 w-3" />
+                {/* Using Terminal for Play */}
+                <Terminal className="h-3 w-3" />
               </Button>
             )}
           </div>
@@ -130,7 +135,8 @@ const InteractiveLink = ({ href, children }) => {
       className="text-primary hover:underline inline-flex items-center"
     >
       {children}
-      {isExternal && <ExternalLink className="ml-1 h-3 w-3" />}
+      {/* Using Anchor for ExternalLink */}
+      {isExternal && <Anchor className="ml-1 h-3 w-3" />}
     </a>
   );
 };

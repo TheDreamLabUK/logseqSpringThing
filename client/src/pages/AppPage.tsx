@@ -19,6 +19,8 @@ import CameraController from '../features/visualization/components/CameraControl
 // Removed icon imports - now handled by LowerControlPanel
 // Import type definitions to fix JSX element errors
 import '../types/react-three-fiber.d.ts';
+// Ensure Three.js types are properly loaded
+import * as THREE from 'three';
 import LowerControlPanel from '../components/layout/LowerControlPanel'; // Import the new component
 
 const logger = createLogger('SimpleGraphPage');
@@ -102,7 +104,7 @@ const AppPage: React.FC = () => { // Renamed component
     // Structure for fixed canvas and scrollable panel
     return (
       // Main container: Full height, flex column, overflow hidden to prevent whole page scroll
-      <div className="flex flex-col w-full h-screen overflow-hidden bg-background text-foreground">
+      <div className="flex flex-col w-full h-screen overflow-hidden bg-gray-900 text-white" style={{ backgroundColor: '#111827', color: 'white' }}>
         {/* Main Canvas Container - Fixed height */}
         <div className="relative flex-shrink-0" style={{ height: '70vh' }}> {/* Reduced height to give more space to settings */}
           <Canvas
@@ -149,7 +151,7 @@ const AppPage: React.FC = () => { // Renamed component
         </div>
 
         {/* Lower Panel Container - Takes remaining space (flex-1) and handles overall scrolling */}
-        <div className="flex-1 w-full border-t border-gray-800 overflow-y-auto"> {/* Removed bg/text - handled by LowerControlPanel */}
+        <div className="flex-1 w-full border-t border-gray-700 overflow-y-auto bg-gray-900 text-white" style={{ backgroundColor: '#111827', color: 'white', overflowY: 'auto' }}> {/* Using direct color classes and inline styles */}
           {/* Render the new LowerControlPanel component */}
           <LowerControlPanel />
         </div>
