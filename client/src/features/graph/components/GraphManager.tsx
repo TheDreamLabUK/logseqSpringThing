@@ -39,10 +39,49 @@ const getPositionForNode = (node: GraphNode, index: number): [number, number, nu
 }
 
 const GraphManager = () => {
-  const meshRef = useRef(null)
+  const meshRef = useRef<THREE.InstancedMesh>()
+  const tempMatrix = new THREE.Matrix4()
+  const tempPosition = new THREE.Vector3()
+  const tempScale = new THREE.Vector3()
   const [graphData, setGraphData] = useState<GraphData>({ nodes: [], edges: [] })
   const [nodesAreAtOrigin, setNodesAreAtOrigin] = useState(false)
   const settings = useSettingsStore(state => state.settings)
+
+  useEffect(() => {
+    if (!meshRef.current) return
+    
+    // Initialize all matrices to prevent undefined states
+    const mesh = meshRef.current
+    const count = graphData.nodes.length
+    mesh.count = count
+    
+    // Initialize all instances with identity matrix
+    for (let i = 0; i < count; i++) {
+      mesh.setMatrixAt(i, tempMatrix.identity())
+    }
+    mesh.instanceMatrix.needsUpdate = true
+    
+    console.debug(`Initialized ${count} instances`)
+  }, [graphData.nodes.length])
+
+  // Separate matrix update function for better performance
+  const updateInstanceMatrix = (
+    index: number,
+    x: number,
+    y: number,
+    z: number,
+    scale: number
+  ) => {
+    if (!meshRef.current) return
+
+    tempPosition.set(x, y, z)
+    tempScale.set(scale, scale, scale)
+    
+    tempMatrix.makeScale(scale, scale, scale)
+    tempMatrix.setPosition(tempPosition)
+    
+    meshRef.current.setMatrixAt(index, tempMatrix)
+  }
 
   // Subscribe to graph data changes
   useEffect(() => {
@@ -116,6 +155,24 @@ const GraphManager = () => {
 
     mesh.instanceMatrix.needsUpdate = true
   }
+
+  useFrame(() => {
+    if (!meshRef.current) return
+
+    let needsUpdate = false
+    graphData.nodes.forEach((node, index) => {
+      const pos = node.data.position
+      if (pos && (pos.x !== 0 || pos.y !== 0 || pos.z !== 0)) {
+        const scale = calculateNodeScale(node) // Implement this based on your needs
+        updateInstanceMatrix(index, pos.x, pos.y, pos.z, scale)
+        needsUpdate = true
+      }
+    })
+
+    if (needsUpdate) {
+      meshRef.current.instanceMatrix.needsUpdate = true
+    }
+  })
 
   // Memoize edge points
   const edgePoints = useMemo(() => {
@@ -236,6 +293,21 @@ const GraphManager = () => {
       <NodeLabels />
     </>
   )
+}
+
+// Helper function to calculate node scale based on metadata
+const calculateNodeScale = (node: any) => {
+  let scale = 1.0
+  
+  if (node.metadata?.fileSize) {
+    // Logarithmic scale based on file size
+    scale = Math.log10(parseInt(node.metadata.fileSize) + 1) * 0.1 + 0.5
+  } else if (node.metadata?.size) {
+    scale = parseFloat(node.metadata.size) / 100
+  }
+  
+  // Clamp scale to reasonable values
+  return Math.max(0.2, Math.min(scale, 2.0))
 }
 
 export default GraphManager
