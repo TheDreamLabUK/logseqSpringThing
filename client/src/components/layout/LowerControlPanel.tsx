@@ -28,7 +28,7 @@ function greet(name) {
 greet('World');
 \`\`\`
 
-Visit [Narrative Gold Mine](https://narrativegoldmine.com).
+Visit [Narrative Gold Mine](https://narrativegoldmine.com/#/graph).
 
 ## Extra Content to Force Scrolling
 
