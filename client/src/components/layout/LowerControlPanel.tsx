@@ -75,6 +75,21 @@ const LowerControlPanel: React.FC = () => {
         display: flex;
         flex-direction: column;
         height: 100%;
+        padding: 16px;
+      }
+
+      /* Special styling for the iframe container */
+      .iframe-container {
+        padding: 0;
+        height: 100%;
+        overflow-y: auto;
+      }
+
+      /* Style for iframes */
+      iframe {
+        border: none;
+        border-radius: 0; /* Full width, no rounded corners */
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
       }
     `;
     document.head.appendChild(style);
@@ -99,10 +114,10 @@ const LowerControlPanel: React.FC = () => {
       {/* Ensure flex-1 is present so this container grows vertically */}
       <div className="flex flex-row bg-gray-800 rounded-lg overflow-hidden shadow-xl border border-gray-700 min-h-[300px]" style={{ display: 'flex', flexDirection: 'row', backgroundColor: '#1f2937', color: 'white' }}>
 
-        {/* Left Pane: Settings Tabs */}
+        {/* Left Pane: Settings Tabs - 35% width */}
         {/* Uses flex-col to stack tab list and content */}
-        <div className="w-1/2 border-r border-gray-700 flex flex-col overflow-y-auto custom-scrollbar" style={{
-          width: '50%',
+        <div className="w-[35%] border-r border-gray-700 flex flex-col overflow-y-auto custom-scrollbar" style={{
+          width: '35%',
           display: 'flex',
           flexDirection: 'column',
           overflowY: 'auto',
@@ -121,15 +136,15 @@ const LowerControlPanel: React.FC = () => {
             // Prevent tab list shrinking, add border
             tabListClassName="bg-gray-800 px-4 flex-shrink-0 border-b border-gray-700"
             tabButtonClassName="py-3"
-            // Allow tab content to grow and scroll internally, add padding
-            tabContentClassName="bg-gray-800 text-white p-4 custom-scrollbar left-pane-content overflow-y-auto"
+            // Allow tab content to grow and scroll internally. Padding handled by tab-content-container class.
+            tabContentClassName="bg-gray-800 text-white custom-scrollbar left-pane-content overflow-y-auto"
           />
         </div>
 
-        {/* Right Pane: New Feature Tabs */}
+        {/* Right Pane: New Feature Tabs - 65% width */}
         {/* Uses flex-col to stack tab list and content */}
-        <div className="w-1/2 flex flex-col bg-gray-800 overflow-y-auto custom-scrollbar" style={{
-          width: '50%',
+        <div className="w-[65%] flex flex-col bg-gray-800 overflow-y-auto custom-scrollbar" style={{
+          width: '65%',
           display: 'flex',
           flexDirection: 'column',
           backgroundColor: '#1f2937',
@@ -146,14 +161,16 @@ const LowerControlPanel: React.FC = () => {
                 icon: <Anchor className="h-4 w-4" />, // Use Anchor icon (declared)
                 content: (
                   // Container ensures iframe takes full height of the tab content area
-                  <div className="w-full h-full flex flex-col tab-content-container">
+                  <div className="w-full h-full flex flex-col tab-content-container iframe-container"> {/* Using special iframe container class */}
+                    {/* Full-width iframe that renders off the bottom with scrolling */}
                     <iframe
                       src="https://narrativegoldmine.com"
-                      className="flex-1 border-none" // Simplified: flex-1 handles filling space
+                      className="w-full h-full border-none"
                       title="Narrative Gold Mine"
                       sandbox="allow-scripts allow-same-origin allow-popups allow-forms"
                       loading="lazy"
                       referrerPolicy="no-referrer"
+                      style={{ height: '1200px' }} /* Tall enough to ensure scrolling is needed */
                     />
                   </div>
                 ),
@@ -162,14 +179,14 @@ const LowerControlPanel: React.FC = () => {
                 label: 'Markdown',
                 icon: <Settings className="h-4 w-4" />, // Use Settings icon (placeholder, File not declared)
                 // Pass content, add padding via className to the renderer's wrapper
-                content: <div className="tab-content-container"><MarkdownRenderer content={placeholderMarkdown} className="p-4" /></div>,
+                content: <div className="tab-content-container"><MarkdownRenderer content={placeholderMarkdown} className="" /></div>,
               },
               {
                 label: 'LLM Query',
                 icon: <Send className="h-4 w-4" />, // Use Send icon (declared)
                 content: (
                   // Container ensures elements stack correctly and use full height
-                  <div className="p-4 flex flex-col h-full tab-content-container">
+                  <div className="flex flex-col h-full tab-content-container">
                     {/* Using standard HTML textarea with Tailwind classes */}
                     <textarea
                       className="flex-1 mb-2 p-2 border border-border rounded bg-input text-foreground resize-none focus:outline-none focus:ring-2 focus:ring-primary"
@@ -183,7 +200,7 @@ const LowerControlPanel: React.FC = () => {
             // Prevent tab list shrinking, add border
             tabListClassName="bg-gray-800 px-4 flex-shrink-0 border-b border-gray-700"
             tabButtonClassName="py-3"
-            // Allow tab content to grow and scroll internally. Padding handled by individual content wrappers.
+            // Allow tab content to grow and scroll internally. Padding handled by tab-content-container class.
             tabContentClassName="bg-gray-800 text-white custom-scrollbar right-pane-content overflow-y-auto"
           />
         </div>
