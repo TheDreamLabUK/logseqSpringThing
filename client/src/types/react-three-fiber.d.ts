@@ -86,6 +86,11 @@ declare global {
       // helper / misc
       axesHelper:      Object3DNode<THREE.AxesHelper,      typeof THREE.AxesHelper>
       color:           Object3DNode<THREE.Color,           typeof THREE.Color>
+      // Add missing elements used in GraphManager.tsx
+      group:           Object3DNode<THREE.Group,           typeof THREE.Group>
+      instancedMesh:   Object3DNode<THREE.InstancedMesh,   typeof THREE.InstancedMesh>
+      sphereGeometry:  Object3DNode<THREE.SphereGeometry,  typeof THREE.SphereGeometry>
+      meshStandardMaterial: Object3DNode<THREE.MeshStandardMaterial, typeof THREE.MeshStandardMaterial>
       // ...add any others you need (e.g. GridHelper, etc.)
     }
   }
