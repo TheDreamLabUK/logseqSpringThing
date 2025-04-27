@@ -1,16 +1,32 @@
 import { apiService } from './api';
 import { createLogger, createErrorMetadata } from '../utils/logger';
+import { WebLNProvider } from '@getalby/sdk';
+import { Event, UnsignedEvent } from 'nostr-tools';
 
 const logger = createLogger('NostrAuthService');
 
+// Keep existing interfaces, adding VerifyResponse and AuthEventPayload
+
 export interface NostrUser {
-  pubkey: string;
-  npub?: string;
+  pubkey: string; // hex pubkey
+  npub?: string; // npub format
   isPowerUser: boolean;
+  // Add fields that might be stored locally but not sent in every API response
+  api_keys?: { // Optional, as it's not part of AuthResponse user DTO
+      perplexity?: string | null;
+      openai?: string | null;
+      ragflow?: string | null;
+  };
+  last_seen?: number; // Optional, managed server-side mostly
+  session_token?: string | null; // Keep track locally
 }
 
 export interface AuthResponse {
-  user: NostrUser;
+  user: { // Structure from server DTO
+    pubkey: string;
+    npub?: string;
+    isPowerUser: boolean;
+  };
   token: string;
   expiresAt: number;
   features: string[];
@@ -18,22 +34,36 @@ export interface AuthResponse {
 
 export interface AuthState {
   authenticated: boolean;
-  user?: {
+  user?: { // Simplified state for UI
     isPowerUser: boolean;
-    pubkey: string;
+    pubkey: string; // hex pubkey
+    npub?: string; // npub format
   };
   error?: string;
 }
 
-export interface NostrEvent {
+// Interface matching the server's AuthEvent struct (used for POST /auth/nostr)
+export interface AuthEventPayload {
   id: string;
   pubkey: string;
   content: string;
   sig: string;
-  createdAt: number;
+  created_at: number; // Use number for timestamp
   kind: number;
   tags: string[][];
 }
+
+// Define the structure for the /verify endpoint response based on server code
+export interface VerifyResponse {
+  valid: boolean;
+  user?: {
+    pubkey: string;
+    npub?: string;
+    isPowerUser: boolean;
+  };
+  features: string[];
+}
+
 
 type AuthStateListener = (state: AuthState) => void;
 
@@ -57,43 +87,90 @@ class NostrAuthService {
    * Initialize the auth service
    */
   public async initialize(): Promise<void> {
+    if (this.initialized) return;
+
     try {
-      // Check for stored session token
       const storedToken = localStorage.getItem('nostr_session_token');
-      const storedUser = localStorage.getItem('nostr_user');
+      const storedUserJson = localStorage.getItem('nostr_user');
 
-      if (storedToken && storedUser) {
+      if (storedToken && storedUserJson) {
+        let storedUser: NostrUser | null = null;
         try {
-          // In a real implementation, you would verify the token with the server
-          // For demonstration, we'll just use the stored values
-          const parsedUser = JSON.parse(storedUser);
+          storedUser = JSON.parse(storedUserJson);
+        } catch (parseError) {
+            logger.error('Failed to parse stored user data:', createErrorMetadata(parseError));
+            localStorage.removeItem('nostr_session_token');
+            localStorage.removeItem('nostr_user');
+        }
 
-          this.sessionToken = storedToken;
-          this.currentUser = parsedUser;
+        if (storedUser) {
+            logger.info(`Verifying stored session for pubkey: ${storedUser.pubkey}`);
+            try {
+              // Type assertion needed as apiService.post returns Promise<T>
+              const verificationResponse = await apiService.post<VerifyResponse>('/auth/nostr/verify', {
+                pubkey: storedUser.pubkey, // Use hex pubkey from stored user
+                token: storedToken
+              });
 
-          this.notifyListeners({
-            authenticated: true,
-            user: {
-              isPowerUser: parsedUser.isPowerUser,
-              pubkey: parsedUser.pubkey
+              if (verificationResponse.valid && verificationResponse.user) {
+                // Restore session using verificationResponse data
+                this.sessionToken = storedToken;
+                // Map VerifyResponse.user to NostrUser type
+                this.currentUser = {
+                    pubkey: verificationResponse.user.pubkey,
+                    npub: verificationResponse.user.npub || undefined,
+                    isPowerUser: verificationResponse.user.isPowerUser,
+                    // Restore potentially missing fields from local storage if needed, or use defaults
+                    api_keys: storedUser.api_keys || undefined, // Keep locally stored API keys if present
+                    last_seen: Math.floor(Date.now() / 1000), // Update last_seen on successful verify
+                    session_token: storedToken
+                };
+
+                // Update local storage with potentially refreshed user data (e.g., isPowerUser status)
+                // Only store essential user info, not the full internal state object
+                const userToStore = {
+                    pubkey: this.currentUser.pubkey,
+                    npub: this.currentUser.npub,
+                    isPowerUser: this.currentUser.isPowerUser,
+                    api_keys: this.currentUser.api_keys // Persist API keys if they were loaded
+                };
+                localStorage.setItem('nostr_user', JSON.stringify(userToStore));
+
+
+                this.notifyListeners({
+                    authenticated: true,
+                    user: {
+                        isPowerUser: this.currentUser.isPowerUser,
+                        pubkey: this.currentUser.pubkey,
+                        npub: this.currentUser.npub
+                    }
+                 });
+                logger.info('Restored and verified session from local storage');
+              } else {
+                // Token invalid or user mismatch, clear storage
+                localStorage.removeItem('nostr_session_token');
+                localStorage.removeItem('nostr_user');
+                logger.warn('Stored session token is invalid or user mismatch, cleared local storage');
+                this.notifyListeners({ authenticated: false });
+              }
+            } catch (error) {
+               // Handle API error during verification, clear storage
+               localStorage.removeItem('nostr_session_token');
+               localStorage.removeItem('nostr_user');
+               logger.error('Failed to verify stored session:', createErrorMetadata(error));
+               this.notifyListeners({ authenticated: false, error: 'Session verification failed' });
             }
-          });
-
-          logger.info('Restored session from local storage');
-        } catch (error) {
-          // Token is invalid, clear storage
-          localStorage.removeItem('nostr_session_token');
-          localStorage.removeItem('nostr_user');
-          logger.warn('Stored session data is invalid, cleared local storage');
         }
       } else {
         logger.info('No stored session found');
+        this.notifyListeners({ authenticated: false });
       }
 
       this.initialized = true;
     } catch (error) {
       logger.error('Failed to initialize Nostr auth service:', createErrorMetadata(error));
-      throw error;
+      this.notifyListeners({ authenticated: false, error: 'Initialization failed' });
+      // Do not re-throw, allow app to load in logged-out state
     }
   }
 
@@ -101,62 +178,118 @@ class NostrAuthService {
    * Login with Nostr
    */
   public async login(): Promise<AuthState> {
+    let authState: AuthState;
     try {
-      // For simplicity, we'll use a mock pubkey for demonstration
-      // In a real implementation, you would get this from your Nostr provider
-      const pubkey = 'npub1abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklm';
+      // 1. Use Alby SDK to interact with NIP-07 wallet
+      const alby = new WebLNProvider();
+      // Ensure the user is available (this might trigger the Alby prompt)
+      const pubkey = await alby.getPublicKey();
 
-      logger.info(`Using pubkey: ${pubkey}`);
+      if (!pubkey) {
+        throw new Error('Could not get public key from Alby extension.');
+      }
+      logger.info(`Got pubkey from Alby: ${pubkey}`);
 
-      // In a real implementation, you would create a proper Nostr event
-      // and sign it with the user's private key
+      // 2. Construct NIP-42 Authentication Event (Kind 22242)
+      const challenge = crypto.randomUUID();
+      const relayUrl = 'wss://relay.damus.io';
 
-      // For now, we'll simulate a successful authentication response
-      const mockResponse: AuthResponse = {
-        user: {
-          pubkey,
-          npub: pubkey,
-          isPowerUser: true
-        },
-        token: 'mock-session-token-' + Date.now(),
-        expiresAt: Math.floor(Date.now() / 1000) + 3600, // 1 hour from now
-        features: ['basic', 'advanced']
+      const unsignedEvent: UnsignedEvent = {
+        kind: 22242,
+        created_at: Math.floor(Date.now() / 1000),
+        tags: [
+          ['relay', relayUrl],
+          ['challenge', challenge]
+        ],
+        pubkey: pubkey,
+        content: 'Authenticate to Logseq Spring Thing'
       };
 
-      // In a real implementation, you would send the event to the server
-      // const response = await apiService.post<AuthResponse>('/auth/nostr', event);
+      // 3. Sign the event using Alby
+      logger.debug('Requesting signature from Alby for event:', unsignedEvent);
+      const signedEvent = await alby.signEvent(unsignedEvent) as Event;
+      logger.debug('Event signed successfully by Alby.');
 
-      // For demonstration, we'll use the mock response
-      const response = mockResponse;
+      // Map to the AuthEventPayload structure expected by the backend
+      const eventPayload: AuthEventPayload = {
+        id: signedEvent.id,
+        pubkey: signedEvent.pubkey,
+        content: signedEvent.content,
+        sig: signedEvent.sig,
+        created_at: signedEvent.created_at,
+        kind: signedEvent.kind,
+        tags: signedEvent.tags,
+      };
 
-      // Store the session token and user
+
+      // 4. Send the signed event to the backend API
+      logger.info(`Sending auth event to /api/auth/nostr for pubkey: ${pubkey}`);
+      const response = await apiService.post<AuthResponse>('/auth/nostr', eventPayload);
+      logger.info(`Auth successful for pubkey: ${response.user.pubkey}`);
+
+      // 5. Store session and update state
       this.sessionToken = response.token;
-      this.currentUser = response.user;
+      // Map the response DTO to the internal NostrUser type
+      this.currentUser = {
+        pubkey: response.user.pubkey,
+        npub: response.user.npub,
+        isPowerUser: response.user.isPowerUser,
+        session_token: response.token,
+        last_seen: Math.floor(Date.now() / 1000)
+        // api_keys are not returned by login, keep undefined or default
+      };
 
-      // Store in localStorage for persistence
+      // Store essential user info, not the full internal state object
+      const userToStore = {
+          pubkey: this.currentUser.pubkey,
+          npub: this.currentUser.npub,
+          isPowerUser: this.currentUser.isPowerUser,
+          // Do not store session_token or last_seen in user object in local storage
+      };
       localStorage.setItem('nostr_session_token', response.token);
-      localStorage.setItem('nostr_user', JSON.stringify(response.user));
+      localStorage.setItem('nostr_user', JSON.stringify(userToStore));
 
-      const authState: AuthState = {
+      authState = {
         authenticated: true,
         user: {
-          isPowerUser: response.user.isPowerUser,
-          pubkey: response.user.pubkey
+          isPowerUser: this.currentUser.isPowerUser,
+          pubkey: this.currentUser.pubkey,
+          npub: this.currentUser.npub
         }
       };
 
       this.notifyListeners(authState);
       return authState;
-    } catch (error) {
+
+    } catch (error: any) {
       logger.error('Nostr login failed:', createErrorMetadata(error));
 
-      const authState: AuthState = {
+      let errorMessage = 'Login failed';
+      if (error?.response?.data?.error) { // Check for backend error structure
+          errorMessage = error.response.data.error;
+      } else if (error?.message) {
+          errorMessage = error.message;
+      } else if (typeof error === 'string') {
+          errorMessage = error;
+      }
+      // Check for specific Alby/Nostr errors if possible
+      if (errorMessage.includes('extension rejected') || errorMessage.includes('User rejected')) {
+          errorMessage = 'Login request rejected in Alby extension.';
+      } else if (errorMessage.includes('401') || errorMessage.includes('Invalid signature')) { // Check for specific backend error message
+          errorMessage = 'Authentication failed: Invalid signature or credentials.';
+      } else if (errorMessage.includes('Could not get public key')) {
+           errorMessage = 'Failed to get public key. Is Alby extension installed and unlocked?';
+      }
+
+
+      authState = {
         authenticated: false,
-        error: error instanceof Error ? error.message : 'Login failed'
+        error: errorMessage
       };
 
       this.notifyListeners(authState);
-      throw error;
+      // Re-throw the error so UI components can potentially handle it too
+      throw new Error(errorMessage);
     }
   }
 
@@ -164,30 +297,36 @@ class NostrAuthService {
    * Logout from Nostr
    */
   public async logout(): Promise<void> {
-    try {
-      // In a real implementation, you would call the server to invalidate the session
-      // if (this.sessionToken) {
-      //   await apiService.delete('/auth/nostr', {
-      //     'Authorization': `Bearer ${this.sessionToken}`
-      //   });
-      // }
+    logger.info('Attempting logout...');
+    const token = this.sessionToken;
+    const user = this.currentUser;
 
-      // For demonstration, we'll just clear the local state
-      this.sessionToken = null;
-      this.currentUser = null;
+    // Clear local state immediately for faster UI update
+    this.sessionToken = null;
+    this.currentUser = null;
+    localStorage.removeItem('nostr_session_token');
+    localStorage.removeItem('nostr_user');
+    this.notifyListeners({ authenticated: false }); // Notify UI immediately
 
-      // Clear localStorage
-      localStorage.removeItem('nostr_session_token');
-      localStorage.removeItem('nostr_user');
-
-      this.notifyListeners({
-        authenticated: false
-      });
-
-      logger.info('Logged out successfully');
-    } catch (error) {
-      logger.error('Nostr logout failed:', createErrorMetadata(error));
-      throw error;
+    if (token && user) {
+      try {
+        logger.info(`Calling server logout for pubkey: ${user.pubkey}`);
+        // Server expects DELETE with pubkey and token in body
+        // Assuming apiService.delete can handle a body, otherwise backend needs adjustment
+         // Pass data in the body for DELETE request
+         await apiService.delete<any>('/auth/nostr', {
+             pubkey: user.pubkey,
+             token: token
+         });
+        logger.info('Server logout successful');
+      } catch (error) {
+        // Log the error but don't re-throw, as client-side logout is already done
+        logger.error('Server logout call failed:', createErrorMetadata(error));
+        // Optionally notify listeners about the server error?
+        // this.notifyListeners({ authenticated: false, error: 'Server logout failed' });
+      }
+    } else {
+        logger.warn('Logout called but no active session found locally.');
     }
   }
 
@@ -203,7 +342,8 @@ class NostrAuthService {
         authenticated: this.isAuthenticated(),
         user: this.currentUser ? {
           isPowerUser: this.currentUser.isPowerUser,
-          pubkey: this.currentUser.pubkey
+          pubkey: this.currentUser.pubkey,
+          npub: this.currentUser.npub
         } : undefined
       });
     }
