@@ -1,9 +1,9 @@
 import * as THREE from 'three';
-import { createLogger, createErrorMetadata } from '../utils/logger';
-import { debugState } from '../utils/debug-state';
-import { XRSessionManager, XRControllerEvent } from './xr-session-manager';
-import { Settings } from '../types/settings';
-import { SceneManager } from './scene-manager';
+import { createLogger, createErrorMetadata } from '@/utils/logger';
+import { debugState } from '@/utils/debugState';
+import { XRSessionManager, XRControllerEvent } from './xrSessionManager';
+import { XRSettings } from '../types/xr';
+import { SceneManager } from '../../visualization/managers/sceneManager';
 
 const logger = createLogger('XRInitializer');
 
@@ -15,7 +15,7 @@ export class XRInitializer {
   private camera: THREE.PerspectiveCamera;
   private teleportMarker: THREE.Mesh | null = null;
   private floorPlane: THREE.Mesh | null = null;
-  private settings: Settings | null = null;
+  private settings: XRSettings | null = null;
   private raycaster: THREE.Raycaster = new THREE.Raycaster();
   private controllerIntersections: Map<THREE.XRTargetRaySpace, THREE.Intersection[]> = new Map();
   
@@ -62,15 +62,17 @@ export class XRInitializer {
   }
   
   // Initialize XR capabilities with current settings
-  public initialize(settings: Settings): void {
+  public initialize(settings: XRSettings): void {
     this.settings = settings;
     
-    if (settings.xr) {
-      this.movementEnabled = true;
-      this.movementSpeed = settings.xr.movementSpeed || 1.0;
-      
+    // The XRSettings interface was updated, so we access properties directly.
+    // We also need to check if settings itself is null before accessing its properties.
+    if (settings) {
+      this.movementEnabled = true; // Assuming movement is enabled if XR settings are present
+      this.movementSpeed = settings.movementSpeed || 1.0;
+
       // Setup floor if enabled
-      if (settings.xr.showFloor) {
+      if (settings.showFloor) {
         this.createFloor();
       } else if (this.floorPlane) {
         this.scene.remove(this.floorPlane);
@@ -78,9 +80,9 @@ export class XRInitializer {
         (this.floorPlane.material as THREE.Material).dispose();
         this.floorPlane = null;
       }
-      
+
       // Setup teleport marker if teleport is enabled
-      if (settings.xr.teleportEnabled) {
+      if (settings.teleportEnabled) {
         this.createTeleportMarker();
       } else if (this.teleportMarker) {
         this.scene.remove(this.teleportMarker);
@@ -208,7 +210,7 @@ export class XRInitializer {
     const intersections: THREE.Intersection[] = [];
     
     // Check for floor intersection if teleport is enabled
-    if (this.floorPlane && this.settings?.xr?.teleportEnabled) {
+    if (this.floorPlane && this.settings?.teleportEnabled) {
       const floorIntersects = this.raycaster.intersectObject(this.floorPlane);
       
       if (floorIntersects.length > 0) {
@@ -235,7 +237,7 @@ export class XRInitializer {
     const { controller } = event;
     
     // Start teleportation if enabled
-    if (this.settings?.xr?.teleportEnabled) {
+    if (this.settings?.teleportEnabled) {
       this.isTeleporting = true;
       
       // Show teleport marker if there's a valid intersection
@@ -302,14 +304,16 @@ export class XRInitializer {
   }
   
   // Update settings for XR
-  public updateSettings(settings: Settings): void {
+  public updateSettings(settings: XRSettings): void {
     this.settings = settings;
     
-    if (settings.xr) {
-      this.movementSpeed = settings.xr.movementSpeed || 1.0;
-      
+    // The XRSettings interface was updated, so we access properties directly.
+    // We also need to check if settings itself is null before accessing its properties.
+    if (settings) {
+      this.movementSpeed = settings.movementSpeed || 1.0;
+
       // Update floor visibility
-      if (settings.xr.showFloor) {
+      if (settings.showFloor) {
         if (!this.floorPlane) {
           this.createFloor();
         }
@@ -319,9 +323,9 @@ export class XRInitializer {
         (this.floorPlane.material as THREE.Material).dispose();
         this.floorPlane = null;
       }
-      
+
       // Update teleport marker
-      if (settings.xr.teleportEnabled) {
+      if (settings.teleportEnabled) {
         if (!this.teleportMarker) {
           this.createTeleportMarker();
         }

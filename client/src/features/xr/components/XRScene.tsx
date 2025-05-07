@@ -1,13 +1,13 @@
 import React from 'react'
 import { Canvas } from '@react-three/fiber'
-import { XR, ARButton, Controllers, Hands } from '@react-three/xr'
+import { XR, Controllers, Hands } from '@react-three/xr'
 import { Environment, OrbitControls } from '@react-three/drei'
-import { GraphManager } from '../graph/GraphManager'
-import { useSettingsStore } from '../../lib/settings-store'
+import GraphManager from '../../graph/components/GraphManager'; // Changed to default import
+import { useSettingsStore } from '../../../store/settingsStore'; // Corrected path
 
 export const XRScene = () => {
   const settings = useSettingsStore(state => state.settings)
-  const xrSettings = settings?.visualization?.xr
+  const xrSettings = settings?.xr
 
   return (
     <Canvas
@@ -33,7 +33,7 @@ export const XRScene = () => {
         <GraphManager />
         
         {/* Optional orbit controls for non-AR mode */}
-        {!xrSettings?.isAREnabled && (
+        {!xrSettings?.enabled && (
           <OrbitControls
             enablePan={true}
             enableZoom={true}

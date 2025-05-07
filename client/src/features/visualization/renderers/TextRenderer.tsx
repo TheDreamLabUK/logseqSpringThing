@@ -1,17 +1,32 @@
 import React, { useRef, useEffect, useState, useMemo } from 'react';
 import { useThree } from '@react-three/fiber';
 import { Text, Billboard } from '@react-three/drei';
-import * as THREE from 'three';
-import { useSettingsStore } from '../stores/settings-store';
-import { createLogger, createErrorMetadata } from '../utils/logger';
-import { LabelSettings } from '../types/settings';
+import { Vector3, Group, DoubleSide } from 'three';
+import { useSettingsStore } from '@/store/settingsStore';
+import { createLogger, createErrorMetadata } from '@/utils/logger';
+
+// This interface should match the structure of `settings.visualization.labels` from the store.
+interface LabelSettings {
+  enabled?: boolean; // Made optional to align with store type
+  desktopFontSize: number;
+  textColor: string;
+  textOutlineColor?: string;
+  textOutlineWidth?: number;
+  textPadding?: number;
+  textResolution?: number;
+  billboardMode?: string;
+  // Properties used by Label component's logic, not directly from store's main label config
+  showDistance?: number;
+  fadeDistance?: number;
+  backgroundColor?: string;
+}
 
 const logger = createLogger('TextRenderer');
 
 export interface LabelData {
   id: string;
   text: string;
-  position: THREE.Vector3;
+  position: Vector3;
 }
 
 interface TextRendererProps {
@@ -20,8 +35,8 @@ interface TextRendererProps {
 
 export const TextRenderer: React.FC<TextRendererProps> = ({ labels = [] }) => {
   const { camera } = useThree();
-  const groupRef = useRef<THREE.Group>(null);
-  const settings = useSettingsStore(state => state.settings?.visualization?.labels);
+  const groupRef = useRef<Group>(null);
+  const settings = useSettingsStore(state => state.settings?.visualization?.labels as LabelSettings | undefined);
   
   if (!settings || !settings.enabled) {
     return null;
@@ -30,11 +45,11 @@ export const TextRenderer: React.FC<TextRendererProps> = ({ labels = [] }) => {
   return (
     <group ref={groupRef}>
       {labels.map((label) => (
-        <Label 
+        <Label
           key={label.id}
           text={label.text}
           position={label.position}
-          settings={settings}
+          settings={settings} // Pass the settings object from the store
         />
       ))}
     </group>
@@ -43,16 +58,16 @@ export const TextRenderer: React.FC<TextRendererProps> = ({ labels = [] }) => {
 
 interface LabelProps {
   text: string;
-  position: THREE.Vector3;
-  settings: LabelSettings;
+  position: Vector3;
+  settings: LabelSettings; // This prop will receive the object from the store
 }
 
 const Label: React.FC<LabelProps> = ({ text, position, settings }) => {
   // Skip rendering empty labels
   if (!text.trim()) return null;
   
-  const textColor = settings.color;
-  const fontSize = settings.size;
+  const textColor = settings.textColor; // Use textColor from settings
+  const fontSize = settings.desktopFontSize; // Use desktopFontSize from settings
   const showDistance = settings.showDistance || 0;
   const fadeDistance = settings.fadeDistance || 0;
   const backgroundColor = settings.backgroundColor;
@@ -120,7 +135,7 @@ const Label: React.FC<LabelProps> = ({ text, position, settings }) => {
             color={backgroundColor} 
             opacity={opacity * 0.7}
             transparent={true}
-            side={THREE.DoubleSide}
+            side={DoubleSide}
           />
         )}
       </Text>
@@ -149,7 +164,7 @@ export class TextRendererManager {
     this.updateCallback = callback;
   }
   
-  public updateLabel(id: string, text: string, position: THREE.Vector3, preserveText: boolean = false): void {
+  public updateLabel(id: string, text: string, position: Vector3, preserveText: boolean = false): void {
     try {
       const existingLabel = this.labels.get(id);
       

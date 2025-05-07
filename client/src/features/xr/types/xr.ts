@@ -1,5 +1,5 @@
 // XR-related type definitions
-import { Quaternion, Vector3, Object3D } from 'three'; // Import specific types needed
+import { Object3D, Vector3, Quaternion } from 'three'; // Import specific types needed
 
 // XR session state types
 export type XRSessionState = 'inactive' | 'active' | 'ending' | 'cooldown';
@@ -18,7 +18,7 @@ export type XRInteractionMode = 'controllers-only' | 'hands-only' | 'both';
 
 // XR interactable object interface
 export interface InteractableObject {
-  object: THREE.Object3D;
+  object: Object3D;
   id: string;
   interactable: boolean;
   handlers?: Record<string, (event: any) => void>;
@@ -96,8 +96,8 @@ export interface XRControllerState {
   thumbstickY: number;
   triggerValue: number;
   gripValue: number;
-  position: THREE.Vector3;
-  rotation: THREE.Quaternion;
+  position: Vector3;
+  rotation: Quaternion;
   hapticActuator?: any;
 }
 
@@ -109,4 +109,7 @@ export interface XRSettings {
   position: [number, number, number];
   rotation: [number, number, number];
   handTrackingEnabled?: boolean; // Added setting for hand tracking
+  movementSpeed?: number;
+  showFloor?: boolean;
+  teleportEnabled?: boolean;
 }

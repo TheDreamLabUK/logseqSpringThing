@@ -1,12 +1,10 @@
 import React, { useRef, useEffect, useState, useMemo } from 'react';
 import * as THREE from 'three'; // Use namespace import
-// Explicitly import Vector3 for type guard, keep namespace for others
-import { Vector3 } from 'three';
 import { useThree, useFrame } from '@react-three/fiber';
 // import { Text, Billboard, useTexture } from '@react-three/drei'; // Commented out due to import errors
-import { usePlatform } from '../../../services/platformManager';
-import { useSettingsStore } from '../../../store/settingsStore';
-import { createLogger } from '../../../utils/logger';
+import { usePlatform } from '@/services/platformManager';
+import { useSettingsStore } from '@/store/settingsStore';
+import { createLogger } from '@/utils/logger';
 
 const logger = createLogger('MetadataVisualizer');
 
@@ -21,7 +19,7 @@ function isVector3Instance(obj: any): obj is THREE.Vector3 {
 // Types for metadata and labels
 export interface NodeMetadata {
   id: string;
-  position: [number, number, number] | { x: number; y: number; z: number } | THREE.Vector3; // Use THREE.Vector3 type
+  position: [number, number, number] | { x: number; y: number; z: number } | THREE.Vector3;
   label?: string;
   description?: string;
   fileSize?: number;
@@ -51,7 +49,7 @@ export const MetadataVisualizer: React.FC<MetadataVisualizerProps> = ({
 }) => {
   const { scene, camera } = useThree();
   // Use THREE.Object3D as Group might not be resolving correctly
-  const groupRef = useRef<THREE.Object3D>(null);
+  const groupRef = useRef<THREE.Group>(null);
   const { isXRMode } = usePlatform();
   const labelSettings = useSettingsStore(state => state.settings?.visualization?.labels);
 
@@ -121,7 +119,7 @@ const LabelSystem: React.FC = () => {
 // Advanced label component with distance-based fading and billboarding
 interface NodeLabelProps {
   id: string;
-  position: [number, number, number] | { x: number; y: number; z: number } | THREE.Vector3; // Use THREE.Vector3 type
+  position: [number, number, number] | { x: number; y: number; z: number } | THREE.Vector3;
   text: string;
   color?: string;
   size?: number;
@@ -248,7 +246,7 @@ export function useTextLabelManager() {
       text: string;
       position: [number, number, number];
     }>;
-    updateLabel: (id: string, text: string, position: [number, number, number] | { x: number; y: number; z: number } | THREE.Vector3) => void; // Use THREE.Vector3 type
+    updateLabel: (id: string, text: string, position: [number, number, number] | { x: number; y: number; z: number } | THREE.Vector3) => void;
     removeLabel: (id: string) => void;
     clearLabels: () => void;
   }>({
@@ -331,7 +329,7 @@ export class MetadataVisualizerManager {
   public updateNodeLabel(
     nodeId: string,
     text: string,
-    position: [number, number, number] | { x: number; y: number; z: number } | THREE.Vector3 // Use THREE.Vector3 type
+    position: [number, number, number] | { x: number; y: number; z: number } | THREE.Vector3
   ): void {
     try {
       // Convert position to tuple format with type guards

@@ -1,8 +1,8 @@
 import React, { useRef, useEffect, useState } from 'react';
 import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
-import { useSettingsStore } from '../../../store/settingsStore';
-import { createLogger } from '../../../utils/logger';
+import { useSettingsStore } from '@/store/settingsStore';
+import { createLogger } from '@/utils/logger';
 import { HologramMaterial } from './materials/HologramMaterial';
 
 const logger = createLogger('HologramManager');
@@ -98,15 +98,18 @@ export const HologramManager: React.FC<{
 
   // Parse sphere sizes from settings
   const sphereSizes: number[] = React.useMemo(() => {
-    if (!settings?.sphereSizes) return [40, 80];
+    const sizesSetting: unknown = settings?.sphereSizes; // Start with unknown
 
-    if (typeof settings.sphereSizes === 'string') {
-      // Parse from string format like "40.0, 80.0"
-      return settings.sphereSizes.split(',').map(s => parseFloat(s.trim()));
-    } else if (Array.isArray(settings.sphereSizes)) {
-      return settings.sphereSizes;
+    if (typeof sizesSetting === 'string') {
+      // Explicitly cast after check
+      const strSetting = sizesSetting as string;
+      return strSetting.split(',').map(s => parseFloat(s.trim())).filter(n => !isNaN(n));
+    } else if (Array.isArray(sizesSetting)) {
+      // Filter for numbers within the array
+      const arrSetting = sizesSetting as unknown[]; // Cast to unknown array first
+      return arrSetting.filter((n): n is number => typeof n === 'number' && !isNaN(n));
     }
-
+    // Default value if setting is missing or invalid
     return [40, 80];
   }, [settings?.sphereSizes]);
 
@@ -129,7 +132,7 @@ export const HologramManager: React.FC<{
   }, []);
 
   const quality = isXRMode ? 'high' : 'medium';
-  const color: string | number = settings?.color || '#00ffff';
+  const color: string | number = settings?.ringColor || '#00ffff'; // Use ringColor instead of color
   const opacity = settings?.ringOpacity !== undefined ? settings.ringOpacity : 0.7;
   const rotationSpeed = settings?.ringRotationSpeed !== undefined ? settings.ringRotationSpeed : 0.5;
   const enableTriangleSphere = settings?.enableTriangleSphere !== false;

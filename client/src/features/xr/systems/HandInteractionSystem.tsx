@@ -1,4 +1,5 @@
 import React, { useRef, useEffect, useState } from 'react';
+import * as THREE from 'three'; // Add this line
 import { Group, Line, Raycaster, BufferGeometry, Vector3, Matrix4, LineBasicMaterial, Object3D } from 'three';
 import { useFrame, useThree } from '@react-three/fiber';
 import { Interactive } from '@react-three/xr';
@@ -58,7 +59,7 @@ export const HandInteractionSystem: React.FC<HandInteractionSystemProps> = ({
   const { isPresenting, session, controllers, player } = useSafeXR();
   const platform = usePlatform();
   const settings = useSettingsStore(state => state.settings.xr);
-  const handTrackingEnabled = settings.handInteraction && enabled;
+  const handTrackingEnabled = settings.handTracking && enabled;
   
   // State for hands and interaction
   const [handsVisible, setHandsVisible] = useState(false);

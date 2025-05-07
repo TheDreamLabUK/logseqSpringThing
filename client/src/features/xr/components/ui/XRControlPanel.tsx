@@ -2,8 +2,8 @@ import { useRef, useState, useEffect } from 'react';
 import { Object3D, Group, Vector3 } from 'three';
 import { useThree, useFrame } from '@react-three/fiber';
 import { Interactive } from '@react-three/xr';
-import { useSettingsStore } from '../../../lib/stores/settings-store';
-import { createLogger } from '../../../lib/utils/logger';
+import { useSettingsStore } from '../../../../store/settingsStore';
+import { createLogger } from '../../../../utils/logger';
 
 const logger = createLogger('XRControlPanel');
 

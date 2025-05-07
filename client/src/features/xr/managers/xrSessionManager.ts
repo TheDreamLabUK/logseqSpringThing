@@ -1,11 +1,11 @@
 import * as THREE from 'three';
 import { VRButton } from 'three/examples/jsm/webxr/VRButton.js';
 import { XRControllerModelFactory } from 'three/examples/jsm/webxr/XRControllerModelFactory.js';
-import { createLogger, createErrorMetadata } from '../utils/logger';
-import { debugState } from '../utils/debug-state';
-import { SceneManager } from './scene-manager';
-import { GestureRecognitionResult } from '../xr/HandInteractionSystem';
-import { Settings } from '../types/settings';
+import { createLogger, createErrorMetadata } from '@/utils/logger';
+import { debugState } from '@/utils/debugState'; // Assuming debugState.ts exists in utils
+import { SceneManager } from '@/features/visualization/managers/sceneManager'; // Correct path
+import { GestureRecognitionResult } from '@/features/xr/systems/HandInteractionSystem'; // Correct path
+import { Settings } from '@/features/settings/config/settings'; // Correct path, assuming Settings is defined here
 
 const logger = createLogger('XRSessionManager');
 
@@ -108,8 +108,8 @@ export class XRSessionManager {
         // Set up renderer for XR
         this.renderer.xr.enabled = true;
         
-        // Set reference space type based on settings
-        const refSpace = settings.xr?.roomScale ? 'local-floor' : 'local';
+        // Set reference space type based on settings (assuming teleport implies room scale)
+        const refSpace = settings.xr?.locomotionMethod === 'teleport' ? 'local-floor' : 'local';
         this.renderer.xr.setReferenceSpaceType(refSpace);
         
         if (debugState.isEnabled()) {
@@ -394,7 +394,7 @@ export class XRSessionManager {
     // Update reference space if settings changed
     if (this.renderer && settings.xr) {
       this.renderer.xr.setReferenceSpaceType(
-        settings.xr.roomScale ? 'local-floor' : 'local'
+        settings.xr.locomotionMethod === 'teleport' ? 'local-floor' : 'local'
       );
     }
   }

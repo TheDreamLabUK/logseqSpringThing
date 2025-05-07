@@ -154,6 +154,7 @@ export interface XRSettings {
   teleportRayColor: string;
   enableHaptics: boolean;
   displayMode: 'stereo' | 'mono';
+controllerRayColor?: string; // Add this line
 }
 
 // Visualization settings
@@ -219,12 +220,19 @@ export interface KokoroSettings {
   sample_rate?: number;
 }
 
+// Auth settings
+export interface AuthSettings {
+  enabled: boolean;
+  provider: 'nostr' | string; // Allow other providers potentially
+  required: boolean;
+}
 
 // Main settings interface
 export interface Settings {
   visualization: VisualizationSettings;
   system: SystemSettings;
   xr: XRSettings;
+  auth: AuthSettings; // Make auth required
   ragflow?: RAGFlowSettings; // Add optional AI settings
   perplexity?: PerplexitySettings;
   openai?: OpenAISettings;

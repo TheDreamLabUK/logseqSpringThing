@@ -1,6 +1,6 @@
 import React from 'react';
 import { useXR } from '@react-three/xr';
-import { createLogger } from '../utils/logger';
+import { createLogger } from '@/utils/logger';
 
 const logger = createLogger('XRContextWrapper');
 

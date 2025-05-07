@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { useSettingsStore } from '../../lib/stores/settings-store';
-import { Button } from '../ui/button';
-import { Input } from '../ui/input';
-import { Label } from '../ui/label';
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '../ui/card';
-import WebSocketService from '../../lib/services/websocket-service';
-import { createLogger } from '../../lib/utils/logger';
+import { useSettingsStore } from '@/store/settingsStore';
+import { Button } from '@/ui/Button';
+import { Input } from '@/ui/Input';
+import { Label } from '@/ui/Label';
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/ui/Card';
+import WebSocketService from '@/services/WebSocketService';
+import { createLogger } from '@/utils/logger';
 
 const logger = createLogger('BackendUrlSetting');
 

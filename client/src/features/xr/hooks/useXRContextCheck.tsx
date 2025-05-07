@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { createLogger } from '../utils/logger';
+import { createLogger } from '../../../utils/logger';
 
 const logger = createLogger('useXRContextCheck');
 

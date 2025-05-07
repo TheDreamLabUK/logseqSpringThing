@@ -1,7 +1,7 @@
-import { useSettingsStore } from '../lib/stores/settings-store'
-import { SettingsSubsectionProps } from './types'
-import { SettingControl } from './types'
-import { formatSettingName } from './settings-config'
+import { useSettingsStore } from '@/store/settingsStore'
+import { SettingsSubsectionProps } from '../types/settingsTypes'
+import { SettingControl } from '../types/settingsTypes'
+import { formatSettingName } from '../config/settingsConfig'
 import { SettingControlComponent } from './SettingControlComponent'
 
 export function SettingsSubsection({ title, settings, path }: SettingsSubsectionProps) {

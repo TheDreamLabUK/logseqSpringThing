@@ -1,8 +1,8 @@
 // Stub implementation of SceneManager to prevent conflicts with React Three Fiber
-import { createLogger, createErrorMetadata } from '../utils/logger';
-import { debugState } from '../utils/debug-state';
+import { createLogger, createErrorMetadata } from '@/utils/logger';
+import { debugState } from '@/utils/debugState';
 import * as THREE from 'three';
-import { Settings } from '../types/settings';
+import { XRSettings } from '@/features/xr/types/xr';
 
 const logger = createLogger('SceneManager');
 
@@ -93,7 +93,7 @@ export class SceneManager {
   }
   
   private setupResizeHandler(): void {}
-  public handleSettingsUpdate(settings: Settings): void {
+  public handleSettingsUpdate(settings: XRSettings): void {
     if (debugState.isEnabled()) {
       logger.info('SceneManager.start() called but using React Three Fiber instead');
     }

@@ -1,4 +1,10 @@
-import { Settings } from '../types/settings';
+// Define a basic Settings interface based on usage
+interface Settings {
+  visualization: any; // Replace 'any' with more specific types if known
+  system: any;        // Replace 'any' with more specific types if known
+  auth: any;          // Replace 'any' with more specific types if known
+  xr: any;            // Replace 'any' with more specific types if known
+}
 
 export const defaultSettings: Settings = {
   visualization: {
