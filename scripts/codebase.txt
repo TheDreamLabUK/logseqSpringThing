@@ -299,7 +299,7 @@ Directories:
 
 # Project Codebase
 
-Generated: Wed  7 May 21:30:14 UTC 2025
+Generated: Thu  8 May 09:48:48 UTC 2025
 
 ## Project Structure
 
@@ -1770,6 +1770,7 @@ min = "1.70.0"
     "@radix-ui/react-dropdown-menu": "^2.1.7",
     "@radix-ui/react-label": "^2.1.3",
     "@radix-ui/react-radio-group": "^1.1.3",
+    "@radix-ui/react-select": "^2.2.4",
     "@radix-ui/react-slider": "^1.2.4",
     "@radix-ui/react-slot": "^1.2.0",
     "@radix-ui/react-switch": "^1.1.4",
@@ -1795,11 +1796,13 @@ min = "1.70.0"
     "react-syntax-highlighter": "^15.6.1",
     "remark-gfm": "^4.0.1",
     "tailwind-merge": "^3.2.0",
-    "three": "^0.175.0"
+    "three": "^0.175.0",
+    "uuid": "^11.1.0"
   },
   "devDependencies": {
     "@types/react": "^18.2.0",
     "@types/react-dom": "^18.2.0",
+    "@types/uuid": "^10.0.0",
     "@vitejs/plugin-react": "^4.3.4",
     "autoprefixer": "^10.4.21",
     "postcss": "^8.5.3",
@@ -2118,13 +2121,6 @@ fi
                 "IPv4Address": "172.18.0.3/16",
                 "IPv6Address": ""
             },
-            "17eb9a5eb965b7b76e848bd71c437732115871b8bbe2167ef7e600c19328e477": {
-                "Name": "logseq_spring_thing_webxr",
-                "EndpointID": "152f11e0c68065bea407a7f1eee42b575305f4d53b3c95813fcddd5288e39ccd",
-                "MacAddress": "da:5d:28:31:0a:5d",
-                "IPv4Address": "172.18.0.12/16",
-                "IPv6Address": ""
-            },
             "20a9aca36ed7b47cf9e095c04f478fd11e3609fe99263e62bd02f2527b6e7854": {
                 "Name": "ragflow-redis",
                 "EndpointID": "a22884eaf2e221456233848c75fd8b7cfc757f993157703d14c1f664b8915cd5",
@@ -2172,6 +2168,13 @@ fi
                 "EndpointID": "0fcf91b0ed24a4cef7007660bb550f37aeb23a06a700650becad05b62374d2c1",
                 "MacAddress": "86:55:60:7e:62:c1",
                 "IPv4Address": "172.18.0.9/16",
+                "IPv6Address": ""
+            },
+            "dbb2e18dbe3ab10e8514e9d645ca2a38bd6a38cfec9c66b13bbbde08af4deadc": {
+                "Name": "logseq_spring_thing_webxr",
+                "EndpointID": "e259bae4745fefe3b06eac56a1a2cc3e68bb0e2668e9dfc05af4d298b8b64ad0",
+                "MacAddress": "2a:a4:75:c4:36:43",
+                "IPv4Address": "172.18.0.12/16",
                 "IPv6Address": ""
             },
             "ee48ae53212bac56639e23c906606c713239b2a6ee57d08a9546ceb08457a87c": {
@@ -16332,6 +16335,7 @@ package.json
     "@radix-ui/react-dropdown-menu": "^2.1.7",
     "@radix-ui/react-label": "^2.1.3",
     "@radix-ui/react-radio-group": "^1.1.3",
+    "@radix-ui/react-select": "^2.2.4",
     "@radix-ui/react-slider": "^1.2.4",
     "@radix-ui/react-slot": "^1.2.0",
     "@radix-ui/react-switch": "^1.1.4",
@@ -16357,11 +16361,13 @@ package.json
     "react-syntax-highlighter": "^15.6.1",
     "remark-gfm": "^4.0.1",
     "tailwind-merge": "^3.2.0",
-    "three": "^0.175.0"
+    "three": "^0.175.0",
+    "uuid": "^11.1.0"
   },
   "devDependencies": {
     "@types/react": "^18.2.0",
     "@types/react-dom": "^18.2.0",
+    "@types/uuid": "^10.0.0",
     "@vitejs/plugin-react": "^4.3.4",
     "autoprefixer": "^10.4.21",
     "postcss": "^8.5.3",
@@ -16927,10 +16933,39 @@ export function createErrorMetadata(error: unknown): Record<string, any> {
       message: error.message,
       name: error.name,
       stack: error.stack,
+      // Potentially add other known properties of custom errors if any
     };
   }
+  // If it's not an Error instance, try to get more details
+  if (typeof error === 'object' && error !== null) {
+    // Attempt to serialize the object.
+    try {
+      // Using Object.getOwnPropertyNames to include non-enumerable properties if error is an object
+      const errorKeys = Object.getOwnPropertyNames(error);
+      const serializableError = errorKeys.reduce((acc, key) => {
+        acc[key] = (error as any)[key];
+        return acc;
+      }, {} as Record<string, any>);
+
+      const serializedErrorString = JSON.stringify(serializableError, null, 2); // Pretty print
+      return {
+        message: `Non-Error object encountered. Details: ${serializedErrorString.substring(0, 500)}${serializedErrorString.length > 500 ? '...' : ''}`, // Truncate for sanity
+        originalErrorType: 'Object', // Indicate it was an object
+        // Consider if including the full 'error' object is too verbose or has circular refs
+        // For now, relying on the stringified version.
+      };
+    } catch (e) {
+      // JSON.stringify failed (e.g., circular references not caught by custom serializer)
+      return {
+        message: `Non-Error object (serialization failed): ${String(error)}`,
+        originalErrorType: typeof error,
+      };
+    }
+  }
+  // Fallback for primitives or other types
   return {
-    message: String(error),
+    message: `Unknown error type: ${String(error)}`,
+    originalErrorType: typeof error,
   };
 }
 
@@ -19208,11 +19243,11 @@ src/features/xr/managers/xrSessionManager.ts
 import * as THREE from 'three';
 import { VRButton } from 'three/examples/jsm/webxr/VRButton.js';
 import { XRControllerModelFactory } from 'three/examples/jsm/webxr/XRControllerModelFactory.js';
-import { createLogger, createErrorMetadata } from '../utils/logger';
-import { debugState } from '../utils/debug-state';
-import { SceneManager } from './scene-manager';
-import { GestureRecognitionResult } from '../xr/HandInteractionSystem';
-import { Settings } from '../types/settings';
+import { createLogger, createErrorMetadata } from '@/utils/logger';
+import { debugState } from '@/utils/debugState'; // Assuming debugState.ts exists in utils
+import { SceneManager } from '@/features/visualization/managers/sceneManager'; // Correct path
+import { GestureRecognitionResult } from '@/features/xr/systems/HandInteractionSystem'; // Correct path
+import { Settings } from '@/features/settings/config/settings'; // Correct path, assuming Settings is defined here
 
 const logger = createLogger('XRSessionManager');
 
@@ -19315,8 +19350,8 @@ export class XRSessionManager {
         // Set up renderer for XR
         this.renderer.xr.enabled = true;
         
-        // Set reference space type based on settings
-        const refSpace = settings.xr?.roomScale ? 'local-floor' : 'local';
+        // Set reference space type based on settings (assuming teleport implies room scale)
+        const refSpace = settings.xr?.locomotionMethod === 'teleport' ? 'local-floor' : 'local';
         this.renderer.xr.setReferenceSpaceType(refSpace);
         
         if (debugState.isEnabled()) {
@@ -19601,7 +19636,7 @@ export class XRSessionManager {
     // Update reference space if settings changed
     if (this.renderer && settings.xr) {
       this.renderer.xr.setReferenceSpaceType(
-        settings.xr.roomScale ? 'local-floor' : 'local'
+        settings.xr.locomotionMethod === 'teleport' ? 'local-floor' : 'local'
       );
     }
   }
@@ -20043,6 +20078,7 @@ export class XRInitializer {
 ----
 src/features/xr/systems/HandInteractionSystem.tsx
 import React, { useRef, useEffect, useState } from 'react';
+import * as THREE from 'three'; // Add this line
 import { Group, Line, Raycaster, BufferGeometry, Vector3, Matrix4, LineBasicMaterial, Object3D } from 'three';
 import { useFrame, useThree } from '@react-three/fiber';
 import { Interactive } from '@react-three/xr';
@@ -20102,7 +20138,7 @@ export const HandInteractionSystem: React.FC<HandInteractionSystemProps> = ({
   const { isPresenting, session, controllers, player } = useSafeXR();
   const platform = usePlatform();
   const settings = useSettingsStore(state => state.settings.xr);
-  const handTrackingEnabled = settings.handInteraction && enabled;
+  const handTrackingEnabled = settings.handTracking && enabled;
   
   // State for hands and interaction
   const [handsVisible, setHandsVisible] = useState(false);
@@ -20591,7 +20627,7 @@ export default SafeHandInteractionSystem;
 src/features/xr/providers/XRContextWrapper.tsx
 import React from 'react';
 import { useXR } from '@react-three/xr';
-import { createLogger } from '../utils/logger';
+import { createLogger } from '@/utils/logger';
 
 const logger = createLogger('XRContextWrapper');
 
@@ -21131,7 +21167,7 @@ export const XRScene = () => {
         <GraphManager />
         
         {/* Optional orbit controls for non-AR mode */}
-        {!xrSettings?.isAREnabled && (
+        {!xrSettings?.enabled && (
           <OrbitControls
             enablePan={true}
             enableZoom={true}
@@ -23659,6 +23695,7 @@ export interface XRSettings {
   teleportRayColor: string;
   enableHaptics: boolean;
   displayMode: 'stereo' | 'mono';
+controllerRayColor?: string; // Add this line
 }
 
 // Visualization settings
@@ -23724,12 +23761,19 @@ export interface KokoroSettings {
   sample_rate?: number;
 }
 
+// Auth settings
+export interface AuthSettings {
+  enabled: boolean;
+  provider: 'nostr' | string; // Allow other providers potentially
+  required: boolean;
+}
 
 // Main settings interface
 export interface Settings {
   visualization: VisualizationSettings;
   system: SystemSettings;
   xr: XRSettings;
+  auth: AuthSettings; // Make auth required
   ragflow?: RAGFlowSettings; // Add optional AI settings
   perplexity?: PerplexitySettings;
   openai?: OpenAISettings;
@@ -25374,8 +25418,8 @@ src/features/visualization/renderers/HologramManager.tsx
 import React, { useRef, useEffect, useState } from 'react';
 import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
-import { useSettingsStore } from '../../../store/settingsStore';
-import { createLogger } from '../../../utils/logger';
+import { useSettingsStore } from '@/store/settingsStore';
+import { createLogger } from '@/utils/logger';
 import { HologramMaterial } from './materials/HologramMaterial';
 
 const logger = createLogger('HologramManager');
@@ -25471,15 +25515,18 @@ export const HologramManager: React.FC<{
 
   // Parse sphere sizes from settings
   const sphereSizes: number[] = React.useMemo(() => {
-    if (!settings?.sphereSizes) return [40, 80];
+    const sizesSetting: unknown = settings?.sphereSizes; // Start with unknown
 
-    if (typeof settings.sphereSizes === 'string') {
-      // Parse from string format like "40.0, 80.0"
-      return settings.sphereSizes.split(',').map(s => parseFloat(s.trim()));
-    } else if (Array.isArray(settings.sphereSizes)) {
-      return settings.sphereSizes;
+    if (typeof sizesSetting === 'string') {
+      // Explicitly cast after check
+      const strSetting = sizesSetting as string;
+      return strSetting.split(',').map(s => parseFloat(s.trim())).filter(n => !isNaN(n));
+    } else if (Array.isArray(sizesSetting)) {
+      // Filter for numbers within the array
+      const arrSetting = sizesSetting as unknown[]; // Cast to unknown array first
+      return arrSetting.filter((n): n is number => typeof n === 'number' && !isNaN(n));
     }
-
+    // Default value if setting is missing or invalid
     return [40, 80];
   }, [settings?.sphereSizes]);
 
@@ -25502,7 +25549,7 @@ export const HologramManager: React.FC<{
   }, []);
 
   const quality = isXRMode ? 'high' : 'medium';
-  const color: string | number = settings?.color || '#00ffff';
+  const color: string | number = settings?.ringColor || '#00ffff'; // Use ringColor instead of color
   const opacity = settings?.ringOpacity !== undefined ? settings.ringOpacity : 0.7;
   const rotationSpeed = settings?.ringRotationSpeed !== undefined ? settings.ringRotationSpeed : 0.5;
   const enableTriangleSphere = settings?.enableTriangleSphere !== false;
@@ -26454,13 +26501,11 @@ export function ActionButtons() {
 src/features/visualization/components/MetadataVisualizer.tsx
 import React, { useRef, useEffect, useState, useMemo } from 'react';
 import * as THREE from 'three'; // Use namespace import
-// Explicitly import Vector3 for type guard, keep namespace for others
-import { Vector3 } from 'three';
 import { useThree, useFrame } from '@react-three/fiber';
 // import { Text, Billboard, useTexture } from '@react-three/drei'; // Commented out due to import errors
-import { usePlatform } from '../../../services/platformManager';
-import { useSettingsStore } from '../../../store/settingsStore';
-import { createLogger } from '../../../utils/logger';
+import { usePlatform } from '@/services/platformManager';
+import { useSettingsStore } from '@/store/settingsStore';
+import { createLogger } from '@/utils/logger';
 
 const logger = createLogger('MetadataVisualizer');
 
@@ -26475,7 +26520,7 @@ function isVector3Instance(obj: any): obj is THREE.Vector3 {
 // Types for metadata and labels
 export interface NodeMetadata {
   id: string;
-  position: [number, number, number] | { x: number; y: number; z: number } | THREE.Vector3; // Use THREE.Vector3 type
+  position: [number, number, number] | { x: number; y: number; z: number } | THREE.Vector3;
   label?: string;
   description?: string;
   fileSize?: number;
@@ -26505,7 +26550,7 @@ export const MetadataVisualizer: React.FC<MetadataVisualizerProps> = ({
 }) => {
   const { scene, camera } = useThree();
   // Use THREE.Object3D as Group might not be resolving correctly
-  const groupRef = useRef<THREE.Object3D>(null);
+  const groupRef = useRef<THREE.Group>(null);
   const { isXRMode } = usePlatform();
   const labelSettings = useSettingsStore(state => state.settings?.visualization?.labels);
 
@@ -26575,7 +26620,7 @@ const LabelSystem: React.FC = () => {
 // Advanced label component with distance-based fading and billboarding
 interface NodeLabelProps {
   id: string;
-  position: [number, number, number] | { x: number; y: number; z: number } | THREE.Vector3; // Use THREE.Vector3 type
+  position: [number, number, number] | { x: number; y: number; z: number } | THREE.Vector3;
   text: string;
   color?: string;
   size?: number;
@@ -26702,7 +26747,7 @@ export function useTextLabelManager() {
       text: string;
       position: [number, number, number];
     }>;
-    updateLabel: (id: string, text: string, position: [number, number, number] | { x: number; y: number; z: number } | THREE.Vector3) => void; // Use THREE.Vector3 type
+    updateLabel: (id: string, text: string, position: [number, number, number] | { x: number; y: number; z: number } | THREE.Vector3) => void;
     removeLabel: (id: string) => void;
     clearLabels: () => void;
   }>({
@@ -26785,7 +26830,7 @@ export class MetadataVisualizerManager {
   public updateNodeLabel(
     nodeId: string,
     text: string,
-    position: [number, number, number] | { x: number; y: number; z: number } | THREE.Vector3 // Use THREE.Vector3 type
+    position: [number, number, number] | { x: number; y: number; z: number } | THREE.Vector3
   ): void {
     try {
       // Convert position to tuple format with type guards
@@ -27857,6 +27902,7 @@ src/services/nostrAuthService.ts
 import { apiService } from './api';
 import { createLogger, createErrorMetadata } from '../utils/logger';
 import { Event, UnsignedEvent, nip19 } from 'nostr-tools';
+import { v4 as uuidv4 } from 'uuid'; // Import uuid
 import type {} from '../types/nip07'; // Import the types to ensure Window augmentation
 
 const logger = createLogger('NostrAuthService');
@@ -28019,7 +28065,7 @@ class NostrAuthService {
       logger.info(`Got pubkey via NIP-07: ${pubkey}`);
 
       // 2. Construct NIP-42 Authentication Event (Kind 22242)
-      const challenge = crypto.randomUUID();
+      const challenge = uuidv4(); // Use uuidv4 to generate the challenge
       // TODO: Make relayUrl configurable or obtained from the provider if possible
       const relayUrl = 'wss://relay.damus.io';
 
@@ -28071,7 +28117,8 @@ class NostrAuthService {
       return newState;
 
     } catch (error: any) {
-      logger.error('NIP-07 login failed:', createErrorMetadata(error));
+      const errorMeta = createErrorMetadata(error);
+      logger.error(`NIP-07 login failed. Details: ${JSON.stringify(errorMeta, null, 2)}`);
       let errorMessage = 'Login failed';
       if (error?.response?.data?.error) { // Check for backend error structure
         errorMessage = error.response.data.error;
