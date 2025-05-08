@@ -133,10 +133,39 @@ export function createErrorMetadata(error: unknown): Record<string, any> {
       message: error.message,
       name: error.name,
       stack: error.stack,
+      // Potentially add other known properties of custom errors if any
     };
   }
+  // If it's not an Error instance, try to get more details
+  if (typeof error === 'object' && error !== null) {
+    // Attempt to serialize the object.
+    try {
+      // Using Object.getOwnPropertyNames to include non-enumerable properties if error is an object
+      const errorKeys = Object.getOwnPropertyNames(error);
+      const serializableError = errorKeys.reduce((acc, key) => {
+        acc[key] = (error as any)[key];
+        return acc;
+      }, {} as Record<string, any>);
+
+      const serializedErrorString = JSON.stringify(serializableError, null, 2); // Pretty print
+      return {
+        message: `Non-Error object encountered. Details: ${serializedErrorString.substring(0, 500)}${serializedErrorString.length > 500 ? '...' : ''}`, // Truncate for sanity
+        originalErrorType: 'Object', // Indicate it was an object
+        // Consider if including the full 'error' object is too verbose or has circular refs
+        // For now, relying on the stringified version.
+      };
+    } catch (e) {
+      // JSON.stringify failed (e.g., circular references not caught by custom serializer)
+      return {
+        message: `Non-Error object (serialization failed): ${String(error)}`,
+        originalErrorType: typeof error,
+      };
+    }
+  }
+  // Fallback for primitives or other types
   return {
-    message: String(error),
+    message: `Unknown error type: ${String(error)}`,
+    originalErrorType: typeof error,
   };
 }
 

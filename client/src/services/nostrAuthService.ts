@@ -1,6 +1,7 @@
 import { apiService } from './api';
 import { createLogger, createErrorMetadata } from '../utils/logger';
 import { Event, UnsignedEvent, nip19 } from 'nostr-tools';
+import { v4 as uuidv4 } from 'uuid'; // Import uuid
 import type {} from '../types/nip07'; // Import the types to ensure Window augmentation
 
 const logger = createLogger('NostrAuthService');
@@ -163,7 +164,7 @@ class NostrAuthService {
       logger.info(`Got pubkey via NIP-07: ${pubkey}`);
 
       // 2. Construct NIP-42 Authentication Event (Kind 22242)
-      const challenge = crypto.randomUUID();
+      const challenge = uuidv4(); // Use uuidv4 to generate the challenge
       // TODO: Make relayUrl configurable or obtained from the provider if possible
       const relayUrl = 'wss://relay.damus.io';
 
@@ -215,7 +216,8 @@ class NostrAuthService {
       return newState;
 
     } catch (error: any) {
-      logger.error('NIP-07 login failed:', createErrorMetadata(error));
+      const errorMeta = createErrorMetadata(error);
+      logger.error(`NIP-07 login failed. Details: ${JSON.stringify(errorMeta, null, 2)}`);
       let errorMessage = 'Login failed';
       if (error?.response?.data?.error) { // Check for backend error structure
         errorMessage = error.response.data.error;
