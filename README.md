@@ -567,12 +567,12 @@ sequenceDiagram
 
 ```mermaid
 graph TD
-    A[Start] --> B{Authenticated?}
-    B -->|No| C[Load LocalSettings (localStorage via Zustand)]
-    B -->|Yes| D{Is Power User? (feature_access.rs)}
-    D -->|No| E[Load UserSpecificSettings (user_settings/pubkey.yaml via API)]
-    D -->|Yes| F[Load GlobalServerSettings (settings.yaml via API)]
-    C --> X[Apply Settings to UI]
+    A[Start] --> B{"Authenticated?"}
+    B -->|No| C["Load LocalSettings (localStorage via Zustand)"]
+    B -->|Yes| D{"Is Power User? (feature_access.rs)"}
+    D -->|No| E["Load UserSpecificSettings (user_settings/pubkey.yaml via API)"]
+    D -->|Yes| F["Load GlobalServerSettings (settings.yaml via API)"]
+    C --> X["Apply Settings to UI"]
     E --> X
     F --> X
 ```
@@ -581,14 +581,14 @@ graph TD
 
 ```mermaid
 graph TD
-    A[Setting Changed in UI] --> B{Authenticated?}
-    B -->|No| C[Save Locally (localStorage via Zustand)]
-    B -->|Yes| D{Is Power User?}
-    D -->|No| E[Save to UserSpecificSettings (user_settings/pubkey.yaml via API)]
-    D -->|Yes| F[Save to GlobalServerSettings (settings.yaml via API)]
-    F --> G[Server Broadcasts GlobalSettingsUpdate to All Clients]
-    G --> H[Other Clients Update Local Store]
-    E --> I[User's Local Store Updated]
+    A["Setting Changed in UI"] --> B{"Authenticated?"}
+    B -->|No| C["Save Locally (localStorage via Zustand)"]
+    B -->|Yes| D{"Is Power User?"}
+    D -->|No| E["Save to UserSpecificSettings (user_settings/pubkey.yaml via API)"]
+    D -->|Yes| F["Save to GlobalServerSettings (settings.yaml via API)"]
+    F --> G["Server Broadcasts GlobalSettingsUpdate to All Clients"]
+    G --> H["Other Clients Update Local Store"]
+    E --> I["User's Local Store Updated"]
     C --> I
 ```
 
