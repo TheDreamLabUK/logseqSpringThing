@@ -49,7 +49,7 @@ pub async fn get_graph_data(state: web::Data<AppState>) -> impl Responder {
         
         // Get physics settings
         let settings = state.settings.read().await;
-        let physics_settings = settings.visualization.physics.clone();
+        let physics_settings = settings.visualisation.physics.clone();
         
         // Create simulation parameters
         let params = crate::models::simulation_params::SimulationParams {
@@ -129,7 +129,7 @@ pub async fn get_paginated_graph_data(
             
             // Get physics settings
             let settings = state.settings.read().await;
-            let physics_settings = settings.visualization.physics.clone();
+            let physics_settings = settings.visualisation.physics.clone();
             
             // Create simulation parameters
             let params = crate::models::simulation_params::SimulationParams {

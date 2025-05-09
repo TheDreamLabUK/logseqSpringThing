@@ -11,9 +11,9 @@ import { Label } from '../../../../ui/Label';
 import { RadioGroup, RadioGroupItem } from '../../../../ui/RadioGroup';
 import { useTheme } from '../../../../ui/ThemeProvider';
 
-const logger = createLogger('VisualizationPanel');
+const logger = createLogger('VisualisationPanel');
 
-// Subsections for visualization settings
+// Subsections for visualisation settings
 const VISUALIZATION_SUBSECTIONS = [
   { id: 'rendering', title: 'Rendering', icon: <Eye className="h-4 w-4" /> },
   { id: 'nodes', title: 'Nodes', icon: <Circle className="h-4 w-4" /> },
@@ -25,7 +25,7 @@ const VISUALIZATION_SUBSECTIONS = [
   { id: 'animations', title: 'Animations', icon: <Circle className="h-4 w-4" /> },
 ];
 
-interface VisualizationPanelProps {
+interface VisualisationPanelProps {
   /**
    * Panel ID for the panel system
    * Panel ID is no longer needed.
@@ -39,13 +39,13 @@ interface VisualizationPanelProps {
  }
 
 /**
- * VisualizationPanel provides a comprehensive interface for managing all visualization settings.
+ * VisualisationPanel provides a comprehensive interface for managing all visualisation settings.
  * This includes rendering options, node/edge appearance, and physics simulation parameters.
  */
-const VisualizationPanel = ({
+const VisualisationPanel = ({
   // panelId, // Prop removed
   // horizontal // Prop removed
-}: VisualizationPanelProps) => {
+}: VisualisationPanelProps) => {
   const [activeSubsection, setActiveSubsection] = useState('rendering');
 
   const settings = useSettingsStore(state => state.settings);
@@ -53,9 +53,9 @@ const VisualizationPanel = ({
 
   // Get the actual settings *values* for the active subsection using useMemo
   const activeSettingsValues = useMemo(() => {
-    const vizSettings = settings?.visualization;
+    const vizSettings = settings?.visualisation;
     if (!vizSettings || !activeSubsection || !(activeSubsection in vizSettings)) {
-      logger.warn(`Subsection '${activeSubsection}' not found in visualization settings.`);
+      logger.warn(`Subsection '${activeSubsection}' not found in visualisation settings.`);
       return {};
     }
     // Type assertion might be needed if TypeScript can't infer the structure
@@ -65,7 +65,7 @@ const VisualizationPanel = ({
 
   // Update a specific setting (remains the same)
   const updateSetting = (path: string, value: any) => {
-    const fullPath = `visualization.${activeSubsection}.${path}`;
+    const fullPath = `visualisation.${activeSubsection}.${path}`;
     logger.debug(`Updating setting: ${fullPath}`, value);
     setSettings(fullPath, value);
   };
@@ -283,4 +283,4 @@ const VisualizationPanel = ({
   );
 };
 
-export default VisualizationPanel;
+export default VisualisationPanel;

@@ -69,12 +69,16 @@ impl SpeechSocket {
     // Process text-to-speech request
     async fn process_tts_request(app_state: Arc<AppState>, req: TextToSpeechRequest) -> Result<(), String> {
         if let Some(speech_service) = &app_state.speech_service {
-            // Get default settings from app state
+            // Get default settings from app state, handling optional Kokoro settings
             let settings = app_state.settings.read().await;
-            let default_voice = settings.kokoro.default_voice.clone();
-            let default_speed = settings.kokoro.default_speed;
-            let default_stream = settings.kokoro.stream;
-            drop(settings);
+            let kokoro_config = settings.kokoro.as_ref(); // Get Option<&KokoroSettings>
+
+            // Provide defaults if Kokoro config or specific fields are None
+            let default_voice = kokoro_config.and_then(|k| k.default_voice.clone()).unwrap_or_else(|| "default_voice_placeholder".to_string()); // Provide a sensible default
+            let default_speed = kokoro_config.and_then(|k| k.default_speed).unwrap_or(1.0);
+            let default_stream = kokoro_config.and_then(|k| k.stream).unwrap_or(true); // Default to streaming?
+            
+            drop(settings); // Release lock
             
             // Create options with defaults or provided values
             let options = SpeechOptions {

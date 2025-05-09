@@ -1,6 +1,6 @@
 use reqwest::{Client, StatusCode};
 use log::{error, info};
-use crate::config::Settings;
+use crate::config::AppFullSettings; // Use AppFullSettings, ConfigRagFlowSettings removed
 use std::fmt;
 use futures::stream::{Stream, StreamExt};
 use std::pin::Pin;
@@ -90,15 +90,37 @@ pub struct RAGFlowService {
 }
 
 impl RAGFlowService {
-    pub async fn new(settings: Arc<RwLock<Settings>>) -> Result<Self, RAGFlowError> {
+    // Updated signature and logic to handle optional settings
+    pub async fn new(settings: Arc<RwLock<AppFullSettings>>) -> Result<Self, RAGFlowError> {
         let client = Client::new();
-        let settings = settings.read().await;
+        let settings_read = settings.read().await;
+
+        // Safely extract RAGFlow settings or return an error
+        let ragflow_config = settings_read.ragflow.as_ref()
+            .ok_or_else(|| RAGFlowError::ParseError("RAGFlow settings section is missing".to_string()))?;
+
+        let api_key = ragflow_config.api_key.as_deref()
+            .ok_or_else(|| RAGFlowError::ParseError("RAGFlow api_key is missing".to_string()))?
+            .to_string();
+            
+        let base_url = ragflow_config.api_base_url.as_deref()
+            .ok_or_else(|| RAGFlowError::ParseError("RAGFlow api_base_url is missing".to_string()))?
+            .to_string();
+            
+        let agent_id = ragflow_config.agent_id.as_deref()
+            .ok_or_else(|| RAGFlowError::ParseError("RAGFlow agent_id is missing".to_string()))?
+            .to_string();
+
+        // Check if essential fields are empty
+        if api_key.is_empty() || base_url.is_empty() || agent_id.is_empty() {
+             return Err(RAGFlowError::ParseError("RAGFlow api_key, base_url, or agent_id is empty".to_string()));
+        }
 
         Ok(RAGFlowService {
             client,
-            api_key: settings.ragflow.api_key.clone(),
-            base_url: settings.ragflow.api_base_url.clone(),
-            agent_id: settings.ragflow.agent_id.clone(),
+            api_key,
+            base_url,
+            agent_id,
         })
     }
 

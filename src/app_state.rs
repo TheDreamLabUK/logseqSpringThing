@@ -4,7 +4,7 @@ use actix_web::web;
 use log::info;
 
 use crate::handlers::socket_flow_handler::ClientManager;
-use crate::config::Settings;
+use crate::config::AppFullSettings; // Renamed for clarity, ClientFacingSettings removed
 use tokio::time::Duration;
 use crate::config::feature_access::FeatureAccess;
 use crate::models::metadata::MetadataStore;
@@ -22,7 +22,7 @@ use once_cell::sync::Lazy;
 pub struct AppState {
     pub graph_service: GraphService,
     pub gpu_compute: Option<Arc<RwLock<GPUCompute>>>,
-    pub settings: Arc<RwLock<Settings>>,
+    pub settings: Arc<RwLock<AppFullSettings>>, // Changed to AppFullSettings
     pub protected_settings: Arc<RwLock<ProtectedSettings>>,
     pub metadata: Arc<RwLock<MetadataStore>>,
     pub github_client: Arc<GitHubClient>,
@@ -34,17 +34,15 @@ pub struct AppState {
     pub feature_access: web::Data<FeatureAccess>,
     pub ragflow_session_id: String,
     pub active_connections: Arc<AtomicUsize>,
-    // Client manager for tracking WebSocket connections
-    pub client_manager: Option<Arc<ClientManager>>,
+    // pub client_manager: Option<Arc<ClientManager>>, // Removed, use ensure_client_manager
 }
 
-// Static ClientManager for the app
-static APP_CLIENT_MANAGER: Lazy<Arc<ClientManager>> = 
+static APP_CLIENT_MANAGER: Lazy<Arc<ClientManager>> =
     Lazy::new(|| Arc::new(ClientManager::new()));
 
 impl AppState {
     pub async fn new(
-        settings: Arc<RwLock<Settings>>,
+        settings: Arc<RwLock<AppFullSettings>>, // Changed to AppFullSettings
         github_client: Arc<GitHubClient>,
         content_api: Arc<ContentAPI>,
         perplexity_service: Option<Arc<PerplexityService>>,
@@ -53,19 +51,18 @@ impl AppState {
         gpu_compute: Option<Arc<RwLock<GPUCompute>>>,
         ragflow_session_id: String,
     ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
-        // Initialize GraphService with settings - log this as a major step
         info!("[AppState::new] Initializing GraphService");
-        
-        // Add a short delay to ensure any previous physics loops have time to detect shutdown flags
         tokio::time::sleep(Duration::from_millis(50)).await;
         
-        let graph_service = GraphService::new(settings.clone(), gpu_compute.clone(), Some(APP_CLIENT_MANAGER.clone())).await;
+        // GraphService::new might need adjustment if it expects client-facing Settings
+        // For now, passing AppFullSettings. This will likely require GraphService changes.
+        let graph_service = GraphService::new(settings.clone(), gpu_compute.clone(), APP_CLIENT_MANAGER.clone()).await;
         info!("[AppState::new] GraphService initialization complete");
         
         Ok(Self {
             graph_service,
             gpu_compute,
-            settings,
+            settings, // Storing AppFullSettings
             protected_settings: Arc::new(RwLock::new(ProtectedSettings::default())),
             metadata: Arc::new(RwLock::new(MetadataStore::new())),
             github_client,
@@ -77,7 +74,7 @@ impl AppState {
             feature_access: web::Data::new(FeatureAccess::from_env()),
             ragflow_session_id,
             active_connections: Arc::new(AtomicUsize::new(0)),
-            client_manager: Some(APP_CLIENT_MANAGER.clone()),
+            // client_manager: Some(APP_CLIENT_MANAGER.clone()), // Removed
         })
     }
 
@@ -124,7 +121,6 @@ impl AppState {
         self.nostr_service = Some(web::Data::new(service));
     }
 
-    // Feature access helper methods
     pub fn is_power_user(&self, pubkey: &str) -> bool {
         self.feature_access.is_power_user(pubkey)
     }
@@ -141,10 +137,7 @@ impl AppState {
         self.feature_access.get_available_features(pubkey)
     }
     
-    // Ensure that a ClientManager exists, creating one if it doesn't
     pub async fn ensure_client_manager(&self) -> Arc<ClientManager> {
-        // Always return the static client manager
-        // This avoids mutability issues since the App struct is often behind an immutable reference
         APP_CLIENT_MANAGER.clone()
     }
 }

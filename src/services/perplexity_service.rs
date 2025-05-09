@@ -1,4 +1,4 @@
-use crate::config::Settings;
+use crate::config::AppFullSettings; // Use AppFullSettings, ConfigPerplexitySettings removed
 use crate::models::metadata::Metadata;
 use crate::services::file_service::ProcessedFile;
 use chrono::Utc;
@@ -34,18 +34,19 @@ struct QueryRequest {
 
 pub struct PerplexityService {
     client: Client,
-    settings: Arc<RwLock<Settings>>,
+    settings: Arc<RwLock<AppFullSettings>>, // Changed to AppFullSettings
 }
 
 impl PerplexityService {
-    pub async fn new(settings: Arc<RwLock<Settings>>) -> Result<Self, Box<dyn StdError + Send + Sync>> {
-        let timeout = {
+    pub async fn new(settings: Arc<RwLock<AppFullSettings>>) -> Result<Self, Box<dyn StdError + Send + Sync>> { // Changed signature
+        let timeout_duration = {
             let settings_read = settings.read().await;
-            settings_read.perplexity.timeout
+            // Safely access optional perplexity settings, provide default timeout
+            settings_read.perplexity.as_ref().and_then(|p| p.timeout).unwrap_or(30) // Default 30s
         };
 
         let client = Client::builder()
-            .timeout(std::time::Duration::from_secs(timeout))
+            .timeout(std::time::Duration::from_secs(timeout_duration)) // Use extracted timeout
             .build()?;
 
         Ok(Self { 
@@ -55,24 +56,36 @@ impl PerplexityService {
     }
 
     pub async fn query(&self, query: &str, conversation_id: &str) -> Result<String, Box<dyn StdError + Send + Sync>> {
-        let settings = self.settings.read().await;
-        let api_url = &settings.perplexity.api_url;
+        let settings_read = self.settings.read().await;
+        
+        // Get perplexity settings or return error if not configured
+        let perplexity_config = match settings_read.perplexity.as_ref() {
+            Some(p) => p,
+            None => return Err("Perplexity settings not configured".into()),
+        };
+
+        // Safely get required fields or return error
+        let api_url = perplexity_config.api_url.as_deref().ok_or("Perplexity API URL not configured")?;
+        let api_key = perplexity_config.api_key.as_deref().ok_or("Perplexity API Key not configured")?;
+        let model = perplexity_config.model.as_deref().ok_or("Perplexity model not configured")?;
+
         info!("Sending query to Perplexity API: {}", api_url);
 
+        // Use defaults for optional parameters if not set in config
         let request = QueryRequest {
             query: query.to_string(),
             conversation_id: conversation_id.to_string(),
-            model: settings.perplexity.model.clone(),
-            max_tokens: settings.perplexity.max_tokens,
-            temperature: settings.perplexity.temperature,
-            top_p: settings.perplexity.top_p,
-            presence_penalty: settings.perplexity.presence_penalty,
-            frequency_penalty: settings.perplexity.frequency_penalty,
+            model: model.to_string(),
+            max_tokens: perplexity_config.max_tokens.unwrap_or(4096),
+            temperature: perplexity_config.temperature.unwrap_or(0.5),
+            top_p: perplexity_config.top_p.unwrap_or(0.9),
+            presence_penalty: perplexity_config.presence_penalty.unwrap_or(0.0),
+            frequency_penalty: perplexity_config.frequency_penalty.unwrap_or(0.0),
         };
 
         let response = self.client
             .post(api_url)
-            .header("Authorization", format!("Bearer {}", settings.perplexity.api_key))
+            .header("Authorization", format!("Bearer {}", api_key))
             .json(&request)
             .send()
             .await?;
@@ -95,14 +108,24 @@ impl PerplexityService {
         }
 
         let content = fs::read_to_string(&file_path)?;
-        let settings = self.settings.read().await;
+        let settings_read = self.settings.read().await;
+
+        // Get perplexity settings or return error if not configured
+        let perplexity_config = match settings_read.perplexity.as_ref() {
+            Some(p) => p,
+            None => return Err("Perplexity settings not configured".into()),
+        };
         
-        let api_url = &settings.perplexity.api_url;
+        // Safely get required fields or return error
+        let api_url = perplexity_config.api_url.as_deref().ok_or("Perplexity API URL not configured")?;
+        let api_key = perplexity_config.api_key.as_deref().ok_or("Perplexity API Key not configured")?;
+
         info!("Sending request to Perplexity API: {}", api_url);
 
+        // Assuming the API takes the raw content as JSON string body? If not, adjust .json(&content)
         let response = self.client
             .post(api_url)
-            .header("Authorization", format!("Bearer {}", settings.perplexity.api_key))
+            .header("Authorization", format!("Bearer {}", api_key))
             .json(&content)
             .send()
             .await?;

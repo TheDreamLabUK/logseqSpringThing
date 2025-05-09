@@ -66,7 +66,7 @@ Node position updates are sent as binary messages. Each binary message consists 
 ```json
 {
   "type": "settings_update",
-  "category": "visualization",
+  "category": "visualisation",
   "settings": {
     "edges": {
       "scaleFactor": 2.0

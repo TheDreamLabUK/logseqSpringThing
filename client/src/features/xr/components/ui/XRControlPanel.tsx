@@ -56,7 +56,7 @@ const XRControlPanel = ({
   const groupRef = useRef<Group>(null);
   const { camera } = useThree();
   const [hovered, setHovered] = useState(false);
-  const [selectedTab, setSelectedTab] = useState('visualization');
+  const [selectedTab, setSelectedTab] = useState('visualisation');
   
   const { settings } = useSettingsStore();
   
@@ -120,12 +120,12 @@ const XRControlPanel = ({
       
       {/* Tab buttons at the top */}
       <group position={[0, size.height / 2 - 0.02, 0.001]}>
-        {/* Visualization tab */}
-        <Interactive onSelect={() => handleTabSelect('visualization')}>
+        {/* Visualisation tab */}
+        <Interactive onSelect={() => handleTabSelect('visualisation')}>
           <mesh position={[-size.width / 4, 0, 0]}>
             <planeGeometry args={[size.width / 3.5, 0.03]} />
             <meshStandardMaterial 
-              color={selectedTab === 'visualization' ? '#4a86e8' : '#333333'} 
+              color={selectedTab === 'visualisation' ? '#4a86e8' : '#333333'} 
             />
           </mesh>
         </Interactive>
@@ -143,9 +143,9 @@ const XRControlPanel = ({
       
       {/* Panel content - dynamically render based on selected tab */}
       <group position={[0, 0, 0.001]}>
-        {selectedTab === 'visualization' && (
+        {selectedTab === 'visualisation' && (
           <group>
-            {/* Simple visualization controls */}
+            {/* Simple visualisation controls */}
             <mesh position={[0, 0.05, 0]} scale={[0.9, 0.1, 1]}>
               <planeGeometry />
               <meshStandardMaterial color="#333333" />

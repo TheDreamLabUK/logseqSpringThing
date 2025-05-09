@@ -50,7 +50,7 @@ The server now maintains a continuous physics simulation:
 
 - Graph nodes find optimal positions before any client connects
 - Reduced initial loading time for clients as layout is pre-calculated
-- Physics simulation stabilizes over time, creating a more balanced visualization
+- Physics simulation stabilizes over time, creating a more balanced visualisation
 
 ### 3. Bidirectional Synchronization
 

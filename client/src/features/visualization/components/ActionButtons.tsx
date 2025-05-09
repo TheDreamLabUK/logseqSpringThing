@@ -13,7 +13,7 @@ export function ActionButtons() {
     try {
       setIsRandomizing(true)
       
-      // In the real implementation, this would call the visualization controller
+      // In the real implementation, this would call the visualisation controller
       // For now, we just simulate the action with a timeout
       logger.info('Randomizing node positions')
       

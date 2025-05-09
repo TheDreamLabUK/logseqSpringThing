@@ -51,7 +51,7 @@ export const MetadataVisualizer: React.FC<MetadataVisualizerProps> = ({
   // Use THREE.Object3D as Group might not be resolving correctly
   const groupRef = useRef<THREE.Group>(null);
   const { isXRMode } = usePlatform();
-  const labelSettings = useSettingsStore(state => state.settings?.visualization?.labels);
+  const labelSettings = useSettingsStore(state => state.settings?.visualisation?.labels);
 
   // Layer management for XR mode
   useEffect(() => {
@@ -92,7 +92,7 @@ export const MetadataVisualizer: React.FC<MetadataVisualizerProps> = ({
 const LabelSystem: React.FC = () => {
   const labelManagerRef = useTextLabelManager();
   const { labels } = labelManagerRef.current;
-  const labelSettings = useSettingsStore(state => state.settings?.visualization?.labels);
+  const labelSettings = useSettingsStore(state => state.settings?.visualisation?.labels);
 
   // Don't render if labels are disabled
   // if (!labelSettings?.enabled) return null; // Commented out due to type error

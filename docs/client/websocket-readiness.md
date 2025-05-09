@@ -68,7 +68,7 @@ if (!isDefaultService && isReady) {
 
 ### Adapter Pattern for Service Integration
 
-An adapter pattern is used to connect GraphVisualization with GraphDataManager's WebSocket requirements:
+An adapter pattern is used to connect GraphVisualisation with GraphDataManager's WebSocket requirements:
 
 ```typescript
 // Configure GraphDataManager with WebSocket service (adapter pattern)

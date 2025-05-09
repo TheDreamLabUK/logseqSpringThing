@@ -1,6 +1,6 @@
 use crate::models::metadata::{Metadata, MetadataStore, MetadataOps};
 use crate::models::graph::GraphData;
-use crate::config::Settings;
+use crate::config::AppFullSettings; // Use AppFullSettings, ClientFacingSettings removed
 use serde::{Deserialize, Serialize};
 use log::{info, debug, error};
 use std::sync::atomic::{AtomicU32, Ordering};
@@ -33,15 +33,15 @@ pub struct ProcessedFile {
 }
 
 pub struct FileService {
-    settings: Arc<RwLock<Settings>>,
+    settings: Arc<RwLock<AppFullSettings>>, // Changed to AppFullSettings
     // Counter for assigning node IDs, initialized based on existing metadata
     node_id_counter: AtomicU32,
 }
 
 impl FileService {
-    pub fn new(settings: Arc<RwLock<Settings>>) -> Self {
+    pub fn new(settings: Arc<RwLock<AppFullSettings>>) -> Self { // Changed to AppFullSettings
         // Initialize with a default counter
-        let service = Self { 
+        let service = Self {
             settings,
             node_id_counter: AtomicU32::new(1),
         };
@@ -262,7 +262,7 @@ impl FileService {
 
     /// Initialize local storage with files from GitHub
     pub async fn initialize_local_storage(
-        settings: Arc<RwLock<Settings>>,
+        settings: Arc<RwLock<AppFullSettings>>, // Changed to AppFullSettings
     ) -> Result<(), Box<dyn StdError + Send + Sync>> {
         // Create GitHub client using environment variables
         let github_config = GitHubConfig::from_env()
@@ -495,7 +495,7 @@ impl FileService {
     pub async fn fetch_and_process_files(
         &self,
         content_api: Arc<ContentAPI>,
-        _settings: Arc<RwLock<Settings>>,
+        _settings: Arc<RwLock<AppFullSettings>>, // Changed to AppFullSettings (though unused)
         metadata_store: &mut MetadataStore,
     ) -> Result<Vec<ProcessedFile>, Box<dyn StdError + Send + Sync>> {
         let mut processed_files = Vec::new();

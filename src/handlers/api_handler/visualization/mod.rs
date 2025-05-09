@@ -382,7 +382,7 @@ pub async fn get_category_settings(
     }
 }
 
-pub async fn get_visualization_settings(
+pub async fn get_visualisation_settings(
     app_state: web::Data<AppState>,
     category: web::Path<String>,
 ) -> Result<HttpResponse, actix_web::Error> {
@@ -404,7 +404,7 @@ pub async fn get_settings_category(
     let settings_value = serde_json::to_value(&*settings).map_err(ErrorInternalServerError)?;
 
     let value = match category.as_str() {
-        cat if cat.starts_with("visualization.") || cat.starts_with("system.") || cat == "xr" => {
+        cat if cat.starts_with("visualisation.") || cat.starts_with("system.") || cat == "xr" => {
             let parts: Vec<&str> = cat.split('.').collect();
             let mut current_value = &settings_value;
 
@@ -481,7 +481,7 @@ fn save_settings_to_file(settings: &Settings) -> std::io::Result<()> {
 
 pub fn config(cfg: &mut web::ServiceConfig) {
     cfg.service(
-        web::scope("/visualization")
+        web::scope("/visualisation")
             .route("/settings/{category}/{setting}", web::get().to(get_setting))
             .route(
                 "/settings/{category}/{setting}",
@@ -490,7 +490,7 @@ pub fn config(cfg: &mut web::ServiceConfig) {
             .route("/settings/{category}", web::get().to(get_category_settings))
             .route(
                 "/get_settings/{category}",
-                web::get().to(get_visualization_settings),
+                web::get().to(get_visualisation_settings),
             ),
     );
 }

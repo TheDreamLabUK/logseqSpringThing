@@ -33,12 +33,12 @@ pub struct SimulationParams {
 ### Configuration
 ```rust
 pub struct UISettings {
-    pub visualization: VisualizationConfig,
+    pub visualisation: VisualisationConfig,
     pub layout: LayoutConfig,
     pub theme: ThemeConfig,
 }
 
-pub struct VisualizationConfig {
+pub struct VisualisationConfig {
     pub physics: PhysicsConfig,
     pub rendering: RenderingConfig,
 }
@@ -47,7 +47,7 @@ pub struct VisualizationConfig {
 ### Features
 - Theme customization
 - Layout preferences
-- Visualization options
+- Visualisation options
 
 ## User Settings
 

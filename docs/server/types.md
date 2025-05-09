@@ -47,7 +47,7 @@ pub enum SimulationMode {
 pub struct UISettings {
     pub theme: String,
     pub layout: LayoutConfig,
-    pub visualization: VisualizationConfig,
+    pub visualisation: VisualisationConfig,
 }
 
 pub struct UserSettings {

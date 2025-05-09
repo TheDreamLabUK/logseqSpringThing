@@ -1,4 +1,4 @@
-# LogseqXR: Immersive WebXR Visualization for Logseq Knowledge Graphs
+# LogseqXR: Immersive WebXR Visualisation for Logseq Knowledge Graphs
 
 ![image](https://github.com/user-attachments/assets/269a678d-88a5-42de-9d67-d73b64f4e520)
 
@@ -8,152 +8,148 @@
 
 ## About LogseqXR
 
-LogseqXR transforms your Logseq knowledge base into an immersive 3D visualization that you can explore in VR/AR. Experience your ideas as tangible objects in space, discover new connections, and interact with your knowledge in ways never before possible.
+LogseqXR transforms your Logseq knowledge base into an immersive 3D visualisation that you can explore in VR/AR. Experience your ideas as tangible objects in space, discover new connections, and interact with your knowledge in ways never before possible.
 
 ## Quick Links
 
-- [Project Overview](documentation/index.md)
-- [Development Setup](documentation/development/setup.md)
-- [API Documentation](documentation/api/index.md)
-- [Contributing Guidelines](documentation/contributing.md)
+- [Project Overview](docs/index.md)
+- [Development Setup](docs/development/setup.md)
+- [API Documentation](docs/api/index.md)
+- [Contributing Guidelines](docs/contributing.md)
 
 ## Documentation
 
-Our documentation is organized into several key sections:
+Our documentation is organised into several key sections:
 
 ### Client Documentation
-- [Architecture](documentation/client/architecture.md)
-- [Components](documentation/client/components.md)
-- [Core Utilities](documentation/client/core.md)
-- [Rendering System](documentation/client/rendering.md)
-- [State Management](documentation/client/state.md)
-- [Type Definitions](documentation/client/types.md)
-- [Visualization](documentation/client/visualization.md)
-- [WebSocket Communication](documentation/client/websocket.md)
-- [WebXR Integration](documentation/client/xr.md)
+- [Architecture](docs/client/architecture.md)
+- [Components](docs/client/components.md)
+- [Core Utilities](docs/client/core.md)
+- [Rendering System](docs/client/rendering.md)
+- [State Management](docs/client/state.md)
+- [Type Definitions](docs/client/types.md)
+- [Visualisation](docs/client/visualisation.md)
+- [WebSocket Communication](docs/client/websocket.md)
+- [WebXR Integration](docs/client/xr.md)
 
 ### Server Documentation
-- [Architecture](documentation/server/architecture.md)
-- [Configuration](documentation/server/config.md)
-- [Request Handlers](documentation/server/handlers.md)
-- [Data Models](documentation/server/models.md)
-- [Services](documentation/server/services.md)
-- [Type Definitions](documentation/server/types.md)
-- [Utilities](documentation/server/utils.md)
+- [Architecture](docs/server/architecture.md)
+- [Configuration](docs/server/config.md)
+- [Request Handlers](docs/server/handlers.md)
+- [Data Models](docs/server/models.md)
+- [Services](docs/server/services.md)
+- [Type Definitions](docs/server/types.md)
+- [Utilities](docs/server/utils.md)
 
 ### API Documentation
-- [REST API](documentation/api/rest.md)
-- [WebSocket API](documentation/api/websocket.md)
+- [REST API](docs/api/rest.md)
+- [WebSocket API](docs/api/websocket.md)
 
 ### Development and Deployment
-- [Development Setup](documentation/development/setup.md)
-- [Debugging Guide](documentation/development/debugging.md)
-- [Docker Deployment](documentation/deployment/docker.md)
-- [Contributing Guidelines](documentation/contributing.md)
+- [Development Setup](docs/development/setup.md)
+- [Debugging Guide](docs/development/debugging.md)
+- [Docker Deployment](docs/deployment/docker.md)
+- [Contributing Guidelines](docs/contributing.md)
 
-
-### Diagrams
+### System Architecture Diagram
 
 ```mermaid
 graph TB
     %% Frontend Components
     subgraph Frontend
         UI[User Interface Layer]
-        VR[WebXR Controller]
-        WS[WebSocket Client]
-        GPU[GPU Compute Layer]
-        ThreeJS[Three.js Renderer]
-        ChatUI[Chat Interface]
-        GraphUI[Graph Interface]
-        ControlPanel["Modular Control Panel (with Nostr Auth)"]
-        VRControls[VR Control System]
+        R3FRenderer[React Three Fiber Renderer]
+        XR[WebXR Integration]
+        WSClient[WebSocket Client]
+        GraphDisplay[Graph Display Manager]
+        ControlPanel["Modular Control Panel (Nostr Auth)"]
+        XRControls[XR Control System]
         WSService[WebSocket Service]
-        DataManager[Graph Data Manager]
-        LayoutEngine[Layout Engine]
-        SpaceMouse[SpaceMouse Controller]
+        GraphDataManager[Graph Data Manager]
         PlatformManager[Platform Manager]
-        XRSession[XR Session Manager]
-        XRInit[XR Initializer]
-        SceneManager[Scene Manager]
-        NodeManager[Enhanced Node Manager]
-        EdgeManager[Edge Manager]
-        HologramManager[Hologram Manager]
+        XRSessionManager[XR Session Manager]
+        XRInitializer[XR Initializer]
+        HologramRenderer[Hologram Renderer]
         TextRenderer[Text Renderer]
         SettingsStore[Settings Store]
+        NostrAuthClient[Nostr Auth Client UI]
     end
 
     %% Backend Components
     subgraph Backend
-        Server[Actix Web Server]
-        FileH[File Handler]
-        GraphH[Graph Handler]
-        WSH[WebSocket Handler]
-        PerplexityH[Perplexity Handler]
-        RagFlowH[RagFlow Handler]
-        VisualizationH[Visualization Handler]
-        NostrH[Nostr Handler]
-        HealthH[Health Handler]
-        PagesH[Pages Handler]
-        SettingsH[Settings Handler]
-        FileS[File Service]
-        GraphS[Graph Service]
-        GPUS[GPU Compute Service]
-        PerplexityS[Perplexity Service]
-        RagFlowS[RagFlow Service]
-        SpeechS[Speech Service]
-        NostrS[Nostr Service]
-        WSManager[WebSocket Manager]
-        GPUCompute[GPU Compute]
-        Compression[Compression Utils]
-        AudioProc[Audio Processor]
-        MetadataStore[Metadata Store]
-        ProtectedSettings[Protected Settings]
+        ActixServer[Actix Web Server]
+        FileHandler[File Handler]
+        GraphHandler[Graph Handler]
+        WebSocketHandler[WebSocket Handler]
+        PerplexityHandler[Perplexity Handler]
+        RagFlowHandler[RagFlow Handler]
+        VisualisationHandler[Visualisation Handler]
+        NostrAuthHandler[Nostr Auth Handler]
+        HealthHandler[Health Handler]
+        PagesHandler[Pages Handler]
+        SettingsHandler[Settings Handler]
+        FileService[File Service]
+        GraphService[Graph Service]
+        GPUComputeService[GPU Compute Service]
+        PerplexityService[Perplexity Service]
+        RagFlowService[RagFlow Service]
+        SpeechService[Speech Service]
+        NostrAuthService[Nostr Auth Service Backend]
+        ClientManager[WebSocket Client Manager]
+        PhysicsEngine[Continuous Physics Engine]
+        AudioProcessor[Audio Processor]
+        MetadataStoreModel[Metadata Store Model]
+        ProtectedSettingsModel[Protected Settings Model]
     end
 
     %% External Components
     subgraph External
-        GitHub[GitHub API]
-        Perplexity[Perplexity AI]
-        RagFlow[RagFlow API]
-        OpenAI[OpenAI API]
-        NostrAPI[Nostr API]
+        GitHubAPI[GitHub API]
+        PerplexityAI[Perplexity AI]
+        RagFlowAPI[RagFlow API]
+        OpenAI_API[OpenAI API]
+        NostrPlatformAPI[Nostr Platform API]
     end
 
     %% Connections between Frontend Components
-    UI --> ChatUI
-    UI --> GraphUI
+    UI --> GraphDisplay
     UI --> ControlPanel
-    UI --> VRControls
+    UI --> NostrAuthClient
+    UI --> XRControls
 
-    VR --> ThreeJS
-    WS --> WSService
-    WSService --> Server
+    XR --> R3FRenderer
+    WSClient --> WSService
+    WSService --> ActixServer
 
     %% Connections between Backend Components
-    Server --> FileH
-    Server --> GraphH
-    Server --> WSH
-    Server --> PerplexityH
-    Server --> RagFlowH
-    Server --> VisualizationH
-    Server --> NostrH
-    Server --> HealthH
-    Server --> PagesH
-    Server --> SettingsH
+    ActixServer --> FileHandler
+    ActixServer --> GraphHandler
+    ActixServer --> WebSocketHandler
+    ActixServer --> PerplexityHandler
+    ActixServer --> RagFlowHandler
+    ActixServer --> VisualisationHandler
+    ActixServer --> NostrAuthHandler
+    ActixServer --> HealthHandler
+    ActixServer --> PagesHandler
+    ActixServer --> SettingsHandler
 
-    FileH --> FileS
-    GraphH --> GraphS
-    WSH --> WSManager
-    PerplexityH --> PerplexityS
-    RagFlowH --> RagFlowS
-    NostrH --> NostrS
+    FileHandler --> FileService
+    GraphHandler --> GraphService
+    WebSocketHandler --> ClientManager
+    PerplexityHandler --> PerplexityService
+    RagFlowHandler --> RagFlowService
+    NostrAuthHandler --> NostrAuthService
+
+    GraphService --> PhysicsEngine
+    PhysicsEngine --> GPUComputeService
+    PhysicsEngine --> ClientManager
 
     %% Connections to External Components
-    FileS --> GitHub
-    PerplexityS --> Perplexity
-    RagFlowS --> RagFlow
-    SpeechS --> OpenAI
-    NostrS --> NostrAPI
+    FileService --> GitHubAPI
+    PerplexityService --> PerplexityAI
+    RagFlowService --> RagFlowAPI
+    SpeechService --> OpenAI_API
+    NostrAuthService --> NostrPlatformAPI
 
     %% Styling for clarity
     style Frontend fill:#f9f,stroke:#333,stroke-width:2px
@@ -165,391 +161,493 @@ graph TB
 
 ```mermaid
 classDiagram
-    class App {
-        +sceneManager: SceneManager
-        +nodeManager: EnhancedNodeManager
-        +edgeManager: EdgeManager
-        +hologramManager: HologramManager
-        +textRenderer: TextRenderer
-        +websocketService: WebSocketService
+    direction LR
+
+    class AppClient {
+        <<React Component>>
+        +graphDataManager: GraphDataManager
+        +webSocketService: WebSocketService
         +settingsStore: SettingsStore
         +platformManager: PlatformManager
         +xrSessionManager: XRSessionManager
-        +start()
-        +initializeEventListeners()
-        +handleSettingsUpdate(settings: Settings)
-        +dispose()
+        +nostrAuthService: NostrAuthService (Client)
+        +initialize()
+        +render()
     }
 
-    class SceneManager {
-        -static instance: SceneManager
-        +scene: Scene
-        +camera: Camera
-        +renderer: Renderer
-        +controls: Controls
-        +composer: Composer
-        +getInstance(canvas: HTMLCanvasElement): SceneManager
-        +getScene(): Scene
-        +getRenderer(): Renderer
-        +getCamera(): Camera
-        +start()
-        +handleSettingsUpdate(settings: Settings)
-        +cleanup()
+    class GraphManagerComponent {
+        <<React Component>>
+        +nodes: GraphNode[]
+        +edges: Edge[]
+        +updateNodePositions(data: ArrayBuffer)
+        +renderGraph()
     }
 
-    class WebsocketService {
-        -static instance: WebsocketService
-        +socket: WebSocket
-        +listeners: Object
-        +reconnectAttempts: number
-        +maxReconnectAttempts: number
-        +reconnectInterval: number
-        +getInstance(): WebsocketService
+    class WebSocketService_Client {
+        <<TypeScript Service>>
+        -socket: WebSocket
         +connect()
-        +onBinaryMessage(callback: function)
-        +onSettingsUpdate(callback: function)
-        +onConnectionStatusChange(callback: function)
         +sendMessage(data: object)
-        +close()
+        +onBinaryMessage(callback: function)
+        +onConnectionStatusChange(callback: function)
+        +isReady(): boolean
     }
 
-    class AppState {
-        +graph_service: GraphService
-        +gpu_compute: Option<Arc<RwLock<GPUCompute>>>
-        +settings: Arc<RwLock<Settings>>
-        +protected_settings: Arc<RwLock<ProtectedSettings>>
-        +metadata: Arc<RwLock<MetadataStore>>
-        +github_client: Arc<GitHubClient>
-        +content_api: Arc<ContentAPI>
-        +perplexity_service: Option<Arc<PerplexityService>>
-        +ragflow_service: Option<Arc<RAGFlowService>>
-        +nostr_service: Option<web::Data<NostrService>>
-        +ragflow_conversation_id: String
-        +active_connections: Arc<AtomicUsize>
-        +new()
-        +increment_connections(): usize
-        +decrement_connections(): usize
-        +get_api_keys(pubkey: str): ApiKeys
-        +get_nostr_user(pubkey: str): Option<NostrUser>
-        +validate_nostr_session(pubkey: str, token: str): bool
-        +update_nostr_user_api_keys(pubkey: str, api_keys: ApiKeys): Result<NostrUser>
-    }
-
-    class GraphService {
-        +build_graph(app_state: AppState): Result<GraphData>
-        +calculate_layout(gpu_compute: GPUCompute, graph: GraphData, params: SimulationParams): Result<void>
-        +initialize_random_positions(graph: GraphData)
-    }
-
-    class EnhancedNodeManager {
-        +scene: Scene
+    class SettingsStore_Client {
+        <<Zustand Store>>
         +settings: Settings
-        +nodeMeshes: Map<string, Mesh>
-        +updateNodes(nodes: Node[])
-        +updateNodePositions(nodes: NodeData[])
-        +handleSettingsUpdate(settings: Settings)
-        +dispose()
+        +get(path: string): any
+        +set(path: string, value: any)
+        +initialize(): Promise<Settings>
     }
 
-    class SpeechService {
-        +websocketManager: WebSocketManager
-        +settings: Settings
-        +start(receiver: Receiver<SpeechCommand>)
-        +initialize(): Result<void>
-        +send_message(message: string): Result<void>
-        +close(): Result<void>
-        +set_tts_provider(use_openai: boolean): Result<void>
+    class GraphDataManager_Client {
+        <<TypeScript Service>>
+        -data: GraphData
+        +fetchInitialData(): Promise<GraphData>
+        +updateNodePositions(data: ArrayBuffer)
+        +sendNodePositions()
+        +getGraphData(): GraphData
     }
 
-    class NostrService {
-        +settings: Settings
+    class NostrAuthService_Client {
+        <<TypeScript Service>>
+        +login(): Promise<AuthState>
+        +logout(): Promise<void>
+        +onAuthStateChanged(listener: function): function
+        +isAuthenticated(): boolean
+    }
+
+    AppClient --> GraphManagerComponent
+    AppClient --> WebSocketService_Client
+    AppClient --> SettingsStore_Client
+    AppClient --> GraphDataManager_Client
+    AppClient --> NostrAuthService_Client
+    GraphDataManager_Client --> WebSocketService_Client
+
+    class AppState_Server {
+        <<Rust Struct>>
+        +graph_service: GraphService_Server
+        +gpu_compute: Option<Arc<RwLock<GPUCompute_Util>>>
+        +settings: Arc<RwLock<AppFullSettings>>
+        +protected_settings: Arc<RwLock<ProtectedSettings_Model>>
+        +metadata: Arc<RwLock<MetadataStore_Model>>
+        +github_client: Arc<GitHubClient_Service>
+        +content_api: Arc<ContentAPI_Service>
+        +speech_service: Option<Arc<SpeechService_Server>>
+        +nostr_service: Option<web::Data<NostrService_Server>>
+        +client_manager: Arc<ClientManager_Server>
+        +new(settings, github_client, content_api, speech_service, gpu_compute, client_manager)
+    }
+
+    class GraphService_Server {
+        <<Rust Struct>>
+        +graph_data: Arc<RwLock<GraphData_Model>>
+        +node_map: Arc<RwLock<HashMap_String_NodeModel_>>
+        +gpu_compute: Option<Arc<RwLock<GPUCompute_Util>>>
+        +client_manager: Arc<ClientManager_Server>
+        +new(settings, gpu_compute, client_manager)
+        +build_graph_from_metadata(metadata: &MetadataStore_Model): Result<GraphData_Model>
+        +calculate_layout(gpu_compute, graph, node_map, params): Result<()>
+        +start_broadcast_loop(client_manager)
+        +get_node_positions(): Vec<Node_Model>
+    }
+
+    class SpeechService_Server {
+        <<Rust Struct>>
+        +settings: Arc<RwLock<AppFullSettings>>
+        +tts_provider: Arc<RwLock<TTSProvider_Enum>>
+        +audio_tx: broadcast.Sender_Vec_u8_
+        +new(settings)
+        +text_to_speech(text: String, options: SpeechOptions): Result<()>
+    }
+
+    class NostrService_Server {
+        <<Rust Struct>>
+        +users: Arc<RwLock<HashMap_String_NostrUser_>>
+        +verify_auth_event(event: AuthEvent): Result<NostrUser_Model>
         +validate_session(pubkey: str, token: str): bool
-        +get_user(pubkey: str): Option<NostrUser>
-        +update_user_api_keys(pubkey: str, api_keys: ApiKeys): Result<NostrUser>
+        +get_user(pubkey: str): Option<NostrUser_Model>
+    }
+    
+    class GPUCompute_Util {
+        <<Rust Struct>>
+        +device: Arc<CudaDevice>
+        +force_kernel: CudaFunction
+        +node_data: CudaSlice_BinaryNodeData_
+        +new(graph: &GraphData_Model): Result<Arc<RwLock<Self>>>
+        +compute_forces(): Result<()>
+        +get_node_data(): Result<Vec<BinaryNodeData>>
+    }
+    
+    class ClientManager_Server {
+        <<Rust Struct>>
+        +clients: RwLock<HashMap_usize_Addr_SocketFlowServer_>>
+        +register(addr): usize
+        +unregister(id: usize)
+        +broadcast_node_positions(nodes: Vec<Node_Model>)
     }
 
-    App --> SceneManager
-    App --> WebsocketService
-    App --> EnhancedNodeManager
-    SceneManager --> WebXRVisualization
-    WebsocketService --> GraphDataManager
-    AppState --> GraphService
-    AppState --> NostrService
-    AppState --> SpeechService
+    AppState_Server --> GraphService_Server
+    AppState_Server --> NostrService_Server
+    AppState_Server --> SpeechService_Server
+    AppState_Server --> GPUCompute_Util
+    AppState_Server --> ClientManager_Server
+    GraphService_Server --> GPUCompute_Util
+    GraphService_Server --> ClientManager_Server
 ```
 
 ### Sequence Diagram
 
 ```mermaid
 sequenceDiagram
-    participant Client as Client (Browser)
-    participant Platform as PlatformManager
-    participant XR as XRSessionManager
-    participant Scene as SceneManager
-    participant Node as EnhancedNodeManager
-    participant Edge as EdgeManager
-    participant Hologram as HologramManager
-    participant Text as TextRenderer
-    participant WS as WebSocketService
-    participant Settings as SettingsStore
-    participant Server as Actix Server
-    participant AppState as AppState
-    participant FileH as FileHandler
-    participant GraphH as GraphHandler
-    participant WSH as WebSocketHandler
-    participant PerplexityH as PerplexityHandler
-    participant RagFlowH as RagFlowHandler
-    participant NostrH as NostrHandler
-    participant SettingsH as SettingsHandler
-    participant FileS as FileService
-    participant GraphS as GraphService
-    participant GPUS as GPUService
-    participant PerplexityS as PerplexityService
-    participant RagFlowS as RagFlowService
-    participant NostrS as NostrService
-    participant SpeechS as SpeechService
-    participant WSM as WebSocketManager
-    participant GitHub as GitHub API
-    participant Perplexity as Perplexity AI
-    participant RagFlow as RagFlow API
-    participant OpenAI as OpenAI API
-    participant Nostr as Nostr API
+    participant ClientUI as Client UI (React)
+    participant GraphMgrClient as GraphDataManager (Client)
+    participant WSClient as WebSocketService (Client)
+    participant SettingsClient as SettingsStore (Client)
+    participant NostrAuthClient as NostrAuthService (Client)
+    participant PlatformMgrClient as PlatformManager (Client)
+    participant R3FRenderer as ReactThreeFiber (Client)
 
-    %% Server initialization and AppState setup
-    activate Server
-    Server->>Server: Load settings.yaml & env vars (config.rs)
+    participant ActixServer as Actix Web Server (Backend)
+    participant AppStateSrv as AppState (Backend)
+    participant GraphSrv as GraphService (Backend)
+    participant GPUComputeSrv as GPUCompute (Backend)
+    participant ClientMgrSrv as ClientManager (Backend)
+    participant FileSrv as FileService (Backend)
+    participant NostrSrv as NostrService (Backend)
+    participant SpeechSrv as SpeechService (Backend)
+    participant SettingsHandlerSrv as SettingsHandler (Backend)
+    participant NostrHandlerSrv as NostrHandler (Backend)
+    participant FileHandlerSrv as FileHandler (Backend)
+    participant GraphHandlerSrv as GraphHandler (Backend)
+    participant WSHandlerSrv as WebSocketHandler (Backend)
+    
+    participant GitHubAPI as GitHub API (External)
+    participant PerplexityAPI as Perplexity AI (External)
+    participant RagFlowAPI as RagFlow API (External)
+    participant OpenAI_API as OpenAI API (External)
+    participant NostrPlatform as Nostr Platform (External)
+
+    %% === Server Initialisation ===
+    activate ActixServer
+    ActixServer->>ActixServer: Load AppFullSettings (settings.yaml, env)
     alt Settings Load Error
-        Server-->>Client: Error Response (500)
-    else Settings Loaded Successfully
-        Server->>AppState: new() (app_state.rs)
-        activate AppState
-            AppState->>GPUS: initialize_gpu_compute()
-            activate GPUS
-                GPUS->>GPUS: setup_compute_pipeline()
-                GPUS->>GPUS: load_wgsl_shaders()
-                GPUS-->>AppState: GPU Compute Instance
-            deactivate GPUS
-            
-            AppState->>WSM: initialize()
-            activate WSM
-                WSM->>WSM: setup_binary_protocol()
-                WSM-->>AppState: WebSocket Manager
-            deactivate WSM
-            
-            AppState->>SpeechS: start()
-            activate SpeechS
-                SpeechS->>SpeechS: initialize_tts()
-                SpeechS-->>AppState: Speech Service
-            deactivate SpeechS
-            
-            AppState->>NostrS: initialize()
-            activate NostrS
-                NostrS->>NostrS: setup_nostr_client()
-                NostrS-->>AppState: Nostr Service
-            deactivate NostrS
-            
-            AppState-->>Server: Initialized AppState
-        deactivate AppState
-
-        Server->>FileS: fetch_and_process_files()
-        activate FileS
-            FileS->>GitHub: fetch_files()
-            activate GitHub
-                GitHub-->>FileS: Files or Error
-            deactivate GitHub
-            
-            loop For Each File
-                FileS->>FileS: should_process_file()
-                alt File Needs Processing
-                    FileS->>PerplexityS: process_file()
-                    activate PerplexityS
-                        PerplexityS->>Perplexity: analyze_content()
-                        Perplexity-->>PerplexityS: Analysis Results
-                        PerplexityS-->>FileS: Processed Content
-                    deactivate PerplexityS
-                    FileS->>FileS: save_metadata()
-                end
-            end
-            FileS-->>Server: Processed Files
-        deactivate FileS
-
-        Server->>GraphS: build_graph()
-        activate GraphS
-            GraphS->>GraphS: create_nodes_and_edges()
-            GraphS->>GPUS: calculate_layout()
-            activate GPUS
-                GPUS->>GPUS: bind_gpu_buffers()
-                GPUS->>GPUS: dispatch_compute_shader()
-                GPUS->>GPUS: read_buffer_results()
-                GPUS-->>GraphS: Updated Positions
-            deactivate GPUS
-            GraphS-->>Server: Graph Data
-        deactivate GraphS
+        ActixServer-->>ClientUI: HTTP 500 (Conceptual)
+    else Settings Loaded
+        ActixServer->>AppStateSrv: new(AppFullSettings, GitHubClient, ContentAPI, SpeechService, GPUCompute, ClientManager)
+        activate AppStateSrv
+            Note over AppStateSrv: Initialises services like GitHubClient, ContentAPI
+            AppStateSrv->>SpeechSrv: new(AppFullSettings)
+            activate SpeechSrv; deactivate SpeechSrv
+            AppStateSrv->>NostrSrv: new() (via init_nostr_service)
+            activate NostrSrv; deactivate NostrSrv
+            AppStateSrv->>FileSrv: load_or_create_metadata()
+            activate FileSrv; deactivate FileSrv
+            AppStateSrv->>GraphSrv: build_graph_from_metadata()
+            activate GraphSrv
+                GraphSrv->>GraphSrv: Initialise random positions
+            deactivate GraphSrv
+            AppStateSrv->>GPUComputeSrv: new(GraphData) (or test_gpu)
+            activate GPUComputeSrv; deactivate GPUComputeSrv
+            AppStateSrv->>GraphSrv: new(AppFullSettings, GPUCompute, ClientManager)
+            activate GraphSrv
+                GraphSrv->>GraphSrv: Start physics simulation loop (async)
+                GraphSrv->>GraphSrv: Start broadcast loop (async)
+            deactivate GraphSrv
+        AppStateSrv-->>ActixServer: Initialised AppState
+        deactivate AppStateSrv
     end
+    deactivate ActixServer
 
-    %% Client and Platform initialization
-    Client->>Platform: initialize()
-    activate Platform
-        Platform->>Platform: detect_capabilities()
-        Platform->>Settings: load_settings()
-        activate Settings
-            Settings->>Settings: validate_settings()
-            Settings-->>Platform: Settings Object
-        deactivate Settings
-        
-        Platform->>WS: connect()
-        activate WS
-            WS->>Server: ws_connect
-            Server->>WSH: handle_connection()
-            WSH->>WSM: register_client()
-            WSM-->>WS: connection_established
-            
-            WS->>WS: setup_binary_handlers()
-            WS->>WS: initialize_reconnection_logic()
-            
-            WSM-->>WS: initial_graph_data (Binary)
-            WS->>WS: decode_binary_message()
-        deactivate WS
-        
-        Platform->>XR: initialize()
-        activate XR
-            XR->>XR: check_xr_support()
-            XR->>Scene: create()
-            activate Scene
-                Scene->>Scene: setup_three_js()
-                Scene->>Scene: setup_render_pipeline()
-                Scene->>Node: initialize()
-                activate Node
-                    Node->>Node: create_geometries()
-                    Node->>Node: setup_materials()
-                deactivate Node
-                Scene->>Edge: initialize()
-                activate Edge
-                    Edge->>Edge: create_line_geometries()
-                    Edge->>Edge: setup_line_materials()
-                deactivate Edge
-                Scene->>Hologram: initialize()
-                activate Hologram
-                    Hologram->>Hologram: setup_hologram_shader()
-                    Hologram->>Hologram: create_hologram_geometry()
-                deactivate Hologram
-                Scene->>Text: initialize()
-                activate Text
-                    Text->>Text: load_fonts()
-                    Text->>Text: setup_text_renderer()
-                deactivate Text
-            deactivate Scene
-        deactivate XR
-    deactivate Platform
-
-    Note over Client, Nostr: User Interaction Flows
-
-    %% User drags a node
-    alt User Drags Node
-        Client->>Node: handle_node_drag()
-        Node->>WS: send_position_update()
-        WS->>Server: binary_position_update
-        Server->>GraphS: update_layout()
-        GraphS->>GPUS: recalculate_forces()
-        GPUS-->>Server: new_positions
-        Server->>WSM: broadcast()
-        WSM-->>WS: binary_update
-        WS->>Node: update_positions()
-        Node-->>Client: render_update
-    end
-
-    %% User asks a question
-    alt User Asks Question
-        Client->>RagFlowH: send_query()
-        RagFlowH->>RagFlowS: process_query()
-        activate RagFlowS
-            RagFlowS->>RagFlow: get_context()
-            RagFlow-->>RagFlowS: relevant_context
-            RagFlowS->>OpenAI: generate_response()
-            OpenAI-->>RagFlowS: ai_response
-            RagFlowS-->>Client: streaming_response
-        deactivate RagFlowS
-        alt Speech Enabled
-            Client->>SpeechS: synthesize_speech()
-            activate SpeechS
-                SpeechS->>OpenAI: text_to_speech()
-                OpenAI-->>SpeechS: audio_stream
-                SpeechS-->>Client: audio_data
-            deactivate SpeechS
+    %% === Client Initialisation ===
+    activate ClientUI
+    ClientUI->>PlatformMgrClient: initialise()
+    activate PlatformMgrClient; deactivate PlatformMgrClient
+    ClientUI->>SettingsClient: initialise()
+    activate SettingsClient
+        SettingsClient->>SettingsClient: Load from localStorage
+        SettingsClient->>ActixServer: GET /api/user-settings (fetchSettings)
+        activate ActixServer
+            ActixServer->>SettingsHandlerSrv: get_public_settings(AppState)
+            SettingsHandlerSrv-->>ActixServer: UISettings (JSON)
+        deactivate ActixServer
+        ActixServer-->>SettingsClient: Settings JSON
+        SettingsClient->>SettingsClient: Merge and store settings
+    deactivate SettingsClient
+    
+    ClientUI->>NostrAuthClient: initialise()
+    activate NostrAuthClient
+        NostrAuthClient->>NostrAuthClient: Check localStorage for session
+        alt Stored Session Found
+            NostrAuthClient->>ActixServer: POST /api/auth/nostr/verify (token)
+            activate ActixServer
+                ActixServer->>NostrHandlerSrv: verify(AppState, token_payload)
+                NostrHandlerSrv->>NostrSrv: validate_session(pubkey, token)
+                NostrSrv-->>NostrHandlerSrv: Validation Result
+            deactivate ActixServer
+            ActixServer-->>NostrAuthClient: VerificationResponse
+            NostrAuthClient->>SettingsClient: Update auth state
         end
+    deactivate NostrAuthClient
+
+    ClientUI->>WSClient: connect()
+    activate WSClient
+        WSClient->>ActixServer: WebSocket Handshake (/wss)
+        activate ActixServer
+            ActixServer->>WSHandlerSrv: handle_connection(AppState, ClientManager)
+            activate WSHandlerSrv
+                WSHandlerSrv->>ClientMgrSrv: register(client_addr)
+                activate ClientMgrSrv; deactivate ClientMgrSrv
+            deactivate WSHandlerSrv
+        deactivate ActixServer
+        ActixServer-->>WSClient: WebSocket Opened
+        WSClient->>WSClient: isConnected = true
+        WSClient-->>ActixServer: {"type":"requestInitialData"} (on connection_established from server)
+        activate ActixServer
+            ActixServer->>WSHandlerSrv: Handle requestInitialData
+            WSHandlerSrv->>GraphSrv: get_node_positions()
+            GraphSrv-->>WSHandlerSrv: Vec<Node_Model>
+            WSHandlerSrv->>WSHandlerSrv: Encode to binary
+            WSHandlerSrv-->>WSClient: Binary Position Data (Initial Graph)
+        deactivate ActixServer
+        WSClient->>GraphMgrClient: updateNodePositions(binary_data)
+        activate GraphMgrClient
+            GraphMgrClient->>GraphMgrClient: Parse binary, update internal graph
+            GraphMgrClient->>R3FRenderer: Trigger re-render
+        deactivate GraphMgrClient
+    deactivate WSClient
+    
+    ClientUI->>GraphMgrClient: fetchInitialData() (if WebSocket initial data is not primary)
+    activate GraphMgrClient
+        GraphMgrClient->>ActixServer: GET /api/graph/data
+        activate ActixServer
+            ActixServer->>GraphHandlerSrv: get_graph_data(AppState)
+            GraphHandlerSrv->>GraphSrv: get_graph_data_mut()
+            GraphSrv-->>GraphHandlerSrv: GraphData_Model
+        deactivate ActixServer
+        ActixServer-->>GraphMgrClient: GraphData JSON
+        GraphMgrClient->>GraphMgrClient: Set graph data
+        GraphMgrClient->>R3FRenderer: Trigger re-render
+    deactivate GraphMgrClient
+    deactivate ClientUI
+
+    %% === Continuous Graph Updates (Server to Client) ===
+    loop Physics Simulation & Broadcast (Backend)
+        GraphSrv->>GPUComputeSrv: compute_forces()
+        GPUComputeSrv-->>GraphSrv: Updated Node Data
+        GraphSrv->>ClientMgrSrv: broadcast_node_positions(updated_nodes)
+        activate ClientMgrSrv
+            ClientMgrSrv->>WSHandlerSrv: Send binary to all clients
+            WSHandlerSrv-->>WSClient: Binary Position Data
+        deactivate ClientMgrSrv
+        WSClient->>GraphMgrClient: updateNodePositions(binary_data)
+        activate GraphMgrClient
+            GraphMgrClient->>GraphMgrClient: Parse binary, update internal graph
+            GraphMgrClient->>R3FRenderer: Trigger re-render
+        deactivate GraphMgrClient
     end
 
-    %% User updates the graph
-    alt User Updates Graph
-        Client->>FileH: update_file()
-        FileH->>FileS: process_update()
-        FileS->>GitHub: create_pull_request()
-        GitHub-->>FileS: pr_created
-        FileS-->>Client: success_response
-    end
+    %% === User Drags Node (Client to Server) ===
+    ClientUI->>R3FRenderer: User interacts with node
+    R3FRenderer->>GraphMgrClient: Node position changed by user
+    activate GraphMgrClient
+        GraphMgrClient->>GraphMgrClient: Update local node position
+        GraphMgrClient->>WSClient: sendNodePositions() (sends binary update)
+        activate WSClient
+            WSClient->>ActixServer: Binary Position Data (Client Update)
+            activate ActixServer
+                ActixServer->>WSHandlerSrv: Handle binary message
+                WSHandlerSrv->>GraphSrv: update_node_positions(client_updates)
+                activate GraphSrv
+                    GraphSrv->>GraphSrv: Update internal graph, resolve conflicts
+                    GraphSrv->>GPUComputeSrv: compute_forces() (recalculate layout)
+                    GPUComputeSrv-->>GraphSrv: Updated Node Data
+                deactivate GraphSrv
+                Note over ActixServer: Server now has authoritative positions.
+                Note over ActixServer: Broadcast loop will send these out.
+            deactivate ActixServer
+        deactivate WSClient
+    deactivate GraphMgrClient
 
-    %% WebSocket reconnection flow
-    alt WebSocket Reconnection
-        WS->>WS: connection_lost()
-        loop Until Max Attempts
-            WS->>WS: attempt_reconnect()
-            WS->>Server: ws_connect
-            alt Connection Successful
-                Server-->>WS: connection_established
-                WSM-->>WS: resend_graph_data
-                WS->>Node: restore_state()
-            else Connection Failed
-                Note right of WS: Continue reconnect attempts
-            end
-        end
-    end
+    %% === Settings Update Flow ===
+    ClientUI->>SettingsClient: User changes a setting
+    activate SettingsClient
+        SettingsClient->>SettingsClient: Update local settings state
+        SettingsClient->>ActixServer: POST /api/user-settings/sync (settings JSON)
+        activate ActixServer
+            ActixServer->>SettingsHandlerSrv: update_user_settings(AppState, settings_payload)
+            activate SettingsHandlerSrv
+                SettingsHandlerSrv->>AppStateSrv: settings.write().await (AppFullSettings)
+                AppStateSrv->>AppStateSrv: Merge client settings into AppFullSettings
+                AppStateSrv->>AppStateSrv: AppFullSettings.save() to settings.yaml
+                SettingsHandlerSrv->>ClientMgrSrv: Broadcast settings_updated JSON
+                activate ClientMgrSrv
+                    ClientMgrSrv->>WSHandlerSrv: Send JSON to all clients
+                    WSHandlerSrv-->>WSClient: {"type":"settings_updated", "payload":...}
+                deactivate ClientMgrSrv
+            deactivate SettingsHandlerSrv
+            SettingsHandlerSrv-->>ActixServer: Updated UISettings (JSON)
+        deactivate ActixServer
+        ActixServer-->>SettingsClient: Confirmation
+    deactivate SettingsClient
+    WSClient->>SettingsClient: Receive settings_updated message
+    activate SettingsClient
+        SettingsClient->>SettingsClient: Update local settings store
+        SettingsClient->>ClientUI: Notify UI components of change
+    deactivate SettingsClient
 
-    %% Settings update flow
-    alt Settings Update
-        Client->>SettingsH: update_settings()
-        SettingsH->>AppState: apply_settings()
-        AppState->>WSM: broadcast_settings()
-        WSM-->>WS: settings_update
-        WS->>Settings: update_settings()
-        Settings->>Platform: apply_platform_settings()
-        Platform->>Scene: update_rendering()
-        Scene->>Node: update_visuals()
-        Scene->>Edge: update_visuals()
-        Scene->>Hologram: update_effects()
-    end
-
-    %% Nostr authentication flow
-    alt Nostr Authentication
-        Client->>NostrH: authenticate()
-        NostrH->>NostrS: validate_session()
-        NostrS->>Nostr: verify_credentials()
-        Nostr-->>NostrS: auth_result
-        NostrS-->>Client: session_token
-    end
-
-    deactivate Server
+    %% === Nostr Authentication Flow ===
+    ClientUI->>NostrAuthClient: User clicks Login
+    activate NostrAuthClient
+        NostrAuthClient->>NostrAuthClient: Interact with NIP-07 Provider (e.g., window.nostr)
+        NostrAuthClient->>NostrAuthClient: Get pubkey, sign auth event
+        NostrAuthClient->>ActixServer: POST /api/auth/nostr (signed_event_payload)
+        activate ActixServer
+            ActixServer->>NostrHandlerSrv: login(AppState, event_payload)
+            activate NostrHandlerSrv
+                NostrHandlerSrv->>NostrSrv: verify_auth_event(event)
+                activate NostrSrv
+                    NostrSrv->>NostrSrv: Verify signature, manage user session
+                    NostrSrv-->>NostrHandlerSrv: NostrUser_Model with session_token
+                deactivate NostrSrv
+            deactivate NostrHandlerSrv
+            NostrHandlerSrv-->>ActixServer: AuthResponse (user_dto, token, expires_at, features)
+        deactivate ActixServer
+        ActixServer-->>NostrAuthClient: AuthResponse JSON
+        NostrAuthClient->>NostrAuthClient: Store token, update user state
+        NostrAuthClient->>SettingsClient: Update auth state in store
+        NostrAuthClient-->>ClientUI: Login successful / UI update
+    deactivate NostrAuthClient
 ```
 
 ### AR Features Implementation Status
 
 #### Hand Tracking (Meta Quest 3)
-- Implementation in `client/xr/xrSessionManager.ts`
+- XR Interaction is primarily managed by `client/src/features/xr/systems/HandInteractionSystem.tsx` and related hooks/providers like `useSafeXRHooks.tsx`.
+- Session management is in `client/src/features/xr/managers/xrSessionManager.ts`.
+- Initialisation logic is in `client/src/features/xr/managers/xrInitializer.ts`.
 - Currently addressing:
-  - Performance optimization for AR passthrough mode
-  - Virtual desktop cleanup during AR activation
-  - Type compatibility between `XRHand` and custom `XRHandWithHaptics`
-  - Joint position extraction methods
+  - Performance optimisation for AR passthrough mode.
+  - Virtual desktop cleanup during AR activation (conceptual, not explicitly in code).
+  - Type compatibility for WebXR hand input APIs (e.g., `XRHand`, `XRJointSpace` as seen in `webxr-extensions.d.ts`).
+  - Joint position extraction methods for gesture recognition.
 
 ##### Current Challenges
-- Type mismatches between standard `XRHand` and custom `XRHandWithHaptics`
-- Joint position extraction from `XRJointSpace`
-- Performance optimization in AR passthrough mode
+- Ensuring robust type definitions for WebXR extensions across different browsers/devices (see `client/src/features/xr/types/webxr-extensions.d.ts`).
+- Extracting and interpreting joint positions from `XRJointSpace` for reliable gesture recognition (conceptual, `HandInteractionSystem.tsx` has stubs).
+- Performance optimisation in AR passthrough mode, especially with complex scenes.
 
 ##### Next Steps
-- Implement adapter for `XRHand` to `XRHandWithHaptics` conversion
-- Refactor VisualizationController for native XRHand compatibility
-- Optimize AR mode transitions
-- Enhance Meta Quest 3 performance
+- Refine `webxr-extensions.d.ts` for better type safety with hand tracking APIs.
+- Implement more sophisticated gesture recognition in `HandInteractionSystem.tsx`.
+- Optimise AR mode transitions and rendering performance.
+- Enhance Meta Quest 3 specific features if possible (e.g., passthrough quality).
+
+### Authentication and Settings Inheritance
+
+#### Unauthenticated Users
+- Use browser's localStorage for settings persistence (via Zustand `persist` middleware in `client/src/store/settingsStore.ts`).
+- Settings are stored locally and not synced to a user-specific backend store.
+- Default to basic settings visibility.
+- Limited to local visualisation features; AI and GitHub features requiring API keys will not be available unless default keys are configured on the server.
+
+#### Authenticated Users (Nostr)
+- **Regular Users**:
+    - Settings are loaded from and saved to user-specific files on the server (e.g., `/app/user_settings/<pubkey>.yaml`), managed by `src/handlers/settings_handler.rs` using `UserSettings` model.
+    - These user-specific settings are a subset of the global settings (typically UI/visualisation preferences defined in `UISettings`).
+    - Can access features based on their `feature_access.rs` configuration (e.g., RAGFlow, OpenAI by default for new users).
+    - Can manage their own API keys for these services via `/api/auth/nostr/api-keys` endpoint, stored in their `NostrUser` profile on the server.
+- **Power Users**:
+    - Directly load and modify the global server settings from `settings.yaml` (represented by `AppFullSettings` in Rust).
+    - Have full access to all settings and advanced API features (Perplexity, RAGFlow, GitHub, OpenAI TTS) which use API keys configured in `settings.yaml` or environment variables.
+    - Settings modifications made by power users are persisted to the main `settings.yaml` and broadcast to all connected clients.
+
+### Settings Inheritance Flow
+
+```mermaid
+graph TD
+    A[Start] --> B{Authenticated?}
+    B -->|No| C[Load LocalSettings (localStorage via Zustand)]
+    B -->|Yes| D{Is Power User? (feature_access.rs)}
+    D -->|No| E[Load UserSpecificSettings (user_settings/pubkey.yaml via API)]
+    D -->|Yes| F[Load GlobalServerSettings (settings.yaml via API)]
+    C --> X[Apply Settings to UI]
+    E --> X
+    F --> X
+```
+
+### Settings Sync Flow
+
+```mermaid
+graph TD
+    A[Setting Changed in UI] --> B{Authenticated?}
+    B -->|No| C[Save Locally (localStorage via Zustand)]
+    B -->|Yes| D{Is Power User?}
+    D -->|No| E[Save to UserSpecificSettings (user_settings/pubkey.yaml via API)]
+    D -->|Yes| F[Save to GlobalServerSettings (settings.yaml via API)]
+    F --> G[Server Broadcasts GlobalSettingsUpdate to All Clients]
+    G --> H[Other Clients Update Local Store]
+    E --> I[User's Local Store Updated]
+    C --> I
+```
+
+### Modular Control Panel Architecture
+
+The client's user interface for settings and controls is primarily managed by the `LowerControlPanel.tsx` component. This panel uses a tabbed interface to organise different categories of settings and tools. Some sections, like those within `SettingsSection.tsx`, support being "detached" into floating draggable windows.
+
+#### Component Structure
+
+The main UI is structured as follows:
+- **`LowerControlPanel.tsx`**: A two-pane layout.
+    - **Left Pane**: Contains tabs for core settings:
+        - Nostr Authentication (`NostrAuthSection.tsx`)
+        - System Settings (`SystemPanel.tsx`)
+        - Visualisation Settings (`VisualisationPanel.tsx`)
+        - XR Settings (`XRPanel.tsx`)
+        - AI Services Settings (`AIPanel.tsx`)
+    - **Right Pane**: Contains tabs for features/tools:
+        - Embedded "Narrative Gold Mine" iframe.
+        - Markdown Renderer (`MarkdownRenderer.tsx`) for displaying content.
+        - LLM Query interface (basic textarea and button).
+- **`SettingsSection.tsx`**: Used within panels (e.g., `VisualisationPanel.tsx`) to group related settings. Supports:
+    - Collapsible sections.
+    - Detaching into a draggable, floating window using `react-draggable`.
+- **`SettingControlComponent.tsx`**: Renders individual UI controls (sliders, toggles, inputs) for each setting, including dynamic tooltips using `Tooltip.tsx`.
+
+The conceptual interfaces for settings provided in the original README are useful for understanding the data structure but are not direct props to a single "ModularControlPanel" component. Instead, settings are managed by `zustand` (`SettingsStore.ts`) and individual panel components consume and update this store.
+
+```typescript
+// Conceptual structure of a setting item (managed by SettingsStore)
+interface UISetting { // From client/src/features/settings/types/uiSetting.ts
+  type: 'slider' | 'toggle' | 'colour' | 'select' | 'number' | 'text'; // Simplified
+  id?: string;
+  label?: string;
+  value?: any;
+  min?: number;
+  max?: number;
+  step?: number;
+  options?: Array<{ value: string; label: string }>;
+  // ... other properties like description, help, advanced
+}
+
+// Conceptual structure for how settings are organised in the store (e.g., settings.visualisation.nodes)
+interface SettingsCategory {
+  [settingId: string]: UISetting | SettingsCategory;
+}
+```
+
+#### Layout Management
+The overall layout is a fixed two-pane structure within `LowerControlPanel.tsx`.
+Individual `SettingsSection` components can be detached, and their position is managed by `react-draggable` locally. There isn't a global `LayoutConfig` prop managing all detachable panel positions in the way the conceptual interface suggested. User preferences for advanced settings visibility are handled by `ControlPanelProvider` and `useControlPanelContext`.
+
+#### Performance Optimisations
+- **Debounced Updates**: `SettingControlComponent.tsx` uses `onBlur` or Enter key for text/number inputs, which acts as a form of debouncing for settings changes that might trigger expensive re-renders or API calls.
+- **CSS Transforms**: Used by `react-draggable` for smooth movement of detached panels.
+- **Memoisation**: `useMemo` is used in components like `GraphManager.tsx` to stabilise expensive calculations or object references.
+- **Targeted Re-renders**: Zustand store selectors for primitive values are used in some places (e.g., `App.tsx`) to avoid unnecessary re-renders.
+
+The goal is to maintain responsiveness, especially during interactions with the 3D visualisation and real-time updates.
 
 ## License
 
@@ -560,117 +658,6 @@ This project is licensed under the MIT License. See the [LICENSE](LICENSE) file 
 - Prof Rob Aspin: For inspiring the project's vision and providing valuable resources.
 - OpenAI: For their advanced AI models powering the question-answering features.
 - Perplexity AI and RAGFlow: For their AI services enhancing content processing and interaction.
-- Three.js: For the robust 3D rendering capabilities utilized in the frontend.
+- Three.js: For the robust 3D rendering capabilities utilised in the frontend.
 - Actix: For the high-performance web framework powering the backend server.
 
-### Authentication and Settings Inheritance
-
-#### Unauthenticated Users
-- Use browser's localStorage for settings persistence
-- Settings are stored locally and not synced
-- Default to basic settings visibility
-- Limited to local visualization features
-
-#### Authenticated Users (Nostr)
-- Inherit settings from server's settings.yaml
-- Settings are synced across all authenticated users
-- Access to advanced settings based on role
-
-#### Power Users
-- Full access to all settings
-- Can modify server's settings.yaml
-- Access to advanced API features:
-  - Perplexity API for AI assistance
-  - RagFlow for document processing
-  - GitHub integration for PR management
-  - OpenAI voice synthesis
-- Settings modifications are persisted to settings.yaml
-
-### Settings Inheritance Flow
-
-```mermaid
-graph TD
-    A[Start] --> B{Authenticated?}
-    B -->|No| C[Load Local Settings]
-    B -->|Yes| D[Load Server Settings]
-    D --> E{Is Power User?}
-    E -->|No| F[Apply Read-Only]
-    E -->|Yes| G[Enable Full Access]
-```
-
-### Settings Sync Flow
-
-```mermaid
-graph TD
-    A[Setting Changed] --> B{Authenticated?}
-    B -->|No| C[Save Locally]
-    B -->|Yes| D{Is Power User?}
-    D -->|No| E[Preview Only]
-    D -->|Yes| F[Update Server]
-    F --> G[Sync to All Users]
-```
-
-### Modular Control Panel Architecture
-
-The control panel is built with a modular architecture that supports:
-- Detachable sections
-- Real-time preview integration
-- Drag and drop functionality
-- Dynamic tooltips
-- Performance optimizations
-
-#### Component Structure
-
-```typescript
-interface ModularControlPanelProps {
-  sections: ControlSection[];
-  layout: LayoutConfig;
-  onLayoutChange: (newLayout: LayoutConfig) => void;
-}
-
-interface ControlSection {
-  id: string;
-  title: string;
-  settings: Setting[];
-  isDetached: boolean;
-  position?: { x: number, y: number };
-  size?: { width: number, height: number };
-}
-
-interface Setting {
-  id: string;
-  type: 'slider' | 'toggle' | 'color' | 'select';
-  value: any;
-  metadata: SettingMetadata;
-}
-```
-
-#### Layout Management
-
-```typescript
-interface LayoutConfig {
-  sections: {
-    [sectionId: string]: {
-      position: { x: number, y: number };
-      size: { width: number, height: number };
-      isDetached: boolean;
-      isCollapsed: boolean;
-    };
-  };
-  userPreferences: {
-    showAdvanced: boolean;
-    activeFilters: string[];
-    customOrder: string[];
-  };
-}
-```
-
-#### Performance Optimizations
-
-- ResizeObserver for efficient size tracking
-- Virtual scrolling for large setting lists
-- Debounced real-time preview updates
-- CSS transforms for smooth animations
-- Lazy loading for visual aids
-- Efficient memory management with WeakMap
-- Real-time preview integration with ~60fps target

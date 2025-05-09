@@ -407,8 +407,8 @@ export const HandInteractionSystem: React.FC<HandInteractionSystemProps> = ({
     }
   });
   
-  // Toggle hand visualization for debugging
-  const toggleHandVisualization = () => {
+  // Toggle hand visualisation for debugging
+  const toggleHandVisualisation = () => {
     setVisualizeHands(!visualizeHands);
   };
   

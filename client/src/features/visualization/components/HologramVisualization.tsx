@@ -38,7 +38,7 @@ const HologramMeshMaterial: React.FC<{
   return <meshStandardMaterial ref={materialRef as any} {...{ toneMapped: false, wireframe: true } as any} />;
 };
 
-interface HologramVisualizationProps {
+interface HologramVisualisationProps {
   position?: readonly [number, number, number];
   size?: number;
   standalone?: boolean;
@@ -46,20 +46,20 @@ interface HologramVisualizationProps {
 }
 
 /**
- * HologramVisualization - A component that renders a hologram visualization
+ * HologramVisualisation - A component that renders a hologram visualisation
  * using the modern approach based on @react-three/fiber and @react-three/drei
  *
  * Can be used in two ways:
  * 1. As a standalone component with its own canvas (standalone=true)
  * 2. As a component inside an existing canvas (standalone=false)
  */
-export const HologramVisualization: React.FC<HologramVisualizationProps> = ({
+export const HologramVisualisation: React.FC<HologramVisualisationProps> = ({
   position = [0, 0, 0],
   size = 1,
   standalone = true,
   children
 }) => {
-  const settings = useSettingsStore(state => state.settings?.visualization?.hologram);
+  const settings = useSettingsStore(state => state.settings?.visualisation?.hologram);
 
   // Content that's rendered inside the hologram
   const HologramContent = () => (
@@ -198,7 +198,7 @@ export const HologramExample: React.FC = () => {
     <div className="flex flex-col md:flex-row gap-6 p-6 min-h-screen bg-gray-900">
       {/* 3D Hologram */}
       <div className="flex-1 h-[500px] rounded-lg overflow-hidden">
-        <HologramVisualization standalone size={1.2} />
+        <HologramVisualisation standalone size={1.2} />
       </div>
 
       {/* UI Hologram */}
@@ -245,4 +245,4 @@ export const HologramExample: React.FC = () => {
   );
 };
 
-export default HologramVisualization;
+export default HologramVisualisation;

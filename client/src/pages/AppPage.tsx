@@ -14,8 +14,8 @@ import { ControlPanelProvider } from '../features/settings/components/control-pa
 import AppInitializer from '../app/AppInitializer';
 // Removed unused Collapsible imports
 // Removed panel/tab component imports - now handled by LowerControlPanel
-import { HologramVisualization } from '../features/visualization/components/HologramVisualization';
-import CameraController from '../features/visualization/components/CameraController';
+import { HologramVisualisation } from '../features/visualisation/components/HologramVisualisation';
+import CameraController from '../features/visualisation/components/CameraController';
 // Removed icon imports - now handled by LowerControlPanel
 // Import type definitions to fix JSX element errors
 import '../types/react-three-fiber.d.ts';
@@ -134,7 +134,7 @@ const AppPage: React.FC = () => { // Renamed component
             />
             <Suspense fallback={null}>
               <GraphManager />
-              <HologramVisualization standalone={false} position={[0, 0, 0]} size={20} />
+              <HologramVisualisation standalone={false} position={[0, 0, 0]} size={20} />
             </Suspense>
             {/* @ts-ignore */}
             <axesHelper args={[2]} />

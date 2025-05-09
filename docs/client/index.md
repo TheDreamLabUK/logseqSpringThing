@@ -10,6 +10,6 @@ This section contains documentation for the client-side components of the system
 - [Rendering](rendering.md)
 - [State Management](state.md)
 - [Types](types.md)
-- [Visualization](visualization.md)
+- [Visualisation](visualisation.md)
 - [WebSocket Communication](websocket.md)
 - [WebXR Integration](xr.md)

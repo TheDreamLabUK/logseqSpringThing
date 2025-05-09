@@ -163,8 +163,8 @@ export const useSettingsStore = create<SettingsState>()(
           const state = get()
 
           // Build a list of paths to notify
-          // e.g. for path 'visualization.bloom.enabled':
-          // '', 'visualization', 'visualization.bloom', 'visualization.bloom.enabled'
+          // e.g. for path 'visualisation.bloom.enabled':
+          // '', 'visualisation', 'visualisation.bloom', 'visualisation.bloom.enabled'
           const pathsToNotify = ['']
           const pathParts = path.split('.')
           let currentPath = ''

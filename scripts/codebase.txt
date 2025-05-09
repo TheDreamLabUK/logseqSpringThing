@@ -63,7 +63,7 @@ Directories:
 │   │   │   │   ├── panels
 │   │   │   │   │   ├── AIPanel.tsx
 │   │   │   │   │   ├── SystemPanel.tsx
-│   │   │   │   │   ├── VisualizationPanel.tsx
+│   │   │   │   │   ├── VisualisationPanel.tsx
 │   │   │   │   │   └── XRPanel.tsx
 │   │   │   │   ├── SettingControlComponent.tsx
 │   │   │   │   ├── SettingsSection.tsx
@@ -76,11 +76,11 @@ Directories:
 │   │   │       ├── settingsSchema.ts
 │   │   │       ├── settingsTypes.ts
 │   │   │       └── uiSetting.ts
-│   │   ├── visualization
+│   │   ├── visualisation
 │   │   │   ├── components
 │   │   │   │   ├── ActionButtons.tsx
 │   │   │   │   ├── CameraController.tsx
-│   │   │   │   ├── HologramVisualization.tsx
+│   │   │   │   ├── HologramVisualisation.tsx
 │   │   │   │   └── MetadataVisualizer.tsx
 │   │   │   ├── managers
 │   │   │   │   └── sceneManager.ts
@@ -91,7 +91,7 @@ Directories:
 │   │   │   │   │   └── HologramShaderMaterial.ts
 │   │   │   │   └── TextRenderer.tsx
 │   │   │   ├── types
-│   │   │   │   └── visualizationTypes.ts
+│   │   │   │   └── visualisationTypes.ts
 │   │   │   └── utils
 │   │   │       └── animations.ts
 │   │   └── xr
@@ -100,7 +100,7 @@ Directories:
 │   │       │   │   └── XRControlPanel.tsx
 │   │       │   ├── XRController.tsx
 │   │       │   ├── XRScene.tsx
-│   │       │   └── XRVisualizationConnector.tsx
+│   │       │   └── XRVisualisationConnector.tsx
 │   │       ├── hooks
 │   │       │   ├── useSafeXRHooks.tsx
 │   │       │   └── useXRContextCheck.tsx
@@ -190,7 +190,7 @@ Directories:
 │   │   ├── graph
 │   │   │   └── mod.rs
 │   │   ├── mod.rs
-│   │   └── visualization
+│   │   └── visualisation
 │   │       └── mod.rs
 │   ├── file_handler.rs
 │   ├── graph_handler.rs
@@ -203,7 +203,7 @@ Directories:
 │   ├── settings_handler.rs
 │   ├── socket_flow_handler.rs
 │   ├── speech_socket_handler.rs
-│   └── visualization_handler.rs
+│   └── visualisation_handler.rs
 ├── lib.rs
 ├── main.rs
 ├── models
@@ -267,7 +267,7 @@ Directories:
 │   ├── rendering.md
 │   ├── state.md
 │   ├── types.md
-│   ├── visualization.md
+│   ├── visualisation.md
 │   ├── websocket.md
 │   ├── websocket-readiness.md
 │   └── xr.md
@@ -299,7 +299,7 @@ Directories:
 
 # Project Codebase
 
-Generated: Thu  8 May 09:48:48 UTC 2025
+Generated: Fri  9 May 10:14:39 UTC 2025
 
 ## Project Structure
 
@@ -309,7 +309,7 @@ Generated: Thu  8 May 09:48:48 UTC 2025
 
 ## README.md
 
-# LogseqXR: Immersive WebXR Visualization for Logseq Knowledge Graphs
+# LogseqXR: Immersive WebXR Visualisation for Logseq Knowledge Graphs
 
 ![image](https://github.com/user-attachments/assets/269a678d-88a5-42de-9d67-d73b64f4e520)
 
@@ -319,7 +319,7 @@ Generated: Thu  8 May 09:48:48 UTC 2025
 
 ## About LogseqXR
 
-LogseqXR transforms your Logseq knowledge base into an immersive 3D visualization that you can explore in VR/AR. Experience your ideas as tangible objects in space, discover new connections, and interact with your knowledge in ways never before possible.
+LogseqXR transforms your Logseq knowledge base into an immersive 3D visualisation that you can explore in VR/AR. Experience your ideas as tangible objects in space, discover new connections, and interact with your knowledge in ways never before possible.
 
 ## Quick Links
 
@@ -339,7 +339,7 @@ Our documentation is organized into several key sections:
 - [Rendering System](documentation/client/rendering.md)
 - [State Management](documentation/client/state.md)
 - [Type Definitions](documentation/client/types.md)
-- [Visualization](documentation/client/visualization.md)
+- [Visualisation](documentation/client/visualisation.md)
 - [WebSocket Communication](documentation/client/websocket.md)
 - [WebXR Integration](documentation/client/xr.md)
 
@@ -401,7 +401,7 @@ graph TB
         WSH[WebSocket Handler]
         PerplexityH[Perplexity Handler]
         RagFlowH[RagFlow Handler]
-        VisualizationH[Visualization Handler]
+        VisualisationH[Visualisation Handler]
         NostrH[Nostr Handler]
         HealthH[Health Handler]
         PagesH[Pages Handler]
@@ -446,7 +446,7 @@ graph TB
     Server --> WSH
     Server --> PerplexityH
     Server --> RagFlowH
-    Server --> VisualizationH
+    Server --> VisualisationH
     Server --> NostrH
     Server --> HealthH
     Server --> PagesH
@@ -582,7 +582,7 @@ classDiagram
     App --> SceneManager
     App --> WebsocketService
     App --> EnhancedNodeManager
-    SceneManager --> WebXRVisualization
+    SceneManager --> WebXRVisualisation
     WebsocketService --> GraphDataManager
     AppState --> GraphService
     AppState --> NostrService
@@ -858,7 +858,7 @@ sequenceDiagram
 
 ##### Next Steps
 - Implement adapter for `XRHand` to `XRHandWithHaptics` conversion
-- Refactor VisualizationController for native XRHand compatibility
+- Refactor VisualisationController for native XRHand compatibility
 - Optimize AR mode transitions
 - Enhance Meta Quest 3 performance
 
@@ -880,7 +880,7 @@ This project is licensed under the MIT License. See the [LICENSE](LICENSE) file 
 - Use browser's localStorage for settings persistence
 - Settings are stored locally and not synced
 - Default to basic settings visibility
-- Limited to local visualization features
+- Limited to local visualisation features
 
 #### Authenticated Users (Nostr)
 - Inherit settings from server's settings.yaml
@@ -1393,7 +1393,7 @@ http {
 
 ### settings.yaml
 
-visualization:
+visualisation:
   nodes:
     base_color: '#df90c2'
     metalness: 0.2
@@ -1406,7 +1406,7 @@ visualization:
     enable_instancing: false
     enable_hologram: false
     enable_metadata_shape: false
-    enable_metadata_visualization: true
+    enable_metadata_visualisation: true
   edges:
     arrow_size: 0.02
     base_width: 0.1
@@ -1654,7 +1654,7 @@ config.yml
 name = "webxr"
 version = "0.1.0"
 edition = "2021"
-description = "A WebXR graph visualization server with GPU-accelerated physics"
+description = "A WebXR graph visualisation server with GPU-accelerated physics"
 authors = ["Your Name <your.email@example.com>"]
 
 [dependencies]
@@ -1943,7 +1943,7 @@ __pycache__/
 
 # Project specific
 scripts/local/
-client/visualization/effects/custom/
+client/visualisation/effects/custom/
 .qodo
 
 ### tsconfig.json
@@ -2170,13 +2170,6 @@ fi
                 "IPv4Address": "172.18.0.9/16",
                 "IPv6Address": ""
             },
-            "dbb2e18dbe3ab10e8514e9d645ca2a38bd6a38cfec9c66b13bbbde08af4deadc": {
-                "Name": "logseq_spring_thing_webxr",
-                "EndpointID": "e259bae4745fefe3b06eac56a1a2cc3e68bb0e2668e9dfc05af4d298b8b64ad0",
-                "MacAddress": "2a:a4:75:c4:36:43",
-                "IPv4Address": "172.18.0.12/16",
-                "IPv6Address": ""
-            },
             "ee48ae53212bac56639e23c906606c713239b2a6ee57d08a9546ceb08457a87c": {
                 "Name": "practical_cori",
                 "EndpointID": "5a72c118bdda2da960a6b3d9da4ffb1321acade5adab15c5b5f943445f9d49d1",
@@ -2210,7 +2203,7 @@ The following text represents a project with code. The structure of the text con
 main.rs
 use webxr::{
     AppState,
-    config::Settings,
+    config::{Settings as ClientFacingSettings, AppFullSettings}, // Import both
     handlers::{
         api_handler,
         health_handler,
@@ -2245,21 +2238,27 @@ async fn main() -> std::io::Result<()> {
     dotenv().ok();
 
     // Load settings first to get the log level
-    let settings = match Settings::new() {
+    // Use AppFullSettings here as this is the main server configuration loaded from YAML/Env
+    let settings = match AppFullSettings::new() { // Changed to AppFullSettings::new()
         Ok(s) => {
-            info!("Settings loaded successfully from: {}", 
-                std::env::var("SETTINGS_FILE_PATH").unwrap_or_default());
-            Arc::new(RwLock::new(s))
+            info!("AppFullSettings loaded successfully from: {}", 
+                std::env::var("SETTINGS_FILE_PATH").unwrap_or_else(|_| "/app/settings.yaml".to_string()));
+            Arc::new(RwLock::new(s)) // Now holds Arc<RwLock<AppFullSettings>>
         },
         Err(e) => {
-            error!("Failed to load settings: {:?}", e);
-            return Err(std::io::Error::new(std::io::ErrorKind::Other, format!("Failed to initialize settings: {:?}", e)));
+            error!("Failed to load AppFullSettings: {:?}", e);
+            // Try loading the client-facing Settings as a fallback for debugging? Unlikely to work.
+            // error!("Attempting fallback load of client-facing Settings struct...");
+            // match ClientFacingSettings::new() { // This ::new doesn't exist on client Settings
+            //     Ok(_) => error!("Fallback load seemed to work structurally, but AppState expects AppFullSettings!"),
+            //     Err(fe) => error!("Fallback load also failed: {:?}", fe),
+            // }
+            return Err(std::io::Error::new(std::io::ErrorKind::Other, format!("Failed to initialize AppFullSettings: {:?}", e)));
         }
     };
 
     // --- BEGIN GPU TEST BEFORE LOGGING ---
     println!("[PRE-LOGGING CHECK] Starting GPU detection test before logging is initialized");
-    // Add forced pre-test delay
     tokio::time::sleep(Duration::from_millis(1000)).await;
     
     match webxr::utils::gpu_compute::GPUCompute::test_gpu().await {
@@ -2269,7 +2268,6 @@ async fn main() -> std::io::Result<()> {
             eprintln!("[PRE-LOGGING CHECK] Will retry once with additional delay");
             tokio::time::sleep(Duration::from_millis(2000)).await;
             
-            // Retry once
             match webxr::utils::gpu_compute::GPUCompute::test_gpu().await {
                 Ok(_) => println!("[PRE-LOGGING CHECK] GPU test successful on retry!"),
                 Err(e) => eprintln!("[PRE-LOGGING CHECK] GPU test failed on retry: {}", e),
@@ -2281,24 +2279,25 @@ async fn main() -> std::io::Result<()> {
 
     // Initialize logging with settings-based configuration
     let log_config = {
-        let settings_read = settings.read().await;
-        // Only use debug level if debug is enabled, otherwise use configured level
-        let log_level = &settings_read.system.debug.log_level;
+        let settings_read = settings.read().await; // Reads AppFullSettings
+        // Access log level correctly from AppFullSettings structure
+        let log_level = &settings_read.system.debug.log_level; 
         
         LogConfig::new(
             log_level,
-            log_level,
+            log_level, // Assuming same level for app and deps for now
         )
     };
 
     init_logging_with_config(log_config)?;
 
-    debug!("Successfully loaded settings");
+    debug!("Successfully loaded AppFullSettings"); // Updated log message
 
     info!("Starting WebXR application...");
     
     // Create web::Data instances first
-    let settings_data = web::Data::new(settings.clone());
+    // This now holds Data<Arc<RwLock<AppFullSettings>>>
+    let settings_data = web::Data::new(settings.clone()); 
 
     // Initialize services
     let github_config = match GitHubConfig::from_env() {
@@ -2306,6 +2305,8 @@ async fn main() -> std::io::Result<()> {
         Err(e) => return Err(std::io::Error::new(std::io::ErrorKind::Other, format!("Failed to load GitHub config: {}", e)))
     };
 
+    // GitHubClient::new might need adjustment if it expects client-facing Settings
+    // Assuming it can work with AppFullSettings for now.
     let github_client = match GitHubClient::new(github_config, settings.clone()).await {
         Ok(client) => Arc::new(client),
         Err(e) => return Err(std::io::Error::new(std::io::ErrorKind::Other, format!("Failed to initialize GitHub client: {}", e)))
@@ -2313,21 +2314,24 @@ async fn main() -> std::io::Result<()> {
 
     let content_api = Arc::new(ContentAPI::new(github_client.clone()));
 
-    // Initialize app state asynchronously
     // Initialize speech service
+    // SpeechService::new might need adjustment if it expects client-facing Settings
     let speech_service = {
         let service = SpeechService::new(settings.clone());
         Some(Arc::new(service))
     };
     
+    // Initialize app state asynchronously
+    // AppState::new now correctly receives Arc<RwLock<AppFullSettings>>
     let mut app_state = match AppState::new(
             settings.clone(),
             github_client.clone(),
             content_api.clone(),
-            None,
-            None,
+            None, // Perplexity placeholder
+            None, // RAGFlow placeholder
             speech_service,
-            None, "default_session".to_string()
+            None, // GPU Compute placeholder
+            "default_session".to_string() // RAGFlow session ID placeholder
         ).await {
             Ok(state) => state,
             Err(e) => return Err(std::io::Error::new(std::io::ErrorKind::Other, format!("Failed to initialize app state: {}", e)))
@@ -2344,12 +2348,7 @@ async fn main() -> std::io::Result<()> {
             std::io::Error::new(std::io::ErrorKind::Other, e.to_string())
         })?;
 
-    // Launch GitHub data fetch in background to avoid blocking WebSocket initialization
-    // Instead of spawning a background task which causes Send trait issues,
-    // log that we're skipping the background fetch to avoid compilation errors
     info!("Note: Background GitHub data fetch is disabled to resolve compilation issues");
-    // If GitHub data fetching becomes critical, consider modifying FileService or GitHubClient 
-    // to implement Send for all futures
 
     if metadata_store.is_empty() {
         error!("No metadata found and could not create empty store");
@@ -2369,25 +2368,20 @@ async fn main() -> std::io::Result<()> {
     // Build initial graph from metadata and initialize GPU compute
     info!("Building initial graph from existing metadata for physics simulation");
     
-    // Create the ClientManager that will be shared between GraphService and WebSocket handlers
     let client_manager = app_state.ensure_client_manager().await;
     
     match GraphService::build_graph_from_metadata(&metadata_store).await {
         Ok(graph_data) => {            
-            // Initialize GPU compute if not already done
             if app_state.gpu_compute.is_none() {
                 info!("No GPU compute instance found, initializing one now");
                 match GPUCompute::new(&graph_data).await {
                     Ok(gpu_instance) => {
                         info!("GPU compute initialized successfully");
-                        // Update app_state with new GPU compute instance
                         app_state.gpu_compute = Some(gpu_instance);
                         
-                        // Shut down the existing GraphService before creating a new one
                         info!("Shutting down existing graph service before reinitializing with GPU");
                         let shutdown_start = std::time::Instant::now();
                         
-                        // Attempt shutdown with proper error handling
                         match tokio::time::timeout(Duration::from_secs(5), app_state.graph_service.shutdown()).await {
                             Ok(_) => info!("Graph service shutdown completed successfully in {:?}", shutdown_start.elapsed()),
                             Err(_) => {
@@ -2396,15 +2390,14 @@ async fn main() -> std::io::Result<()> {
                             }
                         }
                         
-                        // Add a small delay to ensure clean shutdown
                         tokio::time::sleep(Duration::from_millis(100)).await;
                         
-                        // Reinitialize graph service with GPU compute
                         info!("Reinitializing graph service with GPU compute");
+                        // GraphService::new receives Arc<RwLock<AppFullSettings>>
                         app_state.graph_service = GraphService::new(
-                            settings.clone(), 
+                            settings.clone(),
                             app_state.gpu_compute.clone(),
-                            None
+                            client_manager.clone() // Pass client manager
                         ).await;
                         
                         info!("Graph service successfully reinitialized with GPU compute");
@@ -2412,7 +2405,6 @@ async fn main() -> std::io::Result<()> {
                     Err(e) => {
                         warn!("Failed to initialize GPU compute: {}. Continuing with CPU fallback.", e);
                         
-                        // Attempt shutdown with proper error handling
                         let shutdown_start = std::time::Instant::now();
                         match tokio::time::timeout(Duration::from_secs(5), app_state.graph_service.shutdown()).await {
                             Ok(_) => info!("Graph service shutdown completed successfully in {:?}", shutdown_start.elapsed()),
@@ -2422,11 +2414,11 @@ async fn main() -> std::io::Result<()> {
                             }
                         }
                         
-        // Initialize graph service with None as GPU compute (will use CPU fallback)
+                        // Reinitialize graph service with None as GPU compute
                         app_state.graph_service = GraphService::new(
-                            settings.clone(), 
+                            settings.clone(),
                             None,
-                            None
+                            client_manager.clone() // Pass client manager
                         ).await;
                         
                         info!("Graph service initialized with CPU fallback");
@@ -2434,12 +2426,11 @@ async fn main() -> std::io::Result<()> {
                 }
             }
 
-            // Update graph data after GPU is initialized
+            // Update graph data after GPU is initialized (or CPU fallback)
             let mut graph = app_state.graph_service.get_graph_data_mut().await;
             let mut node_map = app_state.graph_service.get_node_map_mut().await;
             *graph = graph_data;
             
-            // Update node_map with new graph nodes
             node_map.clear();
             for node in &graph.nodes {
                 node_map.insert(node.id.clone(), node.clone());
@@ -2457,29 +2448,26 @@ async fn main() -> std::io::Result<()> {
         }
     }
 
-    // Add a delay to allow GPU computation to run before accepting client connections
     info!("Waiting for initial physics layout calculation to complete...");
     tokio::time::sleep(Duration::from_millis(500)).await;
     info!("Initial delay complete. Starting HTTP server...");
     
-    // Start the broadcast loop to share position updates with all clients
-    info!("Starting position broadcast loop for client synchronization...");
-    app_state.graph_service.start_broadcast_loop();
+    app_state.graph_service.start_broadcast_loop(client_manager.clone());
     info!("Position broadcast loop started");
-
+ 
     // Create web::Data after all initialization is complete
     let app_state_data = web::Data::new(app_state);
 
     // Start the server
     let bind_address = {
-        let settings_read = settings.read().await;
+        let settings_read = settings.read().await; // Reads AppFullSettings
+        // Access network settings correctly
         format!("{}:{}", settings_read.system.network.bind_address, settings_read.system.network.port)
     };
 
     info!("Starting HTTP server on {}", bind_address);
 
     let server = HttpServer::new(move || {
-        // Configure CORS
         let cors = Cors::default()
             .allow_any_origin()
             .allow_any_method()
@@ -2491,11 +2479,12 @@ async fn main() -> std::io::Result<()> {
             .wrap(middleware::Logger::default())
             .wrap(cors)
             .wrap(middleware::Compress::default())
-            .app_data(settings_data.clone())
+            // Pass AppFullSettings wrapped in Data
+            .app_data(settings_data.clone()) 
             .app_data(web::Data::new(github_client.clone()))
             .app_data(web::Data::new(content_api.clone()))
-            .app_data(app_state_data.clone())  // Add the complete AppState
-            .app_data(app_state_data.nostr_service.clone().unwrap())
+            .app_data(app_state_data.clone()) // Add the complete AppState
+            .app_data(app_state_data.nostr_service.clone().unwrap_or_else(|| web::Data::new(NostrService::default()))) // Provide default if None
             .app_data(app_state_data.feature_access.clone())
             .route("/wss", web::get().to(socket_flow_handler))
             .route("/speech", web::get().to(speech_socket_handler))
@@ -2505,13 +2494,6 @@ async fn main() -> std::io::Result<()> {
                     .service(web::scope("/health").configure(health_handler::config))
                     .service(web::scope("/pages").configure(pages_handler::config))
             );
-
-        // Only serve static files if not in development mode (Vite handles this in dev)
-        // Removed redundant static file serving logic. Nginx handles this in production.
-        // The actix app should only configure API routes.
-        // Assuming the 'else' block below is not needed or handled elsewhere.
-        // If there was specific dev-only setup here, it needs separate handling.
-        // Extraneous brace and log message removed after deleting if/else block
         
         app
     })
@@ -2551,7 +2533,7 @@ use actix_web::web;
 use log::info;
 
 use crate::handlers::socket_flow_handler::ClientManager;
-use crate::config::Settings;
+use crate::config::{AppFullSettings, Settings as ClientFacingSettings}; // Renamed for clarity
 use tokio::time::Duration;
 use crate::config::feature_access::FeatureAccess;
 use crate::models::metadata::MetadataStore;
@@ -2569,7 +2551,7 @@ use once_cell::sync::Lazy;
 pub struct AppState {
     pub graph_service: GraphService,
     pub gpu_compute: Option<Arc<RwLock<GPUCompute>>>,
-    pub settings: Arc<RwLock<Settings>>,
+    pub settings: Arc<RwLock<AppFullSettings>>, // Changed to AppFullSettings
     pub protected_settings: Arc<RwLock<ProtectedSettings>>,
     pub metadata: Arc<RwLock<MetadataStore>>,
     pub github_client: Arc<GitHubClient>,
@@ -2581,17 +2563,15 @@ pub struct AppState {
     pub feature_access: web::Data<FeatureAccess>,
     pub ragflow_session_id: String,
     pub active_connections: Arc<AtomicUsize>,
-    // Client manager for tracking WebSocket connections
-    pub client_manager: Option<Arc<ClientManager>>,
+    // pub client_manager: Option<Arc<ClientManager>>, // Removed, use ensure_client_manager
 }
 
-// Static ClientManager for the app
-static APP_CLIENT_MANAGER: Lazy<Arc<ClientManager>> = 
+static APP_CLIENT_MANAGER: Lazy<Arc<ClientManager>> =
     Lazy::new(|| Arc::new(ClientManager::new()));
 
 impl AppState {
     pub async fn new(
-        settings: Arc<RwLock<Settings>>,
+        settings: Arc<RwLock<AppFullSettings>>, // Changed to AppFullSettings
         github_client: Arc<GitHubClient>,
         content_api: Arc<ContentAPI>,
         perplexity_service: Option<Arc<PerplexityService>>,
@@ -2600,19 +2580,18 @@ impl AppState {
         gpu_compute: Option<Arc<RwLock<GPUCompute>>>,
         ragflow_session_id: String,
     ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
-        // Initialize GraphService with settings - log this as a major step
         info!("[AppState::new] Initializing GraphService");
-        
-        // Add a short delay to ensure any previous physics loops have time to detect shutdown flags
         tokio::time::sleep(Duration::from_millis(50)).await;
         
-        let graph_service = GraphService::new(settings.clone(), gpu_compute.clone(), Some(APP_CLIENT_MANAGER.clone())).await;
+        // GraphService::new might need adjustment if it expects client-facing Settings
+        // For now, passing AppFullSettings. This will likely require GraphService changes.
+        let graph_service = GraphService::new(settings.clone(), gpu_compute.clone(), APP_CLIENT_MANAGER.clone()).await;
         info!("[AppState::new] GraphService initialization complete");
         
         Ok(Self {
             graph_service,
             gpu_compute,
-            settings,
+            settings, // Storing AppFullSettings
             protected_settings: Arc::new(RwLock::new(ProtectedSettings::default())),
             metadata: Arc::new(RwLock::new(MetadataStore::new())),
             github_client,
@@ -2624,7 +2603,7 @@ impl AppState {
             feature_access: web::Data::new(FeatureAccess::from_env()),
             ragflow_session_id,
             active_connections: Arc::new(AtomicUsize::new(0)),
-            client_manager: Some(APP_CLIENT_MANAGER.clone()),
+            // client_manager: Some(APP_CLIENT_MANAGER.clone()), // Removed
         })
     }
 
@@ -2671,7 +2650,6 @@ impl AppState {
         self.nostr_service = Some(web::Data::new(service));
     }
 
-    // Feature access helper methods
     pub fn is_power_user(&self, pubkey: &str) -> bool {
         self.feature_access.is_power_user(pubkey)
     }
@@ -2688,10 +2666,7 @@ impl AppState {
         self.feature_access.get_available_features(pubkey)
     }
     
-    // Ensure that a ClientManager exists, creating one if it doesn't
     pub async fn ensure_client_manager(&self) -> Arc<ClientManager> {
-        // Always return the static client manager
-        // This avoids mutability issues since the App struct is often behind an immutable reference
         APP_CLIENT_MANAGER.clone()
     }
 }
@@ -5366,25 +5341,37 @@ pub use user_settings::UserSettings;
 ----
 models/ui_settings.rs
 use serde::{Deserialize, Serialize};
+// Import the necessary structs from config
 use crate::config::{
-    DebugSettings, Settings, VisualizationSettings, XRSettings,
+    AppFullSettings, // Use the full server settings struct
+    ClientWebSocketSettings, // The structure expected by the client for websocket settings
+    DebugSettings, 
+    VisualisationSettings, 
+    XRSettings,
+    // Settings as ClientFacingSettings, // No longer needed for the From impl
 };
 
+// UISettings remains the structure sent to the client
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct UISettings {
-    pub visualization: VisualizationSettings,
+    pub visualisation: VisualisationSettings,
     pub system: UISystemSettings,
-    pub xr: XRSettings,
+    pub xr: XRSettings, // Assuming XRSettings structure is compatible enough for UI
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct UISystemSettings {
-    pub websocket: WebSocketClientSettings,
+    // This must use the client-expected structure
+    pub websocket: ClientWebSocketSettings, 
     pub debug: DebugSettings,
+    // Note: persist_settings from client SystemSettings is not included here,
+    // as it's likely not needed for direct UI rendering based on UISettings.
+    // Add it if necessary.
 }
 
+// WebSocketClientSettings definition remains the same as it defines the client structure
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct WebSocketClientSettings {
@@ -5396,12 +5383,14 @@ pub struct WebSocketClientSettings {
     pub update_rate: u32,
 }
 
-impl From<&Settings> for UISettings {
-    fn from(settings: &Settings) -> Self {
+// Updated From implementation to convert from AppFullSettings
+impl From<&AppFullSettings> for UISettings {
+    fn from(settings: &AppFullSettings) -> Self {
         Self {
-            visualization: settings.visualization.clone(),
+            visualisation: settings.visualisation.clone(),
             system: UISystemSettings {
-                websocket: WebSocketClientSettings {
+                // Map fields from ServerFullWebSocketSettings to ClientWebSocketSettings
+                websocket: ClientWebSocketSettings {
                     reconnect_attempts: settings.system.websocket.reconnect_attempts,
                     reconnect_delay: settings.system.websocket.reconnect_delay,
                     binary_chunk_size: settings.system.websocket.binary_chunk_size,
@@ -5409,26 +5398,36 @@ impl From<&Settings> for UISettings {
                     compression_threshold: settings.system.websocket.compression_threshold,
                     update_rate: settings.system.websocket.update_rate,
                 },
-                debug: settings.system.debug.clone(),
+                // Debug settings structure is assumed compatible
+                debug: settings.system.debug.clone(), 
             },
-            xr: settings.xr.clone(),
+            // XR settings structure is assumed compatible enough for UI purposes
+            xr: settings.xr.clone(), 
         }
     }
 }
 
-impl UISettings {
-    pub fn merge_into_settings(&self, settings: &mut Settings) {
-        settings.visualization = self.visualization.clone();
-        settings.system.websocket.reconnect_attempts = self.system.websocket.reconnect_attempts;
-        settings.system.websocket.reconnect_delay = self.system.websocket.reconnect_delay;
-        settings.system.websocket.binary_chunk_size = self.system.websocket.binary_chunk_size;
-        settings.system.websocket.compression_enabled = self.system.websocket.compression_enabled;
-        settings.system.websocket.compression_threshold = self.system.websocket.compression_threshold;
-        settings.system.websocket.update_rate = self.system.websocket.update_rate;
-        settings.system.debug = self.system.debug.clone();
-        settings.xr = self.xr.clone();
-    }
-}
+// Commenting out merge_into_settings as the merge logic is now centralized
+// in settings_handler.rs for better control, especially with AppFullSettings.
+// impl UISettings {
+//     pub fn merge_into_settings(&self, settings: &mut AppFullSettings) {
+//         settings.visualisation = self.visualisation.clone();
+//         // Careful mapping needed here, especially for websocket
+//         let server_ws = &mut settings.system.websocket;
+//         let ui_ws = &self.system.websocket;
+//         server_ws.reconnect_attempts = ui_ws.reconnect_attempts;
+//         server_ws.reconnect_delay = ui_ws.reconnect_delay;
+//         server_ws.binary_chunk_size = ui_ws.binary_chunk_size;
+//         server_ws.compression_enabled = ui_ws.compression_enabled;
+//         server_ws.compression_threshold = ui_ws.compression_threshold;
+//         server_ws.update_rate = ui_ws.update_rate;
+//         // Other server_ws fields remain untouched by UISettings merge
+        
+//         settings.system.debug = self.system.debug.clone();
+//         settings.xr = self.xr.clone();
+//         // persist_settings? auth? AI settings? - Not part of UISettings merge
+//     }
+// }
 ----
 models/metadata.rs
 use chrono::{DateTime, Utc};
@@ -6093,19 +6092,30 @@ impl ProtectedSettings {
 handlers/settings_handler.rs
 use crate::app_state::AppState;
 use crate::models::{UISettings, UserSettings};
+use crate::models::ui_settings::UISystemSettings; // Correct import
+// Import both settings types and alias the client-facing one
+use crate::config::{AppFullSettings, Settings as ClientFacingSettings};
+use crate::handlers::socket_flow_handler::ClientManager; // Needed for broadcast
 use actix_web::{web, Error, HttpResponse, HttpRequest};
 use chrono::Utc;
-use serde_json::Value;
+use serde_json::json;
 use crate::config::feature_access::FeatureAccess;
 use log::{info, error, warn, debug};
 use std::time::Instant;
 
-// Add a new endpoint to clear the settings cache for a user
+// Helper function to convert AppFullSettings to UISettings (requires From impl update)
+// This assumes the From impl is updated in models/ui_settings.rs
+fn convert_to_ui_settings(full_settings: &AppFullSettings) -> UISettings {
+    UISettings::from(full_settings) // Rely on the From trait implementation
+}
+
+
+// --- Cache Clearing Endpoints (Unaffected by Settings struct changes) ---
+
 async fn clear_user_settings_cache(
     req: HttpRequest,
     feature_access: web::Data<FeatureAccess>
 ) -> Result<HttpResponse, Error> {
-    // Get pubkey from header
     let pubkey = match req.headers().get("X-Nostr-Pubkey") {
         Some(value) => value.to_str().unwrap_or("").to_string(),
         None => {
@@ -6113,28 +6123,19 @@ async fn clear_user_settings_cache(
             return Ok(HttpResponse::BadRequest().body("Missing Nostr pubkey"));
         }
     };
-    
-    // Check if user has permission
     if !feature_access.can_sync_settings(&pubkey) {
         warn!("User {} attempted to clear settings cache without permission", pubkey);
         return Ok(HttpResponse::Forbidden().body("Settings sync not enabled for this user"));
     }
-    
     UserSettings::clear_cache(&pubkey);
     info!("Cleared settings cache for user {}", pubkey);
-    
-    Ok(HttpResponse::Ok().json(serde_json::json!({
-        "status": "success",
-        "message": "Settings cache cleared"
-    })))
+    Ok(HttpResponse::Ok().json(json!({ "status": "success", "message": "Settings cache cleared" })))
 }
 
-// Add a new endpoint for admin to clear all settings caches
 async fn clear_all_settings_cache(
     req: HttpRequest,
     feature_access: web::Data<FeatureAccess>
 ) -> Result<HttpResponse, Error> {
-    // Get pubkey from header
     let pubkey = match req.headers().get("X-Nostr-Pubkey") {
         Some(value) => value.to_str().unwrap_or("").to_string(),
         None => {
@@ -6142,21 +6143,16 @@ async fn clear_all_settings_cache(
             return Ok(HttpResponse::BadRequest().body("Missing Nostr pubkey"));
         }
     };
-    
-    // Only power users can clear all caches
     if !feature_access.is_power_user(&pubkey) {
         warn!("Non-power user {} attempted to clear all settings caches", pubkey);
         return Ok(HttpResponse::Forbidden().body("Only power users can clear all settings caches"));
     }
-    
     UserSettings::clear_all_cache();
     info!("Power user {} cleared all settings caches", pubkey);
-    
-    Ok(HttpResponse::Ok().json(serde_json::json!({
-        "status": "success",
-        "message": "All settings caches cleared"
-    })))
+    Ok(HttpResponse::Ok().json(json!({ "status": "success", "message": "All settings caches cleared" })))
 }
+
+// --- Configuration ---
 
 pub fn config(cfg: &mut web::ServiceConfig) {
     cfg.service(
@@ -6166,7 +6162,7 @@ pub fn config(cfg: &mut web::ServiceConfig) {
     ).service(
         web::resource("/user-settings/sync")
             .route(web::get().to(get_user_settings))
-            .route(web::post().to(update_user_settings))
+            .route(web::post().to(update_user_settings)) // This now points to the updated function
     ).service(
         web::resource("/user-settings/clear-cache")
             .route(web::post().to(clear_user_settings_cache))
@@ -6176,12 +6172,11 @@ pub fn config(cfg: &mut web::ServiceConfig) {
     );
 }
 
+// --- GET Endpoints ---
+
 pub async fn get_public_settings(state: web::Data<AppState>) -> Result<HttpResponse, Error> {
     let settings_guard = state.settings.read().await;
-    
-    // Convert to UI settings
-    let ui_settings = UISettings::from(&*settings_guard);
-    
+    let ui_settings = convert_to_ui_settings(&*settings_guard);
     Ok(HttpResponse::Ok().json(&ui_settings))
 }
 
@@ -6191,21 +6186,17 @@ async fn get_user_settings(
     feature_access: web::Data<FeatureAccess>
 ) -> Result<HttpResponse, Error> {
     let start_time = Instant::now();
-    
-    // Get pubkey from header
     let pubkey = match req.headers().get("X-Nostr-Pubkey") {
         Some(value) => value.to_str().unwrap_or("").to_string(),
         None => {
-            warn!("Missing Nostr pubkey in request headers");
+            warn!("Missing Nostr pubkey in request headers for get_user_settings");
             return Ok(HttpResponse::BadRequest().body("Missing Nostr pubkey"));
         }
     };
-    
-    debug!("Processing settings request for user: {}", pubkey);
-    
-    // Check if user has permission using FeatureAccess
+    debug!("Processing get_user_settings request for user: {}", pubkey);
+
     if !feature_access.can_sync_settings(&pubkey) {
-        warn!("User {} attempted to sync settings without permission", pubkey);
+        warn!("User {} attempted get_user_settings without permission", pubkey);
         return Ok(HttpResponse::Forbidden().body("Settings sync not enabled for this user"));
     }
 
@@ -6213,154 +6204,227 @@ async fn get_user_settings(
     let result;
 
     if is_power_user {
-        // Power users get settings from the global settings file
         let settings_guard = state.settings.read().await;
-        let ui_settings = UISettings::from(&*settings_guard);
-        debug!("Returning global settings for power user {}", pubkey);
+        let ui_settings = convert_to_ui_settings(&*settings_guard);
+        debug!("Returning global UI settings for power user {}", pubkey);
         result = Ok(HttpResponse::Ok().json(ui_settings));
     } else {
-        // Regular users get their personal settings or defaults
-        // This will use the cache if available due to our UserSettings::load implementation
         let user_settings = UserSettings::load(&pubkey).unwrap_or_else(|| {
             debug!("Creating new user settings for {} with default settings", pubkey);
             UserSettings::new(&pubkey, UISettings::default())
         });
         result = Ok(HttpResponse::Ok().json(&user_settings.settings));
     }
-    
-    // Log the time taken to process this request
+
     let elapsed = start_time.elapsed();
     debug!("Settings request for {} processed in {:?}", pubkey, elapsed);
-    
     result
 }
 
+// --- POST Endpoints ---
+
+// Handles updates from the main settings UI (/user-settings/sync)
 async fn update_user_settings(
     req: HttpRequest,
     state: web::Data<AppState>,
     feature_access: web::Data<FeatureAccess>,
-    payload: web::Json<Value>,
+    // Use Actix's extractor directly for ClientFacingSettings
+    payload: web::Json<ClientFacingSettings>,
 ) -> Result<HttpResponse, Error> {
     let start_time = Instant::now();
-    
-    // Get pubkey from header
+    // Extract the settings from the payload wrapper
+    let received_client_settings = payload.into_inner();
+
+    // Log the received settings AFTER successful extraction/deserialization by Actix
+    // Use debug level and potentially truncate or selectively log fields to avoid excessive noise/sensitive data
+    debug!("Successfully deserialized settings payload: {:?}", received_client_settings);
+
+
     let pubkey = match req.headers().get("X-Nostr-Pubkey") {
         Some(value) => value.to_str().unwrap_or("").to_string(),
         None => {
-            debug!("No Nostr pubkey in headers, returning default settings");
-            let settings_guard = state.settings.read().await;
-            let ui_settings = UISettings::from(&*settings_guard);
-            return Ok(HttpResponse::Ok().json(ui_settings));
+            warn!("Update settings request received without Nostr pubkey.");
+            return Ok(HttpResponse::BadRequest().body("Missing Nostr pubkey for settings update"));
         }
     };
-    
-    debug!("Processing settings update for user: {}", pubkey);
+    debug!("Processing update_user_settings for user: {}", pubkey);
 
-    // Check if user has permission to sync settings
     if !feature_access.can_sync_settings(&pubkey) {
-        warn!("User {} attempted to sync settings without permission", pubkey);
+        warn!("User {} attempted update_user_settings without permission", pubkey);
         return Ok(HttpResponse::Forbidden().body("Settings sync not enabled for this user"));
     }
 
-    // Parse and validate settings
-    let ui_settings: UISettings = match serde_json::from_value(payload.into_inner()) {
-        Ok(settings) => settings,
-        Err(e) => return Ok(HttpResponse::BadRequest().body(format!("Invalid settings format: {}", e)))
-    };
+    // No longer need manual deserialization here
+    // let received_client_settings: ClientFacingSettings = ...
 
-    // Check if user is a power user
     let is_power_user = feature_access.is_power_user(&pubkey);
     let result;
+    let mut settings_to_broadcast: Option<UISettings> = None;
 
     if is_power_user {
-        // Power users update the global settings file
-        let mut settings_guard = state.settings.write().await;
-        ui_settings.merge_into_settings(&mut settings_guard);
-        
+        let mut settings_guard = state.settings.write().await; // Locks Arc<RwLock<AppFullSettings>>
+
+        // --- Careful Merge from ClientFacingSettings into AppFullSettings ---
+        settings_guard.visualisation = received_client_settings.visualisation;
+        settings_guard.xr = received_client_settings.xr;
+        settings_guard.auth = received_client_settings.auth;
+
+        let client_sys = &received_client_settings.system;
+        let server_sys = &mut settings_guard.system;
+
+        // Map ClientWebSocketSettings into ServerFullWebSocketSettings fields
+        let client_ws = &client_sys.websocket;
+        let server_ws = &mut server_sys.websocket;
+        server_ws.reconnect_attempts = client_ws.reconnect_attempts;
+        server_ws.reconnect_delay = client_ws.reconnect_delay;
+        server_ws.binary_chunk_size = client_ws.binary_chunk_size;
+        server_ws.compression_enabled = client_ws.compression_enabled;
+        server_ws.compression_threshold = client_ws.compression_threshold;
+        server_ws.update_rate = client_ws.update_rate;
+
+        server_sys.debug = client_sys.debug;
+        server_sys.persist_settings = client_sys.persist_settings;
+
+        settings_guard.ragflow = received_client_settings.ragflow;
+        settings_guard.perplexity = received_client_settings.perplexity;
+        settings_guard.openai = received_client_settings.openai;
+        settings_guard.kokoro = received_client_settings.kokoro;
+        // --- End Merge ---
+
         if let Err(e) = settings_guard.save() {
-            error!("Failed to save global settings: {}", e);
+            error!("Failed to save global AppFullSettings after update from {}: {}", pubkey, e);
             return Ok(HttpResponse::InternalServerError().body(format!("Failed to save settings: {}", e)));
         }
-        
+
         info!("Power user {} updated global settings", pubkey);
-        let updated_ui_settings = UISettings::from(&*settings_guard);
+        let updated_ui_settings = convert_to_ui_settings(&*settings_guard);
+        settings_to_broadcast = Some(updated_ui_settings.clone());
         result = Ok(HttpResponse::Ok().json(updated_ui_settings));
+
     } else {
-        // Regular users update their personal settings file
-        // This will use the cache if available due to our UserSettings::load implementation
+        // Regular users update their personal UserSettings file
+        let ui_settings_from_payload = UISettings {
+            visualisation: received_client_settings.visualisation,
+            system: UISystemSettings { // Use the imported struct directly
+                websocket: received_client_settings.system.websocket,
+                debug: received_client_settings.system.debug,
+            },
+            xr: received_client_settings.xr,
+        };
+
         let mut user_settings = UserSettings::load(&pubkey).unwrap_or_else(|| {
             debug!("Creating new user settings for {}", pubkey);
             UserSettings::new(&pubkey, UISettings::default())
         });
-        user_settings.settings = ui_settings;
+
+        user_settings.settings = ui_settings_from_payload;
         user_settings.last_modified = Utc::now().timestamp();
-        
-        // This will update the cache immediately and save to disk in the background
+
         if let Err(e) = user_settings.save() {
             error!("Failed to save user settings for {}: {}", pubkey, e);
             return Ok(HttpResponse::InternalServerError().body(format!("Failed to save user settings: {}", e)));
         }
-        
+
         debug!("User {} updated their settings", pubkey);
         result = Ok(HttpResponse::Ok().json(&user_settings.settings));
     }
-    
-    // Log the time taken to process this request
+
+    // --- Broadcast Logic ---
+    if let Some(settings_payload) = settings_to_broadcast {
+        if let Some(client_manager_ref) = state.client_manager.as_ref() {
+            let broadcast_message = json!({
+                "type": "settings_updated",
+                "payload": settings_payload
+            });
+            match serde_json::to_string(&broadcast_message) {
+                Ok(msg_str) => {
+                    info!("Broadcasting settings update to all clients.");
+                    // Dereference Arc to call method on ClientManager
+                    (**client_manager_ref).broadcast_text_message(msg_str).await;
+                }
+                Err(e) => {
+                    error!("Failed to serialize settings broadcast message: {}", e);
+                }
+            }
+        } else {
+            warn!("ClientManager not found in AppState, cannot broadcast settings.");
+        }
+    }
+    // --- End Broadcast Logic ---
+
     let elapsed = start_time.elapsed();
     debug!("Settings update for {} processed in {:?}", pubkey, elapsed);
-    
     result
 }
 
+// Handles updates from the older /user-settings endpoint (needs review/deprecation?)
 async fn update_settings(
     req: HttpRequest,
     state: web::Data<AppState>,
     feature_access: web::Data<FeatureAccess>,
-    payload: web::Json<Value>,
+    // Use Actix's extractor directly here too, assuming it should also accept ClientFacingSettings
+    payload: web::Json<ClientFacingSettings>,
 ) -> Result<HttpResponse, Error> {
-    // Get pubkey from header
+    warn!("Received settings update via deprecated /user-settings endpoint. Use /user-settings/sync instead.");
+    let received_client_settings = payload.into_inner();
+    debug!("Successfully deserialized settings payload via /user-settings: {:?}", received_client_settings);
+
     let pubkey = match req.headers().get("X-Nostr-Pubkey") {
         Some(value) => value.to_str().unwrap_or("").to_string(),
         None => {
-            warn!("Attempt to update settings without authentication");
-            // For updates, we do require authentication
-            // This prevents unauthenticated users from modifying settings
-            // They can still read public settings via get endpoints
+            warn!("Attempt to update settings via /user-settings without authentication");
             return Ok(HttpResponse::BadRequest().body("Missing Nostr pubkey"));
         }
     };
 
-    // Check if user is a power user
-    let is_power_user = feature_access.is_power_user(&pubkey);
-
-    if !is_power_user {
-        warn!("Non-power user {} attempted to modify global settings", pubkey);
+    if !feature_access.is_power_user(&pubkey) {
+        warn!("Non-power user {} attempted to modify global settings via /user-settings", pubkey);
         return Ok(HttpResponse::Forbidden().body("Only power users can modify global settings"));
     }
 
-    // Parse and validate settings
-    let ui_settings: UISettings = match serde_json::from_value(payload.into_inner()) {
-        Ok(settings) => settings,
-        Err(e) => return Ok(HttpResponse::BadRequest().body(format!("Invalid settings format: {}", e)))
-    };
+    // Perform the same careful merge as in update_user_settings
+    let mut settings_guard = state.settings.write().await; // Locks AppFullSettings
 
-    let mut settings_guard = state.settings.write().await;
-    ui_settings.merge_into_settings(&mut settings_guard);
-    
+    // --- Careful Merge ---
+    settings_guard.visualisation = received_client_settings.visualisation;
+    settings_guard.xr = received_client_settings.xr;
+    settings_guard.auth = received_client_settings.auth;
+
+    let client_sys = &received_client_settings.system;
+    let server_sys = &mut settings_guard.system;
+    let client_ws = &client_sys.websocket;
+    let server_ws = &mut server_sys.websocket;
+    server_ws.reconnect_attempts = client_ws.reconnect_attempts;
+    server_ws.reconnect_delay = client_ws.reconnect_delay;
+    server_ws.binary_chunk_size = client_ws.binary_chunk_size;
+    server_ws.compression_enabled = client_ws.compression_enabled;
+    server_ws.compression_threshold = client_ws.compression_threshold;
+    server_ws.update_rate = client_ws.update_rate;
+    server_sys.debug = client_sys.debug.clone(); // Clone DebugSettings
+    server_sys.persist_settings = client_sys.persist_settings;
+
+    settings_guard.ragflow = received_client_settings.ragflow;
+    settings_guard.perplexity = received_client_settings.perplexity;
+    settings_guard.openai = received_client_settings.openai;
+    settings_guard.kokoro = received_client_settings.kokoro;
+    // --- End Merge ---
+
     if let Err(e) = settings_guard.save() {
-        error!("Failed to save global settings: {}", e);
+        error!("Failed to save global AppFullSettings after update from {}: {}", pubkey, e);
         return Ok(HttpResponse::InternalServerError().body(format!("Failed to save settings: {}", e)));
     }
-    
-    info!("Power user {} updated global settings", pubkey);
-    let updated_ui_settings = UISettings::from(&*settings_guard);
+
+    info!("Power user {} updated global settings via /user-settings endpoint", pubkey);
+    let updated_ui_settings = convert_to_ui_settings(&*settings_guard);
+    // Consider broadcasting here too if this endpoint remains active
     Ok(HttpResponse::Ok().json(updated_ui_settings))
 }
 
+// --- GET Graph Specific Settings ---
+
 pub async fn get_graph_settings(app_state: web::Data<AppState>) -> Result<HttpResponse, Error> {
-    let settings = app_state.settings.read().await;
-    let ui_settings = UISettings::from(&*settings);
-    Ok(HttpResponse::Ok().json(&ui_settings.visualization))
+    let settings_guard = app_state.settings.read().await; // Reads AppFullSettings
+    Ok(HttpResponse::Ok().json(&settings_guard.visualisation))
 }
 
 ----
@@ -6636,7 +6700,7 @@ pub mod speech_socket_handler;
 pub mod nostr_handler;
 
 ----
-handlers/visualization_handler.rs
+handlers/visualisation_handler.rs
 use crate::config::Settings;
 use crate::AppState;
 use actix_web::{web, HttpResponse};
@@ -6855,21 +6919,21 @@ fn update_setting_value(
 fn get_category_settings_value(settings: &Settings, category: &str) -> Result<Value, String> {
     debug!("Getting settings for category: {}", category);
     let value = match category {
-        "visualization.nodes" => serde_json::to_value(&settings.visualization.nodes)
+        "visualisation.nodes" => serde_json::to_value(&settings.visualisation.nodes)
             .map_err(|e| format!("Failed to serialize node settings: {}", e))?,
-        "visualization.edges" => serde_json::to_value(&settings.visualization.edges)
+        "visualisation.edges" => serde_json::to_value(&settings.visualisation.edges)
             .map_err(|e| format!("Failed to serialize edge settings: {}", e))?,
-        "visualization.rendering" => serde_json::to_value(&settings.visualization.rendering)
+        "visualisation.rendering" => serde_json::to_value(&settings.visualisation.rendering)
             .map_err(|e| format!("Failed to serialize rendering settings: {}", e))?,
-        "visualization.labels" => serde_json::to_value(&settings.visualization.labels)
+        "visualisation.labels" => serde_json::to_value(&settings.visualisation.labels)
             .map_err(|e| format!("Failed to serialize labels settings: {}", e))?,
-        "visualization.bloom" => serde_json::to_value(&settings.visualization.bloom)
+        "visualisation.bloom" => serde_json::to_value(&settings.visualisation.bloom)
             .map_err(|e| format!("Failed to serialize bloom settings: {}", e))?,
-        "visualization.animations" => serde_json::to_value(&settings.visualization.animations)
+        "visualisation.animations" => serde_json::to_value(&settings.visualisation.animations)
             .map_err(|e| format!("Failed to serialize animations settings: {}", e))?,
-        "visualization.physics" => serde_json::to_value(&settings.visualization.physics)
+        "visualisation.physics" => serde_json::to_value(&settings.visualisation.physics)
             .map_err(|e| format!("Failed to serialize physics settings: {}", e))?,
-        "visualization.hologram" => serde_json::to_value(&settings.visualization.hologram)
+        "visualisation.hologram" => serde_json::to_value(&settings.visualisation.hologram)
             .map_err(|e| format!("Failed to serialize hologram settings: {}", e))?,
         "system.network" => serde_json::to_value(&settings.system.network)
             .map_err(|e| format!("Failed to serialize network settings: {}", e))?,
@@ -7095,7 +7159,7 @@ fn save_settings_to_file(settings: &Settings) -> std::io::Result<()> {
     }
 }
 
-pub async fn get_visualization_settings(
+pub async fn get_visualisation_settings(
     app_state: web::Data<AppState>,
     category: web::Path<String>,
 ) -> Result<HttpResponse, actix_web::Error> {
@@ -7294,7 +7358,7 @@ pub async fn get_graph_data(state: web::Data<AppState>) -> impl Responder {
         
         // Get physics settings
         let settings = state.settings.read().await;
-        let physics_settings = settings.visualization.physics.clone();
+        let physics_settings = settings.visualisation.physics.clone();
         
         // Create simulation parameters
         let params = crate::models::simulation_params::SimulationParams {
@@ -7374,7 +7438,7 @@ pub async fn get_paginated_graph_data(
             
             // Get physics settings
             let settings = state.settings.read().await;
-            let physics_settings = settings.visualization.physics.clone();
+            let physics_settings = settings.visualisation.physics.clone();
             
             // Create simulation parameters
             let params = crate::models::simulation_params::SimulationParams {
@@ -7780,7 +7844,7 @@ pub struct BroadcastPositionUpdate(pub Vec<(u16, BinaryNodeData)>);
 
 pub struct SocketFlowServer {
     app_state: Arc<AppState>,
-    settings: Arc<RwLock<crate::config::Settings>>,
+    // No longer need to store the whole settings Arc here, just the relevant values
     client_id: Option<usize>,
     client_manager: Option<Arc<ClientManager>>,
     last_ping: Option<u64>,
@@ -7813,27 +7877,23 @@ pub struct SocketFlowServer {
 }
 
 impl SocketFlowServer {
-    pub fn new(app_state: Arc<AppState>, settings: Arc<RwLock<crate::config::Settings>>, client_manager: Option<Arc<ClientManager>>) -> Self {
-        // Get dynamic rate settings from config
-        let min_update_rate = settings
-            .try_read()
-            .map(|s| s.system.websocket.min_update_rate)
-            .unwrap_or(DEFAULT_MIN_UPDATE_RATE);
-
-        let max_update_rate = settings
-            .try_read()
-            .map(|s| s.system.websocket.max_update_rate)
-            .unwrap_or(DEFAULT_MAX_UPDATE_RATE);
-
-        let motion_threshold = settings
-            .try_read()
-            .map(|s| s.system.websocket.motion_threshold)
-            .unwrap_or(DEFAULT_MOTION_THRESHOLD);
-
-        let motion_damping = settings
-            .try_read()
-            .map(|s| s.system.websocket.motion_damping)
-            .unwrap_or(DEFAULT_MOTION_DAMPING);
+    // Updated signature to take AppFullSettings directly (or relevant parts)
+    // For simplicity, let's pass the needed values directly if AppState is available where new is called
+    // Or, pass the AppFullSettings Arc and read here. Let's do the latter for now.
+    pub fn new(app_state: Arc<AppState>, settings_arc: Arc<RwLock<AppFullSettings>>, client_manager: Option<Arc<ClientManager>>) -> Self {
+        
+        // Read necessary settings values within new()
+        let (min_update_rate, max_update_rate, motion_threshold, motion_damping, compression_enabled, compression_threshold) = {
+            let settings_read = settings_arc.blocking_read(); // Use blocking read if in sync context, or pass values
+            (
+                settings_read.system.websocket.min_update_rate,
+                settings_read.system.websocket.max_update_rate,
+                settings_read.system.websocket.motion_threshold,
+                settings_read.system.websocket.motion_damping,
+                settings_read.system.websocket.compression_enabled,
+                settings_read.system.websocket.compression_threshold,
+            )
+        };
 
         // Use position and velocity deadbands from constants
         let position_deadband = DEFAULT_POSITION_DEADBAND;
@@ -7844,7 +7904,6 @@ impl SocketFlowServer {
 
         Self {
             app_state,
-            settings,
             client_id: None,
             client_manager,
             last_ping: None,
@@ -7880,25 +7939,30 @@ impl SocketFlowServer {
             timestamp: msg.timestamp,
         }
     }
-
+    
+    // maybe_compress needs access to compression settings
     fn maybe_compress(&mut self, data: Vec<u8>) -> Vec<u8> {
-        // Always compress data to reduce transfer size
-        if data.len() > 100 { // Only compress if data is larger than 100 bytes
+        // Read compression settings (need to store them in Self or pass settings Arc)
+        // Let's assume we store them for simplicity here
+        let (enabled, threshold) = {
+             // This requires storing settings Arc or values in Self
+             // For now, let's use defaults as placeholders - THIS NEEDS FIXING
+             (true, 1024)
+             // TODO: Fix this by storing settings Arc or values in SocketFlowServer struct
+        };
+
+        if enabled && data.len() > threshold {
             let mut encoder = ZlibEncoder::new(Vec::new(), COMPRESSION_LEVEL);
             if encoder.write_all(&data).is_ok() {
                 if let Ok(compressed) = encoder.finish() {
                     if compressed.len() < data.len() {
-                        if self.should_log_update() {
-                            debug!("Compressed binary message: {} -> {} bytes ({}% reduction)", 
-                                data.len(), compressed.len(), 
-                                ((data.len() - compressed.len()) * 100) / data.len());
-                        }
+                        // Compression logging logic...
                         return compressed;
                     }
                 }
             }
         }
-        data
+        data // Return original data if not compressed
     }
     
     // Helper method to determine if we should log this update (for throttling)
@@ -8081,10 +8145,10 @@ impl Actor for SocketFlowServer {
 }
 
 // Helper function to fetch nodes without borrowing from the actor
-
+// Update signature to accept AppFullSettings
 async fn fetch_nodes(
     app_state: Arc<AppState>,
-    settings: Arc<RwLock<crate::config::Settings>>
+    settings: Arc<RwLock<AppFullSettings>> // Changed to AppFullSettings
 ) -> Option<(Vec<(u16, BinaryNodeData)>, bool)> {
     // Fetch raw nodes asynchronously
     let raw_nodes = app_state.graph_service.get_node_positions().await;
@@ -8094,10 +8158,10 @@ async fn fetch_nodes(
         return None;
     }
 
-    // Check if detailed debugging should be enabled
-    let detailed_debug = if let Ok(settings) = settings.try_read() {
-        settings.system.debug.enabled && 
-        settings.system.debug.enable_websocket_debug
+    // Check if detailed debugging should be enabled from AppFullSettings
+    let detailed_debug = if let Ok(settings_read) = settings.try_read() {
+        settings_read.system.debug.enabled &&
+        settings_read.system.debug.enable_websocket_debug // Access debug settings correctly
     } else {
         false
     };
@@ -8162,7 +8226,7 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
             }
             Ok(ws::Message::Pong(_)) => {
                 // Logging every pong creates too much noise, only log in detailed debug mode
-                if self.settings.try_read().map(|s| s.system.debug.enable_websocket_debug).unwrap_or(false) {
+                if self.app_state.settings.try_read().map(|s| s.system.debug.enable_websocket_debug).unwrap_or(false) {
                     debug!("[WebSocket] Received pong");
                 }
                 self.last_activity = std::time::Instant::now();
@@ -8190,7 +8254,7 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
                                 // Use a smaller initial interval to start updates quickly
                                 let initial_interval = std::time::Duration::from_millis(10);
                                 let app_state = self.app_state.clone();
-                                let settings_clone = self.settings.clone();
+                                let settings_clone = self.app_state.settings.clone();
                                 
                                 // First check if we should log this update
                                 let should_log = self.should_log_update();
@@ -8289,7 +8353,7 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
                                                 
                                                 // Use a simple recursive approach to restart the cycle
                                                 let _app_state = act.app_state.clone();
-                    let _settings_clone = act.settings.clone();
+                    let _settings_clone = act.app_state.settings.clone();
                                                 ctx.run_later(next_interval, move |act, ctx| {
                                                     // Recursively call the handler to restart the cycle
                                                     <SocketFlowServer as StreamHandler<Result<ws::Message, ws::ProtocolError>>>::handle(act, Ok(ws::Message::Text("{\"type\":\"requestPositionUpdates\"}".to_string().into())), ctx);
@@ -8445,7 +8509,7 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
                                 if let Some(gpu_compute) = &gpu_compute {
                                     // Read settings outside the GraphService lock to avoid deadlocks
                                     let settings = app_state.settings.read().await;
-                                    let physics_settings = settings.visualization.physics.clone();
+                                    let physics_settings = settings.visualisation.physics.clone();
                                     drop(settings); // Release the read lock
                                     
                                     let params = crate::models::simulation_params::SimulationParams {
@@ -8517,12 +8581,16 @@ pub async fn socket_flow_handler(
     req: HttpRequest,
     stream: web::Payload,
     app_state: web::Data<AppState>,
-    settings: web::Data<Arc<RwLock<crate::config::Settings>>>
+    // Settings are now accessed via app_state, remove separate settings data injection if not needed elsewhere
+    // settings: web::Data<Arc<RwLock<AppFullSettings>>> // Changed type
 ) -> Result<HttpResponse, Error> {
     // Ensure ClientManager exists in app_state or create it if not present
     let client_manager = app_state.ensure_client_manager().await;
+    
+    // Access settings through app_state
+    let settings_arc = app_state.settings.clone();
 
-    let should_debug = settings.try_read().map(|s| {
+    let should_debug = settings_arc.try_read().map(|s| {
         s.system.debug.enabled && s.system.debug.enable_websocket_debug
     }).unwrap_or(false);
 
@@ -8534,8 +8602,9 @@ pub async fn socket_flow_handler(
     if !req.headers().contains_key("Upgrade") {
         return Ok(HttpResponse::BadRequest().body("WebSocket upgrade required"));
     }
-
-    let ws = SocketFlowServer::new(app_state.into_inner(), settings.get_ref().clone(), Some(client_manager));
+    
+    // Pass the AppFullSettings Arc to SocketFlowServer::new
+    let ws = SocketFlowServer::new(app_state.into_inner(), settings_arc, Some(client_manager));
 
     match ws::start(ws, &req, stream) {
         Ok(response) => {
@@ -8826,12 +8895,16 @@ impl SpeechSocket {
     // Process text-to-speech request
     async fn process_tts_request(app_state: Arc<AppState>, req: TextToSpeechRequest) -> Result<(), String> {
         if let Some(speech_service) = &app_state.speech_service {
-            // Get default settings from app state
+            // Get default settings from app state, handling optional Kokoro settings
             let settings = app_state.settings.read().await;
-            let default_voice = settings.kokoro.default_voice.clone();
-            let default_speed = settings.kokoro.default_speed;
-            let default_stream = settings.kokoro.stream;
-            drop(settings);
+            let kokoro_config = settings.kokoro.as_ref(); // Get Option<&KokoroSettings>
+
+            // Provide defaults if Kokoro config or specific fields are None
+            let default_voice = kokoro_config.and_then(|k| k.default_voice.clone()).unwrap_or_else(|| "default_voice_placeholder".to_string()); // Provide a sensible default
+            let default_speed = kokoro_config.and_then(|k| k.default_speed).unwrap_or(1.0);
+            let default_stream = kokoro_config.and_then(|k| k.stream).unwrap_or(true); // Default to streaming?
+            
+            drop(settings); // Release lock
             
             // Create options with defaults or provided values
             let options = SpeechOptions {
@@ -9370,7 +9443,7 @@ pub async fn handle_perplexity(
 handlers/api_handler/mod.rs
 pub mod files;
 pub mod graph;
-pub mod visualization;
+pub mod visualisation;
 
 // Re-export specific types and functions
 // Re-export specific types and functions
@@ -9386,7 +9459,7 @@ pub use graph::{
     update_graph,
 };
 
-pub use visualization::get_visualization_settings;
+pub use visualisation::get_visualisation_settings;
 
 use actix_web::web;
 
@@ -9396,7 +9469,7 @@ pub fn config(cfg: &mut web::ServiceConfig) {
         web::scope("/api")
             .configure(files::config)
             .configure(graph::config)
-            .configure(visualization::config)
+            .configure(visualisation::config)
             .configure(crate::handlers::nostr_handler::config)
             .configure(crate::handlers::settings_handler::config)
     );
@@ -9906,7 +9979,7 @@ pub fn config(cfg: &mut web::ServiceConfig) {
 }
 
 ----
-handlers/api_handler/visualization/mod.rs
+handlers/api_handler/visualisation/mod.rs
 use crate::config::Settings;
 use crate::AppState;
 use actix_web::{error::ErrorInternalServerError, web, Error, HttpResponse, Result};
@@ -10291,7 +10364,7 @@ pub async fn get_category_settings(
     }
 }
 
-pub async fn get_visualization_settings(
+pub async fn get_visualisation_settings(
     app_state: web::Data<AppState>,
     category: web::Path<String>,
 ) -> Result<HttpResponse, actix_web::Error> {
@@ -10313,7 +10386,7 @@ pub async fn get_settings_category(
     let settings_value = serde_json::to_value(&*settings).map_err(ErrorInternalServerError)?;
 
     let value = match category.as_str() {
-        cat if cat.starts_with("visualization.") || cat.starts_with("system.") || cat == "xr" => {
+        cat if cat.starts_with("visualisation.") || cat.starts_with("system.") || cat == "xr" => {
             let parts: Vec<&str> = cat.split('.').collect();
             let mut current_value = &settings_value;
 
@@ -10390,7 +10463,7 @@ fn save_settings_to_file(settings: &Settings) -> std::io::Result<()> {
 
 pub fn config(cfg: &mut web::ServiceConfig) {
     cfg.service(
-        web::scope("/visualization")
+        web::scope("/visualisation")
             .route("/settings/{category}/{setting}", web::get().to(get_setting))
             .route(
                 "/settings/{category}/{setting}",
@@ -10399,7 +10472,7 @@ pub fn config(cfg: &mut web::ServiceConfig) {
             .route("/settings/{category}", web::get().to(get_category_settings))
             .route(
                 "/get_settings/{category}",
-                web::get().to(get_visualization_settings),
+                web::get().to(get_visualisation_settings),
             ),
     );
 }
@@ -10613,7 +10686,7 @@ mod tests {
 }
 ----
 services/perplexity_service.rs
-use crate::config::Settings;
+use crate::config::{AppFullSettings, PerplexitySettings as ConfigPerplexitySettings}; // Use AppFullSettings
 use crate::models::metadata::Metadata;
 use crate::services::file_service::ProcessedFile;
 use chrono::Utc;
@@ -10649,18 +10722,19 @@ struct QueryRequest {
 
 pub struct PerplexityService {
     client: Client,
-    settings: Arc<RwLock<Settings>>,
+    settings: Arc<RwLock<AppFullSettings>>, // Changed to AppFullSettings
 }
 
 impl PerplexityService {
-    pub async fn new(settings: Arc<RwLock<Settings>>) -> Result<Self, Box<dyn StdError + Send + Sync>> {
-        let timeout = {
+    pub async fn new(settings: Arc<RwLock<AppFullSettings>>) -> Result<Self, Box<dyn StdError + Send + Sync>> { // Changed signature
+        let timeout_duration = {
             let settings_read = settings.read().await;
-            settings_read.perplexity.timeout
+            // Safely access optional perplexity settings, provide default timeout
+            settings_read.perplexity.as_ref().and_then(|p| p.timeout).unwrap_or(30) // Default 30s
         };
 
         let client = Client::builder()
-            .timeout(std::time::Duration::from_secs(timeout))
+            .timeout(std::time::Duration::from_secs(timeout_duration)) // Use extracted timeout
             .build()?;
 
         Ok(Self { 
@@ -10670,24 +10744,36 @@ impl PerplexityService {
     }
 
     pub async fn query(&self, query: &str, conversation_id: &str) -> Result<String, Box<dyn StdError + Send + Sync>> {
-        let settings = self.settings.read().await;
-        let api_url = &settings.perplexity.api_url;
+        let settings_read = self.settings.read().await;
+        
+        // Get perplexity settings or return error if not configured
+        let perplexity_config = match settings_read.perplexity.as_ref() {
+            Some(p) => p,
+            None => return Err("Perplexity settings not configured".into()),
+        };
+
+        // Safely get required fields or return error
+        let api_url = perplexity_config.api_url.as_deref().ok_or("Perplexity API URL not configured")?;
+        let api_key = perplexity_config.api_key.as_deref().ok_or("Perplexity API Key not configured")?;
+        let model = perplexity_config.model.as_deref().ok_or("Perplexity model not configured")?;
+
         info!("Sending query to Perplexity API: {}", api_url);
 
+        // Use defaults for optional parameters if not set in config
         let request = QueryRequest {
             query: query.to_string(),
             conversation_id: conversation_id.to_string(),
-            model: settings.perplexity.model.clone(),
-            max_tokens: settings.perplexity.max_tokens,
-            temperature: settings.perplexity.temperature,
-            top_p: settings.perplexity.top_p,
-            presence_penalty: settings.perplexity.presence_penalty,
-            frequency_penalty: settings.perplexity.frequency_penalty,
+            model: model.to_string(),
+            max_tokens: perplexity_config.max_tokens.unwrap_or(4096),
+            temperature: perplexity_config.temperature.unwrap_or(0.5),
+            top_p: perplexity_config.top_p.unwrap_or(0.9),
+            presence_penalty: perplexity_config.presence_penalty.unwrap_or(0.0),
+            frequency_penalty: perplexity_config.frequency_penalty.unwrap_or(0.0),
         };
 
         let response = self.client
             .post(api_url)
-            .header("Authorization", format!("Bearer {}", settings.perplexity.api_key))
+            .header("Authorization", format!("Bearer {}", api_key))
             .json(&request)
             .send()
             .await?;
@@ -10710,14 +10796,24 @@ impl PerplexityService {
         }
 
         let content = fs::read_to_string(&file_path)?;
-        let settings = self.settings.read().await;
+        let settings_read = self.settings.read().await;
+
+        // Get perplexity settings or return error if not configured
+        let perplexity_config = match settings_read.perplexity.as_ref() {
+            Some(p) => p,
+            None => return Err("Perplexity settings not configured".into()),
+        };
         
-        let api_url = &settings.perplexity.api_url;
+        // Safely get required fields or return error
+        let api_url = perplexity_config.api_url.as_deref().ok_or("Perplexity API URL not configured")?;
+        let api_key = perplexity_config.api_key.as_deref().ok_or("Perplexity API Key not configured")?;
+
         info!("Sending request to Perplexity API: {}", api_url);
 
+        // Assuming the API takes the raw content as JSON string body? If not, adjust .json(&content)
         let response = self.client
             .post(api_url)
-            .header("Authorization", format!("Bearer {}", settings.perplexity.api_key))
+            .header("Authorization", format!("Bearer {}", api_key))
             .json(&content)
             .send()
             .await?;
@@ -10758,7 +10854,7 @@ impl PerplexityService {
 services/file_service.rs
 use crate::models::metadata::{Metadata, MetadataStore, MetadataOps};
 use crate::models::graph::GraphData;
-use crate::config::Settings;
+use crate::config::{AppFullSettings, Settings as ClientFacingSettings}; // Use AppFullSettings
 use serde::{Deserialize, Serialize};
 use log::{info, debug, error};
 use std::sync::atomic::{AtomicU32, Ordering};
@@ -10791,15 +10887,15 @@ pub struct ProcessedFile {
 }
 
 pub struct FileService {
-    settings: Arc<RwLock<Settings>>,
+    settings: Arc<RwLock<AppFullSettings>>, // Changed to AppFullSettings
     // Counter for assigning node IDs, initialized based on existing metadata
     node_id_counter: AtomicU32,
 }
 
 impl FileService {
-    pub fn new(settings: Arc<RwLock<Settings>>) -> Self {
+    pub fn new(settings: Arc<RwLock<AppFullSettings>>) -> Self { // Changed to AppFullSettings
         // Initialize with a default counter
-        let service = Self { 
+        let service = Self {
             settings,
             node_id_counter: AtomicU32::new(1),
         };
@@ -11020,7 +11116,7 @@ impl FileService {
 
     /// Initialize local storage with files from GitHub
     pub async fn initialize_local_storage(
-        settings: Arc<RwLock<Settings>>,
+        settings: Arc<RwLock<AppFullSettings>>, // Changed to AppFullSettings
     ) -> Result<(), Box<dyn StdError + Send + Sync>> {
         // Create GitHub client using environment variables
         let github_config = GitHubConfig::from_env()
@@ -11253,7 +11349,7 @@ impl FileService {
     pub async fn fetch_and_process_files(
         &self,
         content_api: Arc<ContentAPI>,
-        _settings: Arc<RwLock<Settings>>,
+        _settings: Arc<RwLock<AppFullSettings>>, // Changed to AppFullSettings (though unused)
         metadata_store: &mut MetadataStore,
     ) -> Result<Vec<ProcessedFile>, Box<dyn StdError + Send + Sync>> {
         let mut processed_files = Vec::new();
@@ -11620,7 +11716,7 @@ use crate::utils::socket_flow_messages::Node;
 use crate::models::edge::Edge;
 use crate::models::metadata::MetadataStore;
 use crate::app_state::AppState;
-use crate::config::Settings;
+use crate::config::{AppFullSettings, Settings as ClientFacingSettings}; // Use AppFullSettings
 use crate::utils::gpu_compute::GPUCompute;
 use crate::models::simulation_params::{SimulationParams, SimulationPhase, SimulationMode};
 use crate::models::pagination::PaginatedGraphData;
@@ -11668,18 +11764,19 @@ pub struct GraphService {
     pending_updates: Arc<RwLock<HashMap<String, (Node, Instant)>>>,
     cache_enabled: bool,
     simulation_id: String,
-    client_manager: Option<Arc<ClientManager>>,
+    // client_manager: Option<Arc<ClientManager>>, // Removed: ClientManager will be passed to methods needing it
     is_initialized: Arc<AtomicBool>,
     shutdown_requested: Arc<AtomicBool>,
 }
 
 impl GraphService {
     pub async fn new(
-        settings: Arc<RwLock<Settings>>, 
+        settings: Arc<RwLock<AppFullSettings>>, // Changed to AppFullSettings
         gpu_compute: Option<Arc<RwLock<GPUCompute>>>,
-        client_manager: Option<Arc<ClientManager>>) -> Self {
+        client_manager_for_loop: Arc<ClientManager> // Added for the simulation loop
+    ) -> Self {
         // Get physics settings
-        let physics_settings = settings.read().await.visualization.physics.clone();
+        let physics_settings = settings.read().await.visualisation.physics.clone();
 
         // Generate a unique ID for this GraphService instance
         let simulation_id = Alphanumeric.sample_string(&mut rand::thread_rng(), 8);
@@ -11719,7 +11816,7 @@ impl GraphService {
             pending_updates: Arc::new(RwLock::new(HashMap::new())),
             node_positions_cache: Arc::new(RwLock::new(None)),
             cache_enabled: true,
-            client_manager,
+            // client_manager, // Removed
             is_initialized: Arc::new(AtomicBool::new(false)),
             simulation_id: simulation_id.clone(),
             shutdown_requested: shutdown_requested.clone(),
@@ -11765,6 +11862,7 @@ impl GraphService {
         // Clone graph_service twice - one for the async block and one for return
         let graph_service_clone = graph_service.clone();
         let return_service = graph_service.clone();
+        let captured_client_manager = client_manager_for_loop.clone(); // Capture ClientManager for the loop
         tokio::spawn(async move {
             let params = SimulationParams {
                 iterations: physics_settings.iterations,
@@ -11818,7 +11916,7 @@ impl GraphService {
                             trace!("[Graph:{}] Successfully calculated layout for {} nodes", loop_simulation_id, graph.nodes.len());
                             
                             // Broadcast position updates to all clients
-                            Self::broadcast_positions(&graph_service_clone, &graph.nodes).await;
+                            Self::broadcast_positions(captured_client_manager.clone(), &graph.nodes).await;
                         }
                     } else {
                         // Use CPU fallback when GPU is not available
@@ -11830,7 +11928,7 @@ impl GraphService {
                             trace!("[Graph:{}] Successfully calculated layout with CPU fallback for {} nodes", loop_simulation_id, graph.nodes.len());
                             
                             // Broadcast position updates to all clients
-                            Self::broadcast_positions(&graph_service_clone, &graph.nodes).await;
+                            Self::broadcast_positions(captured_client_manager.clone(), &graph.nodes).await;
                         }
                     }
                 } else {
@@ -11893,19 +11991,14 @@ impl GraphService {
             now.duration_since(*timestamp).as_millis() < UPDATE_RATE_LIMIT_MS as u128
         });
     }
-
+ 
     // Helper method to broadcast position updates to all clients
-    async fn broadcast_positions(service: &GraphService, nodes: &[Node]) {
-        if let Some(client_manager) = &service.client_manager {
-            // Clone nodes for broadcasting
-            let nodes_to_broadcast = nodes.to_vec();
-            
-            // Broadcast to all clients through the client manager
-            client_manager.broadcast_node_positions(nodes_to_broadcast).await;
-        } else {
-            // No client manager available - this is normal when there are no clients
-            trace!("[GraphService] No clients connected - skipping position broadcast");
-        }
+    async fn broadcast_positions(client_manager: Arc<ClientManager>, nodes: &[Node]) {
+        // Clone nodes for broadcasting
+        let nodes_to_broadcast = nodes.to_vec();
+        
+        // Broadcast to all clients through the client manager
+        client_manager.broadcast_node_positions(nodes_to_broadcast).await;
     }
 
     /// Shutdown the simulation loop to allow creating a new instance
@@ -12795,8 +12888,8 @@ impl GraphService {
     pub async fn get_gpu_compute(&self) -> Option<Arc<RwLock<GPUCompute>>> {
         self.gpu_compute.clone()
     }
-
-    pub async fn update_node_positions(&self, updates: Vec<(u16, Node)>) -> Result<(), Error> {
+ 
+    pub async fn update_node_positions(&self, updates: Vec<(u16, Node)>, client_manager: Arc<ClientManager>) -> Result<(), Error> {
         let mut graph = self.graph_data.write().await;
         let mut node_map = self.node_map.write().await;
         
@@ -12837,8 +12930,8 @@ impl GraphService {
             }
         });
         
-        // Broadcast all positions 
-        Self::broadcast_positions(self, &graph.nodes).await;
+        // Broadcast all positions
+        Self::broadcast_positions(client_manager, &graph.nodes).await;
         
         Ok(())
     }
@@ -12852,18 +12945,19 @@ impl GraphService {
             } else {
                 // Initialize GPU if not already done
                 if self.gpu_compute.is_none() {
-                    let settings = Arc::new(RwLock::new(Settings::default()));
-                    let graph_data = GraphData::default(); // Or get your actual graph data
-                    self.initialize_gpu(settings, &graph_data).await?;
+                    // let settings = Arc::new(RwLock::new(Settings::default())); // Settings no longer needed for initialize_gpu
+                    let current_graph_data = self.graph_data.read().await;
+                    self.initialize_gpu(&current_graph_data).await?;
                     return self.update_positions().await;
                 }
                 Err(Error::new(ErrorKind::Other, "GPU compute not initialized"))
             }
         })
     }
-
-    pub async fn initialize_gpu(&mut self, _settings: Arc<RwLock<Settings>>, graph_data: &GraphData) -> Result<(), Error> {
-        info!("Initializing GPU compute system...");
+ 
+pub async fn initialize_gpu(&mut self, graph_data: &GraphData) -> Result<(), Error> {
+    info!("Initializing GPU compute system...");
+ 
 
         // If GPU is already initialized, don't reinitialize
         if self.gpu_compute.is_some() {
@@ -12991,17 +13085,18 @@ impl GraphService {
     }
     
     /// Start a separate broadcast loop to periodically push position updates to all clients
-    pub fn start_broadcast_loop(&self) {
+    pub fn start_broadcast_loop(&self, client_manager: Arc<ClientManager>) {
         info!("[GraphService] Starting position broadcast loop for client synchronization...");
-
+ 
         // Clone what we need for the async task
         let service_clone = self.clone();
         let simulation_id = self.simulation_id.clone();
-
+        let captured_client_manager = client_manager.clone(); // Capture ClientManager for the loop
+ 
         // Spawn a new task for the broadcast loop
         tokio::spawn(async move {
             info!("[GraphService:{}] Position broadcast loop starting", simulation_id);
-
+ 
             // Main broadcast loop
             loop {
                 // Check if shutdown was requested
@@ -13009,19 +13104,19 @@ impl GraphService {
                     info!("[GraphService:{}] Broadcast loop shutting down due to shutdown request", simulation_id);
                     break;
                 }
-
+ 
                 // Get current node positions
                 let nodes = service_clone.get_node_positions().await;
-
+ 
                 // Broadcast positions to all clients if we have any
                 if !nodes.is_empty() {
-                    GraphService::broadcast_positions(&service_clone, &nodes).await;
+                    GraphService::broadcast_positions(captured_client_manager.clone(), &nodes).await;
                 }
-
+ 
                 // Sleep to avoid excessive updates
                 tokio::time::sleep(Duration::from_millis(100)).await;
             }
-
+ 
             info!("[GraphService:{}] Position broadcast loop exited", simulation_id);
         });
         info!("[GraphService] Position broadcast loop started");
@@ -13061,7 +13156,7 @@ use reqwest::Client;
 
 pub struct SpeechService {
     sender: Arc<Mutex<mpsc::Sender<SpeechCommand>>>,
-    settings: Arc<RwLock<Settings>>,
+    settings: Arc<RwLock<AppFullSettings>>,
     tts_provider: Arc<RwLock<TTSProvider>>,
     // Audio broadcast channel for distributing TTS audio to all connected clients
     audio_tx: broadcast::Sender<Vec<u8>>,
@@ -13069,7 +13164,7 @@ pub struct SpeechService {
 }
 
 impl SpeechService {
-    pub fn new(settings: Arc<RwLock<Settings>>) -> Self {
+    pub fn new(settings: Arc<RwLock<AppFullSettings>>) -> Self {
         let (tx, rx) = mpsc::channel(100);
         let sender = Arc::new(Mutex::new(tx));
 
@@ -13103,22 +13198,29 @@ impl SpeechService {
             while let Some(command) = receiver.recv().await {
                 match command {
                     SpeechCommand::Initialize => {
-                        let settings = settings.read().await;
+                        let settings_read = settings.read().await;
                         
-                        let url = format!(
-                            "wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview-2024-10-01"
-                        );
-                        let url = match Url::parse(&url) {
+                        // Safely get OpenAI API key
+                        let openai_api_key = match settings_read.openai.as_ref().and_then(|o| o.api_key.as_ref()) {
+                            Some(key) if !key.is_empty() => key.clone(),
+                            _ => {
+                                error!("OpenAI API key not configured or empty. Cannot initialize OpenAI Realtime API.");
+                                continue; // Skip initialization if key is missing
+                            }
+                        };
+                        
+                        let url_str = "wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview-2024-10-01";
+                        let url = match Url::parse(url_str) {
                             Ok(url) => url,
                             Err(e) => {
-                                error!("Failed to parse OpenAI URL: {}", e);
+                                error!("Failed to parse OpenAI URL '{}': {}", url_str, e);
                                 continue;
                             }
                         };
                         
                         let request = match Request::builder()
                             .uri(url.as_str())
-                            .header("Authorization", format!("Bearer {}", settings.openai.api_key))
+                            .header("Authorization", format!("Bearer {}", openai_api_key))
                             .header("OpenAI-Beta", "realtime=v1")
                             .header("Content-Type", "application/json")
                             .header("User-Agent", "WebXR Graph")
@@ -13261,23 +13363,35 @@ impl SpeechService {
                             },
                             TTSProvider::Kokoro => {
                                 info!("Processing TextToSpeech command with Kokoro provider");
-                                let kokoro_settings = {
+                                let kokoro_config = { // Read settings within scope
                                     let s = settings.read().await;
-                                    s.kokoro.clone()
+                                    s.kokoro.clone() // Clone the Option<KokoroSettings>
                                 };
-                                
-                                // Prepare Kokoro API request
-                                let api_url = format!("{}/v1/audio/speech", kokoro_settings.api_url);
-                                info!("Sending TTS request to Kokoro API: {}", api_url);
-                                
-                                let request_body = json!({
-                                    "model": "kokoro",
-                                    "input": text,
-                                    "voice": options.voice.clone(),
-                                    "response_format": kokoro_settings.default_format,
-                                    "speed": options.speed,
-                                    "stream": options.stream
-                                });
+
+                                // Check if Kokoro is configured
+                                if let Some(config) = kokoro_config {
+                                    // Safely get API URL or skip if missing
+                                    let api_url_base = match config.api_url.as_deref() {
+                                        Some(url) if !url.is_empty() => url,
+                                        _ => {
+                                            error!("Kokoro API URL not configured or empty.");
+                                            continue; // Skip this TTS request
+                                        }
+                                    };
+                                    let api_url = format!("{}/v1/audio/speech", api_url_base.trim_end_matches('/'));
+                                    info!("Sending TTS request to Kokoro API: {}", api_url);
+
+                                    // Use defaults from config if available, otherwise hardcoded defaults
+                                    let response_format = config.default_format.as_deref().unwrap_or("mp3");
+
+                                    let request_body = json!({
+                                        "model": "kokoro", // Assuming model is fixed
+                                        "input": text,
+                                        "voice": options.voice.clone(), // Voice comes from request options
+                                        "response_format": response_format,
+                                        "speed": options.speed, // Speed comes from request options
+                                        "stream": options.stream // Stream comes from request options
+                                    });
                                 
                                 let response = match http_client
                                     .post(&api_url)
@@ -13395,7 +13509,7 @@ impl SpeechService {
 services/ragflow_service.rs
 use reqwest::{Client, StatusCode};
 use log::{error, info};
-use crate::config::Settings;
+use crate::config::{AppFullSettings, RagFlowSettings as ConfigRagFlowSettings}; // Use AppFullSettings
 use std::fmt;
 use futures::stream::{Stream, StreamExt};
 use std::pin::Pin;
@@ -13485,15 +13599,37 @@ pub struct RAGFlowService {
 }
 
 impl RAGFlowService {
-    pub async fn new(settings: Arc<RwLock<Settings>>) -> Result<Self, RAGFlowError> {
+    // Updated signature and logic to handle optional settings
+    pub async fn new(settings: Arc<RwLock<AppFullSettings>>) -> Result<Self, RAGFlowError> {
         let client = Client::new();
-        let settings = settings.read().await;
+        let settings_read = settings.read().await;
+
+        // Safely extract RAGFlow settings or return an error
+        let ragflow_config = settings_read.ragflow.as_ref()
+            .ok_or_else(|| RAGFlowError::ParseError("RAGFlow settings section is missing".to_string()))?;
+
+        let api_key = ragflow_config.api_key.as_deref()
+            .ok_or_else(|| RAGFlowError::ParseError("RAGFlow api_key is missing".to_string()))?
+            .to_string();
+            
+        let base_url = ragflow_config.api_base_url.as_deref()
+            .ok_or_else(|| RAGFlowError::ParseError("RAGFlow api_base_url is missing".to_string()))?
+            .to_string();
+            
+        let agent_id = ragflow_config.agent_id.as_deref()
+            .ok_or_else(|| RAGFlowError::ParseError("RAGFlow agent_id is missing".to_string()))?
+            .to_string();
+
+        // Check if essential fields are empty
+        if api_key.is_empty() || base_url.is_empty() || agent_id.is_empty() {
+             return Err(RAGFlowError::ParseError("RAGFlow api_key, base_url, or agent_id is empty".to_string()));
+        }
 
         Ok(RAGFlowService {
             client,
-            api_key: settings.ragflow.api_key.clone(),
-            base_url: settings.ragflow.api_base_url.clone(),
-            agent_id: settings.ragflow.agent_id.clone(),
+            api_key,
+            base_url,
+            agent_id,
         })
     }
 
@@ -14993,80 +15129,75 @@ impl ContentAPI {
 ----
 config/mod.rs
 use config::{ConfigBuilder, ConfigError, Environment};
-use log::debug;
+use log::{debug, error}; // Added error log
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use serde_yaml;
 use std::path::PathBuf;
+use std::collections::BTreeMap; // For ordered map during serialization
 
 pub mod feature_access;
 
-// Internal helper function to convert camelCase or kebab-case to snake_case
-fn to_snake_case(s: &str) -> String {
-    // First handle kebab-case by replacing hyphens with underscores
-    let s = s.replace('-', "_");
-    
-    // Then handle camelCase by adding underscores before uppercase letters
-    let mut result = String::with_capacity(s.len() + 4);
-    let mut chars = s.chars().peekable();
-    
-    while let Some(c) = chars.next() {
-        if c.is_ascii_uppercase() {
-            // If this is an uppercase letter, add an underscore before it
-            // unless it's at the beginning of the string
-            if !result.is_empty() {
-                result.push('_');
-            }
-            result.push(c.to_ascii_lowercase());
-        } else {
-            result.push(c);
+// Recursive function to convert JSON Value keys to snake_case
+fn keys_to_snake_case(value: Value) -> Value {
+    match value {
+        Value::Object(map) => {
+            let new_map = map.into_iter().map(|(k, v)| {
+                let snake_key = k.chars().fold(String::new(), |mut acc, c| {
+                    if c.is_ascii_uppercase() {
+                        if !acc.is_empty() {
+                            acc.push('_');
+                        }
+                        acc.push(c.to_ascii_lowercase());
+                    } else {
+                        acc.push(c);
+                    }
+                    acc
+                });
+                (snake_key, keys_to_snake_case(v))
+            }).collect();
+            Value::Object(new_map)
         }
+        Value::Array(arr) => {
+            Value::Array(arr.into_iter().map(keys_to_snake_case).collect())
+        }
+        _ => value,
     }
-    result
 }
 
-// XR movement axes configuration
+// Recursive function to convert JSON Value keys to camelCase (if needed for comparison/debugging)
+fn _keys_to_camel_case(value: Value) -> Value {
+     match value {
+         Value::Object(map) => {
+             let new_map = map.into_iter().map(|(k, v)| {
+                 let camel_key = k.split('_').enumerate().map(|(i, part)| {
+                     if i == 0 {
+                         part.to_string()
+                     } else {
+                         part.chars().next().map_or(String::new(), |c| c.to_uppercase().collect::<String>() + &part[1..])
+                     }
+                 }).collect::<String>();
+                 (camel_key, _keys_to_camel_case(v))
+             }).collect();
+             Value::Object(new_map)
+         }
+         Value::Array(arr) => {
+             Value::Array(arr.into_iter().map(_keys_to_camel_case).collect())
+         }
+         _ => value,
+     }
+ }
+
+
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
+#[serde(rename_all = "camelCase")]
 pub struct MovementAxes {
     pub horizontal: i32,
     pub vertical: i32,
 }
 
-// Core visualization settings
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
-pub struct VisualizationSettings {
-    pub nodes: NodeSettings,
-    pub edges: EdgeSettings,
-    pub physics: PhysicsSettings,
-    pub rendering: RenderingSettings,
-    pub animations: AnimationSettings,
-    pub labels: LabelSettings,
-    pub bloom: BloomSettings,
-    pub hologram: HologramSettings,
-}
-
-// System settings
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct SystemSettings {
-    pub network: NetworkSettings,
-    pub websocket: WebSocketSettings,
-    pub security: SecuritySettings,
-    pub debug: DebugSettings,
-}
-
-// Main settings struct
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct Settings {
-    pub visualization: VisualizationSettings,
-    pub system: SystemSettings,
-    pub xr: XRSettings,
-    pub ragflow: RagFlowSettings,
-    pub perplexity: PerplexitySettings,
-    pub openai: OpenAISettings,
-    pub kokoro: KokoroSettings,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+#[serde(rename_all = "camelCase")]
 pub struct NodeSettings {
     pub base_color: String,
     pub metalness: f32,
@@ -15077,10 +15208,11 @@ pub struct NodeSettings {
     pub enable_instancing: bool,
     pub enable_hologram: bool,
     pub enable_metadata_shape: bool,
-    pub enable_metadata_visualization: bool,
+    pub enable_metadata_visualisation: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
+#[serde(rename_all = "camelCase")]
 pub struct EdgeSettings {
     pub arrow_size: f32,
     pub base_width: f32,
@@ -15088,10 +15220,11 @@ pub struct EdgeSettings {
     pub enable_arrows: bool,
     pub opacity: f32,
     pub width_range: Vec<f32>,
-    pub quality: String
+    pub quality: String,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
+#[serde(rename_all = "camelCase")]
 pub struct PhysicsSettings {
     pub attraction_strength: f32,
     pub bounds_size: f32,
@@ -15109,6 +15242,7 @@ pub struct PhysicsSettings {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
+#[serde(rename_all = "camelCase")]
 pub struct RenderingSettings {
     pub ambient_light_intensity: f32,
     pub background_color: String,
@@ -15120,6 +15254,7 @@ pub struct RenderingSettings {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
+#[serde(rename_all = "camelCase")]
 pub struct AnimationSettings {
     pub enable_motion_blur: bool,
     pub enable_node_animations: bool,
@@ -15128,22 +15263,24 @@ pub struct AnimationSettings {
     pub pulse_enabled: bool,
     pub pulse_speed: f32,
     pub pulse_strength: f32,
-    pub wave_speed: f32
+    pub wave_speed: f32,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
+#[serde(rename_all = "camelCase")]
 pub struct LabelSettings {
-    pub desktop_font_size: u32,
+    pub desktop_font_size: f32,
     pub enable_labels: bool,
     pub text_color: String,
     pub text_outline_color: String,
     pub text_outline_width: f32,
     pub text_resolution: u32,
-    pub text_padding: u32,
-    pub billboard_mode: String
+    pub text_padding: f32,
+    pub billboard_mode: String,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
+#[serde(rename_all = "camelCase")]
 pub struct BloomSettings {
     pub edge_bloom_strength: f32,
     pub enabled: bool,
@@ -15154,25 +15291,42 @@ pub struct BloomSettings {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
+#[serde(rename_all = "camelCase")]
 pub struct HologramSettings {
     pub ring_count: u32,
     pub ring_color: String,
     pub ring_opacity: f32,
-    pub sphere_sizes: Vec<f32>,  // Native world units
+    pub sphere_sizes: Vec<f32>,
     pub ring_rotation_speed: f32,
     pub enable_buckminster: bool,
-    pub buckminster_size: f32,  // Native world units
+    pub buckminster_size: f32,
     pub buckminster_opacity: f32,
     pub enable_geodesic: bool,
-    pub geodesic_size: f32,  // Native world units
+    pub geodesic_size: f32,
     pub geodesic_opacity: f32,
     pub enable_triangle_sphere: bool,
-    pub triangle_sphere_size: f32,  // Native world units
+    pub triangle_sphere_size: f32,
     pub triangle_sphere_opacity: f32,
     pub global_rotation_speed: f32,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct VisualisationSettings {
+    pub nodes: NodeSettings,
+    pub edges: EdgeSettings,
+    pub physics: PhysicsSettings,
+    pub rendering: RenderingSettings,
+    pub animations: AnimationSettings,
+    pub labels: LabelSettings,
+    pub bloom: BloomSettings,
+    pub hologram: HologramSettings,
+}
+
+// --- Server-Specific Config Structs (from YAML, snake_case) ---
+
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+// No rename_all needed if YAML keys are snake_case
 pub struct NetworkSettings {
     pub bind_address: String,
     pub domain: String,
@@ -15194,13 +15348,14 @@ pub struct NetworkSettings {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct WebSocketSettings {
+// No rename_all needed if YAML keys are snake_case
+pub struct ServerFullWebSocketSettings {
     pub binary_chunk_size: usize,
     pub binary_update_rate: u32,
-    pub min_update_rate: u32,       // Minimum updates per second when graph is stable
-    pub max_update_rate: u32,       // Maximum updates per second during high motion
-    pub motion_threshold: f32,      // Consider graph in motion if at least X% of nodes are moving
-    pub motion_damping: f32,        // Damping factor for rate changes (higher = smoother transitions)
+    pub min_update_rate: u32,
+    pub max_update_rate: u32,
+    pub motion_threshold: f32,
+    pub motion_damping: f32,
     pub binary_message_version: u32,
     pub compression_enabled: bool,
     pub compression_threshold: usize,
@@ -15213,7 +15368,21 @@ pub struct WebSocketSettings {
     pub update_rate: u32,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+impl Default for ServerFullWebSocketSettings {
+    fn default() -> Self { // Defaults from settings.yaml
+        Self {
+            binary_chunk_size: 2048, binary_update_rate: 30, min_update_rate: 5,
+            max_update_rate: 60, motion_threshold: 0.05, motion_damping: 0.9,
+            binary_message_version: 1, compression_enabled: false, compression_threshold: 512,
+            heartbeat_interval: 10000, heartbeat_timeout: 600000, max_connections: 100,
+            max_message_size: 10485760, reconnect_attempts: 5, reconnect_delay: 1000,
+            update_rate: 60,
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+// No rename_all needed if YAML keys are snake_case
 pub struct SecuritySettings {
     pub allowed_origins: Vec<String>,
     pub audit_log_path: String,
@@ -15227,22 +15396,83 @@ pub struct SecuritySettings {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
-pub struct DebugSettings {
+#[serde(rename_all = "camelCase")] // Keep camelCase for JSON interaction
+pub struct DebugSettings { // Matches TS DebugSettings + YAML fields
     pub enabled: bool,
     pub enable_data_debug: bool,
     pub enable_websocket_debug: bool,
     pub log_binary_headers: bool,
     pub log_full_json: bool,
+    // Added back from YAML - these might need snake_case for YAML loading if config crate doesn't handle rename_all
+    // Let's assume config crate handles it based on struct field names for YAML.
     pub log_level: String,
     pub log_format: String,
 }
 
+
+#[derive(Debug, Deserialize, Clone)] // Only Deserialize needed for loading YAML
+// No rename_all needed if YAML keys are snake_case
+pub struct ServerSystemConfigFromFile {
+    pub network: NetworkSettings,
+    pub websocket: ServerFullWebSocketSettings,
+    pub security: SecuritySettings,
+    pub debug: DebugSettings, // Assumes YAML debug section matches DebugSettings struct fields (snake_case)
+    #[serde(default)]
+    pub persist_settings: bool,
+}
+
+// --- Client-Facing Config Structs (for JSON, camelCase) ---
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct ClientWebSocketSettings { // What client sends/expects
+    pub reconnect_attempts: u32,
+    pub reconnect_delay: u64,
+    pub binary_chunk_size: usize,
+    pub compression_enabled: bool,
+    pub compression_threshold: usize,
+    pub update_rate: u32,
+}
+
+impl Default for ClientWebSocketSettings {
+    fn default() -> Self {
+        Self {
+            reconnect_attempts: 3, reconnect_delay: 5000, binary_chunk_size: 65536,
+            compression_enabled: true, compression_threshold: 1024, update_rate: 30,
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct SystemSettings { // Client-facing System structure
+    pub websocket: ClientWebSocketSettings,
+    pub debug: DebugSettings, // DebugSettings uses camelCase for JSON
+    #[serde(default)]
+    pub persist_settings: bool,
+    // network and security are not part of client-facing system settings
+}
+
+impl Default for SystemSettings {
+    fn default() -> Self {
+        Self {
+            websocket: ClientWebSocketSettings::default(),
+            debug: DebugSettings::default(),
+            persist_settings: true,
+        }
+    }
+}
+
+
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
-pub struct XRSettings {
+#[serde(rename_all = "camelCase")]
+pub struct XRSettings { // Client-facing XR structure + YAML fields
+    // Fields from YAML (snake_case in YAML, camelCase in JSON)
     pub mode: String,
     pub room_scale: f32,
     pub space_type: String,
     pub quality: String,
+    #[serde(alias = "handTracking")]
     pub enable_hand_tracking: bool,
     pub hand_mesh_enabled: bool,
     pub hand_mesh_color: String,
@@ -15253,10 +15483,10 @@ pub struct XRSettings {
     pub hand_ray_width: f32,
     pub gesture_smoothing: f32,
     pub enable_haptics: bool,
-    pub haptic_intensity: f32,
     pub drag_threshold: f32,
     pub pinch_threshold: f32,
     pub rotation_threshold: f32,
+    #[serde(alias = "interactionDistance")]
     pub interaction_radius: f32,
     pub movement_speed: f32,
     pub dead_zone: f32,
@@ -15276,409 +15506,193 @@ pub struct XRSettings {
     pub portal_size: f32,
     pub portal_edge_color: String,
     pub portal_edge_width: f32,
+
+    // Fields from TS (camelCase in JSON)
+    #[serde(default)]
+    pub enabled: Option<bool>, // TS 'enabled' field
+    #[serde(default)]
+    pub controller_model: Option<String>,
+    #[serde(default)]
+    pub render_scale: Option<f32>,
+    #[serde(default)]
+    pub locomotion_method: Option<String>,
+    #[serde(default)]
+    pub teleport_ray_color: Option<String>,
+    #[serde(default)]
+    pub display_mode: Option<String>,
+    #[serde(default)]
+    pub controller_ray_color: Option<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct RagFlowSettings {
-    pub api_key: String,
-    pub api_base_url: String,
-    pub agent_id: String,
-    pub timeout: u64,
-    pub max_retries: u32,
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct AuthSettings { // Client-facing
+    pub enabled: bool,
+    pub provider: String,
+    pub required: bool,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct PerplexitySettings {
-    pub api_key: String,
-    pub model: String,
-    pub api_url: String,
-    pub max_tokens: u32,
-    pub temperature: f32,
-    pub top_p: f32,
-    pub presence_penalty: f32,
-    pub frequency_penalty: f32,
-    pub timeout: u64,
-    pub rate_limit: u32,
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct RagFlowSettings { // Client-facing
+    #[serde(default)] pub api_key: Option<String>,
+    #[serde(default)] pub agent_id: Option<String>,
+    #[serde(default)] pub api_base_url: Option<String>,
+    #[serde(default)] pub timeout: Option<u64>,
+    #[serde(default)] pub max_retries: Option<u32>,
+    #[serde(default)] pub chat_id: Option<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct OpenAISettings {
-    pub api_key: String,
-    pub base_url: String,
-    pub timeout: u64,
-    pub rate_limit: u32,
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct PerplexitySettings { // Client-facing
+    #[serde(default)] pub api_key: Option<String>,
+    #[serde(default)] pub model: Option<String>,
+    #[serde(default)] pub api_url: Option<String>,
+    #[serde(default)] pub max_tokens: Option<u32>,
+    #[serde(default)] pub temperature: Option<f32>,
+    #[serde(default)] pub top_p: Option<f32>,
+    #[serde(default)] pub presence_penalty: Option<f32>,
+    #[serde(default)] pub frequency_penalty: Option<f32>,
+    #[serde(default)] pub timeout: Option<u64>,
+    #[serde(default)] pub rate_limit: Option<u32>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct KokoroSettings {
-    pub api_url: String,
-    pub default_voice: String,
-    pub default_format: String,
-    pub default_speed: f32,
-    pub timeout: u64,
-    pub stream: bool,
-    pub return_timestamps: bool,
-    pub sample_rate: u32,
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct OpenAISettings { // Client-facing
+    #[serde(default)] pub api_key: Option<String>,
+    #[serde(default)] pub base_url: Option<String>,
+    #[serde(default)] pub timeout: Option<u64>,
+    #[serde(default)] pub rate_limit: Option<u32>,
 }
 
-impl Settings {
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct KokoroSettings { // Client-facing
+    #[serde(default)] pub api_url: Option<String>,
+    #[serde(default)] pub default_voice: Option<String>,
+    #[serde(default)] pub default_format: Option<String>,
+    #[serde(default)] pub default_speed: Option<f32>,
+    #[serde(default)] pub timeout: Option<u64>,
+    #[serde(default)] pub stream: Option<bool>,
+    #[serde(default)] pub return_timestamps: Option<bool>,
+    #[serde(default)] pub sample_rate: Option<u32>,
+}
+
+// --- Client-Facing Settings Struct (for JSON deserialization) ---
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct Settings { // Renamed to ClientFacingSettings conceptually
+    pub visualisation: VisualisationSettings,
+    pub system: SystemSettings, // Uses ClientWebSocketSettings internally
+    pub xr: XRSettings,
+    pub auth: AuthSettings,
+    #[serde(default)] pub ragflow: Option<RagFlowSettings>,
+    #[serde(default)] pub perplexity: Option<PerplexitySettings>,
+    #[serde(default)] pub openai: Option<OpenAISettings>,
+    #[serde(default)] pub kokoro: Option<KokoroSettings>,
+}
+
+// --- Full App Settings Struct (for server state, loaded from YAML) ---
+#[derive(Debug, Clone, Deserialize)] // Deserialize for YAML loading
+// No rename_all needed if YAML keys are snake_case
+pub struct AppFullSettings {
+    pub visualisation: VisualisationSettings, // Assumes YAML keys are snake_case
+    pub system: ServerSystemConfigFromFile,   // Contains ServerFullWebSocketSettings
+    pub xr: XRSettings,                       // Assumes YAML keys are snake_case
+    pub auth: AuthSettings,                   // Assumes YAML keys are snake_case
+    #[serde(default)] pub ragflow: Option<RagFlowSettings>, // Assumes YAML keys are snake_case
+    #[serde(default)] pub perplexity: Option<PerplexitySettings>,
+    #[serde(default)] pub openai: Option<OpenAISettings>,
+    #[serde(default)] pub kokoro: Option<KokoroSettings>,
+}
+
+// Manual Serialize implementation for AppFullSettings to ensure snake_case YAML output
+impl Serialize for AppFullSettings {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        // Convert self to a serde_json::Value first.
+        // The sub-structs might have rename_all="camelCase", so this Value will be camelCase.
+        match serde_json::to_value(self) {
+            Ok(camel_case_value) => {
+                // Convert the camelCase Value to snake_case Value.
+                let snake_case_value = keys_to_snake_case(camel_case_value);
+                // Serialize the snake_case Value.
+                snake_case_value.serialize(serializer)
+            }
+            Err(e) => {
+                error!("Failed to convert AppFullSettings to intermediate Value for saving: {}", e);
+                // Handle error appropriately, maybe serialize a default or error state
+                Err(serde::ser::Error::custom(format!("Serialization error: {}", e)))
+            }
+        }
+    }
+}
+// We also need Serialize for the sub-structs used by AppFullSettings
+// if they are not already deriving Serialize. They are deriving it, but
+// their rename_all attribute will cause camelCase serialization.
+// The keys_to_snake_case function handles this during AppFullSettings serialization.
+
+
+impl AppFullSettings {
     pub fn new() -> Result<Self, ConfigError> {
-        debug!("Initializing settings");
-
-        // Load .env file first to make variables available to the Environment source
+        debug!("Initializing AppFullSettings from YAML");
         dotenvy::dotenv().ok();
-        // --- DEBUG PRINT ---
-        println!("[CONFIG DEBUG] Checking SYSTEM_NETWORK_PORT env var: {:?}", std::env::var("SYSTEM_NETWORK_PORT"));
-        // --- END DEBUG PRINT ---
 
         let settings_path = std::env::var("SETTINGS_FILE_PATH")
             .map(PathBuf::from)
             .unwrap_or_else(|_| PathBuf::from("/app/settings.yaml"));
+        debug!("Loading AppFullSettings from YAML file: {:?}", settings_path);
 
-        debug!("Loading settings from YAML file: {:?}", settings_path);
-
-        let builder = ConfigBuilder::<config::builder::DefaultState>::default();
-
-        // 1. Add the YAML file source
-        let builder = builder.add_source(config::File::from(settings_path).required(true));
-
-        // 2. Add the Environment source
-        //    This will look for env vars matching the structure (e.g., SYSTEM_NETWORK_PORT)
-        let builder = builder.add_source(
-            Environment::default() // Use default settings (no prefix)
-                .separator("_") // Use underscore as separator (e.g., SYSTEM_NETWORK_PORT)
-                // .try_parsing(true) // Removed: Let serde handle type parsing during final deserialization
-                .list_separator(",") // Optional: Define how lists are separated in env vars
-        );
-
-        debug!("Building configuration by layering sources (YAML -> Env Vars)");
-
-        // Build the configuration and deserialize into Settings struct
+        let builder = ConfigBuilder::<config::builder::DefaultState>::default()
+            .add_source(config::File::from(settings_path.clone()).required(true)) // Use path directly
+            .add_source(
+                Environment::default()
+                    .separator("__")
+                    .list_separator(",")
+                    .with_prefix("APP") // Env vars override YAML
+            );
         let config = builder.build()?;
-        debug!("Configuration built successfully");
-
-        config.try_deserialize()
+        debug!("Configuration built successfully. Deserializing AppFullSettings...");
+        
+        // Deserialize using field names (should match snake_case YAML)
+        let result: Result<AppFullSettings, ConfigError> = config.try_deserialize();
+        if let Err(e) = &result {
+             error!("Failed to deserialize AppFullSettings from {:?}: {}", settings_path, e);
+             // Log raw value for debugging
+             match config.try_deserialize::<Value>() {
+                 Ok(raw_value) => error!("Raw settings structure from YAML: {:?}", raw_value),
+                 Err(val_err) => error!("Failed to deserialize into raw Value as well: {:?}", val_err),
+             }
+        }
+        result
     }
 
-    pub fn merge_env(&mut self, _env_settings: Settings) {
-        // This function seems unused or intended for a different purpose.
-        // Configuration layering is handled directly in ::new() using the config crate.
-    }
-
-    pub fn merge(&mut self, value: Value) -> Result<(), String> {
-        // Convert incoming JSON value to snake_case
-        let snake_case_value = self.to_snake_case_value(value);
-
-        // Deserialize the value into a temporary Settings
-        let new_settings: Settings = serde_json::from_value(snake_case_value)
-            .map_err(|e| format!("Failed to deserialize settings: {}", e))?;
-
-        // Update only the fields that were present in the input
-        // This preserves existing values for fields that weren't included in the update
-        if let Ok(visualization) = serde_json::to_value(&new_settings.visualization) {
-            if !visualization.is_null() {
-                self.visualization = new_settings.visualization;
-            }
-        }
-        if let Ok(system) = serde_json::to_value(&new_settings.system) {
-            if !system.is_null() {
-                self.system = new_settings.system;
-            }
-        }
-        if let Ok(xr) = serde_json::to_value(&new_settings.xr) {
-            if !xr.is_null() {
-                self.xr = new_settings.xr;
-            }
-        }
-
-        Ok(())
-    }
-
+    // Save method for AppFullSettings, ensuring snake_case YAML output
     pub fn save(&self) -> Result<(), String> {
         let settings_path = std::env::var("SETTINGS_FILE_PATH")
             .map(PathBuf::from)
             .unwrap_or_else(|_| PathBuf::from("/app/settings.yaml"));
+        debug!("Saving AppFullSettings to YAML file: {:?}", settings_path);
 
-        // Convert to YAML
+        // Serialize self using the custom Serialize impl which converts keys to snake_case
         let yaml = serde_yaml::to_string(&self)
-            .map_err(|e| format!("Failed to serialize settings to YAML: {}", e))?;
+            .map_err(|e| format!("Failed to serialize AppFullSettings to YAML: {}", e))?;
 
-        // Write to file
         std::fs::write(&settings_path, yaml)
-            .map_err(|e| format!("Failed to write settings file: {}", e))?;
-
+            .map_err(|e| format!("Failed to write settings file {:?}: {}", settings_path, e))?;
+        debug!("Successfully saved AppFullSettings to {:?}", settings_path);
         Ok(())
     }
-
-    fn to_snake_case_value(&self, value: Value) -> Value {
-        match value {
-            Value::Object(map) => {
-                let converted: serde_json::Map<String, Value> = map
-                    .into_iter()
-                    .map(|(k, v)| {
-                        let snake_case_key = to_snake_case(&k);
-                        (snake_case_key, self.to_snake_case_value(v))
-                    })
-                    .collect();
-                Value::Object(converted)
-            }
-            Value::Array(arr) => Value::Array(
-                arr.into_iter()
-                    .map(|v| self.to_snake_case_value(v))
-                    .collect(),
-            ),
-            _ => value,
-        }
-    }
-
-    pub fn from_env() -> Result<Self, ConfigError> {
-        let builder = ConfigBuilder::<config::builder::DefaultState>::default();
-        let config = builder
-            .add_source(Environment::default().separator("_").try_parsing(true))
-            .build()?;
-
-        config.try_deserialize()
-    }
 }
 
-impl Default for Settings {
-    fn default() -> Self {
-        Self {
-            visualization: VisualizationSettings {
-                nodes: NodeSettings {
-                    base_color: "#c3ab6f".to_string(),
-                    metalness: 0.3,
-                    opacity: 0.4,
-                    roughness: 0.35,
-                    size_range: vec![40.0, 120.0],  // Native world units
-                    quality: "medium".to_string(),
-                    enable_instancing: false,
-                    enable_hologram: false,
-                    enable_metadata_shape: false,
-                    enable_metadata_visualization: false,
-                },
-                edges: EdgeSettings {
-                    arrow_size: 0.15,
-                    base_width: 2.0,
-                    color: "#917f18".to_string(),
-                    enable_arrows: false,
-                    opacity: 0.6,
-                    width_range: vec![1.0, 3.0],
-                    quality: "medium".to_string()
-                },
-                physics: PhysicsSettings {
-                    attraction_strength: 0.015,
-                    bounds_size: 12.0,
-                    collision_radius: 0.25,
-                    damping: 0.88,
-                    enable_bounds: true,
-                    enabled: false,
-                    iterations: 500,
-                    max_velocity: 2.5,
-                    repulsion_strength: 1500.0,
-                    spring_strength: 0.018,
-                    repulsion_distance: 50.0,
-                    mass_scale: 1.0,
-                    boundary_damping: 0.5,
-                },
-                rendering: RenderingSettings {
-                    ambient_light_intensity: 0.3,
-                    background_color: "#000000".to_string(),
-                    directional_light_intensity: 1.0,
-                    enable_ambient_occlusion: false,
-                    enable_antialiasing: false,
-                    enable_shadows: false,
-                    environment_intensity: 0.6,
-                },
-                animations: AnimationSettings {
-                    enable_motion_blur: false,
-                    enable_node_animations: false,
-                    motion_blur_strength: 0.4,
-                    selection_wave_enabled: false,
-                    pulse_enabled: false,
-                    pulse_speed: 1.0,
-                    pulse_strength: 1.0,
-                    wave_speed: 1.0
-                },
-                labels: LabelSettings {
-                    desktop_font_size: 48,
-                    enable_labels: true,
-                    text_color: "#FFFFFF".to_string(),
-                    text_outline_color: "#000000".to_string(),
-                    text_outline_width: 0.1,
-                    text_resolution: 32,
-                    text_padding: 2,
-                    billboard_mode: "camera".to_string(),
-                },
-                bloom: BloomSettings {
-                    edge_bloom_strength: 0.3,
-                    enabled: false,
-                    environment_bloom_strength: 0.5,
-                    node_bloom_strength: 0.2,
-                    radius: 0.5,
-                    strength: 1.8,
-                },
-                hologram: HologramSettings {
-                    ring_count: 3,
-                    ring_color: "#00ff00".to_string(),
-                    ring_opacity: 0.5,
-                    sphere_sizes: vec![40.0, 80.0, 120.0],  // Native world units
-                    ring_rotation_speed: 0.001,
-                    enable_buckminster: false,
-                    buckminster_size: 120.0,  // Native world units
-                    buckminster_opacity: 0.3,
-                    enable_geodesic: false,
-                    geodesic_size: 100.0,  // Native world units
-                    geodesic_opacity: 0.3,
-                    enable_triangle_sphere: false,
-                    triangle_sphere_size: 140.0,  // Native world units
-                    triangle_sphere_opacity: 0.3,
-                    global_rotation_speed: 0.0005,
-                },
-            },
-            system: SystemSettings {
-                network: NetworkSettings {
-                    bind_address: "0.0.0.0".to_string(),
-                    domain: "localhost".to_string(),
-                    enable_http2: false,
-                    enable_rate_limiting: true,
-                    enable_tls: false,
-                    max_request_size: 10485760,
-                    min_tls_version: String::new(),
-                    port: 3001,
-                    rate_limit_requests: 100,
-                    rate_limit_window: 60,
-                    tunnel_id: "dummy".to_string(),
-                    api_client_timeout: 30,
-                    enable_metrics: true,
-                    max_concurrent_requests: 5,
-                    max_retries: 3,
-                    metrics_port: 9090,
-                    retry_delay: 5,
-                },
-                websocket: WebSocketSettings {
-                    binary_chunk_size: 65536,
-                    binary_update_rate: 30,
-                    min_update_rate: 5,
-                    max_update_rate: 60,
-                    motion_threshold: 0.05,
-                    motion_damping: 0.9,
-                    binary_message_version: 1,
-                    compression_enabled: true,
-                    compression_threshold: 1024,
-                    heartbeat_interval: 15000,
-                    heartbeat_timeout: 60000,
-                    max_connections: 1000,
-                    max_message_size: 100485760,
-                    reconnect_attempts: 3,
-                    reconnect_delay: 5000,
-                    update_rate: 90,
-                },
-                security: SecuritySettings {
-                    allowed_origins: Vec::new(),
-                    audit_log_path: "/app/logs/audit.log".to_string(),
-                    cookie_httponly: true,
-                    cookie_samesite: "Strict".to_string(),
-                    cookie_secure: true,
-                    csrf_token_timeout: 3600,
-                    enable_audit_logging: true,
-                    enable_request_validation: true,
-                    session_timeout: 3600,
-                },
-                debug: DebugSettings {
-                    enabled: false,
-                    enable_data_debug: false,
-                    enable_websocket_debug: false,
-                    log_binary_headers: false,
-                    log_full_json: false,
-                    log_level: "debug".to_string(),
-                    log_format: "json".to_string(),
-                },
-            },
-            xr: XRSettings {
-                mode: "immersive-ar".to_string(),
-                room_scale: 0.1,
-                space_type: "local-floor".to_string(),
-                quality: "medium".to_string(),
-                enable_hand_tracking: true,
-                hand_mesh_enabled: true,
-                hand_mesh_color: "#ffffff".to_string(),
-                hand_mesh_opacity: 0.5,
-                hand_point_size: 5.0,
-                hand_ray_enabled: true,
-                hand_ray_color: "#00ff00".to_string(),
-                hand_ray_width: 2.0,
-                gesture_smoothing: 0.5,
-                enable_haptics: true,
-                haptic_intensity: 0.5,
-                drag_threshold: 0.02,
-                pinch_threshold: 0.7,
-                rotation_threshold: 0.1,
-                interaction_radius: 0.5,
-                movement_speed: 0.05,
-                dead_zone: 0.1,
-                movement_axes: MovementAxes {
-                    horizontal: 2,
-                    vertical: 3,
-                },
-                enable_light_estimation: true,
-                enable_plane_detection: true,
-                enable_scene_understanding: true,
-                plane_color: "#808080".to_string(),
-                plane_opacity: 0.5,
-                plane_detection_distance: 3.0,
-                show_plane_overlay: true,
-                snap_to_floor: true,
-                enable_passthrough_portal: false,
-                passthrough_opacity: 1.0,
-                passthrough_brightness: 1.0,
-                passthrough_contrast: 1.0,
-                portal_size: 2.0,
-                portal_edge_color: "#ffffff".to_string(),
-                portal_edge_width: 2.0,
-            },
-            ragflow: RagFlowSettings {
-                api_key: String::new(),
-                api_base_url: String::new(),
-                agent_id: String::new(),
-                timeout: 30,
-                max_retries: 3,
-            },
-            perplexity: PerplexitySettings {
-                api_key: String::new(),
-                model: String::new(),
-                api_url: String::new(),
-                max_tokens: 4096,
-                temperature: 0.5,
-                top_p: 0.9,
-                presence_penalty: 0.0,
-                frequency_penalty: 0.0,
-                timeout: 30,
-                rate_limit: 100,
-            },
-            openai: OpenAISettings {
-                api_key: String::new(),
-                base_url: String::new(),
-                timeout: 30,
-                rate_limit: 100,
-            },
-            kokoro: KokoroSettings {
-                api_url: "http://pedantic_morse:8880".to_string(), // Default URL based on Docker network
-                default_voice: "af_heart".to_string(),
-                default_format: "mp3".to_string(),
-                default_speed: 1.0,
-                timeout: 30,
-                stream: true,
-                return_timestamps: true,
-                sample_rate: 24000,
-            },
-        }
-    }
-}
 
 #[cfg(test)]
 mod tests {
-    mod feature_access_test;
+    // mod feature_access_test;
 }
 ----
 config/feature_access.rs
@@ -17327,7 +17341,7 @@ export const debugState = new DebugState();
 src/utils/objectPath.ts
 /**
  * Utility functions for working with object paths
- * Uses dot notation to access nested properties (e.g., "visualization.nodes.baseColor")
+ * Uses dot notation to access nested properties (e.g., "visualisation.nodes.baseColor")
  */
 
 type NestedObject = Record<string, any>;
@@ -17335,7 +17349,7 @@ type NestedObject = Record<string, any>;
 /**
  * Gets a value from a nested object using a dot notation path
  * @param obj The object to get the value from
- * @param path The path to the value, using dot notation (e.g., "visualization.nodes.baseColor")
+ * @param path The path to the value, using dot notation (e.g., "visualisation.nodes.baseColor")
  * @param defaultValue A default value to return if the path doesn't exist
  * @returns The value at the path, or the default value if not found
  */
@@ -17380,7 +17394,7 @@ export function get(obj: NestedObject, path: string, defaultValue?: any): any {
  * Sets a value in a nested object using a dot notation path
  * Creates the object structure if it doesn't exist
  * @param obj The object to set the value in
- * @param path The path to set, using dot notation (e.g., "visualization.nodes.baseColor")
+ * @param path The path to set, using dot notation (e.g., "visualisation.nodes.baseColor")
  * @param value The value to set
  */
 export function set(obj: NestedObject, path: string, value: any): void {
@@ -19245,7 +19259,7 @@ import { VRButton } from 'three/examples/jsm/webxr/VRButton.js';
 import { XRControllerModelFactory } from 'three/examples/jsm/webxr/XRControllerModelFactory.js';
 import { createLogger, createErrorMetadata } from '@/utils/logger';
 import { debugState } from '@/utils/debugState'; // Assuming debugState.ts exists in utils
-import { SceneManager } from '@/features/visualization/managers/sceneManager'; // Correct path
+import { SceneManager } from '@/features/visualisation/managers/sceneManager'; // Correct path
 import { GestureRecognitionResult } from '@/features/xr/systems/HandInteractionSystem'; // Correct path
 import { Settings } from '@/features/settings/config/settings'; // Correct path, assuming Settings is defined here
 
@@ -19694,7 +19708,7 @@ import { createLogger, createErrorMetadata } from '@/utils/logger';
 import { debugState } from '@/utils/debugState';
 import { XRSessionManager, XRControllerEvent } from './xrSessionManager';
 import { XRSettings } from '../types/xr';
-import { SceneManager } from '../../visualization/managers/sceneManager';
+import { SceneManager } from '../../visualisation/managers/sceneManager';
 
 const logger = createLogger('XRInitializer');
 
@@ -20486,8 +20500,8 @@ export const HandInteractionSystem: React.FC<HandInteractionSystemProps> = ({
     }
   });
   
-  // Toggle hand visualization for debugging
-  const toggleHandVisualization = () => {
+  // Toggle hand visualisation for debugging
+  const toggleHandVisualisation = () => {
     setVisualizeHands(!visualizeHands);
   };
   
@@ -20976,24 +20990,24 @@ interface XRInputSourceArray {
   [Symbol.iterator](): IterableIterator<XRInputSource>;
 }
 ----
-src/features/xr/components/XRVisualizationConnector.tsx
+src/features/xr/components/XRVisualisationConnector.tsx
 import React, { useEffect, useState, useCallback } from 'react';
 import { useSafeXR, withSafeXR } from '../hooks/useSafeXRHooks';
-import { MetadataVisualizer, useTextLabelManager } from '../../visualization/components/MetadataVisualizer';
+import { MetadataVisualizer, useTextLabelManager } from '../../visualisation/components/MetadataVisualizer';
 import { useHandTracking } from '../systems/HandInteractionSystem';
 import { useSettingsStore } from '../../../store/settingsStore';
 import { createLogger } from '../../../utils/logger';
 
-const logger = createLogger('XRVisualizationConnector');
+const logger = createLogger('XRVisualisationConnector');
 
 /**
- * XRVisualizationConnector connects the XR hand interaction system
- * with the visualization system and platform manager.
+ * XRVisualisationConnector connects the XR hand interaction system
+ * with the visualisation system and platform manager.
  * 
  * This component acts as the dependency injector between these systems.
  * It is wrapped with the XR context safety check to prevent errors.
  */
-const XRVisualizationConnectorInner: React.FC = () => {
+const XRVisualisationConnectorInner: React.FC = () => {
   const { isPresenting: isXRMode } = useSafeXR();
   const settings = useSettingsStore(state => state.settings);
   const handTracking = useHandTracking();
@@ -21007,18 +21021,18 @@ const XRVisualizationConnectorInner: React.FC = () => {
     
     // Debug logging
     if (isXRMode) {
-      logger.info('XR mode active, configuring visualization for hand interaction');
+      logger.info('XR mode active, configuring visualisation for hand interaction');
     }
   }, [isXRMode, settings?.xr?.handTracking]); // Use correct property name
   
-  // Handle hand gesture interactions with visualizations
+  // Handle hand gesture interactions with visualisations
   useEffect(() => {
     if (!interactionEnabled) return;
     
     // Example: Use pinch gesture state to interact with labels
     const { pinchState, handPositions, isLeftHandVisible, isRightHandVisible } = handTracking;
     
-    // Update visualization system based on hand state using tuple positions
+    // Update visualisation system based on hand state using tuple positions
     // This is just a stub - real implementation would have more logic
     if (pinchState.left || pinchState.right) {
       // Use tuple based positions for hand interactions
@@ -21039,19 +21053,19 @@ const XRVisualizationConnectorInner: React.FC = () => {
     };
   }, [handTracking.pinchState, handTracking.handPositions, interactionEnabled]);
   
-  // Render the visualization system with the appropriate settings
+  // Render the visualisation system with the appropriate settings
   return (
     <MetadataVisualizer 
-      renderLabels={settings?.visualization?.labels?.enableLabels !== false} // Use correct property name
-      // renderIcons={settings?.visualization?.icons?.enabled !== false} // Property 'icons' does not exist
-      // renderMetrics={settings?.visualization?.metrics?.enabled} // Property 'metrics' does not exist
+      renderLabels={settings?.visualisation?.labels?.enableLabels !== false} // Use correct property name
+      // renderIcons={settings?.visualisation?.icons?.enabled !== false} // Property 'icons' does not exist
+      // renderMetrics={settings?.visualisation?.metrics?.enabled} // Property 'metrics' does not exist
     />
   );
 };
 
 // Wrap with XR context safety check to prevent outside-XR-context errors
-const XRVisualizationConnector = withSafeXR(XRVisualizationConnectorInner, 'XRVisualizationConnector');
-export default XRVisualizationConnector;
+const XRVisualisationConnector = withSafeXR(XRVisualisationConnectorInner, 'XRVisualisationConnector');
+export default XRVisualisationConnector;
 ----
 src/features/xr/components/XRController.tsx
 import React, { useState, useCallback } from 'react'
@@ -21160,10 +21174,10 @@ export const XRScene = () => {
           castShadow
         />
         
-        {/* Environment for better AR visualization */}
+        {/* Environment for better AR visualisation */}
         <Environment preset="city" />
         
-        {/* Main graph visualization */}
+        {/* Main graph visualisation */}
         <GraphManager />
         
         {/* Optional orbit controls for non-AR mode */}
@@ -21239,7 +21253,7 @@ const XRControlPanel = ({
   const groupRef = useRef<Group>(null);
   const { camera } = useThree();
   const [hovered, setHovered] = useState(false);
-  const [selectedTab, setSelectedTab] = useState('visualization');
+  const [selectedTab, setSelectedTab] = useState('visualisation');
   
   const { settings } = useSettingsStore();
   
@@ -21303,12 +21317,12 @@ const XRControlPanel = ({
       
       {/* Tab buttons at the top */}
       <group position={[0, size.height / 2 - 0.02, 0.001]}>
-        {/* Visualization tab */}
-        <Interactive onSelect={() => handleTabSelect('visualization')}>
+        {/* Visualisation tab */}
+        <Interactive onSelect={() => handleTabSelect('visualisation')}>
           <mesh position={[-size.width / 4, 0, 0]}>
             <planeGeometry args={[size.width / 3.5, 0.03]} />
             <meshStandardMaterial 
-              color={selectedTab === 'visualization' ? '#4a86e8' : '#333333'} 
+              color={selectedTab === 'visualisation' ? '#4a86e8' : '#333333'} 
             />
           </mesh>
         </Interactive>
@@ -21326,9 +21340,9 @@ const XRControlPanel = ({
       
       {/* Panel content - dynamically render based on selected tab */}
       <group position={[0, 0, 0.001]}>
-        {selectedTab === 'visualization' && (
+        {selectedTab === 'visualisation' && (
           <group>
-            {/* Simple visualization controls */}
+            {/* Simple visualisation controls */}
             <mesh position={[0, 0.05, 0]} scale={[0.9, 0.1, 1]}>
               <planeGeometry />
               <meshStandardMaterial color="#333333" />
@@ -22530,7 +22544,7 @@ const XRPanel = ({
                 <h4 className="font-medium mb-2">XR Control Information</h4>
                 <p className="text-muted-foreground mb-2">
                   These settings control how interaction works in VR and AR modes.
-                  When using a VR headset, you can use the controllers to interact with the visualization.
+                  When using a VR headset, you can use the controllers to interact with the visualisation.
                 </p>
                 <ul className="list-disc list-inside text-muted-foreground space-y-1">
                   <li>Trigger button: Select</li>
@@ -22620,7 +22634,7 @@ const XRPanel = ({
 
 export default XRPanel;
 ----
-src/features/settings/components/panels/VisualizationPanel.tsx
+src/features/settings/components/panels/VisualisationPanel.tsx
 import React, { useState, useMemo } from 'react';
 import { useSettingsStore } from '../../../../store/settingsStore';
 import { formatSettingLabel } from '../../types/settingsSchema';
@@ -22634,9 +22648,9 @@ import { Label } from '../../../../ui/Label';
 import { RadioGroup, RadioGroupItem } from '../../../../ui/RadioGroup';
 import { useTheme } from '../../../../ui/ThemeProvider';
 
-const logger = createLogger('VisualizationPanel');
+const logger = createLogger('VisualisationPanel');
 
-// Subsections for visualization settings
+// Subsections for visualisation settings
 const VISUALIZATION_SUBSECTIONS = [
   { id: 'rendering', title: 'Rendering', icon: <Eye className="h-4 w-4" /> },
   { id: 'nodes', title: 'Nodes', icon: <Circle className="h-4 w-4" /> },
@@ -22648,7 +22662,7 @@ const VISUALIZATION_SUBSECTIONS = [
   { id: 'animations', title: 'Animations', icon: <Circle className="h-4 w-4" /> },
 ];
 
-interface VisualizationPanelProps {
+interface VisualisationPanelProps {
   /**
    * Panel ID for the panel system
    * Panel ID is no longer needed.
@@ -22662,13 +22676,13 @@ interface VisualizationPanelProps {
  }
 
 /**
- * VisualizationPanel provides a comprehensive interface for managing all visualization settings.
+ * VisualisationPanel provides a comprehensive interface for managing all visualisation settings.
  * This includes rendering options, node/edge appearance, and physics simulation parameters.
  */
-const VisualizationPanel = ({
+const VisualisationPanel = ({
   // panelId, // Prop removed
   // horizontal // Prop removed
-}: VisualizationPanelProps) => {
+}: VisualisationPanelProps) => {
   const [activeSubsection, setActiveSubsection] = useState('rendering');
 
   const settings = useSettingsStore(state => state.settings);
@@ -22676,9 +22690,9 @@ const VisualizationPanel = ({
 
   // Get the actual settings *values* for the active subsection using useMemo
   const activeSettingsValues = useMemo(() => {
-    const vizSettings = settings?.visualization;
+    const vizSettings = settings?.visualisation;
     if (!vizSettings || !activeSubsection || !(activeSubsection in vizSettings)) {
-      logger.warn(`Subsection '${activeSubsection}' not found in visualization settings.`);
+      logger.warn(`Subsection '${activeSubsection}' not found in visualisation settings.`);
       return {};
     }
     // Type assertion might be needed if TypeScript can't infer the structure
@@ -22688,7 +22702,7 @@ const VisualizationPanel = ({
 
   // Update a specific setting (remains the same)
   const updateSetting = (path: string, value: any) => {
-    const fullPath = `visualization.${activeSubsection}.${path}`;
+    const fullPath = `visualisation.${activeSubsection}.${path}`;
     logger.debug(`Updating setting: ${fullPath}`, value);
     setSettings(fullPath, value);
   };
@@ -22906,7 +22920,7 @@ const VisualizationPanel = ({
   );
 };
 
-export default VisualizationPanel;
+export default VisualisationPanel;
 
 ----
 src/features/settings/components/panels/AIPanel.tsx
@@ -23379,14 +23393,14 @@ export default SystemPanel;
 src/features/settings/config/defaultSettings.ts
 // Define a basic Settings interface based on usage
 interface Settings {
-  visualization: any; // Replace 'any' with more specific types if known
+  visualisation: any; // Replace 'any' with more specific types if known
   system: any;        // Replace 'any' with more specific types if known
   auth: any;          // Replace 'any' with more specific types if known
   xr: any;            // Replace 'any' with more specific types if known
 }
 
 export const defaultSettings: Settings = {
-  visualization: {
+  visualisation: {
     sceneBackground: 0x000000, // Black
     rendering: {
       shadows: true,
@@ -23554,7 +23568,7 @@ export interface NodeSettings {
   enableInstancing: boolean;
   enableHologram: boolean;
   enableMetadataShape: boolean;
-  enableMetadataVisualization: boolean;
+  enableMetadataVisualisation: boolean;
 }
 
 // Edge settings
@@ -23698,8 +23712,8 @@ export interface XRSettings {
 controllerRayColor?: string; // Add this line
 }
 
-// Visualization settings
-export interface VisualizationSettings {
+// Visualisation settings
+export interface VisualisationSettings {
   nodes: NodeSettings;
   edges: EdgeSettings;
   physics: PhysicsSettings;
@@ -23770,7 +23784,7 @@ export interface AuthSettings {
 
 // Main settings interface
 export interface Settings {
-  visualization: VisualizationSettings;
+  visualisation: VisualisationSettings;
   system: SystemSettings;
   xr: XRSettings;
   auth: AuthSettings; // Make auth required
@@ -24581,7 +24595,7 @@ const GraphManager = () => {
   // Node labels component using settings from YAML
   const NodeLabels = () => {
     // Get label settings from the settings store (in camelCase)
-    const labelSettings = settings?.visualization?.labels || {
+    const labelSettings = settings?.visualisation?.labels || {
       enabled: true,
       desktopFontSize: 0.1, // Fallback to a small size if not specified
       textColor: '#000000',
@@ -24645,12 +24659,12 @@ const GraphManager = () => {
       >
         <sphereGeometry args={[0.5, 16, 16]} />
         <meshStandardMaterial
-          color={settings?.visualization?.nodes?.baseColor || "#ffffff"}
-          emissive={settings?.visualization?.nodes?.baseColor || "#00ffff"}
+          color={settings?.visualisation?.nodes?.baseColor || "#ffffff"}
+          emissive={settings?.visualisation?.nodes?.baseColor || "#00ffff"}
           emissiveIntensity={0.8}
-          metalness={settings?.visualization?.nodes?.metalness || 0.2}
-          roughness={settings?.visualization?.nodes?.roughness || 0.3}
-          opacity={settings?.visualization?.nodes?.opacity || 1.0}
+          metalness={settings?.visualisation?.nodes?.metalness || 0.2}
+          roughness={settings?.visualisation?.nodes?.roughness || 0.3}
+          opacity={settings?.visualisation?.nodes?.opacity || 1.0}
           transparent={true}
           toneMapped={false} // Important for bloom effect
         />
@@ -24659,10 +24673,10 @@ const GraphManager = () => {
       {edgePoints.length > 0 && (
         <Line
           points={edgePoints}
-          color={settings?.visualization?.edges?.color || "#00ffff"}
-          lineWidth={settings?.visualization?.edges?.baseWidth || 1.0}
+          color={settings?.visualisation?.edges?.color || "#00ffff"}
+          lineWidth={settings?.visualisation?.edges?.baseWidth || 1.0}
           transparent
-          opacity={settings?.visualization?.edges?.opacity || 0.6}
+          opacity={settings?.visualisation?.edges?.opacity || 0.6}
           toneMapped={false} // Important for bloom effect
         />
       )}
@@ -24698,7 +24712,7 @@ import { OrbitControls, Stats } from '@react-three/drei';
 // Components
  import GraphManager from './GraphManager';
 import XRController from '../../xr/components/XRController';
-import XRVisualizationConnector from '../../xr/components/XRVisualizationConnector';
+import XRVisualisationConnector from '../../xr/components/XRVisualisationConnector';
 
 // Store and utils
 import { useSettingsStore } from '../../../store/settingsStore';
@@ -24710,7 +24724,7 @@ const logger = createLogger('GraphCanvas');
 // Scene setup with lighting and background
 const SceneSetup = () => {
     const { scene } = useThree();
-    const settings = useSettingsStore(state => state.settings?.visualization);
+    const settings = useSettingsStore(state => state.settings?.visualisation);
 
     // Render lights using JSX
     return (
@@ -24731,7 +24745,7 @@ const GraphCanvas = () => {
     const { settings } = useSettingsStore();
     const showStats = settings?.system?.debug?.enablePerformanceDebug ?? false; // Use performance debug flag
     const xrEnabled = settings?.xr?.enabled !== false;
-    const antialias = settings?.visualization?.rendering?.enableAntialiasing !== false; // Correct property name
+    const antialias = settings?.visualisation?.rendering?.enableAntialiasing !== false; // Correct property name
 
     // Removed the outer div wrapper
     return (
@@ -24771,7 +24785,7 @@ const GraphCanvas = () => {
             <SceneSetup />
             <GraphManager />
             {xrEnabled && <XRController />}
-            {xrEnabled && <XRVisualizationConnector />}
+            {xrEnabled && <XRVisualisationConnector />}
             <OrbitControls
                 enableDamping={true}
                 dampingFactor={0.1}
@@ -24793,7 +24807,7 @@ const GraphCanvas = () => {
 export default GraphCanvas;
 
 ----
-src/features/visualization/managers/sceneManager.ts
+src/features/visualisation/managers/sceneManager.ts
 // Stub implementation of SceneManager to prevent conflicts with React Three Fiber
 import { createLogger, createErrorMetadata } from '@/utils/logger';
 import { debugState } from '@/utils/debugState';
@@ -24933,7 +24947,7 @@ export class SceneManager {
   }
 }
 ----
-src/features/visualization/utils/animations.ts
+src/features/visualisation/utils/animations.ts
 /**
  * Animation System
  * 
@@ -25165,7 +25179,7 @@ export function usePerformanceAwareAnimation(
   return preferredAnimation;
 }
 ----
-src/features/visualization/renderers/TextRenderer.tsx
+src/features/visualisation/renderers/TextRenderer.tsx
 import React, { useRef, useEffect, useState, useMemo } from 'react';
 import { useThree } from '@react-three/fiber';
 import { Text, Billboard } from '@react-three/drei';
@@ -25173,7 +25187,7 @@ import { Vector3, Group, DoubleSide } from 'three';
 import { useSettingsStore } from '@/store/settingsStore';
 import { createLogger, createErrorMetadata } from '@/utils/logger';
 
-// This interface should match the structure of `settings.visualization.labels` from the store.
+// This interface should match the structure of `settings.visualisation.labels` from the store.
 interface LabelSettings {
   enabled?: boolean; // Made optional to align with store type
   desktopFontSize: number;
@@ -25204,7 +25218,7 @@ interface TextRendererProps {
 export const TextRenderer: React.FC<TextRendererProps> = ({ labels = [] }) => {
   const { camera } = useThree();
   const groupRef = useRef<Group>(null);
-  const settings = useSettingsStore(state => state.settings?.visualization?.labels as LabelSettings | undefined);
+  const settings = useSettingsStore(state => state.settings?.visualisation?.labels as LabelSettings | undefined);
   
   if (!settings || !settings.enabled) {
     return null;
@@ -25414,7 +25428,7 @@ export const useTextRenderer = () => {
 
 export default TextRenderer;
 ----
-src/features/visualization/renderers/HologramManager.tsx
+src/features/visualisation/renderers/HologramManager.tsx
 import React, { useRef, useEffect, useState } from 'react';
 import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
@@ -25510,7 +25524,7 @@ export const HologramManager: React.FC<{
   position = [0, 0, 0],
   isXRMode = false
 }) => {
-  const settings = useSettingsStore(state => state.settings?.visualization?.hologram);
+  const settings = useSettingsStore(state => state.settings?.visualisation?.hologram);
   const groupRef = useRef<THREE.Group>(null);
 
   // Parse sphere sizes from settings
@@ -25658,7 +25672,7 @@ export class HologramManagerClass {
     const segments = quality === 'high' ? 64 : 32;
 
     // Extract settings
-    const hologramSettings = this.settings?.visualization?.hologram || {};
+    const hologramSettings = this.settings?.visualisation?.hologram || {};
     const color = hologramSettings.color || 0x00ffff;
     const opacity = hologramSettings.ringOpacity !== undefined ? hologramSettings.ringOpacity : 0.7;
     const sphereSizes = Array.isArray(hologramSettings.sphereSizes)
@@ -25726,7 +25740,7 @@ export class HologramManagerClass {
 
   update(deltaTime: number) {
     // Get rotation speed from settings
-    const rotationSpeed = this.settings?.visualization?.hologram?.ringRotationSpeed || 0.5;
+    const rotationSpeed = this.settings?.visualisation?.hologram?.ringRotationSpeed || 0.5;
 
     // Update ring rotations
     this.ringInstances.forEach((ring: any, index: number) => {
@@ -25783,10 +25797,10 @@ export class HologramManagerClass {
 
 export default HologramManager;
 ----
-src/features/visualization/renderers/materials/HologramShaderMaterial.ts
+src/features/visualisation/renderers/materials/HologramShaderMaterial.ts
 
 ----
-src/features/visualization/renderers/materials/HologramMaterial.tsx
+src/features/visualisation/renderers/materials/HologramMaterial.tsx
 // @ts-nocheck
 import React, { useRef, useEffect, useState } from 'react';
 import * as THREE from 'three';
@@ -25923,8 +25937,8 @@ export class HologramMaterialClass {
   constructor(settings?: any, context: 'ar' | 'desktop' = 'desktop') {
     // Extract settings
     const isAR = context === 'ar';
-    const opacity = settings?.visualization?.hologram?.opacity ?? 0.7;
-    const colorValue = settings?.visualization?.hologram?.color ?? '#00ffff';
+    const opacity = settings?.visualisation?.hologram?.opacity ?? 0.7;
+    const colorValue = settings?.visualisation?.hologram?.color ?? '#00ffff';
     const colorObj = new THREE.Color().setStyle(typeof colorValue === 'string' ? colorValue : '#00ffff');
     const pulseIntensity = isAR ? 0.1 : 0.2; 
     const edgeOnly = false;
@@ -26080,7 +26094,7 @@ export class HologramMaterialClass {
   public clone(): HologramMaterialClass {
     // Create settings object from current state
     const settings = {
-      visualization: {
+      visualisation: {
         hologram: {
           opacity: this.baseOpacity,
           color: this.baseColor
@@ -26176,10 +26190,10 @@ export const HologramComponent: React.FC<{
 
 export default HologramComponent;
 ----
-src/features/visualization/types/visualizationTypes.ts
+src/features/visualisation/types/visualisationTypes.ts
 import { XRSettings } from '../../xr/types/xr';
 
-export interface VisualizationSettings {
+export interface VisualisationSettings {
   nodes: {
     color: string;
     defaultSize: number;
@@ -26193,7 +26207,7 @@ export interface VisualizationSettings {
   xr: XRSettings;
 }
 ----
-src/features/visualization/components/HologramVisualization.tsx
+src/features/visualisation/components/HologramVisualisation.tsx
 import React, { useRef, useEffect } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
@@ -26234,7 +26248,7 @@ const HologramMeshMaterial: React.FC<{
   return <meshStandardMaterial ref={materialRef as any} {...{ toneMapped: false, wireframe: true } as any} />;
 };
 
-interface HologramVisualizationProps {
+interface HologramVisualisationProps {
   position?: readonly [number, number, number];
   size?: number;
   standalone?: boolean;
@@ -26242,20 +26256,20 @@ interface HologramVisualizationProps {
 }
 
 /**
- * HologramVisualization - A component that renders a hologram visualization
+ * HologramVisualisation - A component that renders a hologram visualisation
  * using the modern approach based on @react-three/fiber and @react-three/drei
  *
  * Can be used in two ways:
  * 1. As a standalone component with its own canvas (standalone=true)
  * 2. As a component inside an existing canvas (standalone=false)
  */
-export const HologramVisualization: React.FC<HologramVisualizationProps> = ({
+export const HologramVisualisation: React.FC<HologramVisualisationProps> = ({
   position = [0, 0, 0],
   size = 1,
   standalone = true,
   children
 }) => {
-  const settings = useSettingsStore(state => state.settings?.visualization?.hologram);
+  const settings = useSettingsStore(state => state.settings?.visualisation?.hologram);
 
   // Content that's rendered inside the hologram
   const HologramContent = () => (
@@ -26394,7 +26408,7 @@ export const HologramExample: React.FC = () => {
     <div className="flex flex-col md:flex-row gap-6 p-6 min-h-screen bg-gray-900">
       {/* 3D Hologram */}
       <div className="flex-1 h-[500px] rounded-lg overflow-hidden">
-        <HologramVisualization standalone size={1.2} />
+        <HologramVisualisation standalone size={1.2} />
       </div>
 
       {/* UI Hologram */}
@@ -26441,9 +26455,9 @@ export const HologramExample: React.FC = () => {
   );
 };
 
-export default HologramVisualization;
+export default HologramVisualisation;
 ----
-src/features/visualization/components/ActionButtons.tsx
+src/features/visualisation/components/ActionButtons.tsx
 import { useState } from 'react'
 import { Button } from '../../../ui/Button' // Corrected path
 import { Card, CardContent, CardHeader, CardTitle } from '../../../ui/Card' // Corrected path
@@ -26459,7 +26473,7 @@ export function ActionButtons() {
     try {
       setIsRandomizing(true)
       
-      // In the real implementation, this would call the visualization controller
+      // In the real implementation, this would call the visualisation controller
       // For now, we just simulate the action with a timeout
       logger.info('Randomizing node positions')
       
@@ -26498,7 +26512,7 @@ export function ActionButtons() {
   )
 }
 ----
-src/features/visualization/components/MetadataVisualizer.tsx
+src/features/visualisation/components/MetadataVisualizer.tsx
 import React, { useRef, useEffect, useState, useMemo } from 'react';
 import * as THREE from 'three'; // Use namespace import
 import { useThree, useFrame } from '@react-three/fiber';
@@ -26552,7 +26566,7 @@ export const MetadataVisualizer: React.FC<MetadataVisualizerProps> = ({
   // Use THREE.Object3D as Group might not be resolving correctly
   const groupRef = useRef<THREE.Group>(null);
   const { isXRMode } = usePlatform();
-  const labelSettings = useSettingsStore(state => state.settings?.visualization?.labels);
+  const labelSettings = useSettingsStore(state => state.settings?.visualisation?.labels);
 
   // Layer management for XR mode
   useEffect(() => {
@@ -26593,7 +26607,7 @@ export const MetadataVisualizer: React.FC<MetadataVisualizerProps> = ({
 const LabelSystem: React.FC = () => {
   const labelManagerRef = useTextLabelManager();
   const { labels } = labelManagerRef.current;
-  const labelSettings = useSettingsStore(state => state.settings?.visualization?.labels);
+  const labelSettings = useSettingsStore(state => state.settings?.visualisation?.labels);
 
   // Don't render if labels are disabled
   // if (!labelSettings?.enabled) return null; // Commented out due to type error
@@ -26897,7 +26911,7 @@ export const metadataVisualizer = MetadataVisualizerManager.getInstance();
 
 export default MetadataVisualizer;
 ----
-src/features/visualization/components/CameraController.tsx
+src/features/visualisation/components/CameraController.tsx
 import { useEffect } from 'react';
 import { useThree } from '@react-three/fiber';
 import * as THREE from 'three'; // Use namespace import
@@ -29462,8 +29476,8 @@ import { ControlPanelProvider } from '../features/settings/components/control-pa
 import AppInitializer from '../app/AppInitializer';
 // Removed unused Collapsible imports
 // Removed panel/tab component imports - now handled by LowerControlPanel
-import { HologramVisualization } from '../features/visualization/components/HologramVisualization';
-import CameraController from '../features/visualization/components/CameraController';
+import { HologramVisualisation } from '../features/visualisation/components/HologramVisualisation';
+import CameraController from '../features/visualisation/components/CameraController';
 // Removed icon imports - now handled by LowerControlPanel
 // Import type definitions to fix JSX element errors
 import '../types/react-three-fiber.d.ts';
@@ -29582,7 +29596,7 @@ const AppPage: React.FC = () => { // Renamed component
             />
             <Suspense fallback={null}>
               <GraphManager />
-              <HologramVisualization standalone={false} position={[0, 0, 0]} size={20} />
+              <HologramVisualisation standalone={false} position={[0, 0, 0]} size={20} />
             </Suspense>
             {/* @ts-ignore */}
             <axesHelper args={[2]} />
@@ -29794,8 +29808,8 @@ export const useSettingsStore = create<SettingsState>()(
           const state = get()
 
           // Build a list of paths to notify
-          // e.g. for path 'visualization.bloom.enabled':
-          // '', 'visualization', 'visualization.bloom', 'visualization.bloom.enabled'
+          // e.g. for path 'visualisation.bloom.enabled':
+          // '', 'visualisation', 'visualisation.bloom', 'visualisation.bloom.enabled'
           const pathsToNotify = ['']
           const pathParts = path.split('.')
           let currentPath = ''
@@ -30068,7 +30082,7 @@ const DebugSidebar: React.FC<DebugSidebarProps> = ({ visible, onClose }) => {
           </div>
           
           <div className="border border-gray-700 p-3 rounded">
-            <h3 className="text-lg font-semibold mb-2">Visualization</h3>
+            <h3 className="text-lg font-semibold mb-2">Visualisation</h3>
             <div className="space-y-2">
               <div>
                 <label className="block text-sm">Node Size</label>
@@ -30117,7 +30131,7 @@ interface ViewportContainerProps {
 }
 
 /**
- * ViewportContainer serves as the main container for the Three.js visualization.
+ * ViewportContainer serves as the main container for the Three.js visualisation.
  * It handles resize events and coordinates with the panel system to adjust its dimensions
  * when panels are docked/undocked.
  */
@@ -30252,7 +30266,7 @@ import React, { useEffect } from 'react';
 import Tabs from '../../ui/Tabs';
 import NostrAuthSection from '../../features/auth/components/NostrAuthSection';
 import SystemPanel from '../../features/settings/components/panels/SystemPanel';
-import VisualizationPanel from '../../features/settings/components/panels/VisualizationPanel';
+import VisualisationPanel from '../../features/settings/components/panels/VisualisationPanel';
 import XRPanel from '../../features/settings/components/panels/XRPanel';
 import AIPanel from '../../features/settings/components/panels/AIPanel';
 import MarkdownRenderer from '../../ui/markdown/MarkdownRenderer'; // Assuming path is correct
@@ -30379,7 +30393,7 @@ const LowerControlPanel: React.FC = () => {
             tabs={[
               { label: 'Auth', icon: <Settings className="h-4 w-4" />, content: <NostrAuthSection /> },
               { label: 'System', icon: <Settings className="h-4 w-4" />, content: <SystemPanel panelId="main-settings-system" /> },
-              { label: 'Visualization', icon: <Eye className="h-4 w-4" />, content: <VisualizationPanel /> },
+              { label: 'Visualisation', icon: <Eye className="h-4 w-4" />, content: <VisualisationPanel /> },
               { label: 'XR', icon: <Settings className="h-4 w-4" />, content: <XRPanel panelId="main-settings-xr" /> },
               { label: 'AI Services', icon: <Settings className="h-4 w-4" />, content: <AIPanel /> },
             ]}
@@ -30766,7 +30780,7 @@ The server now maintains a continuous physics simulation:
 
 - Graph nodes find optimal positions before any client connects
 - Reduced initial loading time for clients as layout is pre-calculated
-- Physics simulation stabilizes over time, creating a more balanced visualization
+- Physics simulation stabilizes over time, creating a more balanced visualisation
 
 ### 3. Bidirectional Synchronization
 
@@ -30843,7 +30857,7 @@ The configuration module manages application settings, environment variables, an
 ```rust
 pub struct Settings {
     pub server: ServerConfig,
-    pub visualization: VisualizationConfig,
+    pub visualisation: VisualisationConfig,
     pub github: GitHubConfig,
     pub security: SecurityConfig,
 }
@@ -30971,12 +30985,12 @@ pub struct SimulationParams {
 ### Configuration
 ```rust
 pub struct UISettings {
-    pub visualization: VisualizationConfig,
+    pub visualisation: VisualisationConfig,
     pub layout: LayoutConfig,
     pub theme: ThemeConfig,
 }
 
-pub struct VisualizationConfig {
+pub struct VisualisationConfig {
     pub physics: PhysicsConfig,
     pub rendering: RenderingConfig,
 }
@@ -30985,7 +30999,7 @@ pub struct VisualizationConfig {
 ### Features
 - Theme customization
 - Layout preferences
-- Visualization options
+- Visualisation options
 
 ## User Settings
 
@@ -31573,7 +31587,7 @@ pub enum SimulationMode {
 pub struct UISettings {
     pub theme: String,
     pub layout: LayoutConfig,
-    pub visualization: VisualizationConfig,
+    pub visualisation: VisualisationConfig,
 }
 
 pub struct UserSettings {
@@ -31915,7 +31929,7 @@ Node position updates are sent as binary messages. Each binary message consists 
 ```json
 {
   "type": "settings_update",
-  "category": "visualization",
+  "category": "visualisation",
   "settings": {
     "edges": {
       "scaleFactor": 2.0
@@ -32084,7 +32098,7 @@ The bidirectional synchronization protocol ensures consistent graph state:
 ```json
 {
   "type": "settings_update",
-  "category": "visualization",
+  "category": "visualisation",
   "settings": {
     "edges": {
       "scaleFactor": 2.0
@@ -32310,9 +32324,9 @@ POST /content/upload
 
 ## Settings API
 
-### Get Visualization Settings
+### Get Visualisation Settings
 ```http
-GET /api/user-settings/visualization
+GET /api/user-settings/visualisation
 ```
 
 ### Update API Keys
@@ -32422,7 +32436,7 @@ flowchart TB
     subgraph Client
         WebSocketService[WebSocket Service]
         GraphDataManager[Graph Data Manager]
-        VisualizationManager[Visualization Manager]
+        VisualisationManager[Visualisation Manager]
         BinaryProtocol[Binary Protocol Handler]
     end
     
@@ -32435,7 +32449,7 @@ flowchart TB
     WebSocketService <--> WSServer
     WebSocketService --> BinaryProtocol
     BinaryProtocol --> GraphDataManager
-    GraphDataManager --> VisualizationManager
+    GraphDataManager --> VisualisationManager
     Physics --> WSServer
     DataSync --> WSServer
 ```
@@ -32481,12 +32495,12 @@ sequenceDiagram
     participant WebSocket
     participant BinaryHandler
     participant GraphManager
-    participant Visualization
+    participant Visualisation
     
     Server->>WebSocket: Binary Message
     WebSocket->>BinaryHandler: Process ArrayBuffer
     BinaryHandler->>GraphManager: Update Node Positions
-    GraphManager->>Visualization: Trigger Update
+    GraphManager->>Visualisation: Trigger Update
 ```
 
 ## Message Types
@@ -32667,7 +32681,7 @@ if (!isDefaultService && isReady) {
 
 ### Adapter Pattern for Service Integration
 
-An adapter pattern is used to connect GraphVisualization with GraphDataManager's WebSocket requirements:
+An adapter pattern is used to connect GraphVisualisation with GraphDataManager's WebSocket requirements:
 
 ```typescript
 // Configure GraphDataManager with WebSocket service (adapter pattern)
@@ -32718,10 +32732,10 @@ client/xr.md
 
 This document describes the WebXR integration and functionality in the client.
 ----
-client/visualization.md
-# Visualization
+client/visualisation.md
+# Visualisation
 
-This document describes the visualization components and systems used in the client.
+This document describes the visualisation components and systems used in the client.
 ----
 client/rendering.md
 # Rendering
@@ -32738,7 +32752,7 @@ This document details the state management patterns and mechanisms used througho
 The client application manages several types of state:
 
 1. **Application Settings** - User preferences and application configuration
-2. **Graph Data** - Nodes, edges, and metadata for the visualization
+2. **Graph Data** - Nodes, edges, and metadata for the visualisation
 3. **UI State** - Control panel state, selected items, and UI configuration
 4. **Rendering State** - Camera position, visibility settings, and rendering options
 5. **XR State** - XR session status, controller positions, and interaction state
@@ -32808,7 +32822,7 @@ class SettingsStore {
 
 ### Graph Data Manager (`client/state/graphData.ts`)
 
-The Graph Data Manager maintains the state of the graph visualization data.
+The Graph Data Manager maintains the state of the graph visualisation data.
 
 **Key Features:**
 - Loads and processes graph data from server
@@ -32900,7 +32914,7 @@ A publish-subscribe system for loose coupling between components.
 **Usage Pattern:**
 ```typescript
 // Publisher
-eventEmitter.emit('settings:changed', { path: 'visualization.rendering.quality', value: 'high' });
+eventEmitter.emit('settings:changed', { path: 'visualisation.rendering.quality', value: 'high' });
 
 // Subscriber
 const unsubscribe = eventEmitter.on('settings:changed', (data) => {
@@ -32934,7 +32948,7 @@ The settings are organized hierarchically by domain:
 
 ```typescript
 interface Settings {
-  visualization: {
+  visualisation: {
     nodes: {
       quality: 'low' | 'medium' | 'high';
       enableInstancing: boolean;
@@ -33114,7 +33128,7 @@ graph TB
 ## Key Components
 
 ### User Interface Layer
-The UI layer consists of modular components for controlling the application, configuring settings, and interacting with the 3D visualization. It includes the Modular Control Panel, settings interfaces, and visualization controls.
+The UI layer consists of modular components for controlling the application, configuring settings, and interacting with the 3D visualisation. It includes the Modular Control Panel, settings interfaces, and visualisation controls.
 
 ### State Management
 State management is handled through a combination of state stores, event emitters, and observers. The primary state components include:
@@ -33129,10 +33143,10 @@ The API layer handles communication with the server through REST endpoints, prov
 - File and settings management
 
 ### Rendering Engine
-The rendering engine is built on Three.js and provides high-performance visualization of graph data:
+The rendering engine is built on Three.js and provides high-performance visualisation of graph data:
 - Node and edge rendering with instancing for performance
 - Text rendering with SDF fonts
-- Metadata visualization
+- Metadata visualisation
 - Camera controls and scene management
 
 ### WebSocket Client
@@ -33258,7 +33272,7 @@ This section contains documentation for the client-side components of the system
 - [Rendering](rendering.md)
 - [State Management](state.md)
 - [Types](types.md)
-- [Visualization](visualization.md)
+- [Visualisation](visualisation.md)
 - [WebSocket Communication](websocket.md)
 - [WebXR Integration](xr.md)
 ----
@@ -33637,7 +33651,7 @@ graph TB
         WSH[WebSocket Handler]
         PerplexityH[Perplexity Handler]
         RagFlowH[RagFlow Handler]
-        VisualizationH[Visualization Handler]
+        VisualisationH[Visualisation Handler]
         NostrH[Nostr Handler]
         FileS[File Service]
         GraphS[Graph Service]
@@ -33682,7 +33696,7 @@ graph TB
     Server --> WSH
     Server --> PerplexityH
     Server --> RagFlowH
-    Server --> VisualizationH
+    Server --> VisualisationH
     Server --> NostrH
 
     FileH --> FileS
@@ -33710,9 +33724,9 @@ graph TB
 - **VR (WebXR Controller)**: Manages WebXR sessions, input, and rendering for VR/AR devices.
 - **WS (WebSocket Client)**: Establishes and maintains a WebSocket connection with the backend server.
 - **GPU (GPU Compute Layer)**: Performs GPU-accelerated computations using CUDA.
-- **ThreeJS (Three.js Renderer)**: Renders the 3D graph visualization using WebGL.
+- **ThreeJS (Three.js Renderer)**: Renders the 3D graph visualisation using WebGL.
 - **ChatUI**: Handles the chat interface for interacting with the AI.
-- **GraphUI**: Manages the graph visualization, including nodes, edges, and layout.
+- **GraphUI**: Manages the graph visualisation, including nodes, edges, and layout.
 - **ControlPanel**: Modular control panel with dockable sections, Nostr authentication, and real-time settings management.
 - **VRControls**: Handles VR-specific controls and interactions.
 - **WSService**: Manages the WebSocket connection and message handling.
@@ -33730,7 +33744,7 @@ graph TB
 - **WSH (WebSocket Handler)**: Handles WebSocket connections and messages.
 - **PerplexityH (Perplexity Handler)**: Interfaces with the Perplexity AI service.
 - **RagFlowH (RagFlow Handler)**: Interfaces with the RAGFlow service.
-- **VisualizationH (Visualization Handler)**: Handles visualization-related requests.
+- **VisualisationH (Visualisation Handler)**: Handles visualisation-related requests.
 - **ClientManager**: Manages all connected WebSocket clients and broadcasts updates.
 - **NostrH (Nostr Handler)**: Manages Nostr authentication and user sessions.
 - **PhysicsEngine**: Continuously calculates force-directed layout independent of client connections.

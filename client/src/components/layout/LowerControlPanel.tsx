@@ -2,7 +2,7 @@ import React, { useEffect } from 'react';
 import Tabs from '../../ui/Tabs';
 import NostrAuthSection from '../../features/auth/components/NostrAuthSection';
 import SystemPanel from '../../features/settings/components/panels/SystemPanel';
-import VisualizationPanel from '../../features/settings/components/panels/VisualizationPanel';
+import VisualisationPanel from '../../features/settings/components/panels/VisualisationPanel';
 import XRPanel from '../../features/settings/components/panels/XRPanel';
 import AIPanel from '../../features/settings/components/panels/AIPanel';
 import MarkdownRenderer from '../../ui/markdown/MarkdownRenderer'; // Assuming path is correct
@@ -129,7 +129,7 @@ const LowerControlPanel: React.FC = () => {
             tabs={[
               { label: 'Auth', icon: <Settings className="h-4 w-4" />, content: <NostrAuthSection /> },
               { label: 'System', icon: <Settings className="h-4 w-4" />, content: <SystemPanel panelId="main-settings-system" /> },
-              { label: 'Visualization', icon: <Eye className="h-4 w-4" />, content: <VisualizationPanel /> },
+              { label: 'Visualisation', icon: <Eye className="h-4 w-4" />, content: <VisualisationPanel /> },
               { label: 'XR', icon: <Settings className="h-4 w-4" />, content: <XRPanel panelId="main-settings-xr" /> },
               { label: 'AI Services', icon: <Settings className="h-4 w-4" />, content: <AIPanel /> },
             ]}

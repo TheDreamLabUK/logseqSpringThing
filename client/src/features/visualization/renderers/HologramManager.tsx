@@ -93,7 +93,7 @@ export const HologramManager: React.FC<{
   position = [0, 0, 0],
   isXRMode = false
 }) => {
-  const settings = useSettingsStore(state => state.settings?.visualization?.hologram);
+  const settings = useSettingsStore(state => state.settings?.visualisation?.hologram);
   const groupRef = useRef<THREE.Group>(null);
 
   // Parse sphere sizes from settings
@@ -241,7 +241,7 @@ export class HologramManagerClass {
     const segments = quality === 'high' ? 64 : 32;
 
     // Extract settings
-    const hologramSettings = this.settings?.visualization?.hologram || {};
+    const hologramSettings = this.settings?.visualisation?.hologram || {};
     const color = hologramSettings.color || 0x00ffff;
     const opacity = hologramSettings.ringOpacity !== undefined ? hologramSettings.ringOpacity : 0.7;
     const sphereSizes = Array.isArray(hologramSettings.sphereSizes)
@@ -309,7 +309,7 @@ export class HologramManagerClass {
 
   update(deltaTime: number) {
     // Get rotation speed from settings
-    const rotationSpeed = this.settings?.visualization?.hologram?.ringRotationSpeed || 0.5;
+    const rotationSpeed = this.settings?.visualisation?.hologram?.ringRotationSpeed || 0.5;
 
     // Update ring rotations
     this.ringInstances.forEach((ring: any, index: number) => {

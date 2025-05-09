@@ -1,20 +1,20 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useSafeXR, withSafeXR } from '../hooks/useSafeXRHooks';
-import { MetadataVisualizer, useTextLabelManager } from '../../visualization/components/MetadataVisualizer';
+import { MetadataVisualizer, useTextLabelManager } from '../../visualisation/components/MetadataVisualizer';
 import { useHandTracking } from '../systems/HandInteractionSystem';
 import { useSettingsStore } from '../../../store/settingsStore';
 import { createLogger } from '../../../utils/logger';
 
-const logger = createLogger('XRVisualizationConnector');
+const logger = createLogger('XRVisualisationConnector');
 
 /**
- * XRVisualizationConnector connects the XR hand interaction system
- * with the visualization system and platform manager.
+ * XRVisualisationConnector connects the XR hand interaction system
+ * with the visualisation system and platform manager.
  * 
  * This component acts as the dependency injector between these systems.
  * It is wrapped with the XR context safety check to prevent errors.
  */
-const XRVisualizationConnectorInner: React.FC = () => {
+const XRVisualisationConnectorInner: React.FC = () => {
   const { isPresenting: isXRMode } = useSafeXR();
   const settings = useSettingsStore(state => state.settings);
   const handTracking = useHandTracking();
@@ -28,18 +28,18 @@ const XRVisualizationConnectorInner: React.FC = () => {
     
     // Debug logging
     if (isXRMode) {
-      logger.info('XR mode active, configuring visualization for hand interaction');
+      logger.info('XR mode active, configuring visualisation for hand interaction');
     }
   }, [isXRMode, settings?.xr?.handTracking]); // Use correct property name
   
-  // Handle hand gesture interactions with visualizations
+  // Handle hand gesture interactions with visualisations
   useEffect(() => {
     if (!interactionEnabled) return;
     
     // Example: Use pinch gesture state to interact with labels
     const { pinchState, handPositions, isLeftHandVisible, isRightHandVisible } = handTracking;
     
-    // Update visualization system based on hand state using tuple positions
+    // Update visualisation system based on hand state using tuple positions
     // This is just a stub - real implementation would have more logic
     if (pinchState.left || pinchState.right) {
       // Use tuple based positions for hand interactions
@@ -60,16 +60,16 @@ const XRVisualizationConnectorInner: React.FC = () => {
     };
   }, [handTracking.pinchState, handTracking.handPositions, interactionEnabled]);
   
-  // Render the visualization system with the appropriate settings
+  // Render the visualisation system with the appropriate settings
   return (
     <MetadataVisualizer 
-      renderLabels={settings?.visualization?.labels?.enableLabels !== false} // Use correct property name
-      // renderIcons={settings?.visualization?.icons?.enabled !== false} // Property 'icons' does not exist
-      // renderMetrics={settings?.visualization?.metrics?.enabled} // Property 'metrics' does not exist
+      renderLabels={settings?.visualisation?.labels?.enableLabels !== false} // Use correct property name
+      // renderIcons={settings?.visualisation?.icons?.enabled !== false} // Property 'icons' does not exist
+      // renderMetrics={settings?.visualisation?.metrics?.enabled} // Property 'metrics' does not exist
     />
   );
 };
 
 // Wrap with XR context safety check to prevent outside-XR-context errors
-const XRVisualizationConnector = withSafeXR(XRVisualizationConnectorInner, 'XRVisualizationConnector');
-export default XRVisualizationConnector;
+const XRVisualisationConnector = withSafeXR(XRVisualisationConnectorInner, 'XRVisualisationConnector');
+export default XRVisualisationConnector;

@@ -19,7 +19,7 @@ use crate::utils::socket_flow_messages::Node;
 use crate::models::edge::Edge;
 use crate::models::metadata::MetadataStore;
 use crate::app_state::AppState;
-use crate::config::Settings;
+use crate::config::AppFullSettings; // Use AppFullSettings, ClientFacingSettings removed
 use crate::utils::gpu_compute::GPUCompute;
 use crate::models::simulation_params::{SimulationParams, SimulationPhase, SimulationMode};
 use crate::models::pagination::PaginatedGraphData;
@@ -67,18 +67,19 @@ pub struct GraphService {
     pending_updates: Arc<RwLock<HashMap<String, (Node, Instant)>>>,
     cache_enabled: bool,
     simulation_id: String,
-    client_manager: Option<Arc<ClientManager>>,
+    // client_manager: Option<Arc<ClientManager>>, // Removed: ClientManager will be passed to methods needing it
     is_initialized: Arc<AtomicBool>,
     shutdown_requested: Arc<AtomicBool>,
 }
 
 impl GraphService {
     pub async fn new(
-        settings: Arc<RwLock<Settings>>, 
+        settings: Arc<RwLock<AppFullSettings>>, // Changed to AppFullSettings
         gpu_compute: Option<Arc<RwLock<GPUCompute>>>,
-        client_manager: Option<Arc<ClientManager>>) -> Self {
+        client_manager_for_loop: Arc<ClientManager> // Added for the simulation loop
+    ) -> Self {
         // Get physics settings
-        let physics_settings = settings.read().await.visualization.physics.clone();
+        let physics_settings = settings.read().await.visualisation.physics.clone();
 
         // Generate a unique ID for this GraphService instance
         let simulation_id = Alphanumeric.sample_string(&mut rand::thread_rng(), 8);
@@ -118,7 +119,7 @@ impl GraphService {
             pending_updates: Arc::new(RwLock::new(HashMap::new())),
             node_positions_cache: Arc::new(RwLock::new(None)),
             cache_enabled: true,
-            client_manager,
+            // client_manager, // Removed
             is_initialized: Arc::new(AtomicBool::new(false)),
             simulation_id: simulation_id.clone(),
             shutdown_requested: shutdown_requested.clone(),
@@ -162,8 +163,9 @@ impl GraphService {
         info!("[GraphService] Starting physics simulation loop (ID: {})", loop_simulation_id);
         
         // Clone graph_service twice - one for the async block and one for return
-        let graph_service_clone = graph_service.clone();
+        let _graph_service_clone = graph_service.clone(); // Prefixed with underscore as it's not directly used after cloning for the loop
         let return_service = graph_service.clone();
+        let captured_client_manager = client_manager_for_loop.clone(); // Capture ClientManager for the loop
         tokio::spawn(async move {
             let params = SimulationParams {
                 iterations: physics_settings.iterations,
@@ -217,7 +219,7 @@ impl GraphService {
                             trace!("[Graph:{}] Successfully calculated layout for {} nodes", loop_simulation_id, graph.nodes.len());
                             
                             // Broadcast position updates to all clients
-                            Self::broadcast_positions(&graph_service_clone, &graph.nodes).await;
+                            Self::broadcast_positions(captured_client_manager.clone(), &graph.nodes).await;
                         }
                     } else {
                         // Use CPU fallback when GPU is not available
@@ -229,7 +231,7 @@ impl GraphService {
                             trace!("[Graph:{}] Successfully calculated layout with CPU fallback for {} nodes", loop_simulation_id, graph.nodes.len());
                             
                             // Broadcast position updates to all clients
-                            Self::broadcast_positions(&graph_service_clone, &graph.nodes).await;
+                            Self::broadcast_positions(captured_client_manager.clone(), &graph.nodes).await;
                         }
                     }
                 } else {
@@ -292,19 +294,14 @@ impl GraphService {
             now.duration_since(*timestamp).as_millis() < UPDATE_RATE_LIMIT_MS as u128
         });
     }
-
+ 
     // Helper method to broadcast position updates to all clients
-    async fn broadcast_positions(service: &GraphService, nodes: &[Node]) {
-        if let Some(client_manager) = &service.client_manager {
-            // Clone nodes for broadcasting
-            let nodes_to_broadcast = nodes.to_vec();
-            
-            // Broadcast to all clients through the client manager
-            client_manager.broadcast_node_positions(nodes_to_broadcast).await;
-        } else {
-            // No client manager available - this is normal when there are no clients
-            trace!("[GraphService] No clients connected - skipping position broadcast");
-        }
+    async fn broadcast_positions(client_manager: Arc<ClientManager>, nodes: &[Node]) {
+        // Clone nodes for broadcasting
+        let nodes_to_broadcast = nodes.to_vec();
+        
+        // Broadcast to all clients through the client manager
+        client_manager.broadcast_node_positions(nodes_to_broadcast).await;
     }
 
     /// Shutdown the simulation loop to allow creating a new instance
@@ -1194,8 +1191,8 @@ impl GraphService {
     pub async fn get_gpu_compute(&self) -> Option<Arc<RwLock<GPUCompute>>> {
         self.gpu_compute.clone()
     }
-
-    pub async fn update_node_positions(&self, updates: Vec<(u16, Node)>) -> Result<(), Error> {
+ 
+    pub async fn update_node_positions(&self, updates: Vec<(u16, Node)>, client_manager: Arc<ClientManager>) -> Result<(), Error> {
         let mut graph = self.graph_data.write().await;
         let mut node_map = self.node_map.write().await;
         
@@ -1236,8 +1233,8 @@ impl GraphService {
             }
         });
         
-        // Broadcast all positions 
-        Self::broadcast_positions(self, &graph.nodes).await;
+        // Broadcast all positions
+        Self::broadcast_positions(client_manager, &graph.nodes).await;
         
         Ok(())
     }
@@ -1251,18 +1248,21 @@ impl GraphService {
             } else {
                 // Initialize GPU if not already done
                 if self.gpu_compute.is_none() {
-                    let settings = Arc::new(RwLock::new(Settings::default()));
-                    let graph_data = GraphData::default(); // Or get your actual graph data
-                    self.initialize_gpu(settings, &graph_data).await?;
+                    let graph_data_clone = {
+                        let guard = self.graph_data.read().await;
+                        guard.clone()
+                    }; // Read guard is dropped here
+                    self.initialize_gpu(&graph_data_clone).await?;
                     return self.update_positions().await;
                 }
                 Err(Error::new(ErrorKind::Other, "GPU compute not initialized"))
             }
         })
     }
-
-    pub async fn initialize_gpu(&mut self, _settings: Arc<RwLock<Settings>>, graph_data: &GraphData) -> Result<(), Error> {
-        info!("Initializing GPU compute system...");
+ 
+pub async fn initialize_gpu(&mut self, graph_data: &GraphData) -> Result<(), Error> {
+    info!("Initializing GPU compute system...");
+ 
 
         // If GPU is already initialized, don't reinitialize
         if self.gpu_compute.is_some() {
@@ -1390,17 +1390,18 @@ impl GraphService {
     }
     
     /// Start a separate broadcast loop to periodically push position updates to all clients
-    pub fn start_broadcast_loop(&self) {
+    pub fn start_broadcast_loop(&self, client_manager: Arc<ClientManager>) {
         info!("[GraphService] Starting position broadcast loop for client synchronization...");
-
+ 
         // Clone what we need for the async task
         let service_clone = self.clone();
         let simulation_id = self.simulation_id.clone();
-
+        let captured_client_manager = client_manager.clone(); // Capture ClientManager for the loop
+ 
         // Spawn a new task for the broadcast loop
         tokio::spawn(async move {
             info!("[GraphService:{}] Position broadcast loop starting", simulation_id);
-
+ 
             // Main broadcast loop
             loop {
                 // Check if shutdown was requested
@@ -1408,19 +1409,19 @@ impl GraphService {
                     info!("[GraphService:{}] Broadcast loop shutting down due to shutdown request", simulation_id);
                     break;
                 }
-
+ 
                 // Get current node positions
                 let nodes = service_clone.get_node_positions().await;
-
+ 
                 // Broadcast positions to all clients if we have any
                 if !nodes.is_empty() {
-                    GraphService::broadcast_positions(&service_clone, &nodes).await;
+                    GraphService::broadcast_positions(captured_client_manager.clone(), &nodes).await;
                 }
-
+ 
                 // Sleep to avoid excessive updates
                 tokio::time::sleep(Duration::from_millis(100)).await;
             }
-
+ 
             info!("[GraphService:{}] Position broadcast loop exited", simulation_id);
         });
         info!("[GraphService] Position broadcast loop started");

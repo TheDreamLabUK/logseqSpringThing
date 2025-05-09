@@ -134,8 +134,8 @@ export class HologramMaterialClass {
   constructor(settings?: any, context: 'ar' | 'desktop' = 'desktop') {
     // Extract settings
     const isAR = context === 'ar';
-    const opacity = settings?.visualization?.hologram?.opacity ?? 0.7;
-    const colorValue = settings?.visualization?.hologram?.color ?? '#00ffff';
+    const opacity = settings?.visualisation?.hologram?.opacity ?? 0.7;
+    const colorValue = settings?.visualisation?.hologram?.color ?? '#00ffff';
     const colorObj = new THREE.Color().setStyle(typeof colorValue === 'string' ? colorValue : '#00ffff');
     const pulseIntensity = isAR ? 0.1 : 0.2; 
     const edgeOnly = false;
@@ -291,7 +291,7 @@ export class HologramMaterialClass {
   public clone(): HologramMaterialClass {
     // Create settings object from current state
     const settings = {
-      visualization: {
+      visualisation: {
         hologram: {
           opacity: this.baseOpacity,
           color: this.baseColor

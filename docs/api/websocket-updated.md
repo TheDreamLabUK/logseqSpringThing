@@ -93,7 +93,7 @@ The bidirectional synchronization protocol ensures consistent graph state:
 ```json
 {
   "type": "settings_update",
-  "category": "visualization",
+  "category": "visualisation",
   "settings": {
     "edges": {
       "scaleFactor": 2.0

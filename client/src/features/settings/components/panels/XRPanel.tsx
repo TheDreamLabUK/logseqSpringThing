@@ -164,7 +164,7 @@ const XRPanel = ({
                 <h4 className="font-medium mb-2">XR Control Information</h4>
                 <p className="text-muted-foreground mb-2">
                   These settings control how interaction works in VR and AR modes.
-                  When using a VR headset, you can use the controllers to interact with the visualization.
+                  When using a VR headset, you can use the controllers to interact with the visualisation.
                 </p>
                 <ul className="list-disc list-inside text-muted-foreground space-y-1">
                   <li>Trigger button: Select</li>

@@ -3,7 +3,7 @@ import { VRButton } from 'three/examples/jsm/webxr/VRButton.js';
 import { XRControllerModelFactory } from 'three/examples/jsm/webxr/XRControllerModelFactory.js';
 import { createLogger, createErrorMetadata } from '@/utils/logger';
 import { debugState } from '@/utils/debugState'; // Assuming debugState.ts exists in utils
-import { SceneManager } from '@/features/visualization/managers/sceneManager'; // Correct path
+import { SceneManager } from '@/features/visualisation/managers/sceneManager'; // Correct path
 import { GestureRecognitionResult } from '@/features/xr/systems/HandInteractionSystem'; // Correct path
 import { Settings } from '@/features/settings/config/settings'; // Correct path, assuming Settings is defined here
 

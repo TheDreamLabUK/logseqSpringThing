@@ -1,20 +1,29 @@
 use crate::app_state::AppState;
 use crate::models::{UISettings, UserSettings};
-use crate::config::Settings; // <-- Import the full Settings struct
-use crate::handlers::socket_flow_handler::ClientManager; // For WebSocket broadcasting
+use crate::models::ui_settings::UISystemSettings; // Correct import
+// Import both settings types and alias the client-facing one
+use crate::config::{AppFullSettings, Settings as ClientFacingSettings};
+// use crate::handlers::socket_flow_handler::ClientManager; // Needed for broadcast - ClientManager is now accessed via AppState
 use actix_web::{web, Error, HttpResponse, HttpRequest};
 use chrono::Utc;
-use serde_json::{Value, json}; // Value for payload, json for the json! macro
+use serde_json::json;
 use crate::config::feature_access::FeatureAccess;
 use log::{info, error, warn, debug};
 use std::time::Instant;
 
-// Add a new endpoint to clear the settings cache for a user
+// Helper function to convert AppFullSettings to UISettings (requires From impl update)
+// This assumes the From impl is updated in models/ui_settings.rs
+fn convert_to_ui_settings(full_settings: &AppFullSettings) -> UISettings {
+    UISettings::from(full_settings) // Rely on the From trait implementation
+}
+
+
+// --- Cache Clearing Endpoints (Unaffected by Settings struct changes) ---
+
 async fn clear_user_settings_cache(
     req: HttpRequest,
     feature_access: web::Data<FeatureAccess>
 ) -> Result<HttpResponse, Error> {
-    // Get pubkey from header
     let pubkey = match req.headers().get("X-Nostr-Pubkey") {
         Some(value) => value.to_str().unwrap_or("").to_string(),
         None => {
@@ -22,28 +31,19 @@ async fn clear_user_settings_cache(
             return Ok(HttpResponse::BadRequest().body("Missing Nostr pubkey"));
         }
     };
-    
-    // Check if user has permission
     if !feature_access.can_sync_settings(&pubkey) {
         warn!("User {} attempted to clear settings cache without permission", pubkey);
         return Ok(HttpResponse::Forbidden().body("Settings sync not enabled for this user"));
     }
-    
     UserSettings::clear_cache(&pubkey);
     info!("Cleared settings cache for user {}", pubkey);
-    
-    Ok(HttpResponse::Ok().json(serde_json::json!({
-        "status": "success",
-        "message": "Settings cache cleared"
-    })))
+    Ok(HttpResponse::Ok().json(json!({ "status": "success", "message": "Settings cache cleared" })))
 }
 
-// Add a new endpoint for admin to clear all settings caches
 async fn clear_all_settings_cache(
     req: HttpRequest,
     feature_access: web::Data<FeatureAccess>
 ) -> Result<HttpResponse, Error> {
-    // Get pubkey from header
     let pubkey = match req.headers().get("X-Nostr-Pubkey") {
         Some(value) => value.to_str().unwrap_or("").to_string(),
         None => {
@@ -51,21 +51,16 @@ async fn clear_all_settings_cache(
             return Ok(HttpResponse::BadRequest().body("Missing Nostr pubkey"));
         }
     };
-    
-    // Only power users can clear all caches
     if !feature_access.is_power_user(&pubkey) {
         warn!("Non-power user {} attempted to clear all settings caches", pubkey);
         return Ok(HttpResponse::Forbidden().body("Only power users can clear all settings caches"));
     }
-    
     UserSettings::clear_all_cache();
     info!("Power user {} cleared all settings caches", pubkey);
-    
-    Ok(HttpResponse::Ok().json(serde_json::json!({
-        "status": "success",
-        "message": "All settings caches cleared"
-    })))
+    Ok(HttpResponse::Ok().json(json!({ "status": "success", "message": "All settings caches cleared" })))
 }
+
+// --- Configuration ---
 
 pub fn config(cfg: &mut web::ServiceConfig) {
     cfg.service(
@@ -75,7 +70,7 @@ pub fn config(cfg: &mut web::ServiceConfig) {
     ).service(
         web::resource("/user-settings/sync")
             .route(web::get().to(get_user_settings))
-            .route(web::post().to(update_user_settings)) // This now points to the new function
+            .route(web::post().to(update_user_settings)) // This now points to the updated function
     ).service(
         web::resource("/user-settings/clear-cache")
             .route(web::post().to(clear_user_settings_cache))
@@ -85,12 +80,11 @@ pub fn config(cfg: &mut web::ServiceConfig) {
     );
 }
 
+// --- GET Endpoints ---
+
 pub async fn get_public_settings(state: web::Data<AppState>) -> Result<HttpResponse, Error> {
     let settings_guard = state.settings.read().await;
-    
-    // Convert to UI settings
-    let ui_settings = UISettings::from(&*settings_guard);
-    
+    let ui_settings = convert_to_ui_settings(&*settings_guard);
     Ok(HttpResponse::Ok().json(&ui_settings))
 }
 
@@ -100,21 +94,17 @@ async fn get_user_settings(
     feature_access: web::Data<FeatureAccess>
 ) -> Result<HttpResponse, Error> {
     let start_time = Instant::now();
-    
-    // Get pubkey from header
     let pubkey = match req.headers().get("X-Nostr-Pubkey") {
         Some(value) => value.to_str().unwrap_or("").to_string(),
         None => {
-            warn!("Missing Nostr pubkey in request headers");
+            warn!("Missing Nostr pubkey in request headers for get_user_settings");
             return Ok(HttpResponse::BadRequest().body("Missing Nostr pubkey"));
         }
     };
-    
-    debug!("Processing settings request for user: {}", pubkey);
-    
-    // Check if user has permission using FeatureAccess
+    debug!("Processing get_user_settings request for user: {}", pubkey);
+
     if !feature_access.can_sync_settings(&pubkey) {
-        warn!("User {} attempted to sync settings without permission", pubkey);
+        warn!("User {} attempted get_user_settings without permission", pubkey);
         return Ok(HttpResponse::Forbidden().body("Settings sync not enabled for this user"));
     }
 
@@ -122,211 +112,223 @@ async fn get_user_settings(
     let result;
 
     if is_power_user {
-        // Power users get settings from the global settings file
         let settings_guard = state.settings.read().await;
-        let ui_settings = UISettings::from(&*settings_guard);
-        debug!("Returning global settings for power user {}", pubkey);
+        let ui_settings = convert_to_ui_settings(&*settings_guard);
+        debug!("Returning global UI settings for power user {}", pubkey);
         result = Ok(HttpResponse::Ok().json(ui_settings));
     } else {
-        // Regular users get their personal settings or defaults
-        // This will use the cache if available due to our UserSettings::load implementation
         let user_settings = UserSettings::load(&pubkey).unwrap_or_else(|| {
             debug!("Creating new user settings for {} with default settings", pubkey);
             UserSettings::new(&pubkey, UISettings::default())
         });
         result = Ok(HttpResponse::Ok().json(&user_settings.settings));
     }
-    
-    // Log the time taken to process this request
+
     let elapsed = start_time.elapsed();
     debug!("Settings request for {} processed in {:?}", pubkey, elapsed);
-    
     result
 }
 
-// --- START OF USER PROVIDED update_user_settings ---
+// --- POST Endpoints ---
+
+// Handles updates from the main settings UI (/user-settings/sync)
 async fn update_user_settings(
     req: HttpRequest,
     state: web::Data<AppState>,
     feature_access: web::Data<FeatureAccess>,
-    payload: web::Json<Value>, // Still receive raw JSON Value
+    // Use Actix's extractor directly for ClientFacingSettings
+    payload: web::Json<ClientFacingSettings>,
 ) -> Result<HttpResponse, Error> {
     let start_time = Instant::now();
+    // Extract the settings from the payload wrapper
+    let received_client_settings = payload.into_inner();
+
+    // Log the received settings AFTER successful extraction/deserialization by Actix
+    // Use debug level and potentially truncate or selectively log fields to avoid excessive noise/sensitive data
+    debug!("Successfully deserialized settings payload: {:?}", received_client_settings);
+
 
     let pubkey = match req.headers().get("X-Nostr-Pubkey") {
         Some(value) => value.to_str().unwrap_or("").to_string(),
         None => {
-            // If no pubkey, can't determine user type or save user-specific settings
             warn!("Update settings request received without Nostr pubkey.");
-            // This behavior differs from the old version which returned default settings.
-            // Returning BadRequest as per user's new code.
             return Ok(HttpResponse::BadRequest().body("Missing Nostr pubkey for settings update"));
         }
     };
+    debug!("Processing update_user_settings for user: {}", pubkey);
 
-    debug!("Processing settings update for user: {}", pubkey);
-
-    // Check if user has permission to sync settings (power users implicitly can)
     if !feature_access.can_sync_settings(&pubkey) {
-        warn!("User {} attempted to sync settings without permission", pubkey);
+        warn!("User {} attempted update_user_settings without permission", pubkey);
         return Ok(HttpResponse::Forbidden().body("Settings sync not enabled for this user"));
     }
 
-    // *** CHANGE: Deserialize into the full Settings struct ***
-    let received_settings: Settings = match serde_json::from_value(payload.into_inner()) {
-        Ok(settings) => settings,
-        Err(e) => {
-            error!("Failed to deserialize incoming settings payload for user {}: {}", pubkey, e);
-            // Log the payload that failed to deserialize for debugging
-            // Be cautious logging sensitive data like API keys if they are present
-            // debug!("Failing payload: {:?}", payload); // Uncomment cautiously for debugging
-            return Ok(HttpResponse::BadRequest().body(format!("Invalid settings format: {}", e)));
-        }
-    };
+    // No longer need manual deserialization here
+    // let received_client_settings: ClientFacingSettings = ...
 
     let is_power_user = feature_access.is_power_user(&pubkey);
     let result;
-    let settings_to_broadcast: Option<UISettings>;
+    // let mut settings_to_broadcast: Option<UISettings> = None; // Removed as broadcast logic is removed
 
     if is_power_user {
-        // Power users update the global settings file
-        let mut settings_guard = state.settings.write().await;
+        let mut settings_guard = state.settings.write().await; // Locks Arc<RwLock<AppFullSettings>>
 
-        // *** CAREFUL MERGE: Update only the parts the client should modify ***
-        // Overwrite visualization and XR completely as they are UI-driven
-        settings_guard.visualization = received_settings.visualization;
-        settings_guard.xr = received_settings.xr;
+        // --- Careful Merge from ClientFacingSettings into AppFullSettings ---
+        settings_guard.visualisation = received_client_settings.visualisation;
+        settings_guard.xr = received_client_settings.xr;
+        settings_guard.auth = received_client_settings.auth;
 
-        // Selectively merge parts of system settings (avoid overwriting sensitive network/security)
-        settings_guard.system.websocket = received_settings.system.websocket;
-        settings_guard.system.debug = received_settings.system.debug;
-        // DO NOT merge system.network or system.security from client
+        let client_sys = &received_client_settings.system;
+        let server_sys = &mut settings_guard.system;
 
-        // Update AI service settings if present in received data
-        // Use if let to handle potentially missing fields gracefully
-        if let Some(ragflow) = received_settings.ragflow { settings_guard.ragflow = Some(ragflow); }
-        if let Some(perplexity) = received_settings.perplexity { settings_guard.perplexity = Some(perplexity); }
-        if let Some(openai) = received_settings.openai { settings_guard.openai = Some(openai); }
-        if let Some(kokoro) = received_settings.kokoro { settings_guard.kokoro = Some(kokoro); }
-        // DO NOT update auth settings from client
+        // Map ClientWebSocketSettings into ServerFullWebSocketSettings fields
+        let client_ws = &client_sys.websocket;
+        let server_ws = &mut server_sys.websocket;
+        server_ws.reconnect_attempts = client_ws.reconnect_attempts;
+        server_ws.reconnect_delay = client_ws.reconnect_delay;
+        server_ws.binary_chunk_size = client_ws.binary_chunk_size;
+        server_ws.compression_enabled = client_ws.compression_enabled;
+        server_ws.compression_threshold = client_ws.compression_threshold;
+        server_ws.update_rate = client_ws.update_rate;
 
-        // Save the updated full settings
-        if let Err(e) = settings_guard.save() { // Save the merged settings
-            error!("Failed to save global settings after update from {}: {}", pubkey, e);
+        server_sys.debug = client_sys.debug.clone(); // Clone DebugSettings
+        server_sys.persist_settings = client_sys.persist_settings;
+
+        settings_guard.ragflow = received_client_settings.ragflow;
+        settings_guard.perplexity = received_client_settings.perplexity;
+        settings_guard.openai = received_client_settings.openai;
+        settings_guard.kokoro = received_client_settings.kokoro;
+        // --- End Merge ---
+
+        if let Err(e) = settings_guard.save() {
+            error!("Failed to save global AppFullSettings after update from {}: {}", pubkey, e);
             return Ok(HttpResponse::InternalServerError().body(format!("Failed to save settings: {}", e)));
         }
 
         info!("Power user {} updated global settings", pubkey);
-        // Extract UISettings *after* saving the merged full settings
-        let updated_ui_settings = UISettings::from(&*settings_guard);
-        settings_to_broadcast = Some(updated_ui_settings.clone());
-        result = Ok(HttpResponse::Ok().json(updated_ui_settings)); // Respond with UI subset
+        let updated_ui_settings = convert_to_ui_settings(&*settings_guard);
+        // settings_to_broadcast = Some(updated_ui_settings.clone()); // Removed as broadcast logic is removed
+        result = Ok(HttpResponse::Ok().json(updated_ui_settings));
 
     } else {
-        // Regular users update their personal settings file
-        // They send their desired UISettings, which we deserialized into the full Settings struct above.
-        // We need to extract the relevant UISettings part for saving their personal file.
-        let ui_settings_from_payload = UISettings::from(&received_settings); // Extract the relevant UI parts
+        // Regular users update their personal UserSettings file
+        let ui_settings_from_payload = UISettings {
+            visualisation: received_client_settings.visualisation,
+            system: UISystemSettings { // Use the imported struct directly
+                websocket: received_client_settings.system.websocket,
+                debug: received_client_settings.system.debug,
+            },
+            xr: received_client_settings.xr,
+        };
 
         let mut user_settings = UserSettings::load(&pubkey).unwrap_or_else(|| {
             debug!("Creating new user settings for {}", pubkey);
-            UserSettings::new(&pubkey, UISettings::default()) // Create with default UI settings
+            UserSettings::new(&pubkey, UISettings::default())
         });
 
-        user_settings.settings = ui_settings_from_payload; // Update with the settings sent by the user
+        user_settings.settings = ui_settings_from_payload;
         user_settings.last_modified = Utc::now().timestamp();
 
-        if let Err(e) = user_settings.save() { // Save personal settings
+        if let Err(e) = user_settings.save() {
             error!("Failed to save user settings for {}: {}", pubkey, e);
             return Ok(HttpResponse::InternalServerError().body(format!("Failed to save user settings: {}", e)));
         }
 
         debug!("User {} updated their settings", pubkey);
-        settings_to_broadcast = None; // Don't broadcast personal settings changes globally
-        result = Ok(HttpResponse::Ok().json(&user_settings.settings)); // Respond with their saved settings
+        result = Ok(HttpResponse::Ok().json(&user_settings.settings));
     }
 
-    // --- Broadcast Logic ---
-    if let Some(settings_payload) = settings_to_broadcast {
-        if let Some(client_manager_ref) = state.client_manager.as_ref() { // Use as_ref() for Option<Arc<T>>
-            let broadcast_message = json!({
-                "type": "settings_updated",
-                "payload": settings_payload
-            });
-            match serde_json::to_string(&broadcast_message) {
-                Ok(msg_str) => {
-                    info!("Broadcasting settings update to all clients.");
-                    client_manager_ref.broadcast_text_message(msg_str).await;
-                }
-                Err(e) => {
-                    error!("Failed to serialize settings broadcast message: {}", e);
-                }
-            }
-        } else {
-            warn!("ClientManager not found in AppState, cannot broadcast settings.");
-        }
-    }
+    // --- Broadcast Logic Removed as per new guideline (WebSockets for position/audio only) ---
+    // if let Some(settings_payload) = settings_to_broadcast {
+    //     // Get ClientManager from AppState
+    //     let client_manager = state.ensure_client_manager().await;
+    //     let broadcast_message = json!({
+    //         "type": "settings_updated",
+    //         "payload": settings_payload
+    //     });
+    //     match serde_json::to_string(&broadcast_message) {
+    //         Ok(msg_str) => {
+    //             info!("Broadcasting settings update to all clients.");
+    //             // Dereference Arc to call method on ClientManager
+    //             (*client_manager).broadcast_text_message(msg_str).await;
+    //         }
+    //         Err(e) => {
+    //             error!("Failed to serialize settings broadcast message: {}", e);
+    //         }
+    //     }
+    // }
     // --- End Broadcast Logic ---
 
     let elapsed = start_time.elapsed();
     debug!("Settings update for {} processed in {:?}", pubkey, elapsed);
-
     result
 }
-// --- END OF USER PROVIDED update_user_settings ---
 
+// Handles updates from the older /user-settings endpoint (needs review/deprecation?)
 async fn update_settings(
     req: HttpRequest,
     state: web::Data<AppState>,
     feature_access: web::Data<FeatureAccess>,
-    payload: web::Json<Value>,
+    // Use Actix's extractor directly here too, assuming it should also accept ClientFacingSettings
+    payload: web::Json<ClientFacingSettings>,
 ) -> Result<HttpResponse, Error> {
-    // Get pubkey from header
+    warn!("Received settings update via deprecated /user-settings endpoint. Use /user-settings/sync instead.");
+    let received_client_settings = payload.into_inner();
+    debug!("Successfully deserialized settings payload via /user-settings: {:?}", received_client_settings);
+
     let pubkey = match req.headers().get("X-Nostr-Pubkey") {
         Some(value) => value.to_str().unwrap_or("").to_string(),
         None => {
-            warn!("Attempt to update settings without authentication");
-            // For updates, we do require authentication
-            // This prevents unauthenticated users from modifying settings
-            // They can still read public settings via get endpoints
+            warn!("Attempt to update settings via /user-settings without authentication");
             return Ok(HttpResponse::BadRequest().body("Missing Nostr pubkey"));
         }
     };
 
-    // Check if user is a power user
-    let is_power_user = feature_access.is_power_user(&pubkey);
-
-    if !is_power_user {
-        warn!("Non-power user {} attempted to modify global settings", pubkey);
+    if !feature_access.is_power_user(&pubkey) {
+        warn!("Non-power user {} attempted to modify global settings via /user-settings", pubkey);
         return Ok(HttpResponse::Forbidden().body("Only power users can modify global settings"));
     }
 
-    // Parse and validate settings
-    // This endpoint /user-settings (without /sync) was likely intended for UISettings only.
-    // If power users are now sending full Settings to /user-settings/sync,
-    // this /user-settings endpoint might need review or deprecation if it's redundant.
-    // For now, keeping its existing logic of expecting UISettings.
-    let ui_settings: UISettings = match serde_json::from_value(payload.into_inner()) {
-        Ok(settings) => settings,
-        Err(e) => return Ok(HttpResponse::BadRequest().body(format!("Invalid settings format: {}", e)))
-    };
+    // Perform the same careful merge as in update_user_settings
+    let mut settings_guard = state.settings.write().await; // Locks AppFullSettings
 
-    let mut settings_guard = state.settings.write().await;
-    ui_settings.merge_into_settings(&mut settings_guard);
-    
+    // --- Careful Merge ---
+    settings_guard.visualisation = received_client_settings.visualisation;
+    settings_guard.xr = received_client_settings.xr;
+    settings_guard.auth = received_client_settings.auth;
+
+    let client_sys = &received_client_settings.system;
+    let server_sys = &mut settings_guard.system;
+    let client_ws = &client_sys.websocket;
+    let server_ws = &mut server_sys.websocket;
+    server_ws.reconnect_attempts = client_ws.reconnect_attempts;
+    server_ws.reconnect_delay = client_ws.reconnect_delay;
+    server_ws.binary_chunk_size = client_ws.binary_chunk_size;
+    server_ws.compression_enabled = client_ws.compression_enabled;
+    server_ws.compression_threshold = client_ws.compression_threshold;
+    server_ws.update_rate = client_ws.update_rate;
+    server_sys.debug = client_sys.debug.clone(); // Clone DebugSettings
+    server_sys.persist_settings = client_sys.persist_settings;
+
+    settings_guard.ragflow = received_client_settings.ragflow;
+    settings_guard.perplexity = received_client_settings.perplexity;
+    settings_guard.openai = received_client_settings.openai;
+    settings_guard.kokoro = received_client_settings.kokoro;
+    // --- End Merge ---
+
     if let Err(e) = settings_guard.save() {
-        error!("Failed to save global settings: {}", e);
+        error!("Failed to save global AppFullSettings after update from {}: {}", pubkey, e);
         return Ok(HttpResponse::InternalServerError().body(format!("Failed to save settings: {}", e)));
     }
-    
+
     info!("Power user {} updated global settings via /user-settings endpoint", pubkey);
-    let updated_ui_settings = UISettings::from(&*settings_guard);
-    // Consider broadcasting here as well if this endpoint is still actively used for updates.
+    let updated_ui_settings = convert_to_ui_settings(&*settings_guard);
+    // Consider broadcasting here too if this endpoint remains active
     Ok(HttpResponse::Ok().json(updated_ui_settings))
 }
 
+// --- GET Graph Specific Settings ---
+
 pub async fn get_graph_settings(app_state: web::Data<AppState>) -> Result<HttpResponse, Error> {
-    let settings = app_state.settings.read().await;
-    let ui_settings = UISettings::from(&*settings);
-    Ok(HttpResponse::Ok().json(&ui_settings.visualization))
+    let settings_guard = app_state.settings.read().await; // Reads AppFullSettings
+    Ok(HttpResponse::Ok().json(&settings_guard.visualisation))
 }

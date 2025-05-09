@@ -9,7 +9,7 @@ The configuration module manages application settings, environment variables, an
 ```rust
 pub struct Settings {
     pub server: ServerConfig,
-    pub visualization: VisualizationConfig,
+    pub visualisation: VisualisationConfig,
     pub github: GitHubConfig,
     pub security: SecurityConfig,
 }

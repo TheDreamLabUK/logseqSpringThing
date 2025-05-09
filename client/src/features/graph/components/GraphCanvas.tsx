@@ -5,7 +5,7 @@ import { OrbitControls, Stats } from '@react-three/drei';
 // Components
  import GraphManager from './GraphManager';
 import XRController from '../../xr/components/XRController';
-import XRVisualizationConnector from '../../xr/components/XRVisualizationConnector';
+import XRVisualisationConnector from '../../xr/components/XRVisualisationConnector';
 
 // Store and utils
 import { useSettingsStore } from '../../../store/settingsStore';
@@ -17,7 +17,7 @@ const logger = createLogger('GraphCanvas');
 // Scene setup with lighting and background
 const SceneSetup = () => {
     const { scene } = useThree();
-    const settings = useSettingsStore(state => state.settings?.visualization);
+    const settings = useSettingsStore(state => state.settings?.visualisation);
 
     // Render lights using JSX
     return (
@@ -38,7 +38,7 @@ const GraphCanvas = () => {
     const { settings } = useSettingsStore();
     const showStats = settings?.system?.debug?.enablePerformanceDebug ?? false; // Use performance debug flag
     const xrEnabled = settings?.xr?.enabled !== false;
-    const antialias = settings?.visualization?.rendering?.enableAntialiasing !== false; // Correct property name
+    const antialias = settings?.visualisation?.rendering?.enableAntialiasing !== false; // Correct property name
 
     // Removed the outer div wrapper
     return (
@@ -78,7 +78,7 @@ const GraphCanvas = () => {
             <SceneSetup />
             <GraphManager />
             {xrEnabled && <XRController />}
-            {xrEnabled && <XRVisualizationConnector />}
+            {xrEnabled && <XRVisualisationConnector />}
             <OrbitControls
                 enableDamping={true}
                 dampingFactor={0.1}

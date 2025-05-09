@@ -34,7 +34,7 @@ graph TB
         WSH[WebSocket Handler]
         PerplexityH[Perplexity Handler]
         RagFlowH[RagFlow Handler]
-        VisualizationH[Visualization Handler]
+        VisualisationH[Visualisation Handler]
         NostrH[Nostr Handler]
         FileS[File Service]
         GraphS[Graph Service]
@@ -79,7 +79,7 @@ graph TB
     Server --> WSH
     Server --> PerplexityH
     Server --> RagFlowH
-    Server --> VisualizationH
+    Server --> VisualisationH
     Server --> NostrH
 
     FileH --> FileS
@@ -107,9 +107,9 @@ graph TB
 - **VR (WebXR Controller)**: Manages WebXR sessions, input, and rendering for VR/AR devices.
 - **WS (WebSocket Client)**: Establishes and maintains a WebSocket connection with the backend server.
 - **GPU (GPU Compute Layer)**: Performs GPU-accelerated computations using CUDA.
-- **ThreeJS (Three.js Renderer)**: Renders the 3D graph visualization using WebGL.
+- **ThreeJS (Three.js Renderer)**: Renders the 3D graph visualisation using WebGL.
 - **ChatUI**: Handles the chat interface for interacting with the AI.
-- **GraphUI**: Manages the graph visualization, including nodes, edges, and layout.
+- **GraphUI**: Manages the graph visualisation, including nodes, edges, and layout.
 - **ControlPanel**: Modular control panel with dockable sections, Nostr authentication, and real-time settings management.
 - **VRControls**: Handles VR-specific controls and interactions.
 - **WSService**: Manages the WebSocket connection and message handling.
@@ -127,7 +127,7 @@ graph TB
 - **WSH (WebSocket Handler)**: Handles WebSocket connections and messages.
 - **PerplexityH (Perplexity Handler)**: Interfaces with the Perplexity AI service.
 - **RagFlowH (RagFlow Handler)**: Interfaces with the RAGFlow service.
-- **VisualizationH (Visualization Handler)**: Handles visualization-related requests.
+- **VisualisationH (Visualisation Handler)**: Handles visualisation-related requests.
 - **ClientManager**: Manages all connected WebSocket clients and broadcasts updates.
 - **NostrH (Nostr Handler)**: Manages Nostr authentication and user sessions.
 - **PhysicsEngine**: Continuously calculates force-directed layout independent of client connections.

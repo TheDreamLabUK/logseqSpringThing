@@ -26,10 +26,10 @@ export const XRScene = () => {
           castShadow
         />
         
-        {/* Environment for better AR visualization */}
+        {/* Environment for better AR visualisation */}
         <Environment preset="city" />
         
-        {/* Main graph visualization */}
+        {/* Main graph visualisation */}
         <GraphManager />
         
         {/* Optional orbit controls for non-AR mode */}

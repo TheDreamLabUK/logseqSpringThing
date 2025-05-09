@@ -7,7 +7,7 @@ This document details the state management patterns and mechanisms used througho
 The client application manages several types of state:
 
 1. **Application Settings** - User preferences and application configuration
-2. **Graph Data** - Nodes, edges, and metadata for the visualization
+2. **Graph Data** - Nodes, edges, and metadata for the visualisation
 3. **UI State** - Control panel state, selected items, and UI configuration
 4. **Rendering State** - Camera position, visibility settings, and rendering options
 5. **XR State** - XR session status, controller positions, and interaction state
@@ -77,7 +77,7 @@ class SettingsStore {
 
 ### Graph Data Manager (`client/state/graphData.ts`)
 
-The Graph Data Manager maintains the state of the graph visualization data.
+The Graph Data Manager maintains the state of the graph visualisation data.
 
 **Key Features:**
 - Loads and processes graph data from server
@@ -169,7 +169,7 @@ A publish-subscribe system for loose coupling between components.
 **Usage Pattern:**
 ```typescript
 // Publisher
-eventEmitter.emit('settings:changed', { path: 'visualization.rendering.quality', value: 'high' });
+eventEmitter.emit('settings:changed', { path: 'visualisation.rendering.quality', value: 'high' });
 
 // Subscriber
 const unsubscribe = eventEmitter.on('settings:changed', (data) => {
@@ -203,7 +203,7 @@ The settings are organized hierarchically by domain:
 
 ```typescript
 interface Settings {
-  visualization: {
+  visualisation: {
     nodes: {
       quality: 'low' | 'medium' | 'high';
       enableInstancing: boolean;

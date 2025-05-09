@@ -5,7 +5,7 @@ use super::config::GitHubConfig;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use std::error::Error;
-use crate::config::Settings;
+use crate::config::AppFullSettings; // Changed from Settings to AppFullSettings
 
 const GITHUB_API_DELAY: Duration = Duration::from_millis(500);
 const MAX_RETRIES: u32 = 3;
@@ -18,14 +18,14 @@ pub struct GitHubClient {
     owner: String,
     repo: String,
     base_path: String,
-    settings: Arc<RwLock<Settings>>,
+    settings: Arc<RwLock<AppFullSettings>>, // Changed from Settings to AppFullSettings
 }
 
 impl GitHubClient {
     /// Create a new GitHub API client
     pub async fn new(
         config: GitHubConfig,
-        settings: Arc<RwLock<Settings>>,
+        settings: Arc<RwLock<AppFullSettings>>, // Changed from Settings to AppFullSettings
     ) -> Result<Self, Box<dyn Error + Send + Sync>> {
         let settings_guard = settings.read().await;
         let debug_enabled = settings_guard.system.debug.enabled;
@@ -238,7 +238,7 @@ impl GitHubClient {
     }
 
     /// Get settings
-    pub(crate) fn settings(&self) -> &Arc<RwLock<Settings>> {
+    pub(crate) fn settings(&self) -> &Arc<RwLock<AppFullSettings>> { // Changed from Settings to AppFullSettings
         &self.settings
     }
 

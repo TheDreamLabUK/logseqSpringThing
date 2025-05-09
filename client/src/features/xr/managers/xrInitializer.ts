@@ -3,7 +3,7 @@ import { createLogger, createErrorMetadata } from '@/utils/logger';
 import { debugState } from '@/utils/debugState';
 import { XRSessionManager, XRControllerEvent } from './xrSessionManager';
 import { XRSettings } from '../types/xr';
-import { SceneManager } from '../../visualization/managers/sceneManager';
+import { SceneManager } from '../../visualisation/managers/sceneManager';
 
 const logger = createLogger('XRInitializer');
 

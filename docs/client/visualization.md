@@ -1,3 +1,3 @@
-# Visualization
+# Visualisation
 
-This document describes the visualization components and systems used in the client.
+This document describes the visualisation components and systems used in the client.

@@ -40,7 +40,7 @@ graph TB
 ## Key Components
 
 ### User Interface Layer
-The UI layer consists of modular components for controlling the application, configuring settings, and interacting with the 3D visualization. It includes the Modular Control Panel, settings interfaces, and visualization controls.
+The UI layer consists of modular components for controlling the application, configuring settings, and interacting with the 3D visualisation. It includes the Modular Control Panel, settings interfaces, and visualisation controls.
 
 ### State Management
 State management is handled through a combination of state stores, event emitters, and observers. The primary state components include:
@@ -55,10 +55,10 @@ The API layer handles communication with the server through REST endpoints, prov
 - File and settings management
 
 ### Rendering Engine
-The rendering engine is built on Three.js and provides high-performance visualization of graph data:
+The rendering engine is built on Three.js and provides high-performance visualisation of graph data:
 - Node and edge rendering with instancing for performance
 - Text rendering with SDF fonts
-- Metadata visualization
+- Metadata visualisation
 - Camera controls and scene management
 
 ### WebSocket Client

@@ -1,6 +1,6 @@
 import { XRSettings } from '../../xr/types/xr';
 
-export interface VisualizationSettings {
+export interface VisualisationSettings {
   nodes: {
     color: string;
     defaultSize: number;

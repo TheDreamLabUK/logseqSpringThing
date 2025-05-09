@@ -17,7 +17,7 @@ flowchart TB
     subgraph Client
         WebSocketService[WebSocket Service]
         GraphDataManager[Graph Data Manager]
-        VisualizationManager[Visualization Manager]
+        VisualisationManager[Visualisation Manager]
         BinaryProtocol[Binary Protocol Handler]
     end
     
@@ -30,7 +30,7 @@ flowchart TB
     WebSocketService <--> WSServer
     WebSocketService --> BinaryProtocol
     BinaryProtocol --> GraphDataManager
-    GraphDataManager --> VisualizationManager
+    GraphDataManager --> VisualisationManager
     Physics --> WSServer
     DataSync --> WSServer
 ```
@@ -76,12 +76,12 @@ sequenceDiagram
     participant WebSocket
     participant BinaryHandler
     participant GraphManager
-    participant Visualization
+    participant Visualisation
     
     Server->>WebSocket: Binary Message
     WebSocket->>BinaryHandler: Process ArrayBuffer
     BinaryHandler->>GraphManager: Update Node Positions
-    GraphManager->>Visualization: Trigger Update
+    GraphManager->>Visualisation: Trigger Update
 ```
 
 ## Message Types

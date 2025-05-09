@@ -169,9 +169,9 @@ POST /content/upload
 
 ## Settings API
 
-### Get Visualization Settings
+### Get Visualisation Settings
 ```http
-GET /api/user-settings/visualization
+GET /api/user-settings/visualisation
 ```
 
 ### Update API Keys

@@ -194,7 +194,7 @@ const GraphManager = () => {
   // Node labels component using settings from YAML
   const NodeLabels = () => {
     // Get label settings from the settings store (in camelCase)
-    const labelSettings = settings?.visualization?.labels || {
+    const labelSettings = settings?.visualisation?.labels || {
       enabled: true,
       desktopFontSize: 0.1, // Fallback to a small size if not specified
       textColor: '#000000',
@@ -258,12 +258,12 @@ const GraphManager = () => {
       >
         <sphereGeometry args={[0.5, 16, 16]} />
         <meshStandardMaterial
-          color={settings?.visualization?.nodes?.baseColor || "#ffffff"}
-          emissive={settings?.visualization?.nodes?.baseColor || "#00ffff"}
+          color={settings?.visualisation?.nodes?.baseColor || "#ffffff"}
+          emissive={settings?.visualisation?.nodes?.baseColor || "#00ffff"}
           emissiveIntensity={0.8}
-          metalness={settings?.visualization?.nodes?.metalness || 0.2}
-          roughness={settings?.visualization?.nodes?.roughness || 0.3}
-          opacity={settings?.visualization?.nodes?.opacity || 1.0}
+          metalness={settings?.visualisation?.nodes?.metalness || 0.2}
+          roughness={settings?.visualisation?.nodes?.roughness || 0.3}
+          opacity={settings?.visualisation?.nodes?.opacity || 1.0}
           transparent={true}
           toneMapped={false} // Important for bloom effect
         />
@@ -272,10 +272,10 @@ const GraphManager = () => {
       {edgePoints.length > 0 && (
         <Line
           points={edgePoints}
-          color={settings?.visualization?.edges?.color || "#00ffff"}
-          lineWidth={settings?.visualization?.edges?.baseWidth || 1.0}
+          color={settings?.visualisation?.edges?.color || "#00ffff"}
+          lineWidth={settings?.visualisation?.edges?.baseWidth || 1.0}
           transparent
-          opacity={settings?.visualization?.edges?.opacity || 0.6}
+          opacity={settings?.visualisation?.edges?.opacity || 0.6}
           toneMapped={false} // Important for bloom effect
         />
       )}

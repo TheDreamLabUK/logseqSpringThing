@@ -115,5 +115,5 @@ __pycache__/
 
 # Project specific
 scripts/local/
-client/visualization/effects/custom/
+client/visualisation/effects/custom/
 .qodo

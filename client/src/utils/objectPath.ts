@@ -1,6 +1,6 @@
 /**
  * Utility functions for working with object paths
- * Uses dot notation to access nested properties (e.g., "visualization.nodes.baseColor")
+ * Uses dot notation to access nested properties (e.g., "visualisation.nodes.baseColor")
  */
 
 type NestedObject = Record<string, any>;
@@ -8,7 +8,7 @@ type NestedObject = Record<string, any>;
 /**
  * Gets a value from a nested object using a dot notation path
  * @param obj The object to get the value from
- * @param path The path to the value, using dot notation (e.g., "visualization.nodes.baseColor")
+ * @param path The path to the value, using dot notation (e.g., "visualisation.nodes.baseColor")
  * @param defaultValue A default value to return if the path doesn't exist
  * @returns The value at the path, or the default value if not found
  */
@@ -53,7 +53,7 @@ export function get(obj: NestedObject, path: string, defaultValue?: any): any {
  * Sets a value in a nested object using a dot notation path
  * Creates the object structure if it doesn't exist
  * @param obj The object to set the value in
- * @param path The path to set, using dot notation (e.g., "visualization.nodes.baseColor")
+ * @param path The path to set, using dot notation (e.g., "visualisation.nodes.baseColor")
  * @param value The value to set
  */
 export function set(obj: NestedObject, path: string, value: any): void {

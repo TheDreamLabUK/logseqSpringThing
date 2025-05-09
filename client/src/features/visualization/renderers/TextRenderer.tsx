@@ -5,7 +5,7 @@ import { Vector3, Group, DoubleSide } from 'three';
 import { useSettingsStore } from '@/store/settingsStore';
 import { createLogger, createErrorMetadata } from '@/utils/logger';
 
-// This interface should match the structure of `settings.visualization.labels` from the store.
+// This interface should match the structure of `settings.visualisation.labels` from the store.
 interface LabelSettings {
   enabled?: boolean; // Made optional to align with store type
   desktopFontSize: number;
@@ -36,7 +36,7 @@ interface TextRendererProps {
 export const TextRenderer: React.FC<TextRendererProps> = ({ labels = [] }) => {
   const { camera } = useThree();
   const groupRef = useRef<Group>(null);
-  const settings = useSettingsStore(state => state.settings?.visualization?.labels as LabelSettings | undefined);
+  const settings = useSettingsStore(state => state.settings?.visualisation?.labels as LabelSettings | undefined);
   
   if (!settings || !settings.enabled) {
     return null;

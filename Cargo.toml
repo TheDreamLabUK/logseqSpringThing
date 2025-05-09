@@ -2,7 +2,7 @@
 name = "webxr"
 version = "0.1.0"
 edition = "2021"
-description = "A WebXR graph visualization server with GPU-accelerated physics"
+description = "A WebXR graph visualisation server with GPU-accelerated physics"
 authors = ["Your Name <your.email@example.com>"]
 
 [dependencies]

@@ -14,7 +14,7 @@ interface ViewportContainerProps {
 }
 
 /**
- * ViewportContainer serves as the main container for the Three.js visualization.
+ * ViewportContainer serves as the main container for the Three.js visualisation.
  * It handles resize events and coordinates with the panel system to adjust its dimensions
  * when panels are docked/undocked.
  */

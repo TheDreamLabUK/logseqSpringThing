@@ -216,21 +216,21 @@ fn update_setting_value(
 fn get_category_settings_value(settings: &Settings, category: &str) -> Result<Value, String> {
     debug!("Getting settings for category: {}", category);
     let value = match category {
-        "visualization.nodes" => serde_json::to_value(&settings.visualization.nodes)
+        "visualisation.nodes" => serde_json::to_value(&settings.visualisation.nodes)
             .map_err(|e| format!("Failed to serialize node settings: {}", e))?,
-        "visualization.edges" => serde_json::to_value(&settings.visualization.edges)
+        "visualisation.edges" => serde_json::to_value(&settings.visualisation.edges)
             .map_err(|e| format!("Failed to serialize edge settings: {}", e))?,
-        "visualization.rendering" => serde_json::to_value(&settings.visualization.rendering)
+        "visualisation.rendering" => serde_json::to_value(&settings.visualisation.rendering)
             .map_err(|e| format!("Failed to serialize rendering settings: {}", e))?,
-        "visualization.labels" => serde_json::to_value(&settings.visualization.labels)
+        "visualisation.labels" => serde_json::to_value(&settings.visualisation.labels)
             .map_err(|e| format!("Failed to serialize labels settings: {}", e))?,
-        "visualization.bloom" => serde_json::to_value(&settings.visualization.bloom)
+        "visualisation.bloom" => serde_json::to_value(&settings.visualisation.bloom)
             .map_err(|e| format!("Failed to serialize bloom settings: {}", e))?,
-        "visualization.animations" => serde_json::to_value(&settings.visualization.animations)
+        "visualisation.animations" => serde_json::to_value(&settings.visualisation.animations)
             .map_err(|e| format!("Failed to serialize animations settings: {}", e))?,
-        "visualization.physics" => serde_json::to_value(&settings.visualization.physics)
+        "visualisation.physics" => serde_json::to_value(&settings.visualisation.physics)
             .map_err(|e| format!("Failed to serialize physics settings: {}", e))?,
-        "visualization.hologram" => serde_json::to_value(&settings.visualization.hologram)
+        "visualisation.hologram" => serde_json::to_value(&settings.visualisation.hologram)
             .map_err(|e| format!("Failed to serialize hologram settings: {}", e))?,
         "system.network" => serde_json::to_value(&settings.system.network)
             .map_err(|e| format!("Failed to serialize network settings: {}", e))?,
@@ -456,7 +456,7 @@ fn save_settings_to_file(settings: &Settings) -> std::io::Result<()> {
     }
 }
 
-pub async fn get_visualization_settings(
+pub async fn get_visualisation_settings(
     app_state: web::Data<AppState>,
     category: web::Path<String>,
 ) -> Result<HttpResponse, actix_web::Error> {

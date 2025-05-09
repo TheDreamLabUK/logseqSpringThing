@@ -59,7 +59,7 @@ const DebugSidebar: React.FC<DebugSidebarProps> = ({ visible, onClose }) => {
           </div>
           
           <div className="border border-gray-700 p-3 rounded">
-            <h3 className="text-lg font-semibold mb-2">Visualization</h3>
+            <h3 className="text-lg font-semibold mb-2">Visualisation</h3>
             <div className="space-y-2">
               <div>
                 <label className="block text-sm">Node Size</label>

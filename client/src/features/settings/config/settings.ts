@@ -13,7 +13,7 @@ export interface NodeSettings {
   enableInstancing: boolean;
   enableHologram: boolean;
   enableMetadataShape: boolean;
-  enableMetadataVisualization: boolean;
+  enableMetadataVisualisation: boolean;
 }
 
 // Edge settings
@@ -157,8 +157,8 @@ export interface XRSettings {
 controllerRayColor?: string; // Add this line
 }
 
-// Visualization settings
-export interface VisualizationSettings {
+// Visualisation settings
+export interface VisualisationSettings {
   nodes: NodeSettings;
   edges: EdgeSettings;
   physics: PhysicsSettings;
@@ -229,7 +229,7 @@ export interface AuthSettings {
 
 // Main settings interface
 export interface Settings {
-  visualization: VisualizationSettings;
+  visualisation: VisualisationSettings;
   system: SystemSettings;
   xr: XRSettings;
   auth: AuthSettings; // Make auth required

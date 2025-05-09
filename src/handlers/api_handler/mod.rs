@@ -1,6 +1,6 @@
 pub mod files;
 pub mod graph;
-pub mod visualization;
+pub mod visualisation;
 
 // Re-export specific types and functions
 // Re-export specific types and functions
@@ -16,7 +16,7 @@ pub use graph::{
     update_graph,
 };
 
-pub use visualization::get_visualization_settings;
+pub use visualisation::get_visualisation_settings;
 
 use actix_web::web;
 
@@ -26,7 +26,7 @@ pub fn config(cfg: &mut web::ServiceConfig) {
         web::scope("/api")
             .configure(files::config)
             .configure(graph::config)
-            .configure(visualization::config)
+            .configure(visualisation::config)
             .configure(crate::handlers::nostr_handler::config)
             .configure(crate::handlers::settings_handler::config)
     );
