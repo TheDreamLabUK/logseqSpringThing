@@ -44,13 +44,13 @@ const METADATA_FILE_WAIT_TIMEOUT_MS: u64 = 5000; // 5 second wait timeout
 const SHUTDOWN_TIMEOUT_MS: u64 = 5000; // 5 second shutdown timeout
 
 // Physics stabilization constants
-const STABLE_THRESHOLD_ITERATIONS: usize = 100; // Number of iterations with minimal movement
-const POSITION_STABILITY_THRESHOLD: f32 = 0.001; // 1mm threshold for stability
+// const STABLE_THRESHOLD_ITERATIONS: usize = 100; // Number of iterations with minimal movement // Dead Code
+// const POSITION_STABILITY_THRESHOLD: f32 = 0.001; // 1mm threshold for stability // Dead Code
 
 // Rate limiting and conflict resolution constants
 const UPDATE_RATE_LIMIT_MS: u64 = 16; // ~60fps max update rate
-const POSITION_CONFLICT_THRESHOLD: f32 = 0.001; // 1mm threshold for position conflicts
-const MAX_CONCURRENT_UPDATES: usize = 100; // Maximum number of node updates per batch
+// const POSITION_CONFLICT_THRESHOLD: f32 = 0.001; // 1mm threshold for position conflicts // Dead Code
+// const MAX_CONCURRENT_UPDATES: usize = 100; // Maximum number of node updates per batch // Dead Code
 const METADATA_FILE_CHECK_INTERVAL_MS: u64 = 100; // Check every 100ms
 // Constants for GPU retry mechanism
 const MAX_GPU_CALCULATION_RETRIES: u32 = 3;
@@ -64,11 +64,11 @@ pub struct GraphService {
     gpu_compute: Option<Arc<RwLock<GPUCompute>>>,
     node_positions_cache: Arc<RwLock<Option<(Vec<Node>, Instant)>>>,
     last_update: Arc<RwLock<Instant>>,
-    pending_updates: Arc<RwLock<HashMap<String, (Node, Instant)>>>,
+    _pending_updates: Arc<RwLock<HashMap<String, (Node, Instant)>>>, // Dead Code
     cache_enabled: bool,
     simulation_id: String,
     // client_manager: Option<Arc<ClientManager>>, // Removed: ClientManager will be passed to methods needing it
-    is_initialized: Arc<AtomicBool>,
+    _is_initialized: Arc<AtomicBool>, // Dead Code
     shutdown_requested: Arc<AtomicBool>,
 }
 
@@ -116,11 +116,11 @@ impl GraphService {
             node_map: node_map.clone(),
             gpu_compute,
             last_update: Arc::new(RwLock::new(Instant::now())),
-            pending_updates: Arc::new(RwLock::new(HashMap::new())),
+            _pending_updates: Arc::new(RwLock::new(HashMap::new())), // Dead Code
             node_positions_cache: Arc::new(RwLock::new(None)),
             cache_enabled: true,
             // client_manager, // Removed
-            is_initialized: Arc::new(AtomicBool::new(false)),
+            _is_initialized: Arc::new(AtomicBool::new(false)), // Dead Code
             simulation_id: simulation_id.clone(),
             shutdown_requested: shutdown_requested.clone(),
         };
@@ -260,40 +260,42 @@ impl GraphService {
         false
     }
 
-    // Helper method to resolve position conflicts
-    fn resolve_position_conflict(current: &Node, update: &Node) -> Node {
-        let mut resolved = current.clone();
+    // Dead Code: Associated item `resolve_position_conflict` is never used
+    // // Helper method to resolve position conflicts
+    // fn resolve_position_conflict(current: &Node, update: &Node) -> Node {
+    //     let mut resolved = current.clone();
         
-        // Calculate position differences
-        let dx = update.data.position.x - current.data.position.x;
-        let dy = update.data.position.y - current.data.position.y;
-        let dz = update.data.position.z - current.data.position.z;
+    //     // Calculate position differences
+    //     let dx = update.data.position.x - current.data.position.x;
+    //     let dy = update.data.position.y - current.data.position.y;
+    //     let dz = update.data.position.z - current.data.position.z;
         
-        // If difference is significant, use update position
-        if dx*dx + dy*dy + dz*dz > POSITION_CONFLICT_THRESHOLD*POSITION_CONFLICT_THRESHOLD {
-            resolved.data.position = update.data.position.clone();
+    //     // If difference is significant, use update position
+    //     if dx*dx + dy*dy + dz*dz > POSITION_CONFLICT_THRESHOLD*POSITION_CONFLICT_THRESHOLD { // POSITION_CONFLICT_THRESHOLD is commented out
+    //         resolved.data.position = update.data.position.clone();
             
-            // Average the velocities to smooth transitions
-            resolved.data.velocity.x = (current.data.velocity.x + update.data.velocity.x) * 0.5;
-            resolved.data.velocity.y = (current.data.velocity.y + update.data.velocity.y) * 0.5;
-            resolved.data.velocity.z = (current.data.velocity.z + update.data.velocity.z) * 0.5;
-        }
+    //         // Average the velocities to smooth transitions
+    //         resolved.data.velocity.x = (current.data.velocity.x + update.data.velocity.x) * 0.5;
+    //         resolved.data.velocity.y = (current.data.velocity.y + update.data.velocity.y) * 0.5;
+    //         resolved.data.velocity.z = (current.data.velocity.z + update.data.velocity.z) * 0.5;
+    //     }
         
-        // Preserve mass and flags from current node
-        resolved.data.mass = current.data.mass;
-        resolved.data.flags = current.data.flags;
+    //     // Preserve mass and flags from current node
+    //     resolved.data.mass = current.data.mass;
+    //     resolved.data.flags = current.data.flags;
         
-        resolved
-    }
+    //     resolved
+    // }
 
-    // Helper method to clean up old pending updates
-    async fn cleanup_pending_updates(&self) {
-        let mut pending = self.pending_updates.write().await;
-        let now = Instant::now();
-        pending.retain(|_, (_, timestamp)| {
-            now.duration_since(*timestamp).as_millis() < UPDATE_RATE_LIMIT_MS as u128
-        });
-    }
+    // Dead Code: Associated item `cleanup_pending_updates` is never used
+    // // Helper method to clean up old pending updates
+    // async fn cleanup_pending_updates(&self) {
+    //     let mut pending = self._pending_updates.write().await; // Adjusted to use _pending_updates
+    //     let now = Instant::now();
+    //     pending.retain(|_, (_, timestamp)| {
+    //         now.duration_since(*timestamp).as_millis() < UPDATE_RATE_LIMIT_MS as u128
+    //     });
+    // }
  
     // Helper method to broadcast position updates to all clients
     async fn broadcast_positions(client_manager: Arc<ClientManager>, nodes: &[Node]) {

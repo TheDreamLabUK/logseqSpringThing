@@ -60,14 +60,14 @@ fn _keys_to_camel_case(value: Value) -> Value {
 
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
-#[serde(rename_all = "camelCase")]
+// #[serde(rename_all = "camelCase")] // Removed for snake_case YAML
 pub struct MovementAxes {
     pub horizontal: i32,
     pub vertical: i32,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
-#[serde(rename_all = "camelCase")]
+// #[serde(rename_all = "camelCase")] // Removed for snake_case YAML
 pub struct NodeSettings {
     pub base_color: String,
     pub metalness: f32,
@@ -82,7 +82,7 @@ pub struct NodeSettings {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
-#[serde(rename_all = "camelCase")]
+// #[serde(rename_all = "camelCase")] // Removed for snake_case YAML
 pub struct EdgeSettings {
     pub arrow_size: f32,
     pub base_width: f32,
@@ -94,7 +94,7 @@ pub struct EdgeSettings {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
-#[serde(rename_all = "camelCase")]
+// #[serde(rename_all = "camelCase")] // Removed for snake_case YAML
 pub struct PhysicsSettings {
     pub attraction_strength: f32,
     pub bounds_size: f32,
@@ -112,7 +112,7 @@ pub struct PhysicsSettings {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
-#[serde(rename_all = "camelCase")]
+// #[serde(rename_all = "camelCase")] // Removed for snake_case YAML
 pub struct RenderingSettings {
     pub ambient_light_intensity: f32,
     pub background_color: String,
@@ -124,7 +124,7 @@ pub struct RenderingSettings {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
-#[serde(rename_all = "camelCase")]
+// #[serde(rename_all = "camelCase")] // Removed for snake_case YAML
 pub struct AnimationSettings {
     pub enable_motion_blur: bool,
     pub enable_node_animations: bool,
@@ -137,7 +137,7 @@ pub struct AnimationSettings {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
-#[serde(rename_all = "camelCase")]
+// #[serde(rename_all = "camelCase")] // Removed for snake_case YAML
 pub struct LabelSettings {
     pub desktop_font_size: f32,
     pub enable_labels: bool,
@@ -150,7 +150,7 @@ pub struct LabelSettings {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
-#[serde(rename_all = "camelCase")]
+// #[serde(rename_all = "camelCase")] // Removed for snake_case YAML
 pub struct BloomSettings {
     pub edge_bloom_strength: f32,
     pub enabled: bool,
@@ -161,7 +161,7 @@ pub struct BloomSettings {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
-#[serde(rename_all = "camelCase")]
+// #[serde(rename_all = "camelCase")] // Removed for snake_case YAML
 pub struct HologramSettings {
     pub ring_count: u32,
     pub ring_color: String,
@@ -181,7 +181,7 @@ pub struct HologramSettings {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
-#[serde(rename_all = "camelCase")]
+// #[serde(rename_all = "camelCase")] // Removed for snake_case YAML
 pub struct VisualisationSettings {
     pub nodes: NodeSettings,
     pub edges: EdgeSettings,
@@ -266,7 +266,7 @@ pub struct SecuritySettings {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
-#[serde(rename_all = "camelCase")] // Keep camelCase for JSON interaction
+// #[serde(rename_all = "camelCase")] // REMOVED: YAML keys are snake_case. Kept for JSON if this struct is directly serialized to client.
 pub struct DebugSettings { // Matches TS DebugSettings + YAML fields
     pub enabled: bool,
     pub enable_data_debug: bool,
@@ -335,7 +335,7 @@ impl Default for SystemSettings {
 
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
-#[serde(rename_all = "camelCase")]
+// #[serde(rename_all = "camelCase")] // Removed for snake_case YAML
 pub struct XRSettings { // Client-facing XR structure + YAML fields
     // Fields from YAML (snake_case in YAML, camelCase in JSON)
     pub mode: String,
@@ -395,7 +395,7 @@ pub struct XRSettings { // Client-facing XR structure + YAML fields
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
-#[serde(rename_all = "camelCase")]
+// #[serde(rename_all = "camelCase")] // Removed for snake_case YAML (fields are single word, so no practical change)
 pub struct AuthSettings { // Client-facing
     pub enabled: bool,
     pub provider: String,
@@ -403,7 +403,7 @@ pub struct AuthSettings { // Client-facing
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
-#[serde(rename_all = "camelCase")]
+// #[serde(rename_all = "camelCase")] // Removed for snake_case YAML
 pub struct RagFlowSettings { // Client-facing
     #[serde(default)] pub api_key: Option<String>,
     #[serde(default)] pub agent_id: Option<String>,
@@ -414,7 +414,7 @@ pub struct RagFlowSettings { // Client-facing
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
-#[serde(rename_all = "camelCase")]
+// #[serde(rename_all = "camelCase")] // Removed for snake_case YAML
 pub struct PerplexitySettings { // Client-facing
     #[serde(default)] pub api_key: Option<String>,
     #[serde(default)] pub model: Option<String>,
@@ -429,7 +429,7 @@ pub struct PerplexitySettings { // Client-facing
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
-#[serde(rename_all = "camelCase")]
+// #[serde(rename_all = "camelCase")] // Removed for snake_case YAML
 pub struct OpenAISettings { // Client-facing
     #[serde(default)] pub api_key: Option<String>,
     #[serde(default)] pub base_url: Option<String>,
@@ -438,7 +438,7 @@ pub struct OpenAISettings { // Client-facing
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
-#[serde(rename_all = "camelCase")]
+// #[serde(rename_all = "camelCase")] // Removed for snake_case YAML
 pub struct KokoroSettings { // Client-facing
     #[serde(default)] pub api_url: Option<String>,
     #[serde(default)] pub default_voice: Option<String>,

@@ -33,16 +33,16 @@ pub struct ProcessedFile {
 }
 
 pub struct FileService {
-    settings: Arc<RwLock<AppFullSettings>>, // Changed to AppFullSettings
+    _settings: Arc<RwLock<AppFullSettings>>, // Changed to AppFullSettings, prefixed with underscore
     // Counter for assigning node IDs, initialized based on existing metadata
     node_id_counter: AtomicU32,
 }
 
 impl FileService {
-    pub fn new(settings: Arc<RwLock<AppFullSettings>>) -> Self { // Changed to AppFullSettings
+    pub fn new(_settings: Arc<RwLock<AppFullSettings>>) -> Self { // Changed to AppFullSettings, parameter prefixed
         // Initialize with a default counter
         let service = Self {
-            settings,
+            _settings, // Prefixed with underscore
             node_id_counter: AtomicU32::new(1),
         };
         

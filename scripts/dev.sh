@@ -27,7 +27,7 @@ cleanup() {
     # Stop Docker containers
     if docker ps -q -f name=$CONTAINER_NAME > /dev/null; then
         log "${YELLOW}Stopping Docker containers...${NC}"
-        cd "$PROJECT_ROOT" && docker compose -f $DOCKER_COMPOSE_FILE down
+        cd "$PROJECT_ROOT" && docker compose -f $DOCKER_COMPOSE_FILE stop # Changed 'down' to 'stop' to prevent container removal
     fi
     
     # Host process cleanup removed as Node/Vite run inside the container

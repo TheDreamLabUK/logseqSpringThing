@@ -184,6 +184,10 @@ xr:
   portal_size: 2.5
   portal_edge_color: '#4287f5'
   portal_edge_width: 0.02
+auth:
+  enabled: false
+  provider: ""
+  required: false
 ragflow:
   api_key: ''
   agent_id: '302e58df9d4411ef929c0242ac120006'

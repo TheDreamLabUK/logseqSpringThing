@@ -1,6 +1,7 @@
+use webxr::services::nostr_service::NostrService;
 use webxr::{
     AppState,
-    config::{Settings as ClientFacingSettings, AppFullSettings}, // Import both
+    config::AppFullSettings, // Import AppFullSettings only
     handlers::{
         api_handler,
         health_handler,
@@ -20,7 +21,7 @@ use webxr::{
 
 use actix_web::{web, App, HttpServer, middleware};
 use actix_cors::Cors;
-use actix_files::Files;
+// use actix_files::Files; // Removed unused import
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use tokio::time::Duration;

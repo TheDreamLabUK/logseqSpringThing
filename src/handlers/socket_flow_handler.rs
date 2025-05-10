@@ -25,11 +25,11 @@ const COMPRESSION_LEVEL: Compression = Compression::best(); // Use best compress
 const DEFAULT_POSITION_DEADBAND: f32 = 0.01; // 1cm deadband 
 const DEFAULT_VELOCITY_DEADBAND: f32 = 0.005; // 5mm/s deadband
 // Default values for dynamic update rate
-const DEFAULT_MIN_UPDATE_RATE: u32 = 5;   // Min 5 updates per second when stable
+// const DEFAULT_MIN_UPDATE_RATE: u32 = 5;   // Min 5 updates per second when stable // Dead Code
 const BATCH_UPDATE_WINDOW_MS: u64 = 200;  // Check motion every 200ms
-const DEFAULT_MAX_UPDATE_RATE: u32 = 60;  // Max 60 updates per second when active
-const DEFAULT_MOTION_THRESHOLD: f32 = 0.05;  // 5% of nodes need to be moving
-const DEFAULT_MOTION_DAMPING: f32 = 0.9;  // Smooth transitions in rate
+// const DEFAULT_MAX_UPDATE_RATE: u32 = 60;  // Max 60 updates per second when active // Dead Code
+// const DEFAULT_MOTION_THRESHOLD: f32 = 0.05;  // 5% of nodes need to be moving // Dead Code
+// const DEFAULT_MOTION_DAMPING: f32 = 0.9;  // Smooth transitions in rate // Dead Code
 
 // Maximum value for u16 node IDs
 const MAX_U16_VALUE: u32 = 65535;
@@ -154,7 +154,7 @@ pub struct SocketFlowServer {
     last_activity: std::time::Instant, // Track last activity time
     heartbeat_timer_set: bool, // Flag to track if heartbeat timer is set
     // Fields for batched updates and deadband filtering
-    node_position_cache: HashMap<String, BinaryNodeData>,
+    _node_position_cache: HashMap<String, BinaryNodeData>, // Dead Code: Field is never read
     last_sent_positions: HashMap<String, Vec3Data>,
     last_sent_velocities: HashMap<String, Vec3Data>,
     position_deadband: f32, // Minimum position change to trigger an update
@@ -212,7 +212,7 @@ impl SocketFlowServer {
             update_counter: 0,
             last_activity: std::time::Instant::now(),
             heartbeat_timer_set: false,
-            node_position_cache: HashMap::new(),
+            _node_position_cache: HashMap::new(), // Dead Code: Field is never read
             last_sent_positions: HashMap::new(),
             last_sent_velocities: HashMap::new(),
             position_deadband,
@@ -360,20 +360,20 @@ impl SocketFlowServer {
     }
 
     // New method to mark a batch as sent
-    fn mark_batch_sent(&mut self) { self.last_batch_time = Instant::now(); }
+    // fn mark_batch_sent(&mut self) { self.last_batch_time = Instant::now(); } // Dead Code
     
     // New method to collect nodes that have changed position
-    fn collect_changed_nodes(&mut self) -> Vec<(u16, BinaryNodeData)> {
-        let mut changed_nodes = Vec::new();
+    // fn collect_changed_nodes(&mut self) -> Vec<(u16, BinaryNodeData)> { // Dead Code
+    //     let mut changed_nodes = Vec::new();
         
-        for (node_id, node_data) in self.node_position_cache.drain() {
-            if let Ok(node_id_u16) = node_id.parse::<u16>() {
-                changed_nodes.push((node_id_u16, node_data));
-            }
-        }
+    //     for (node_id, node_data) in self._node_position_cache.drain() { // Adjusted to use _node_position_cache
+    //         if let Ok(node_id_u16) = node_id.parse::<u16>() {
+    //             changed_nodes.push((node_id_u16, node_data));
+    //         }
+    //     }
         
-        changed_nodes
-    }
+    //     changed_nodes
+    // }
 }
 
 impl Actor for SocketFlowServer {

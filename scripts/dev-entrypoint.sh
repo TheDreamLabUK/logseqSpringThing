@@ -50,7 +50,7 @@ cleanup() {
     if [ -n "${RUST_PID:-}" ]; then kill -KILL $RUST_PID 2>/dev/null || true; fi
     if [ -n "${VITE_PID:-}" ]; then kill -KILL $VITE_PID 2>/dev/null || true; fi
     log "Cleanup complete."
-    exit 0
+    # exit 0 # Removed to allow script to continue for indefinite running
 }
 
 # Set up trap for cleanup on receiving signals
@@ -59,6 +59,34 @@ trap cleanup SIGTERM SIGINT SIGQUIT
 # Start the Rust server in the background
 start_rust_server() {
     log "Starting Rust server (logging to ${RUST_LOG_FILE})..."
+    log "Attempting to free port 3001 if in use..."
+    log "Checking for processes on TCP port 3001..."
+    if command -v lsof &> /dev/null; then
+        log "lsof is available. Checking port 3001 with lsof..."
+        # Try to get PIDs, allow failure if no process is found
+        LSOF_PIDS=$(lsof -t -i:3001 || true)
+        if [ -n "$LSOF_PIDS" ]; then
+            # Replace newlines with spaces if multiple PIDs are found
+            LSOF_PIDS_CLEANED=$(echo $LSOF_PIDS | tr '\n' ' ')
+            log "Process(es) $LSOF_PIDS_CLEANED found on port 3001 by lsof. Attempting to kill..."
+            # Kill the PIDs, allow failure if they already exited or kill fails
+            kill -9 $LSOF_PIDS_CLEANED || log "kill -9 $LSOF_PIDS_CLEANED (from lsof) failed. This might be okay."
+            sleep 1 # Give a moment for the port to be released
+        else
+            log "No process found on port 3001 with lsof."
+        fi
+    else
+        log "lsof command not found. Skipping lsof check."
+    fi
+
+    if command -v fuser &> /dev/null; then
+        log "fuser is available. Attempting to free port 3001 with fuser..."
+        fuser -k -TERM 3001/tcp || log "fuser -TERM 3001/tcp failed or no process found. This is okay."
+        sleep 0.5 # Shorter sleep
+        fuser -k -KILL 3001/tcp || log "fuser -KILL 3001/tcp failed or no process found. This is okay."
+    else
+        log "fuser command not found. Skipping fuser check. Port 3001 might still be in use if Rust server fails to start."
+    fi
     # Rotate log before starting
     rotate_log_file "${RUST_LOG_FILE}"
     # Start Rust server, redirect stdout/stderr to its log file
@@ -69,7 +97,7 @@ start_rust_server() {
     sleep 2
     if ! kill -0 $RUST_PID 2>/dev/null; then
         log "ERROR: Rust server failed to start. Check ${RUST_LOG_FILE}."
-        exit 1
+        # exit 1 # Allow container to stay up for debugging even if Rust server fails
     fi
 }
 
@@ -118,3 +146,6 @@ wait $NGINX_PID
 # If Nginx exits, trigger cleanup
 log "Nginx process ended. Initiating cleanup..."
 cleanup
+
+log "Entrypoint script will now sleep indefinitely to keep container alive for debugging."
+sleep infinity

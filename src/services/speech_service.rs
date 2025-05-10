@@ -52,9 +52,9 @@ impl SpeechService {
 
     fn start(&self, mut receiver: mpsc::Receiver<SpeechCommand>) {
         let settings: Arc<RwLock<AppFullSettings>> = Arc::clone(&self.settings);
-        let _http_client = Arc::clone(&self.http_client);
+        let http_client = Arc::clone(&self.http_client);
         let tts_provider = Arc::clone(&self.tts_provider);
-        let _audio_tx = self.audio_tx.clone();
+        let audio_tx = self.audio_tx.clone();
 
         task::spawn(async move {
             let mut ws_stream: Option<WebSocketStream<MaybeTlsStream<TcpStream>>> = None;
@@ -213,120 +213,121 @@ impl SpeechService {
                         *current_provider = provider.clone();
                         info!("TTS provider updated to: {:?}", provider);
                     },
-                    SpeechCommand::TextToSpeech(_text, _options) => {
-                        // // Check which provider to use
-                        // let provider = {
-                        //     let p = tts_provider.read().await;
-                        //     p.clone()
-                        // };
-                        //
-                        // match provider {
-                        //     TTSProvider::OpenAI => {
-                        //         // Ignore OpenAI for now and just log
-                        //         info!("TextToSpeech command with OpenAI provider not implemented");
-                        //     },
-                        //     TTSProvider::Kokoro => {
-                        //         info!("Processing TextToSpeech command with Kokoro provider");
-                        //         let kokoro_config = { // Read settings within scope
-                        //             let s = settings.read().await;
-                        //             s.kokoro.clone() // Clone the Option<KokoroSettings>
-                        //         };
-                        //
-                        //         // Check if Kokoro is configured
-                        //         if let Some(config) = kokoro_config {
-                        //             // Safely get API URL or skip if missing
-                        //             let api_url_base = match config.api_url.as_deref() {
-                        //                 Some(url) if !url.is_empty() => url,
-                        //                 _ => {
-                        //                     error!("Kokoro API URL not configured or empty.");
-                        //                     continue; // Skip this TTS request
-                        //                 }
-                        //             };
-                        //             let api_url = format!("{}/v1/audio/speech", api_url_base.trim_end_matches('/'));
-                        //             info!("Sending TTS request to Kokoro API: {}", api_url);
-                        //
-                        //             // Use defaults from config if available, otherwise hardcoded defaults
-                        //             let response_format = config.default_format.as_deref().unwrap_or("mp3");
-                        //
-                        //             let request_body = json!({
-                        //                 "model": "kokoro", // Assuming model is fixed
-                        //                 "input": text,
-                        //                 "voice": options.voice.clone(), // Voice comes from request options
-                        //                 "response_format": response_format,
-                        //                 "speed": options.speed, // Speed comes from request options
-                        //                 "stream": options.stream // Stream comes from request options
-                        //             });
-                        //
-                        //         let response = match http_client
-                        //             .post(&api_url)
-                        //             .header("Content-Type", "application/json")
-                        //             .body(request_body.to_string())
-                        //             .send()
-                        //             .await
-                        //         {
-                        //             Ok(response) => {
-                        //                 if !response.status().is_success() {
-                        //                     let status = response.status();
-                        //                     let error_text = response.text().await.unwrap_or_default();
-                        //                     error!("Kokoro API error {}: {}", status, error_text);
-                        //                     continue;
-                        //                 }
-                        //                 response
-                        //             }
-                        //             Err(e) => {
-                        //                 error!("Failed to connect to Kokoro API: {}", e);
-                        //                 continue;
-                        //             }
-                        //         };
-                        //
-                        //         // Handle the response (streaming or not)
-                        //         if options.stream {
-                        //             let stream = response.bytes_stream();
-                        //             let audio_broadcaster = audio_tx.clone();
-                        //
-                        //             // Process the streaming response
-                        //             tokio::spawn(async move {
-                        //                 let mut stream = Box::pin(stream);
-                        //
-                        //                 while let Some(item) = stream.next().await {
-                        //                     match item {
-                        //                         Ok(bytes) => {
-                        //                             // Send audio chunk to all connected clients
-                        //                             if let Err(e) = audio_broadcaster.send(bytes.to_vec()) {
-                        //                                 error!("Failed to broadcast audio chunk: {}", e);
-                        //                             }
-                        //                         }
-                        //                         Err(e) => {
-                        //                             error!("Error receiving audio stream: {}", e);
-                        //                             break;
-                        //                         }
-                        //                     }
-                        //                 }
-                        //                 debug!("Finished streaming audio from Kokoro");
-                        //             });
-                        //         } else {
-                        //             // Handle non-streaming response
-                        //             match response.bytes().await {
-                        //                 Ok(bytes) => {
-                        //                     // Send the complete audio file in one chunk
-                        //                     if let Err(e) = audio_tx.send(bytes.to_vec()) {
-                        //                         error!("Failed to send audio data: {}", e);
-                        //                     } else {
-                        //                         debug!("Sent {} bytes of audio data", bytes.len());
-                        //                     }
-                        //                 }
-                        //                 Err(e) => {
-                        //                     error!("Failed to get audio bytes: {}", e);
-                        //                 }
-                        //             }
-                        //         }
-                        //     }
-                        // }
-                        info!("TextToSpeech arm commented out for debugging delimiter issue.");
+                    SpeechCommand::TextToSpeech(text, options) => {
+                        // Check which provider to use
+                        let provider = {
+                            let p = tts_provider.read().await;
+                            p.clone()
+                        };
+
+                        match provider {
+                            TTSProvider::OpenAI => {
+                                // Ignore OpenAI for now and just log
+                                info!("TextToSpeech command with OpenAI provider not implemented");
+                            },
+                            TTSProvider::Kokoro => {
+                                info!("Processing TextToSpeech command with Kokoro provider");
+                                let kokoro_config = { // Read settings within scope
+                                    let s = settings.read().await;
+                                    s.kokoro.clone() // Clone the Option<KokoroSettings>
+                                };
+
+                                // Check if Kokoro is configured
+                                if let Some(config) = kokoro_config {
+                                    // Safely get API URL or skip if missing
+                                    let api_url_base = match config.api_url.as_deref() {
+                                        Some(url) if !url.is_empty() => url,
+                                        _ => {
+                                            error!("Kokoro API URL not configured or empty.");
+                                            continue; // Skip this TTS request
+                                        }
+                                    };
+                                    let api_url = format!("{}/v1/audio/speech", api_url_base.trim_end_matches('/'));
+                                    info!("Sending TTS request to Kokoro API: {}", api_url);
+
+                                    // Use defaults from config if available, otherwise hardcoded defaults
+                                    let response_format = config.default_format.as_deref().unwrap_or("mp3");
+
+                                    let request_body = json!({
+                                        "model": "kokoro", // Assuming model is fixed
+                                        "input": text,
+                                        "voice": options.voice.clone(), // Voice comes from request options
+                                        "response_format": response_format,
+                                        "speed": options.speed, // Speed comes from request options
+                                        "stream": options.stream // Stream comes from request options
+                                    });
+
+                                let response = match http_client
+                                    .post(&api_url)
+                                    .header("Content-Type", "application/json")
+                                    .body(request_body.to_string())
+                                    .send()
+                                    .await
+                                {
+                                    Ok(response) => {
+                                        if !response.status().is_success() {
+                                            let status = response.status();
+                                            let error_text = response.text().await.unwrap_or_default();
+                                            error!("Kokoro API error {}: {}", status, error_text);
+                                            continue;
+                                        }
+                                        response
+                                    }
+                                    Err(e) => {
+                                        error!("Failed to connect to Kokoro API: {}", e);
+                                        continue;
+                                    }
+                                };
+
+                                // Handle the response (streaming or not)
+                                if options.stream {
+                                    let stream = response.bytes_stream();
+                                    let audio_broadcaster = audio_tx.clone();
+
+                                    // Process the streaming response
+                                    tokio::spawn(async move {
+                                        let mut stream = Box::pin(stream);
+
+                                        while let Some(item) = stream.next().await {
+                                            match item {
+                                                Ok(bytes) => {
+                                                    // Send audio chunk to all connected clients
+                                                    if let Err(e) = audio_broadcaster.send(bytes.to_vec()) {
+                                                        error!("Failed to broadcast audio chunk: {}", e);
+                                                    }
+                                                }
+                                                Err(e) => {
+                                                    error!("Error receiving audio stream: {}", e);
+                                                    break;
+                                                }
+                                            }
+                                        }
+                                        debug!("Finished streaming audio from Kokoro");
+                                    });
+                                } else {
+                                    // Handle non-streaming response
+                                    match response.bytes().await {
+                                        Ok(bytes) => {
+                                            // Send the complete audio file in one chunk
+                                            if let Err(e) = audio_tx.send(bytes.to_vec()) {
+                                                error!("Failed to send audio data: {}", e);
+                                            } else {
+                                                debug!("Sent {} bytes of audio data", bytes.len());
+                                            }
+                                        }
+                                        Err(e) => {
+                                            error!("Failed to get audio bytes: {}", e);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        // info!("TextToSpeech arm commented out for debugging delimiter issue."); // This line can be removed now
                     }
                 }
             }
-        });
+}
+        }); // Removed semicolon
     }
 
     pub async fn initialize(&self) -> Result<(), Box<dyn Error>> {
