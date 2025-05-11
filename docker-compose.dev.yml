@@ -18,6 +18,7 @@ services:
       - npm-cache:/root/.npm
       - cargo-cache:/root/.cargo/registry
       - cargo-git-cache:/root/.cargo/git
+      - cargo-target-cache:/app/target # Cache Rust build artifacts
     env_file:
       - .env
     environment:
@@ -54,3 +55,4 @@ volumes: # Indentation: 2 spaces
   npm-cache:
   cargo-cache:
   cargo-git-cache:
+  cargo-target-cache:
