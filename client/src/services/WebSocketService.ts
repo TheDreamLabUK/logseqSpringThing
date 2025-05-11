@@ -86,7 +86,7 @@ class WebSocketService {
   private determineWebSocketUrl(): string {
     // Always use a relative path. Nginx handles proxying in dev,
     // and the browser resolves it correctly in production.
-    const url = '/wss';
+    const url = '/ws';
     if (debugState.isEnabled()) { // Log only if debug is enabled
         logger.info(`Determined WebSocket URL (relative): ${url}`);
     }
@@ -112,7 +112,7 @@ class WebSocketService {
     // Extract host and port
     const hostWithProtocol = backendUrl.replace(/^(https?:\/\/)?/, '');
     // Set the WebSocket URL
-    this.url = `${protocol}${hostWithProtocol}/wss`;
+    this.url = `${protocol}${hostWithProtocol}/ws`;
 
     if (debugState.isEnabled()) {
       logger.info(`Set custom WebSocket URL: ${this.url}`);

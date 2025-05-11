@@ -284,7 +284,7 @@ async fn main() -> std::io::Result<()> {
             .app_data(app_state_data.clone()) // Add the complete AppState
             .app_data(app_state_data.nostr_service.clone().unwrap_or_else(|| web::Data::new(NostrService::default()))) // Provide default if None
             .app_data(app_state_data.feature_access.clone())
-            .route("/wss", web::get().to(socket_flow_handler))
+            .route("/ws", web::get().to(socket_flow_handler))
             .route("/speech", web::get().to(speech_socket_handler))
             .service(
                 web::scope("")

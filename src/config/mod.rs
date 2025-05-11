@@ -521,9 +521,9 @@ impl AppFullSettings {
             .add_source(config::File::from(settings_path.clone()).required(true)) // Use path directly
             .add_source(
                 Environment::default()
-                    .separator("__")
+                    .separator("_") // Match SYSTEM_NETWORK_PORT style
                     .list_separator(",")
-                    .prefix("APP") // Env vars override YAML
+                // No .prefix("APP") // Allow direct environment variable override
             );
         let config = builder.build()?;
         debug!("Configuration built successfully. Deserializing AppFullSettings...");

@@ -59,33 +59,34 @@ trap cleanup SIGTERM SIGINT SIGQUIT
 # Start the Rust server in the background
 start_rust_server() {
     log "Starting Rust server (logging to ${RUST_LOG_FILE})..."
-    log "Attempting to free port 3001 if in use..."
-    log "Checking for processes on TCP port 3001..."
+    TARGET_PORT=${SYSTEM_NETWORK_PORT:-4000} # Use SYSTEM_NETWORK_PORT, default to 4000 if not set
+    log "Attempting to free port ${TARGET_PORT} if in use..."
+    log "Checking for processes on TCP port ${TARGET_PORT}..."
     if command -v lsof &> /dev/null; then
-        log "lsof is available. Checking port 3001 with lsof..."
+        log "lsof is available. Checking port ${TARGET_PORT} with lsof..."
         # Try to get PIDs, allow failure if no process is found
-        LSOF_PIDS=$(lsof -t -i:3001 || true)
+        LSOF_PIDS=$(lsof -t -i:${TARGET_PORT} || true)
         if [ -n "$LSOF_PIDS" ]; then
             # Replace newlines with spaces if multiple PIDs are found
             LSOF_PIDS_CLEANED=$(echo $LSOF_PIDS | tr '\n' ' ')
-            log "Process(es) $LSOF_PIDS_CLEANED found on port 3001 by lsof. Attempting to kill..."
+            log "Process(es) $LSOF_PIDS_CLEANED found on port ${TARGET_PORT} by lsof. Attempting to kill..."
             # Kill the PIDs, allow failure if they already exited or kill fails
             kill -9 $LSOF_PIDS_CLEANED || log "kill -9 $LSOF_PIDS_CLEANED (from lsof) failed. This might be okay."
             sleep 1 # Give a moment for the port to be released
         else
-            log "No process found on port 3001 with lsof."
+            log "No process found on port ${TARGET_PORT} with lsof."
         fi
     else
         log "lsof command not found. Skipping lsof check."
     fi
 
     if command -v fuser &> /dev/null; then
-        log "fuser is available. Attempting to free port 3001 with fuser..."
-        fuser -k -TERM 3001/tcp || log "fuser -TERM 3001/tcp failed or no process found. This is okay."
+        log "fuser is available. Attempting to free port ${TARGET_PORT} with fuser..."
+        fuser -k -TERM ${TARGET_PORT}/tcp || log "fuser -TERM ${TARGET_PORT}/tcp failed or no process found. This is okay."
         sleep 0.5 # Shorter sleep
-        fuser -k -KILL 3001/tcp || log "fuser -KILL 3001/tcp failed or no process found. This is okay."
+        fuser -k -KILL ${TARGET_PORT}/tcp || log "fuser -KILL ${TARGET_PORT}/tcp failed or no process found. This is okay."
     else
-        log "fuser command not found. Skipping fuser check. Port 3001 might still be in use if Rust server fails to start."
+        log "fuser command not found. Skipping fuser check. Port ${TARGET_PORT} might still be in use if Rust server fails to start."
     fi
     # Rotate log before starting
     rotate_log_file "${RUST_LOG_FILE}"

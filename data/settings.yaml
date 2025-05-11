@@ -1,4 +1,4 @@
-visualization:
+visualisation:
   nodes:
     base_color: '#df90c2'
     metalness: 0.2
@@ -11,7 +11,7 @@ visualization:
     enable_instancing: false
     enable_hologram: false
     enable_metadata_shape: false
-    enable_metadata_visualization: true
+    enable_metadata_visualisation: true
   edges:
     arrow_size: 0.02
     base_width: 0.1
