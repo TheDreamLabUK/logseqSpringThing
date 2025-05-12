@@ -1,254 +1,132 @@
-import { useState } from 'react';
-import { useSettingsStore } from '../../../../store/settingsStore'; // Corrected path
-// Removed imports for deleted Panel and PanelToolbar components
-import { formatSettingLabel } from '../../types/settingsSchema'; // Corrected path
-import { createLogger } from '../../../../utils/logger'; // Corrected path
-import { UISetting, isUISetting } from '../../types/uiSetting'; // Corrected path
-import { FormGroup, FormGroupControl } from '../../../../ui/formGroup/FormGroup'; // Corrected path
+import React from 'react'; // Removed useState
+import { useSettingsStore } from '../../../../store/settingsStore'; // Keep for persisting preference if needed
+import { createLogger } from '../../../../utils/logger';
+import { SettingsSection } from '../SettingsSection';
+import { UICategoryDefinition, UISettingDefinition } from '../../config/settingsUIDefinition';
+import { useApplicationMode } from '../../../../contexts/ApplicationModeContext'; // For XR mode toggle
+import { Switch } from '../../../../ui/Switch'; // For XR mode toggle
+import { Label } from '../../../../ui/Label'; // For XR mode toggle label
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/ui/Tooltip'; // For XR mode toggle tooltip
+import { Info } from 'lucide-react'; // For XR mode toggle tooltip icon
+import { FormGroup } from '@/ui/formGroup/FormGroup'; // For XR mode toggle styling
 
 const logger = createLogger('XRPanel');
 
-// Subsections for XR settings
-const XR_SUBSECTIONS = [
-  { id: 'controls', title: 'Controls' },
-  { id: 'environment', title: 'Environment' }
-];
+// Removed XR_SUBSECTIONS constant
 
-interface XRPanelProps {
-  /**
-   * Panel ID for the panel system
-   */
-  panelId: string;
+export interface XRPanelProps { // Renamed interface
+  settingsDef: UICategoryDefinition;
 }
 
-/**
- * XRPanel provides settings for XR (VR/AR) modes, including controls and environment settings.
- * Panel ID is no longer needed.
- * Panel ID is no longer needed.
- */
-// panelId: string; // Removed panelId prop definition
-// panelId: string; // Removed panelId prop
-const XRPanel = ({
-  // panelId // Prop removed
-}: XRPanelProps) => {
-  const [activeSubsection, setActiveSubsection] = useState('controls');
-  
-  const settings = useSettingsStore(state => state.settings);
-  const setSettings = useSettingsStore(state => state.set);
-  
-  // Get XR settings for the active subsection
-  const xrSettings: Record<string, UISetting> = 
-    settings.xr && 
-    settings.xr[activeSubsection] ? 
-    settings.xr[activeSubsection] as Record<string, UISetting> : {};
-  
-  // Update a specific setting
-  const updateSetting = (path: string, value: any) => {
-    const fullPath = `xr.${activeSubsection}.${path}`;
-    logger.debug(`Updating setting: ${fullPath}`, value);
-    setSettings(fullPath, value);
-  };
-  
-  // Toggle a boolean setting
-  const toggleSetting = (path: string) => {
-    const currentValue = xrSettings[path]?.value;
-    if (typeof currentValue === 'boolean') {
-      updateSetting(path, !currentValue);
+const XRPanel: React.FC<XRPanelProps> = ({ settingsDef }) => {
+  const { mode: applicationMode, setMode: setApplicationMode } = useApplicationMode();
+  const settingsStoreSet = useSettingsStore(state => state.set); // For persisting preference
+
+  // Find the clientSideEnableXR definition for direct rendering
+  let clientSideEnableXRDef: UISettingDefinition | undefined;
+  for (const subsec of Object.values(settingsDef.subsections)) {
+    if (subsec.settings['clientSideEnableXR']) {
+      clientSideEnableXRDef = subsec.settings['clientSideEnableXR'];
+      break;
+    }
+  }
+
+  const handleXRModeToggle = (checked: boolean) => {
+    setApplicationMode(checked ? 'xr' : 'desktop');
+    // Optionally persist this preference to settings store if clientSideEnableXRDef.path is valid
+    if (clientSideEnableXRDef?.path) {
+      settingsStoreSet(clientSideEnableXRDef.path, checked);
+      logger.info(`XR mode preference (${clientSideEnableXRDef.path}) set to: ${checked}`);
     }
   };
-  
-  // Return the content directly without Panel wrapper or Toolbar
+
+  const isClientXRModeEnabled = applicationMode === 'xr';
+
   return (
-      // The div below is now the top-level returned element
-      <div className="flex flex-col h-full">
-        {/* Subsection Tabs */}
-        <div className="flex border-b border-border overflow-x-auto">
-          {XR_SUBSECTIONS.map(subsection => (
-            <button
-              key={subsection.id}
-              className={`px-3 py-2 ${
-                activeSubsection === subsection.id
-                  ? 'border-b-2 border-primary font-medium'
-                  : 'text-muted-foreground hover:text-foreground'
-              }`}
-              onClick={() => setActiveSubsection(subsection.id)}
-            >
-              {subsection.title}
-            </button>
-          ))}
-        </div>
+    <div className="p-4 space-y-6 overflow-y-auto h-full custom-scrollbar">
+      {/* Special handling for clientSideEnableXR toggle */}
+      {clientSideEnableXRDef && (
+        <FormGroup
+            label={clientSideEnableXRDef.label}
+            id="client-xr-toggle"
+            helpText={clientSideEnableXRDef.description}
+            className="border-b border-border pb-4 mb-4"
+        >
+            <div className="flex items-center justify-between">
+                <Label htmlFor="client-xr-toggle-switch" className="text-sm flex items-center gap-1">
+                    <span>{clientSideEnableXRDef.label}</span>
+                    {clientSideEnableXRDef.description && (
+                    <TooltipProvider delayDuration={100}>
+                        <Tooltip>
+                            <TooltipTrigger asChild>
+                                <Info className="h-3 w-3 text-muted-foreground cursor-help" />
+                            </TooltipTrigger>
+                            <TooltipContent side="top" align="start" className="max-w-xs z-[4000]">
+                                <p>{clientSideEnableXRDef.description}</p>
+                            </TooltipContent>
+                        </Tooltip>
+                    </TooltipProvider>
+                    )}
+                </Label>
+                <Switch
+                    id="client-xr-toggle-switch"
+                    checked={isClientXRModeEnabled}
+                    onCheckedChange={handleXRModeToggle}
+                />
+            </div>
+        </FormGroup>
+      )}
+
+      {/* Iterate through subsections defined in settingsDef */}
+      {Object.entries(settingsDef.subsections).map(([subsectionKey, subsectionDef]) => {
+        // Filter out the clientSideEnableXR setting if it was handled above, to avoid rendering it twice
+        const filteredSettings = { ...subsectionDef.settings };
+        if (clientSideEnableXRDef && filteredSettings[clientSideEnableXRDef.path.split('.').pop()!]) {
+             // Check if the current subsection contains the clientSideEnableXR setting
+            if (clientSideEnableXRDef.path.startsWith(`${settingsDef.label.toLowerCase()}.${subsectionKey}`)) {
+                delete filteredSettings[clientSideEnableXRDef.path.split('.').pop()!];
+            }
+        }
+
+        // If after filtering, the subsection has no settings left (and it's not the one containing the special toggle),
+        // or if it only contained the special toggle, don't render the section.
+        if (Object.keys(filteredSettings).length === 0) {
+            return null;
+        }
         
-        {/* Settings Content */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-6">
-          {/* Controls Settings */}
-          {activeSubsection === 'controls' && (
-            <div className="space-y-6">
-              {/* Use improved form groups for better styling */}
-              {Object.entries(xrSettings).map(([key, setting]) => {
-                if (typeof setting !== 'object' || setting === null) {
-                  return null;
-                }
-                
-                // Use the type guard to ensure 'setting' is a UISetting
-                if (!isUISetting(setting)) {
-                  return null;
-                }
-                
-                // Format the label
-                const label = formatSettingLabel(key);
-                
-                return (
-                  <FormGroup 
-                    key={key} 
-                    label={label}
-                    id={key}
-                    helpText={setting.description}
-                    advanced={setting.advanced}
-                  >
-                    <FormGroupControl>
-                      {/* Render based on setting type */}
-                      {setting.type === 'checkbox' && (
-                        <div className="flex items-center space-x-2">
-                          <input
-                            id={key}
-                            type="checkbox"
-                            checked={setting.value}
-                            className="rounded"
-                            onChange={() => toggleSetting(key)}
-                          />
-                          <span className="text-sm text-muted-foreground">
-                            {setting.value ? 'Enabled' : 'Disabled'}
-                          </span>
-                        </div>
-                      )}
-                      
-                      {setting.type === 'select' && setting.options && (
-                        <select
-                          id={key}
-                          value={setting.value}
-                          className="w-full rounded-md border border-input bg-transparent px-3 py-1"
-                          onChange={(e) => updateSetting(key, e.target.value)}
-                        >
-                          {setting.options.map((option) => (
-                            <option key={option.value} value={option.value}>
-                              {option.label}
-                            </option>
-                          ))}
-                        </select>
-                      )}
-                      
-                      {setting.type === 'slider' && (
-                        <div className="flex items-center space-x-2">
-                          <input
-                            id={key}
-                            type="range"
-                            value={setting.value}
-                            min={setting.min || 0}
-                            max={setting.max || 100}
-                            step={setting.step || 1}
-                            className="w-full"
-                            onChange={(e) => updateSetting(key, parseFloat(e.target.value))}
-                          />
-                          <span className="text-sm text-muted-foreground w-12 text-right">
-                            {setting.value}{setting.unit || ''}
-                          </span>
-                        </div>
-                      )}
-                    </FormGroupControl>
-                  </FormGroup>
-                );
-              })}
-              
-              {/* XR Controls Information */}
-              <div className="bg-muted p-4 rounded-md text-sm">
-                <h4 className="font-medium mb-2">XR Control Information</h4>
-                <p className="text-muted-foreground mb-2">
-                  These settings control how interaction works in VR and AR modes.
-                  When using a VR headset, you can use the controllers to interact with the visualisation.
-                </p>
-                <ul className="list-disc list-inside text-muted-foreground space-y-1">
-                  <li>Trigger button: Select</li>
-                  <li>Grip button: Grab and move</li>
-                  <li>Thumbstick: Navigate and rotate</li>
-                </ul>
-              </div>
-            </div>
-          )}
-          
-          {/* Environment Settings */}
-          {activeSubsection === 'environment' && (
-            <div className="space-y-6">
-              {/* Environment settings */}
-              {Object.entries(xrSettings).map(([key, setting]) => {
-                if (typeof setting !== 'object' || setting === null) {
-                  return null;
-                }
-                
-                // Use the type guard to ensure 'setting' is a UISetting
-                if (!isUISetting(setting)) {
-                  return null;
-                }
-                
-                // Format the label
-                const label = formatSettingLabel(key);
-                
-                return (
-                  <FormGroup 
-                    key={key} 
-                    label={label}
-                    id={key}
-                    helpText={setting.description}
-                    advanced={setting.advanced}
-                  >
-                    <FormGroupControl>
-                      {/* Render specific controls for environment settings */}
-                      {setting.type === 'color' && (
-                        <div className="flex items-center space-x-2">
-                          <input
-                            id={key}
-                            type="color"
-                            value={setting.value}
-                            className="w-8 h-8 rounded cursor-pointer"
-                            onChange={(e) => updateSetting(key, e.target.value)}
-                          />
-                          <span className="text-sm font-mono text-muted-foreground">
-                            {setting.value}
-                          </span>
-                        </div>
-                      )}
-                      
-                      {setting.type === 'select' && setting.options && (
-                        <select
-                          id={key}
-                          value={setting.value}
-                          className="w-full rounded-md border border-input bg-transparent px-3 py-1"
-                          onChange={(e) => updateSetting(key, e.target.value)}
-                        >
-                          {setting.options.map((option) => (
-                            <option key={option.value} value={option.value}>
-                              {option.label}
-                            </option>
-                          ))}
-                        </select>
-                      )}
-                    </FormGroupControl>
-                  </FormGroup>
-                );
-              })}
-              
-              {/* XR Environment Information */}
-              <div className="bg-muted p-4 rounded-md text-sm">
-                <h4 className="font-medium mb-2">XR Environment</h4>
-                <p className="text-muted-foreground">
-                  These settings control the visual environment in VR and AR modes,
-                  including background, lighting, and scale.
-                </p>
-              </div>
-            </div>
-          )}
+        return (
+          <SettingsSection
+            key={subsectionKey}
+            id={`settings-${settingsDef.label.toLowerCase()}-${subsectionKey}`}
+            title={subsectionDef.label}
+            subsectionSettings={filteredSettings} // Pass filtered settings
+          />
+        );
+      })}
+
+      {/* Retain custom informational text if needed */}
+      <div className="space-y-6 pt-4 border-t border-border mt-6">
+        <div className="bg-muted p-4 rounded-md text-sm shadow">
+          <h4 className="font-medium mb-2 text-foreground">XR Control Information</h4>
+          <p className="text-muted-foreground mb-2">
+            These settings control how interaction works in VR and AR modes.
+            When using a VR headset, you can use the controllers to interact with the visualisation.
+          </p>
+          <ul className="list-disc list-inside text-muted-foreground space-y-1">
+            <li>Trigger button: Select</li>
+            <li>Grip button: Grab and move</li>
+            <li>Thumbstick: Navigate and rotate</li>
+          </ul>
+        </div>
+        <div className="bg-muted p-4 rounded-md text-sm shadow">
+          <h4 className="font-medium mb-2 text-foreground">XR Environment</h4>
+          <p className="text-muted-foreground">
+            These settings control the visual environment in VR and AR modes,
+            including background, lighting, and scale.
+          </p>
         </div>
       </div>
-    // No closing tag needed here as the div above is the root
+    </div>
   );
 };
 

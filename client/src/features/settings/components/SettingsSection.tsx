@@ -1,35 +1,71 @@
-import { useState } from 'react'
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/ui/Collapsible'
-import { Card, CardContent, CardHeader, CardTitle } from '@/ui/Card'
-import { ChevronDown, ChevronUp, Minimize, Maximize } from 'lucide-react'
-import { Button } from '@/ui/Button'
-import { SettingsSectionProps } from '../types/settingsTypes'
-import { SettingsSubsection } from './SettingsSubsection'
-// Fix the import for react-draggable (it doesn't export useDrag)
-import Draggable from 'react-draggable'
-import { useControlPanelContext } from './control-panel-context'
+import React, { useState } from 'react'; // Added React import
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/ui/Collapsible';
+import { Card, CardContent, CardHeader, CardTitle } from '@/ui/Card';
+import { ChevronDown, ChevronUp, Minimize, Maximize } from 'lucide-react';
+import { Button } from '@/ui/Button';
+// Removed import for SettingsSectionProps from types
+// Removed import for SettingsSubsection
+import Draggable from 'react-draggable';
+import { useControlPanelContext } from './control-panel-context';
+import { UISettingDefinition } from '../config/settingsUIDefinition'; // Import the definition type
+import { SettingControlComponent } from './SettingControlComponent'; // Import the control component
+import { useSettingsStore } from '@/store/settingsStore'; // Adjust path if necessary
 
-export function SettingsSection({ id, title, settings, advanced = false }: SettingsSectionProps) {
-  const [isOpen, setIsOpen] = useState(true)
-  const [isDetached, setIsDetached] = useState(false)
-  const { advancedMode } = useControlPanelContext()
+// Define props locally
+interface SettingsSectionProps {
+  id: string;
+  title: string;
+  subsectionSettings: Record<string, UISettingDefinition>;
+}
 
-  // If advanced section and not in advanced mode, don't render
-  if (advanced && !advancedMode) {
-    return null
-  }
+export function SettingsSection({ id, title, subsectionSettings }: SettingsSectionProps) {
+  const [isOpen, setIsOpen] = useState(true);
+  const [isDetached, setIsDetached] = useState(false);
+  const { advancedMode } = useControlPanelContext();
+  const settingsStore = useSettingsStore.getState(); // Get store state once
 
-  // Split settings into subsections
-  const subsections = Object.entries(settings).map(([key, subsection]) => ({
-    key,
-    title: key,
-    settings: subsection,
-    path: `${id}.${key}`
-  }))
+  // Removed advanced prop check at the top level
+
+  // Removed old subsection mapping logic
 
   const handleDetach = () => {
-    setIsDetached(!isDetached)
-  }
+    setIsDetached(!isDetached);
+  };
+
+  const renderSettings = () => (
+    <div className="space-y-4">
+      {Object.entries(subsectionSettings).map(([settingKey, settingDef]) => {
+        // Visibility check: Advanced
+        if (settingDef.isAdvanced && !advancedMode) {
+          return null;
+        }
+
+        // Visibility/Read-only check: Power User
+        const isPowerUser = settingsStore.user?.isPowerUser ?? false;
+        if (settingDef.isPowerUserOnly && !isPowerUser) {
+          // Decide whether to hide or show as read-only. Hiding for now.
+          // TODO: Implement read-only display if needed
+          return null;
+        }
+
+        // Retrieve value and define onChange handler
+        const value = settingsStore.get(settingDef.path);
+        const handleChange = (newValue: any) => {
+          settingsStore.set(settingDef.path, newValue);
+        };
+
+        return (
+          <SettingControlComponent
+            key={settingKey}
+            path={settingDef.path}
+            settingDef={settingDef}
+            value={value}
+            onChange={handleChange}
+          />
+        );
+      })}
+    </div>
+  );
 
   if (isDetached) {
     return (
@@ -38,35 +74,28 @@ export function SettingsSection({ id, title, settings, advanced = false }: Setti
         onReattach={handleDetach}
         sectionId={id}
       >
-        <div className="space-y-4 p-2">
-          {subsections.map(subsection => (
-            <SettingsSubsection
-              key={subsection.key}
-              title={subsection.title}
-              settings={subsection.settings}
-              path={subsection.path}
-            />
-          ))}
+        <div className="p-2"> {/* Removed extra space-y-4, handled by renderSettings */}
+          {renderSettings()}
         </div>
       </DetachedSection>
-    )
+    );
   }
 
   return (
-    <Card className="settings-section">
+    <Card className="settings-section bg-card border border-border"> {/* Added background and border */}
       <CardHeader className="py-2 px-4">
         <Collapsible open={isOpen} onOpenChange={setIsOpen}>
           <div className="flex items-center justify-between">
             <CollapsibleTrigger asChild>
-              <Button variant="ghost" size="sm" className="h-8 p-0">
-                <CardTitle className="text-sm font-medium">{title}</CardTitle>
-                {isOpen ? <ChevronUp className="ml-2 h-4 w-4" /> : <ChevronDown className="ml-2 h-4 w-4" />}
+              <Button variant="ghost" size="sm" className="h-8 p-0 hover:bg-muted/50"> {/* Added hover effect */}
+                <CardTitle className="text-sm font-medium text-card-foreground">{title}</CardTitle>
+                {isOpen ? <ChevronUp className="ml-2 h-4 w-4 text-muted-foreground" /> : <ChevronDown className="ml-2 h-4 w-4 text-muted-foreground" />}
               </Button>
             </CollapsibleTrigger>
             <Button
               variant="ghost"
               size="icon"
-              className="h-6 w-6"
+              className="h-6 w-6 text-muted-foreground hover:text-card-foreground hover:bg-muted/50" // Added hover effect
               onClick={handleDetach}
               title="Detach section"
             >
@@ -75,26 +104,17 @@ export function SettingsSection({ id, title, settings, advanced = false }: Setti
           </div>
 
           <CollapsibleContent>
-            <CardContent className="p-2 pt-2">
-              <div className="space-y-4">
-                {subsections.map(subsection => (
-                  <SettingsSubsection
-                    key={subsection.key}
-                    title={subsection.title}
-                    settings={subsection.settings}
-                    path={subsection.path}
-                  />
-                ))}
-              </div>
+            <CardContent className="p-4 pt-3"> {/* Adjusted padding */}
+              {renderSettings()}
             </CardContent>
           </CollapsibleContent>
         </Collapsible>
       </CardHeader>
     </Card>
-  )
+  );
 }
 
-// Detached floating section component
+// Detached floating section component (Keep as is, but ensure it uses the new renderSettings)
 function DetachedSection({
   children,
   title,
@@ -106,44 +126,44 @@ function DetachedSection({
   onReattach: () => void;
   sectionId: string;
 }) {
-  const [position, setPosition] = useState({ x: 100, y: 100 })
+  const [position, setPosition] = useState({ x: 100, y: 100 });
 
   const handleDrag = (e: any, data: { x: number; y: number }) => {
-    setPosition({ x: data.x, y: data.y })
-  }
+    setPosition({ x: data.x, y: data.y });
+  };
+
+  // Ensure the parent element for bounds exists and covers the intended area
+  // If bounds="parent" doesn't work as expected, might need a specific selector or DOM element reference.
 
   return (
     <Draggable
+      handle=".drag-handle" // Use a specific handle for dragging
       position={position}
       onDrag={handleDrag}
-      bounds="parent"
+      bounds="body" // Changed bounds to body to allow freer movement
     >
       <div
-        className="detached-panel absolute z-[3000] min-w-[250px]"
-        style={{
-          boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
-          border: '1px solid var(--border)'
-        }}
+        className="detached-panel absolute z-[3000] min-w-[300px] bg-card rounded-lg shadow-lg border border-border" // Added background, rounded corners
         data-section-id={sectionId}
       >
-      <div className="flex items-center justify-between border-b border-border p-2">
-        <div className="cursor-move flex-1 text-sm font-medium">
-          {title}
+        <div className="drag-handle flex items-center justify-between border-b border-border p-2 cursor-move bg-muted/50 rounded-t-lg"> {/* Added handle class, background */}
+          <div className="text-sm font-medium text-card-foreground">
+            {title}
+          </div>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-6 w-6 text-muted-foreground hover:text-card-foreground hover:bg-muted/50" // Added hover effect
+            onClick={onReattach}
+            title="Reattach section"
+          >
+            <Minimize className="h-3 w-3" />
+          </Button>
         </div>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-6 w-6"
-          onClick={onReattach}
-          title="Reattach section"
-        >
-          <Minimize className="h-3 w-3" />
-        </Button>
+        <div className="p-4 max-h-[400px] overflow-y-auto custom-scrollbar"> {/* Added padding, max-height and scroll */}
+          {children}
+        </div>
       </div>
-      <div className="p-2">
-        {children}
-      </div>
-    </div>
     </Draggable>
-  )
+  );
 }

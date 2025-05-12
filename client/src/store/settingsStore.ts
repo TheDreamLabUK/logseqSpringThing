@@ -6,7 +6,8 @@ import { createLogger, createErrorMetadata } from '../utils/logger'
 import { debugState } from '../utils/debugState'
 import { deepMerge } from '../utils/deepMerge';
 import { settingsService } from '../services/settingsService';
-import { produce } from 'immer'; // Import produce from immer
+import { produce } from 'immer';
+import { toast } from '../ui/useToast'; // Import toast
 
 const logger = createLogger('SettingsStore')
 
@@ -220,17 +221,26 @@ export const useSettingsStore = create<SettingsState>()(
               }
 
               // Use the settings service to save settings
-              const updatedSettings = await settingsService.saveSettings(state.settings, headers)
+              const updatedSettings = await settingsService.saveSettings(state.settings, headers);
 
-              if (!updatedSettings) {
-                throw new Error('Failed to save settings to server')
-              }
-
-              if (debugState.isEnabled()) {
-                logger.info('Settings saved to server successfully')
+              if (updatedSettings) { // Check if response is not null (success)
+                if (debugState.isEnabled()) {
+                  logger.info('Settings saved to server successfully');
+                }
+                toast({ title: "Settings Saved", description: "Your settings have been synced with the server." });
+                // Optionally, merge serverResponse back into store if server can modify settings during save
+                // For now, assume client is authoritative for UI settings it sends.
+                // If server can modify settings, you might do:
+                // set(s => ({ ...s, settings: deepMerge(s.settings, updatedSettings) }));
+              } else {
+                // saveSettings would have returned null or thrown an error handled by catch
+                // throw new Error('Server responded with an error or no data.'); // This will be caught below
+                // The toast for failure will be handled in the catch block
               }
             } catch (error) {
-              logger.error('Failed to save settings to server:', createErrorMetadata(error))
+              const errorMeta = createErrorMetadata(error);
+              logger.error('Failed to save settings to server:', errorMeta);
+              toast({ variant: "destructive", title: "Save Failed", description: `Could not save settings to server. ${errorMeta.message || 'Check console.'}` });
             }
           }
         }
@@ -330,14 +340,18 @@ export const useSettingsStore = create<SettingsState>()(
               }
 
               const updatedSettings = await settingsService.saveSettings(state.settings, headers);
-              if (!updatedSettings) {
-                throw new Error('Failed to save settings to server via updateSettings');
-              }
-              if (debugState.isEnabled()) {
-                logger.info('Settings saved to server successfully via updateSettings');
+              if (updatedSettings) {
+                if (debugState.isEnabled()) {
+                  logger.info('Settings saved to server successfully via updateSettings');
+                }
+                toast({ title: "Settings Saved", description: "Your settings have been synced with the server." });
+              } else {
+                // Failure toast handled in catch
               }
             } catch (error) {
-              logger.error('Failed to save settings to server via updateSettings:', createErrorMetadata(error));
+              const errorMeta = createErrorMetadata(error);
+              logger.error('Failed to save settings to server via updateSettings:', errorMeta);
+              toast({ variant: "destructive", title: "Save Failed", description: `Could not save settings to server (updateSettings). ${errorMeta.message || 'Check console.'}` });
             }
           }
         };
