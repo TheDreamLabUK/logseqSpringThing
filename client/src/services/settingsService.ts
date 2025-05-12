@@ -30,11 +30,11 @@ class SettingsService {
       // Fetch settings from the server
       const rawSettings = await apiService.get<Record<string, any>>('/user-settings');
       
-      // Convert from snake_case to camelCase
-      const settings = rawSettings as Settings; // Expect camelCase from server
+      // Server sends camelCase for this endpoint, so no conversion needed here.
+      const settings = rawSettings as Settings;
       
       if (debugState.isEnabled()) {
-        logger.info('Fetched settings from server:', { settings });
+        logger.info('Fetched settings from server (already camelCase):', { settings });
       }
       
       return settings;
@@ -51,29 +51,29 @@ class SettingsService {
    * @returns The updated settings from the server, converted to camelCase
    */
   public async saveSettings(
-    settings: Settings, 
+    settings: Settings,
     authHeaders: Record<string, string> = {}
   ): Promise<Settings | null> {
     try {
       // Convert settings to snake_case for the server
-      const settingsToSend = settings; // Send camelCase directly
+      const settingsToSend = settings; // Send camelCase directly as server expects it for this endpoint
       
       if (debugState.isEnabled()) {
-        logger.info('Saving settings to server:', { settingsToSend });
+        logger.info('Saving settings to server (camelCase):', { settingsToSend });
       }
       
       // Send settings to the server
       const rawUpdatedSettings = await apiService.post<Record<string, any>>(
-        '/user-settings/sync', 
+        '/user-settings/sync',
         settingsToSend,
         authHeaders
       );
       
-      // Convert the response from snake_case to camelCase
-      const updatedSettings = rawUpdatedSettings as Settings; // Expect camelCase from server
+      // Server sends camelCase for this endpoint's response, so no conversion needed here.
+      const updatedSettings = rawUpdatedSettings as Settings;
       
       if (debugState.isEnabled()) {
-        logger.info('Settings saved successfully:', { updatedSettings });
+        logger.info('Settings saved successfully (response already camelCase):', { updatedSettings });
       }
       
       return updatedSettings;

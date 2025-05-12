@@ -52,11 +52,11 @@ pub struct SimulationParams {
     
     // Force parameters
     pub spring_strength: f32,      // Range: 0.1-10, Default: 0.5
-    pub repulsion: f32,           // Range: 1-2000, Default: 100
-    pub max_repulsion_distance: f32, // Range: 100-2000, Default: 500
+    pub repulsion: f32,           // Default: 100
+    pub max_repulsion_distance: f32, // Default: 500
     
     // Mass and damping
-    pub mass_scale: f32,          // Range: 0.1-5, Default: 1.0, Affects force scaling
+    pub mass_scale: f32,          // Default: 1.0, Affects force scaling
     pub damping: f32,             // Range: 0-1, Default: 0.5
     pub boundary_damping: f32,    // Range: 0.5-1, Default: 0.9
     
