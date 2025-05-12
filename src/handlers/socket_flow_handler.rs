@@ -34,6 +34,19 @@ const BATCH_UPDATE_WINDOW_MS: u64 = 200;  // Check motion every 200ms
 // Maximum value for u16 node IDs
 const MAX_U16_VALUE: u32 = 65535;
 
+/// Struct to hold pre-read WebSocket settings to avoid blocking in async context
+#[derive(Clone, Debug)]
+pub struct PreReadSocketSettings {
+    pub min_update_rate: u32,
+    pub max_update_rate: u32,
+    pub motion_threshold: f32,
+    pub motion_damping: f32,
+    pub compression_enabled: bool,
+    pub compression_threshold: usize,
+    pub heartbeat_interval_ms: u64, // Added for heartbeat
+    pub heartbeat_timeout_ms: u64,  // Added for heartbeat
+}
+
 /// ClientManager keeps track of all connected WebSocket clients
 /// and provides methods for broadcasting data to all clients
 #[derive(Debug)]
@@ -146,7 +159,6 @@ pub struct BroadcastPositionUpdate(pub Vec<(u16, BinaryNodeData)>);
 
 pub struct SocketFlowServer {
     app_state: Arc<AppState>,
-    // No longer need to store the whole settings Arc here, just the relevant values
     client_id: Option<usize>,
     client_manager: Option<Arc<ClientManager>>,
     last_ping: Option<u64>,
@@ -169,33 +181,30 @@ pub struct SocketFlowServer {
     // Dynamic update rate fields
     last_batch_time: Instant, // Last time we sent a batch of updates
     current_update_rate: u32,  // Current rate in updates per second
-    min_update_rate: u32,      // Minimum rate from settings
-    max_update_rate: u32,      // Maximum rate from settings
-    motion_threshold: f32,     // % of nodes that need to be moving to consider "in motion"
-    motion_damping: f32,       // Smoothing factor for rate changes
+    // Store pre-read settings directly
+    min_update_rate: u32,
+    max_update_rate: u32,
+    motion_threshold: f32,
+    motion_damping: f32,
+    compression_enabled: bool,
+    compression_threshold: usize,
+    heartbeat_interval_ms: u64,
+    heartbeat_timeout_ms: u64,
     nodes_in_motion: usize,    // Counter for nodes currently in motion
     total_node_count: usize,   // Total node count for percentage calculation
     last_motion_check: Instant, // Last time we checked motion percentage,
 }
 
 impl SocketFlowServer {
-    // Updated signature to take AppFullSettings directly (or relevant parts)
-    // For simplicity, let's pass the needed values directly if AppState is available where new is called
-    // Or, pass the AppFullSettings Arc and read here. Let's do the latter for now.
-    pub fn new(app_state: Arc<AppState>, settings_arc: Arc<RwLock<AppFullSettings>>, client_manager: Option<Arc<ClientManager>>) -> Self {
-        
-        // Read necessary settings values within new()
-        let (min_update_rate, max_update_rate, motion_threshold, motion_damping, _compression_enabled, _compression_threshold) = {
-            let settings_read = settings_arc.blocking_read(); // Use blocking read if in sync context, or pass values
-            (
-                settings_read.system.websocket.min_update_rate,
-                settings_read.system.websocket.max_update_rate,
-                settings_read.system.websocket.motion_threshold,
-                settings_read.system.websocket.motion_damping,
-                settings_read.system.websocket.compression_enabled,
-                settings_read.system.websocket.compression_threshold,
-            )
-        };
+    pub fn new(app_state: Arc<AppState>, pre_read_settings: PreReadSocketSettings, client_manager: Option<Arc<ClientManager>>) -> Self {
+        let min_update_rate = pre_read_settings.min_update_rate;
+        let max_update_rate = pre_read_settings.max_update_rate;
+        let motion_threshold = pre_read_settings.motion_threshold;
+        let motion_damping = pre_read_settings.motion_damping;
+        let compression_enabled = pre_read_settings.compression_enabled;
+        let compression_threshold = pre_read_settings.compression_threshold;
+        let heartbeat_interval_ms = pre_read_settings.heartbeat_interval_ms;
+        let heartbeat_timeout_ms = pre_read_settings.heartbeat_timeout_ms;
 
         // Use position and velocity deadbands from constants
         let position_deadband = DEFAULT_POSITION_DEADBAND;
@@ -228,6 +237,10 @@ impl SocketFlowServer {
             max_update_rate,
             motion_threshold,
             motion_damping,
+            compression_enabled,
+            compression_threshold,
+            heartbeat_interval_ms,
+            heartbeat_timeout_ms,
             nodes_in_motion: 0,
             total_node_count: 0,
             last_motion_check: Instant::now()
@@ -244,14 +257,8 @@ impl SocketFlowServer {
     
     // maybe_compress needs access to compression settings
     fn maybe_compress(&mut self, data: Vec<u8>) -> Vec<u8> {
-        // Read compression settings (need to store them in Self or pass settings Arc)
-        // Let's assume we store them for simplicity here
-        let (enabled, threshold) = {
-             // This requires storing settings Arc or values in Self
-             // For now, let's use defaults as placeholders - THIS NEEDS FIXING
-             (true, 1024)
-             // TODO: Fix this by storing settings Arc or values in SocketFlowServer struct
-        };
+        let enabled = self.compression_enabled;
+        let threshold = self.compression_threshold;
 
         if enabled && data.len() > threshold {
             let mut encoder = ZlibEncoder::new(Vec::new(), COMPRESSION_LEVEL);
@@ -880,19 +887,20 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
 pub async fn socket_flow_handler(
     req: HttpRequest,
     stream: web::Payload,
-    app_state: web::Data<AppState>,
-    // Settings are now accessed via app_state, remove separate settings data injection if not needed elsewhere
-    // settings: web::Data<Arc<RwLock<AppFullSettings>>> // Changed type
+    app_state_data: web::Data<AppState>, // Renamed for clarity
+    pre_read_ws_settings: web::Data<PreReadSocketSettings>, // New data
 ) -> Result<HttpResponse, Error> {
+    let app_state_arc = app_state_data.into_inner(); // Get the Arc<AppState>
     // Ensure ClientManager exists in app_state or create it if not present
-    let client_manager = app_state.ensure_client_manager().await;
+    let client_manager = app_state_arc.ensure_client_manager().await;
     
-    // Access settings through app_state
-    let settings_arc = app_state.settings.clone();
-
-    let should_debug = settings_arc.try_read().map(|s| {
-        s.system.debug.enabled && s.system.debug.enable_websocket_debug
-    }).unwrap_or(false);
+    // Access debug settings through app_state (still needs async read for this one-off check)
+    // Or, include debug.enable_websocket_debug in PreReadSocketSettings if frequently used here.
+    // For now, keeping the async read here for just this debug flag.
+    let should_debug = {
+        let settings_read = app_state_arc.settings.read().await;
+        settings_read.system.debug.enabled && settings_read.system.debug.enable_websocket_debug
+    };
 
     if should_debug {
         debug!("WebSocket connection attempt from {:?}", req.peer_addr());
@@ -903,8 +911,8 @@ pub async fn socket_flow_handler(
         return Ok(HttpResponse::BadRequest().body("WebSocket upgrade required"));
     }
     
-    // Pass the AppFullSettings Arc to SocketFlowServer::new
-    let ws = SocketFlowServer::new(app_state.into_inner(), settings_arc, Some(client_manager));
+    // Pass the pre-read settings to SocketFlowServer::new
+    let ws = SocketFlowServer::new(app_state_arc, pre_read_ws_settings.get_ref().clone(), Some(client_manager));
 
     match ws::start(ws, &req, stream) {
         Ok(response) => {

@@ -6,7 +6,7 @@ use webxr::{
         api_handler,
         health_handler,
         pages_handler,
-        socket_flow_handler::socket_flow_handler,
+        socket_flow_handler::{socket_flow_handler, PreReadSocketSettings}, // Import PreReadSocketSettings
         speech_socket_handler::speech_socket_handler,
         nostr_handler,
     },
@@ -263,6 +263,22 @@ async fn main() -> std::io::Result<()> {
         format!("{}:{}", settings_read.system.network.bind_address, settings_read.system.network.port)
     };
 
+    // Pre-read WebSocket settings for SocketFlowServer
+    let pre_read_ws_settings = {
+        let s = settings.read().await;
+        PreReadSocketSettings {
+            min_update_rate: s.system.websocket.min_update_rate,
+            max_update_rate: s.system.websocket.max_update_rate,
+            motion_threshold: s.system.websocket.motion_threshold,
+            motion_damping: s.system.websocket.motion_damping,
+            compression_enabled: s.system.websocket.compression_enabled,
+            compression_threshold: s.system.websocket.compression_threshold,
+            heartbeat_interval_ms: s.system.websocket.heartbeat_interval, // Assuming these exist
+            heartbeat_timeout_ms: s.system.websocket.heartbeat_timeout,   // Assuming these exist
+        }
+    };
+    let pre_read_ws_settings_data = web::Data::new(pre_read_ws_settings);
+
     info!("Starting HTTP server on {}", bind_address);
 
     let server = HttpServer::new(move || {
@@ -278,10 +294,11 @@ async fn main() -> std::io::Result<()> {
             .wrap(cors)
             .wrap(middleware::Compress::default())
             // Pass AppFullSettings wrapped in Data
-            .app_data(settings_data.clone()) 
+            .app_data(settings_data.clone())
             .app_data(web::Data::new(github_client.clone()))
             .app_data(web::Data::new(content_api.clone()))
             .app_data(app_state_data.clone()) // Add the complete AppState
+            .app_data(pre_read_ws_settings_data.clone()) // Add pre-read WebSocket settings
             .app_data(app_state_data.nostr_service.clone().unwrap_or_else(|| web::Data::new(NostrService::default()))) // Provide default if None
             .app_data(app_state_data.feature_access.clone())
             .route("/wss", web::get().to(socket_flow_handler)) // Changed from /ws to /wss
