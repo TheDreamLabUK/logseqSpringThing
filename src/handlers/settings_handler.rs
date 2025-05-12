@@ -20,21 +20,21 @@ fn convert_to_ui_settings(full_settings: &AppFullSettings) -> UISettings {
 
 // Helper macro for merging Option fields
 // Assigns source value (wrapped in Some) to target if source is Some.
-macro_rules! merge_option {
-    ($target:expr, $source:expr) => { // For T: Copy
-        if let Some(value_ref) = $source.as_ref() { // value_ref is &T
-            $target = *value_ref; // Dereference to copy
-        }
-    };
-    // Clone variant for types that don't implement Copy
-    ($target:expr, $source:expr, $clone:ident) => { // For T: Clone
-        if let Some(value_ref) = $source.as_ref() { // value_ref is &T
-            $target = value_ref.clone(); // Clone from reference
+macro_rules! merge_copy_option {
+    ($target:expr, $source:expr) => {
+        if let Some(value_ref) = $source.as_ref() {
+            $target = *value_ref; // For Copy types
         }
     };
 }
 
-// merge_nested_option macro was removed as it was unused.
+macro_rules! merge_clone_option {
+    ($target:expr, $source:expr) => {
+        if let Some(value_ref) = $source.as_ref() {
+            $target = value_ref.clone(); // For Clone types
+        }
+    };
+}
 
 // --- Cache Clearing Endpoints (Unaffected by Settings struct changes) ---
 
@@ -186,150 +186,150 @@ async fn update_user_settings(
         if let Some(vis_dto) = client_payload.visualisation {
             let target_vis = &mut settings_guard.visualisation;
             if let Some(nodes_dto) = vis_dto.nodes {
-                merge_option!(target_vis.nodes.base_color, nodes_dto.base_color, clone);
-                merge_option!(target_vis.nodes.metalness, nodes_dto.metalness);
-                merge_option!(target_vis.nodes.opacity, nodes_dto.opacity);
-                merge_option!(target_vis.nodes.roughness, nodes_dto.roughness);
-                merge_option!(target_vis.nodes.size_range, nodes_dto.size_range, clone);
-                merge_option!(target_vis.nodes.quality, nodes_dto.quality, clone);
-                merge_option!(target_vis.nodes.enable_instancing, nodes_dto.enable_instancing);
-                merge_option!(target_vis.nodes.enable_hologram, nodes_dto.enable_hologram);
-                merge_option!(target_vis.nodes.enable_metadata_shape, nodes_dto.enable_metadata_shape);
-                merge_option!(target_vis.nodes.enable_metadata_visualisation, nodes_dto.enable_metadata_visualisation);
+                merge_clone_option!(target_vis.nodes.base_color, nodes_dto.base_color);
+                merge_copy_option!(target_vis.nodes.metalness, nodes_dto.metalness);
+                merge_copy_option!(target_vis.nodes.opacity, nodes_dto.opacity);
+                merge_copy_option!(target_vis.nodes.roughness, nodes_dto.roughness);
+                merge_clone_option!(target_vis.nodes.size_range, nodes_dto.size_range);
+                merge_clone_option!(target_vis.nodes.quality, nodes_dto.quality);
+                merge_copy_option!(target_vis.nodes.enable_instancing, nodes_dto.enable_instancing);
+                merge_copy_option!(target_vis.nodes.enable_hologram, nodes_dto.enable_hologram);
+                merge_copy_option!(target_vis.nodes.enable_metadata_shape, nodes_dto.enable_metadata_shape);
+                merge_copy_option!(target_vis.nodes.enable_metadata_visualisation, nodes_dto.enable_metadata_visualisation);
             }
             if let Some(edges_dto) = vis_dto.edges {
                 let target_edges = &mut target_vis.edges;
-                merge_option!(target_edges.arrow_size, edges_dto.arrow_size);
-                merge_option!(target_edges.base_width, edges_dto.base_width);
-                merge_option!(target_edges.color, edges_dto.color, clone);
-                merge_option!(target_edges.enable_arrows, edges_dto.enable_arrows);
-                merge_option!(target_edges.opacity, edges_dto.opacity);
-                merge_option!(target_edges.width_range, edges_dto.width_range, clone);
-                merge_option!(target_edges.quality, edges_dto.quality, clone);
+                merge_copy_option!(target_edges.arrow_size, edges_dto.arrow_size);
+                merge_copy_option!(target_edges.base_width, edges_dto.base_width);
+                merge_clone_option!(target_edges.color, edges_dto.color);
+                merge_copy_option!(target_edges.enable_arrows, edges_dto.enable_arrows);
+                merge_copy_option!(target_edges.opacity, edges_dto.opacity);
+                merge_clone_option!(target_edges.width_range, edges_dto.width_range);
+                merge_clone_option!(target_edges.quality, edges_dto.quality);
                 // Note: ClientEdgeSettings DTO has extra fields not in server's EdgeSettings.
                 // They are ignored here as AppFullSettings.visualisation.edges doesn't have them.
             }
             if let Some(physics_dto) = vis_dto.physics { // physics_dto is ClientPhysicsSettings
                 let target_physics = &mut target_vis.physics; // Type: config::PhysicsSettings
-                merge_option!(target_physics.attraction_strength, physics_dto.attraction_strength);
-                merge_option!(target_physics.bounds_size, physics_dto.bounds_size);
-                merge_option!(target_physics.collision_radius, physics_dto.collision_radius);
-                merge_option!(target_physics.damping, physics_dto.damping);
-                merge_option!(target_physics.enable_bounds, physics_dto.enable_bounds);
-                merge_option!(target_physics.enabled, physics_dto.enabled);
-                merge_option!(target_physics.iterations, physics_dto.iterations);
-                merge_option!(target_physics.max_velocity, physics_dto.max_velocity);
-                merge_option!(target_physics.repulsion_strength, physics_dto.repulsion_strength);
-                merge_option!(target_physics.spring_strength, physics_dto.spring_strength);
-                merge_option!(target_physics.repulsion_distance, physics_dto.repulsion_distance);
-                merge_option!(target_physics.mass_scale, physics_dto.mass_scale);
-                merge_option!(target_physics.boundary_damping, physics_dto.boundary_damping);
+                merge_copy_option!(target_physics.attraction_strength, physics_dto.attraction_strength);
+                merge_copy_option!(target_physics.bounds_size, physics_dto.bounds_size);
+                merge_copy_option!(target_physics.collision_radius, physics_dto.collision_radius);
+                merge_copy_option!(target_physics.damping, physics_dto.damping);
+                merge_copy_option!(target_physics.enable_bounds, physics_dto.enable_bounds);
+                merge_copy_option!(target_physics.enabled, physics_dto.enabled);
+                merge_copy_option!(target_physics.iterations, physics_dto.iterations);
+                merge_copy_option!(target_physics.max_velocity, physics_dto.max_velocity);
+                merge_copy_option!(target_physics.repulsion_strength, physics_dto.repulsion_strength);
+                merge_copy_option!(target_physics.spring_strength, physics_dto.spring_strength);
+                merge_copy_option!(target_physics.repulsion_distance, physics_dto.repulsion_distance);
+                merge_copy_option!(target_physics.mass_scale, physics_dto.mass_scale);
+                merge_copy_option!(target_physics.boundary_damping, physics_dto.boundary_damping);
             }
              if let Some(rendering_dto) = vis_dto.rendering { // rendering_dto is ClientRenderingSettings
                 let target_rendering = &mut target_vis.rendering; // Type: config::RenderingSettings
-                merge_option!(target_rendering.ambient_light_intensity, rendering_dto.ambient_light_intensity);
-                merge_option!(target_rendering.background_color, rendering_dto.background_color, clone);
-                merge_option!(target_rendering.directional_light_intensity, rendering_dto.directional_light_intensity);
-                merge_option!(target_rendering.enable_ambient_occlusion, rendering_dto.enable_ambient_occlusion);
-                merge_option!(target_rendering.enable_antialiasing, rendering_dto.enable_antialiasing);
-                merge_option!(target_rendering.enable_shadows, rendering_dto.enable_shadows);
-                merge_option!(target_rendering.environment_intensity, rendering_dto.environment_intensity);
+                merge_copy_option!(target_rendering.ambient_light_intensity, rendering_dto.ambient_light_intensity);
+                merge_clone_option!(target_rendering.background_color, rendering_dto.background_color);
+                merge_copy_option!(target_rendering.directional_light_intensity, rendering_dto.directional_light_intensity);
+                merge_copy_option!(target_rendering.enable_ambient_occlusion, rendering_dto.enable_ambient_occlusion);
+                merge_copy_option!(target_rendering.enable_antialiasing, rendering_dto.enable_antialiasing);
+                merge_copy_option!(target_rendering.enable_shadows, rendering_dto.enable_shadows);
+                merge_copy_option!(target_rendering.environment_intensity, rendering_dto.environment_intensity);
                 // Client DTO has shadow_map_size, shadow_bias, context - not in server RenderingSettings
             }
              if let Some(anim_dto) = vis_dto.animations { // anim_dto is ClientAnimationSettings
                 let target_anim = &mut target_vis.animations; // Type: config::AnimationSettings
-                merge_option!(target_anim.enable_motion_blur, anim_dto.enable_motion_blur);
-                merge_option!(target_anim.enable_node_animations, anim_dto.enable_node_animations);
-                merge_option!(target_anim.motion_blur_strength, anim_dto.motion_blur_strength);
-                merge_option!(target_anim.selection_wave_enabled, anim_dto.selection_wave_enabled);
-                merge_option!(target_anim.pulse_enabled, anim_dto.pulse_enabled);
-                merge_option!(target_anim.pulse_speed, anim_dto.pulse_speed);
-                merge_option!(target_anim.pulse_strength, anim_dto.pulse_strength);
-                merge_option!(target_anim.wave_speed, anim_dto.wave_speed);
+                merge_copy_option!(target_anim.enable_motion_blur, anim_dto.enable_motion_blur);
+                merge_copy_option!(target_anim.enable_node_animations, anim_dto.enable_node_animations);
+                merge_copy_option!(target_anim.motion_blur_strength, anim_dto.motion_blur_strength);
+                merge_copy_option!(target_anim.selection_wave_enabled, anim_dto.selection_wave_enabled);
+                merge_copy_option!(target_anim.pulse_enabled, anim_dto.pulse_enabled);
+                merge_copy_option!(target_anim.pulse_speed, anim_dto.pulse_speed);
+                merge_copy_option!(target_anim.pulse_strength, anim_dto.pulse_strength);
+                merge_copy_option!(target_anim.wave_speed, anim_dto.wave_speed);
             }
              if let Some(labels_dto) = vis_dto.labels { // labels_dto is ClientLabelSettings
                 let target_labels = &mut target_vis.labels; // Type: config::LabelSettings
-                merge_option!(target_labels.desktop_font_size, labels_dto.desktop_font_size);
-                merge_option!(target_labels.enable_labels, labels_dto.enable_labels);
-                merge_option!(target_labels.text_color, labels_dto.text_color, clone);
-                merge_option!(target_labels.text_outline_color, labels_dto.text_outline_color, clone);
-                merge_option!(target_labels.text_outline_width, labels_dto.text_outline_width);
-                merge_option!(target_labels.text_resolution, labels_dto.text_resolution);
-                merge_option!(target_labels.text_padding, labels_dto.text_padding);
-                merge_option!(target_labels.billboard_mode, labels_dto.billboard_mode, clone);
+                merge_copy_option!(target_labels.desktop_font_size, labels_dto.desktop_font_size);
+                merge_copy_option!(target_labels.enable_labels, labels_dto.enable_labels);
+                merge_clone_option!(target_labels.text_color, labels_dto.text_color);
+                merge_clone_option!(target_labels.text_outline_color, labels_dto.text_outline_color);
+                merge_copy_option!(target_labels.text_outline_width, labels_dto.text_outline_width);
+                merge_copy_option!(target_labels.text_resolution, labels_dto.text_resolution);
+                merge_copy_option!(target_labels.text_padding, labels_dto.text_padding);
+                merge_clone_option!(target_labels.billboard_mode, labels_dto.billboard_mode);
             }
              if let Some(bloom_dto) = vis_dto.bloom { // bloom_dto is ClientBloomSettings
                 let target_bloom = &mut target_vis.bloom; // Type: config::BloomSettings
-                merge_option!(target_bloom.edge_bloom_strength, bloom_dto.edge_bloom_strength);
-                merge_option!(target_bloom.enabled, bloom_dto.enabled);
-                merge_option!(target_bloom.environment_bloom_strength, bloom_dto.environment_bloom_strength);
-                merge_option!(target_bloom.node_bloom_strength, bloom_dto.node_bloom_strength);
-                merge_option!(target_bloom.radius, bloom_dto.radius);
-                merge_option!(target_bloom.strength, bloom_dto.strength);
+                merge_copy_option!(target_bloom.edge_bloom_strength, bloom_dto.edge_bloom_strength);
+                merge_copy_option!(target_bloom.enabled, bloom_dto.enabled);
+                merge_copy_option!(target_bloom.environment_bloom_strength, bloom_dto.environment_bloom_strength);
+                merge_copy_option!(target_bloom.node_bloom_strength, bloom_dto.node_bloom_strength);
+                merge_copy_option!(target_bloom.radius, bloom_dto.radius);
+                merge_copy_option!(target_bloom.strength, bloom_dto.strength);
                 // Client DTO has threshold - not in server BloomSettings
             }
              if let Some(hologram_dto) = vis_dto.hologram { // hologram_dto is ClientHologramSettings
                 let target_hologram = &mut target_vis.hologram; // Type: config::HologramSettings
-                merge_option!(target_hologram.ring_count, hologram_dto.ring_count);
-                merge_option!(target_hologram.ring_color, hologram_dto.ring_color, clone);
-                merge_option!(target_hologram.ring_opacity, hologram_dto.ring_opacity);
-                merge_option!(target_hologram.sphere_sizes, hologram_dto.sphere_sizes, clone);
-                merge_option!(target_hologram.ring_rotation_speed, hologram_dto.ring_rotation_speed);
-                merge_option!(target_hologram.enable_buckminster, hologram_dto.enable_buckminster);
-                merge_option!(target_hologram.buckminster_size, hologram_dto.buckminster_size);
-                merge_option!(target_hologram.buckminster_opacity, hologram_dto.buckminster_opacity);
-                merge_option!(target_hologram.enable_geodesic, hologram_dto.enable_geodesic);
-                merge_option!(target_hologram.geodesic_size, hologram_dto.geodesic_size);
-                merge_option!(target_hologram.geodesic_opacity, hologram_dto.geodesic_opacity);
-                merge_option!(target_hologram.enable_triangle_sphere, hologram_dto.enable_triangle_sphere);
-                merge_option!(target_hologram.triangle_sphere_size, hologram_dto.triangle_sphere_size);
-                merge_option!(target_hologram.triangle_sphere_opacity, hologram_dto.triangle_sphere_opacity);
-                merge_option!(target_hologram.global_rotation_speed, hologram_dto.global_rotation_speed);
+                merge_copy_option!(target_hologram.ring_count, hologram_dto.ring_count);
+                merge_clone_option!(target_hologram.ring_color, hologram_dto.ring_color);
+                merge_copy_option!(target_hologram.ring_opacity, hologram_dto.ring_opacity);
+                merge_clone_option!(target_hologram.sphere_sizes, hologram_dto.sphere_sizes);
+                merge_copy_option!(target_hologram.ring_rotation_speed, hologram_dto.ring_rotation_speed);
+                merge_copy_option!(target_hologram.enable_buckminster, hologram_dto.enable_buckminster);
+                merge_copy_option!(target_hologram.buckminster_size, hologram_dto.buckminster_size);
+                merge_copy_option!(target_hologram.buckminster_opacity, hologram_dto.buckminster_opacity);
+                merge_copy_option!(target_hologram.enable_geodesic, hologram_dto.enable_geodesic);
+                merge_copy_option!(target_hologram.geodesic_size, hologram_dto.geodesic_size);
+                merge_copy_option!(target_hologram.geodesic_opacity, hologram_dto.geodesic_opacity);
+                merge_copy_option!(target_hologram.enable_triangle_sphere, hologram_dto.enable_triangle_sphere);
+                merge_copy_option!(target_hologram.triangle_sphere_size, hologram_dto.triangle_sphere_size);
+                merge_copy_option!(target_hologram.triangle_sphere_opacity, hologram_dto.triangle_sphere_opacity);
+                merge_copy_option!(target_hologram.global_rotation_speed, hologram_dto.global_rotation_speed);
             }
             // Camera settings are not part of AppFullSettings.visualisation, so ignore vis_dto.camera
         }
 
         if let Some(xr_dto) = client_payload.xr {
             let target_xr = &mut settings_guard.xr;
-            merge_option!(target_xr.mode, xr_dto.mode, clone);
-            merge_option!(target_xr.room_scale, xr_dto.room_scale);
-            merge_option!(target_xr.space_type, xr_dto.space_type, clone);
-            merge_option!(target_xr.quality, xr_dto.quality, clone);
-            merge_option!(target_xr.enable_hand_tracking, xr_dto.enable_hand_tracking);
-            merge_option!(target_xr.hand_mesh_enabled, xr_dto.hand_mesh_enabled);
-            merge_option!(target_xr.hand_mesh_color, xr_dto.hand_mesh_color, clone);
-            merge_option!(target_xr.hand_mesh_opacity, xr_dto.hand_mesh_opacity);
-            merge_option!(target_xr.hand_point_size, xr_dto.hand_point_size);
-            merge_option!(target_xr.hand_ray_enabled, xr_dto.hand_ray_enabled);
-            merge_option!(target_xr.hand_ray_color, xr_dto.hand_ray_color, clone);
-            merge_option!(target_xr.hand_ray_width, xr_dto.hand_ray_width);
-            merge_option!(target_xr.gesture_smoothing, xr_dto.gesture_smoothing);
-            merge_option!(target_xr.enable_haptics, xr_dto.enable_haptics);
-            merge_option!(target_xr.drag_threshold, xr_dto.drag_threshold);
-            merge_option!(target_xr.pinch_threshold, xr_dto.pinch_threshold);
-            merge_option!(target_xr.rotation_threshold, xr_dto.rotation_threshold);
-            merge_option!(target_xr.interaction_radius, xr_dto.interaction_radius);
-            merge_option!(target_xr.movement_speed, xr_dto.movement_speed);
-            merge_option!(target_xr.dead_zone, xr_dto.dead_zone);
+            merge_clone_option!(target_xr.mode, xr_dto.mode);
+            merge_copy_option!(target_xr.room_scale, xr_dto.room_scale);
+            merge_clone_option!(target_xr.space_type, xr_dto.space_type);
+            merge_clone_option!(target_xr.quality, xr_dto.quality);
+            merge_copy_option!(target_xr.enable_hand_tracking, xr_dto.enable_hand_tracking);
+            merge_copy_option!(target_xr.hand_mesh_enabled, xr_dto.hand_mesh_enabled);
+            merge_clone_option!(target_xr.hand_mesh_color, xr_dto.hand_mesh_color);
+            merge_copy_option!(target_xr.hand_mesh_opacity, xr_dto.hand_mesh_opacity);
+            merge_copy_option!(target_xr.hand_point_size, xr_dto.hand_point_size);
+            merge_copy_option!(target_xr.hand_ray_enabled, xr_dto.hand_ray_enabled);
+            merge_clone_option!(target_xr.hand_ray_color, xr_dto.hand_ray_color);
+            merge_copy_option!(target_xr.hand_ray_width, xr_dto.hand_ray_width);
+            merge_copy_option!(target_xr.gesture_smoothing, xr_dto.gesture_smoothing);
+            merge_copy_option!(target_xr.enable_haptics, xr_dto.enable_haptics);
+            merge_copy_option!(target_xr.drag_threshold, xr_dto.drag_threshold);
+            merge_copy_option!(target_xr.pinch_threshold, xr_dto.pinch_threshold);
+            merge_copy_option!(target_xr.rotation_threshold, xr_dto.rotation_threshold);
+            merge_copy_option!(target_xr.interaction_radius, xr_dto.interaction_radius);
+            merge_copy_option!(target_xr.movement_speed, xr_dto.movement_speed);
+            merge_copy_option!(target_xr.dead_zone, xr_dto.dead_zone);
             if let Some(axes_dto) = xr_dto.movement_axes {
-                merge_option!(target_xr.movement_axes.horizontal, axes_dto.horizontal);
-                merge_option!(target_xr.movement_axes.vertical, axes_dto.vertical);
+                merge_copy_option!(target_xr.movement_axes.horizontal, axes_dto.horizontal);
+                merge_copy_option!(target_xr.movement_axes.vertical, axes_dto.vertical);
             }
-            merge_option!(target_xr.enable_light_estimation, xr_dto.enable_light_estimation);
-            merge_option!(target_xr.enable_plane_detection, xr_dto.enable_plane_detection);
-            merge_option!(target_xr.enable_scene_understanding, xr_dto.enable_scene_understanding);
-            merge_option!(target_xr.plane_color, xr_dto.plane_color, clone);
-            merge_option!(target_xr.plane_opacity, xr_dto.plane_opacity);
-            merge_option!(target_xr.plane_detection_distance, xr_dto.plane_detection_distance);
-            merge_option!(target_xr.show_plane_overlay, xr_dto.show_plane_overlay);
-            merge_option!(target_xr.snap_to_floor, xr_dto.snap_to_floor);
-            merge_option!(target_xr.enable_passthrough_portal, xr_dto.enable_passthrough_portal);
-            merge_option!(target_xr.passthrough_opacity, xr_dto.passthrough_opacity);
-            merge_option!(target_xr.passthrough_brightness, xr_dto.passthrough_brightness);
-            merge_option!(target_xr.passthrough_contrast, xr_dto.passthrough_contrast);
-            merge_option!(target_xr.portal_size, xr_dto.portal_size);
-            merge_option!(target_xr.portal_edge_color, xr_dto.portal_edge_color, clone);
-            merge_option!(target_xr.portal_edge_width, xr_dto.portal_edge_width);
+            merge_copy_option!(target_xr.enable_light_estimation, xr_dto.enable_light_estimation);
+            merge_copy_option!(target_xr.enable_plane_detection, xr_dto.enable_plane_detection);
+            merge_copy_option!(target_xr.enable_scene_understanding, xr_dto.enable_scene_understanding);
+            merge_clone_option!(target_xr.plane_color, xr_dto.plane_color);
+            merge_copy_option!(target_xr.plane_opacity, xr_dto.plane_opacity);
+            merge_copy_option!(target_xr.plane_detection_distance, xr_dto.plane_detection_distance);
+            merge_copy_option!(target_xr.show_plane_overlay, xr_dto.show_plane_overlay);
+            merge_copy_option!(target_xr.snap_to_floor, xr_dto.snap_to_floor);
+            merge_copy_option!(target_xr.enable_passthrough_portal, xr_dto.enable_passthrough_portal);
+            merge_copy_option!(target_xr.passthrough_opacity, xr_dto.passthrough_opacity);
+            merge_copy_option!(target_xr.passthrough_brightness, xr_dto.passthrough_brightness);
+            merge_copy_option!(target_xr.passthrough_contrast, xr_dto.passthrough_contrast);
+            merge_copy_option!(target_xr.portal_size, xr_dto.portal_size);
+            merge_clone_option!(target_xr.portal_edge_color, xr_dto.portal_edge_color);
+            merge_copy_option!(target_xr.portal_edge_width, xr_dto.portal_edge_width);
             
             // Manual merge for Option<T> fields in XRSettings, as target_xr fields are Option<T>
             if xr_dto.enabled.is_some() { target_xr.enabled = xr_dto.enabled; }
@@ -344,32 +344,32 @@ async fn update_user_settings(
 
         if let Some(auth_dto) = client_payload.auth {
             let target_auth = &mut settings_guard.auth;
-            merge_option!(target_auth.enabled, auth_dto.enabled);
-            merge_option!(target_auth.provider, auth_dto.provider, clone);
-            merge_option!(target_auth.required, auth_dto.required);
+            merge_copy_option!(target_auth.enabled, auth_dto.enabled);
+            merge_clone_option!(target_auth.provider, auth_dto.provider);
+            merge_copy_option!(target_auth.required, auth_dto.required);
         }
 
         if let Some(sys_dto) = client_payload.system {
             let target_sys_config = &mut settings_guard.system; // ServerSystemConfigFromFile
             if let Some(ws_dto) = sys_dto.websocket {
                 let target_ws = &mut target_sys_config.websocket; // ServerFullWebSocketSettings
-                merge_option!(target_ws.reconnect_attempts, ws_dto.reconnect_attempts);
-                merge_option!(target_ws.reconnect_delay, ws_dto.reconnect_delay);
-                merge_option!(target_ws.binary_chunk_size, ws_dto.binary_chunk_size);
-                merge_option!(target_ws.compression_enabled, ws_dto.compression_enabled);
-                merge_option!(target_ws.compression_threshold, ws_dto.compression_threshold);
-                merge_option!(target_ws.update_rate, ws_dto.update_rate);
+                merge_copy_option!(target_ws.reconnect_attempts, ws_dto.reconnect_attempts);
+                merge_copy_option!(target_ws.reconnect_delay, ws_dto.reconnect_delay);
+                merge_copy_option!(target_ws.binary_chunk_size, ws_dto.binary_chunk_size);
+                merge_copy_option!(target_ws.compression_enabled, ws_dto.compression_enabled);
+                merge_copy_option!(target_ws.compression_threshold, ws_dto.compression_threshold);
+                merge_copy_option!(target_ws.update_rate, ws_dto.update_rate);
             }
             if let Some(debug_dto) = sys_dto.debug {
                 let target_debug = &mut target_sys_config.debug; // DebugSettings (server version)
-                merge_option!(target_debug.enabled, debug_dto.enabled);
-                merge_option!(target_debug.enable_data_debug, debug_dto.enable_data_debug);
-                merge_option!(target_debug.enable_websocket_debug, debug_dto.enable_websocket_debug);
-                merge_option!(target_debug.log_binary_headers, debug_dto.log_binary_headers);
-                merge_option!(target_debug.log_full_json, debug_dto.log_full_json);
+                merge_copy_option!(target_debug.enabled, debug_dto.enabled);
+                merge_copy_option!(target_debug.enable_data_debug, debug_dto.enable_data_debug);
+                merge_copy_option!(target_debug.enable_websocket_debug, debug_dto.enable_websocket_debug);
+                merge_copy_option!(target_debug.log_binary_headers, debug_dto.log_binary_headers);
+                merge_copy_option!(target_debug.log_full_json, debug_dto.log_full_json);
                 // Server DebugSettings has log_level, log_format not in ClientPayloadDebugSettings
             }
-            merge_option!(target_sys_config.persist_settings, sys_dto.persist_settings);
+            merge_copy_option!(target_sys_config.persist_settings, sys_dto.persist_settings);
             // custom_backend_url is client-only, not in ServerSystemConfigFromFile
         }
         
@@ -415,149 +415,149 @@ async fn update_user_settings(
             let target_vis = &mut target_ui_settings.visualisation; // Type: config::VisualisationSettings
             if let Some(nodes_dto) = vis_dto.nodes { // nodes_dto is ClientNodeSettings
                 let target_nodes = &mut target_vis.nodes;
-                merge_option!(target_nodes.base_color, nodes_dto.base_color, clone);
-                merge_option!(target_nodes.metalness, nodes_dto.metalness);
-                merge_option!(target_nodes.opacity, nodes_dto.opacity);
-                merge_option!(target_nodes.roughness, nodes_dto.roughness);
-                merge_option!(target_nodes.size_range, nodes_dto.size_range, clone);
-                merge_option!(target_nodes.quality, nodes_dto.quality, clone);
-                merge_option!(target_nodes.enable_instancing, nodes_dto.enable_instancing);
-                merge_option!(target_nodes.enable_hologram, nodes_dto.enable_hologram);
-                merge_option!(target_nodes.enable_metadata_shape, nodes_dto.enable_metadata_shape);
-                merge_option!(target_nodes.enable_metadata_visualisation, nodes_dto.enable_metadata_visualisation);
+                merge_clone_option!(target_nodes.base_color, nodes_dto.base_color);
+                merge_copy_option!(target_nodes.metalness, nodes_dto.metalness);
+                merge_copy_option!(target_nodes.opacity, nodes_dto.opacity);
+                merge_copy_option!(target_nodes.roughness, nodes_dto.roughness);
+                merge_clone_option!(target_nodes.size_range, nodes_dto.size_range);
+                merge_clone_option!(target_nodes.quality, nodes_dto.quality);
+                merge_copy_option!(target_nodes.enable_instancing, nodes_dto.enable_instancing);
+                merge_copy_option!(target_nodes.enable_hologram, nodes_dto.enable_hologram);
+                merge_copy_option!(target_nodes.enable_metadata_shape, nodes_dto.enable_metadata_shape);
+                merge_copy_option!(target_nodes.enable_metadata_visualisation, nodes_dto.enable_metadata_visualisation);
             }
             if let Some(edges_dto) = vis_dto.edges { // edges_dto is ClientEdgeSettings
                 let target_edges = &mut target_vis.edges;
-                merge_option!(target_edges.arrow_size, edges_dto.arrow_size);
-                merge_option!(target_edges.base_width, edges_dto.base_width);
-                merge_option!(target_edges.color, edges_dto.color, clone);
-                merge_option!(target_edges.enable_arrows, edges_dto.enable_arrows);
-                merge_option!(target_edges.opacity, edges_dto.opacity);
-                merge_option!(target_edges.width_range, edges_dto.width_range, clone);
-                merge_option!(target_edges.quality, edges_dto.quality, clone);
+                merge_copy_option!(target_edges.arrow_size, edges_dto.arrow_size);
+                merge_copy_option!(target_edges.base_width, edges_dto.base_width);
+                merge_clone_option!(target_edges.color, edges_dto.color);
+                merge_copy_option!(target_edges.enable_arrows, edges_dto.enable_arrows);
+                merge_copy_option!(target_edges.opacity, edges_dto.opacity);
+                merge_clone_option!(target_edges.width_range, edges_dto.width_range);
+                merge_clone_option!(target_edges.quality, edges_dto.quality);
                 // Extra fields in ClientEdgeSettings DTO (enable_flow_effect etc.) are ignored as they are not in config::EdgeSettings
             }
             if let Some(physics_dto) = vis_dto.physics { // physics_dto is ClientPhysicsSettings
                 let target_physics = &mut target_vis.physics; // Type: config::PhysicsSettings
-                merge_option!(target_physics.attraction_strength, physics_dto.attraction_strength);
-                merge_option!(target_physics.bounds_size, physics_dto.bounds_size);
-                merge_option!(target_physics.collision_radius, physics_dto.collision_radius);
-                merge_option!(target_physics.damping, physics_dto.damping);
-                merge_option!(target_physics.enable_bounds, physics_dto.enable_bounds);
-                merge_option!(target_physics.enabled, physics_dto.enabled);
-                merge_option!(target_physics.iterations, physics_dto.iterations);
-                merge_option!(target_physics.max_velocity, physics_dto.max_velocity);
-                merge_option!(target_physics.repulsion_strength, physics_dto.repulsion_strength);
-                merge_option!(target_physics.spring_strength, physics_dto.spring_strength);
-                merge_option!(target_physics.repulsion_distance, physics_dto.repulsion_distance);
-                merge_option!(target_physics.mass_scale, physics_dto.mass_scale);
-                merge_option!(target_physics.boundary_damping, physics_dto.boundary_damping);
+                merge_copy_option!(target_physics.attraction_strength, physics_dto.attraction_strength);
+                merge_copy_option!(target_physics.bounds_size, physics_dto.bounds_size);
+                merge_copy_option!(target_physics.collision_radius, physics_dto.collision_radius);
+                merge_copy_option!(target_physics.damping, physics_dto.damping);
+                merge_copy_option!(target_physics.enable_bounds, physics_dto.enable_bounds);
+                merge_copy_option!(target_physics.enabled, physics_dto.enabled);
+                merge_copy_option!(target_physics.iterations, physics_dto.iterations);
+                merge_copy_option!(target_physics.max_velocity, physics_dto.max_velocity);
+                merge_copy_option!(target_physics.repulsion_strength, physics_dto.repulsion_strength);
+                merge_copy_option!(target_physics.spring_strength, physics_dto.spring_strength);
+                merge_copy_option!(target_physics.repulsion_distance, physics_dto.repulsion_distance);
+                merge_copy_option!(target_physics.mass_scale, physics_dto.mass_scale);
+                merge_copy_option!(target_physics.boundary_damping, physics_dto.boundary_damping);
             }
              if let Some(rendering_dto) = vis_dto.rendering { // rendering_dto is ClientRenderingSettings
                 let target_rendering = &mut target_vis.rendering; // Type: config::RenderingSettings
-                merge_option!(target_rendering.ambient_light_intensity, rendering_dto.ambient_light_intensity);
-                merge_option!(target_rendering.background_color, rendering_dto.background_color, clone);
-                merge_option!(target_rendering.directional_light_intensity, rendering_dto.directional_light_intensity);
-                merge_option!(target_rendering.enable_ambient_occlusion, rendering_dto.enable_ambient_occlusion);
-                merge_option!(target_rendering.enable_antialiasing, rendering_dto.enable_antialiasing);
-                merge_option!(target_rendering.enable_shadows, rendering_dto.enable_shadows);
-                merge_option!(target_rendering.environment_intensity, rendering_dto.environment_intensity);
+                merge_copy_option!(target_rendering.ambient_light_intensity, rendering_dto.ambient_light_intensity);
+                merge_clone_option!(target_rendering.background_color, rendering_dto.background_color);
+                merge_copy_option!(target_rendering.directional_light_intensity, rendering_dto.directional_light_intensity);
+                merge_copy_option!(target_rendering.enable_ambient_occlusion, rendering_dto.enable_ambient_occlusion);
+                merge_copy_option!(target_rendering.enable_antialiasing, rendering_dto.enable_antialiasing);
+                merge_copy_option!(target_rendering.enable_shadows, rendering_dto.enable_shadows);
+                merge_copy_option!(target_rendering.environment_intensity, rendering_dto.environment_intensity);
                  // Extra fields in ClientRenderingSettings DTO (shadow_map_size etc.) are ignored.
             }
              if let Some(anim_dto) = vis_dto.animations { // anim_dto is ClientAnimationSettings
                 let target_anim = &mut target_vis.animations; // Type: config::AnimationSettings
-                merge_option!(target_anim.enable_motion_blur, anim_dto.enable_motion_blur);
-                merge_option!(target_anim.enable_node_animations, anim_dto.enable_node_animations);
-                merge_option!(target_anim.motion_blur_strength, anim_dto.motion_blur_strength);
-                merge_option!(target_anim.selection_wave_enabled, anim_dto.selection_wave_enabled);
-                merge_option!(target_anim.pulse_enabled, anim_dto.pulse_enabled);
-                merge_option!(target_anim.pulse_speed, anim_dto.pulse_speed);
-                merge_option!(target_anim.pulse_strength, anim_dto.pulse_strength);
-                merge_option!(target_anim.wave_speed, anim_dto.wave_speed);
+                merge_copy_option!(target_anim.enable_motion_blur, anim_dto.enable_motion_blur);
+                merge_copy_option!(target_anim.enable_node_animations, anim_dto.enable_node_animations);
+                merge_copy_option!(target_anim.motion_blur_strength, anim_dto.motion_blur_strength);
+                merge_copy_option!(target_anim.selection_wave_enabled, anim_dto.selection_wave_enabled);
+                merge_copy_option!(target_anim.pulse_enabled, anim_dto.pulse_enabled);
+                merge_copy_option!(target_anim.pulse_speed, anim_dto.pulse_speed);
+                merge_copy_option!(target_anim.pulse_strength, anim_dto.pulse_strength);
+                merge_copy_option!(target_anim.wave_speed, anim_dto.wave_speed);
             }
              if let Some(labels_dto) = vis_dto.labels { // labels_dto is ClientLabelSettings
                 let target_labels = &mut target_vis.labels; // Type: config::LabelSettings
-                merge_option!(target_labels.desktop_font_size, labels_dto.desktop_font_size);
-                merge_option!(target_labels.enable_labels, labels_dto.enable_labels);
-                merge_option!(target_labels.text_color, labels_dto.text_color, clone);
-                merge_option!(target_labels.text_outline_color, labels_dto.text_outline_color, clone);
-                merge_option!(target_labels.text_outline_width, labels_dto.text_outline_width);
-                merge_option!(target_labels.text_resolution, labels_dto.text_resolution);
-                merge_option!(target_labels.text_padding, labels_dto.text_padding);
-                merge_option!(target_labels.billboard_mode, labels_dto.billboard_mode, clone);
+                merge_copy_option!(target_labels.desktop_font_size, labels_dto.desktop_font_size);
+                merge_copy_option!(target_labels.enable_labels, labels_dto.enable_labels);
+                merge_clone_option!(target_labels.text_color, labels_dto.text_color);
+                merge_clone_option!(target_labels.text_outline_color, labels_dto.text_outline_color);
+                merge_copy_option!(target_labels.text_outline_width, labels_dto.text_outline_width);
+                merge_copy_option!(target_labels.text_resolution, labels_dto.text_resolution);
+                merge_copy_option!(target_labels.text_padding, labels_dto.text_padding);
+                merge_clone_option!(target_labels.billboard_mode, labels_dto.billboard_mode);
             }
              if let Some(bloom_dto) = vis_dto.bloom { // bloom_dto is ClientBloomSettings
                 let target_bloom = &mut target_vis.bloom; // Type: config::BloomSettings
-                merge_option!(target_bloom.edge_bloom_strength, bloom_dto.edge_bloom_strength);
-                merge_option!(target_bloom.enabled, bloom_dto.enabled);
-                merge_option!(target_bloom.environment_bloom_strength, bloom_dto.environment_bloom_strength);
-                merge_option!(target_bloom.node_bloom_strength, bloom_dto.node_bloom_strength);
-                merge_option!(target_bloom.radius, bloom_dto.radius);
-                merge_option!(target_bloom.strength, bloom_dto.strength);
+                merge_copy_option!(target_bloom.edge_bloom_strength, bloom_dto.edge_bloom_strength);
+                merge_copy_option!(target_bloom.enabled, bloom_dto.enabled);
+                merge_copy_option!(target_bloom.environment_bloom_strength, bloom_dto.environment_bloom_strength);
+                merge_copy_option!(target_bloom.node_bloom_strength, bloom_dto.node_bloom_strength);
+                merge_copy_option!(target_bloom.radius, bloom_dto.radius);
+                merge_copy_option!(target_bloom.strength, bloom_dto.strength);
                  // Extra field 'threshold' in ClientBloomSettings DTO is ignored.
             }
              if let Some(hologram_dto) = vis_dto.hologram { // hologram_dto is ClientHologramSettings
                 let target_hologram = &mut target_vis.hologram; // Type: config::HologramSettings
-                merge_option!(target_hologram.ring_count, hologram_dto.ring_count);
-                merge_option!(target_hologram.ring_color, hologram_dto.ring_color, clone);
-                merge_option!(target_hologram.ring_opacity, hologram_dto.ring_opacity);
-                merge_option!(target_hologram.sphere_sizes, hologram_dto.sphere_sizes, clone);
-                merge_option!(target_hologram.ring_rotation_speed, hologram_dto.ring_rotation_speed);
-                merge_option!(target_hologram.enable_buckminster, hologram_dto.enable_buckminster);
-                merge_option!(target_hologram.buckminster_size, hologram_dto.buckminster_size);
-                merge_option!(target_hologram.buckminster_opacity, hologram_dto.buckminster_opacity);
-                merge_option!(target_hologram.enable_geodesic, hologram_dto.enable_geodesic);
-                merge_option!(target_hologram.geodesic_size, hologram_dto.geodesic_size);
-                merge_option!(target_hologram.geodesic_opacity, hologram_dto.geodesic_opacity);
-                merge_option!(target_hologram.enable_triangle_sphere, hologram_dto.enable_triangle_sphere);
-                merge_option!(target_hologram.triangle_sphere_size, hologram_dto.triangle_sphere_size);
-                merge_option!(target_hologram.triangle_sphere_opacity, hologram_dto.triangle_sphere_opacity);
-                merge_option!(target_hologram.global_rotation_speed, hologram_dto.global_rotation_speed);
+                merge_copy_option!(target_hologram.ring_count, hologram_dto.ring_count);
+                merge_clone_option!(target_hologram.ring_color, hologram_dto.ring_color);
+                merge_copy_option!(target_hologram.ring_opacity, hologram_dto.ring_opacity);
+                merge_clone_option!(target_hologram.sphere_sizes, hologram_dto.sphere_sizes);
+                merge_copy_option!(target_hologram.ring_rotation_speed, hologram_dto.ring_rotation_speed);
+                merge_copy_option!(target_hologram.enable_buckminster, hologram_dto.enable_buckminster);
+                merge_copy_option!(target_hologram.buckminster_size, hologram_dto.buckminster_size);
+                merge_copy_option!(target_hologram.buckminster_opacity, hologram_dto.buckminster_opacity);
+                merge_copy_option!(target_hologram.enable_geodesic, hologram_dto.enable_geodesic);
+                merge_copy_option!(target_hologram.geodesic_size, hologram_dto.geodesic_size);
+                merge_copy_option!(target_hologram.geodesic_opacity, hologram_dto.geodesic_opacity);
+                merge_copy_option!(target_hologram.enable_triangle_sphere, hologram_dto.enable_triangle_sphere);
+                merge_copy_option!(target_hologram.triangle_sphere_size, hologram_dto.triangle_sphere_size);
+                merge_copy_option!(target_hologram.triangle_sphere_opacity, hologram_dto.triangle_sphere_opacity);
+                merge_copy_option!(target_hologram.global_rotation_speed, hologram_dto.global_rotation_speed);
             }
             // ClientVisualisationSettings DTO has 'camera' but UISettings.visualisation (config::VisualisationSettings) does not.
         }
 
         if let Some(xr_dto) = client_payload.xr { // xr_dto is ClientXRSettings
             let target_xr = &mut target_ui_settings.xr; // Type: config::XRSettings
-            merge_option!(target_xr.mode, xr_dto.mode, clone);
-            merge_option!(target_xr.room_scale, xr_dto.room_scale);
-            merge_option!(target_xr.space_type, xr_dto.space_type, clone);
-            merge_option!(target_xr.quality, xr_dto.quality, clone);
-            merge_option!(target_xr.enable_hand_tracking, xr_dto.enable_hand_tracking);
-            merge_option!(target_xr.hand_mesh_enabled, xr_dto.hand_mesh_enabled);
-            merge_option!(target_xr.hand_mesh_color, xr_dto.hand_mesh_color, clone);
-            merge_option!(target_xr.hand_mesh_opacity, xr_dto.hand_mesh_opacity);
-            merge_option!(target_xr.hand_point_size, xr_dto.hand_point_size);
-            merge_option!(target_xr.hand_ray_enabled, xr_dto.hand_ray_enabled);
-            merge_option!(target_xr.hand_ray_color, xr_dto.hand_ray_color, clone);
-            merge_option!(target_xr.hand_ray_width, xr_dto.hand_ray_width);
-            merge_option!(target_xr.gesture_smoothing, xr_dto.gesture_smoothing);
-            merge_option!(target_xr.enable_haptics, xr_dto.enable_haptics);
-            merge_option!(target_xr.drag_threshold, xr_dto.drag_threshold);
-            merge_option!(target_xr.pinch_threshold, xr_dto.pinch_threshold);
-            merge_option!(target_xr.rotation_threshold, xr_dto.rotation_threshold);
-            merge_option!(target_xr.interaction_radius, xr_dto.interaction_radius);
-            merge_option!(target_xr.movement_speed, xr_dto.movement_speed);
-            merge_option!(target_xr.dead_zone, xr_dto.dead_zone);
+            merge_clone_option!(target_xr.mode, xr_dto.mode);
+            merge_copy_option!(target_xr.room_scale, xr_dto.room_scale);
+            merge_clone_option!(target_xr.space_type, xr_dto.space_type);
+            merge_clone_option!(target_xr.quality, xr_dto.quality);
+            merge_copy_option!(target_xr.enable_hand_tracking, xr_dto.enable_hand_tracking);
+            merge_copy_option!(target_xr.hand_mesh_enabled, xr_dto.hand_mesh_enabled);
+            merge_clone_option!(target_xr.hand_mesh_color, xr_dto.hand_mesh_color);
+            merge_copy_option!(target_xr.hand_mesh_opacity, xr_dto.hand_mesh_opacity);
+            merge_copy_option!(target_xr.hand_point_size, xr_dto.hand_point_size);
+            merge_copy_option!(target_xr.hand_ray_enabled, xr_dto.hand_ray_enabled);
+            merge_clone_option!(target_xr.hand_ray_color, xr_dto.hand_ray_color);
+            merge_copy_option!(target_xr.hand_ray_width, xr_dto.hand_ray_width);
+            merge_copy_option!(target_xr.gesture_smoothing, xr_dto.gesture_smoothing);
+            merge_copy_option!(target_xr.enable_haptics, xr_dto.enable_haptics);
+            merge_copy_option!(target_xr.drag_threshold, xr_dto.drag_threshold);
+            merge_copy_option!(target_xr.pinch_threshold, xr_dto.pinch_threshold);
+            merge_copy_option!(target_xr.rotation_threshold, xr_dto.rotation_threshold);
+            merge_copy_option!(target_xr.interaction_radius, xr_dto.interaction_radius);
+            merge_copy_option!(target_xr.movement_speed, xr_dto.movement_speed);
+            merge_copy_option!(target_xr.dead_zone, xr_dto.dead_zone);
             if let Some(axes_dto) = xr_dto.movement_axes { // axes_dto is ClientMovementAxes
-                merge_option!(target_xr.movement_axes.horizontal, axes_dto.horizontal);
-                merge_option!(target_xr.movement_axes.vertical, axes_dto.vertical);
+                merge_copy_option!(target_xr.movement_axes.horizontal, axes_dto.horizontal);
+                merge_copy_option!(target_xr.movement_axes.vertical, axes_dto.vertical);
             }
-            merge_option!(target_xr.enable_light_estimation, xr_dto.enable_light_estimation);
-            merge_option!(target_xr.enable_plane_detection, xr_dto.enable_plane_detection);
-            merge_option!(target_xr.enable_scene_understanding, xr_dto.enable_scene_understanding);
-            merge_option!(target_xr.plane_color, xr_dto.plane_color, clone);
-            merge_option!(target_xr.plane_opacity, xr_dto.plane_opacity);
-            merge_option!(target_xr.plane_detection_distance, xr_dto.plane_detection_distance);
-            merge_option!(target_xr.show_plane_overlay, xr_dto.show_plane_overlay);
-            merge_option!(target_xr.snap_to_floor, xr_dto.snap_to_floor);
-            merge_option!(target_xr.enable_passthrough_portal, xr_dto.enable_passthrough_portal);
-            merge_option!(target_xr.passthrough_opacity, xr_dto.passthrough_opacity);
-            merge_option!(target_xr.passthrough_brightness, xr_dto.passthrough_brightness);
-            merge_option!(target_xr.passthrough_contrast, xr_dto.passthrough_contrast);
-            merge_option!(target_xr.portal_size, xr_dto.portal_size);
-            merge_option!(target_xr.portal_edge_color, xr_dto.portal_edge_color, clone);
-            merge_option!(target_xr.portal_edge_width, xr_dto.portal_edge_width);
+            merge_copy_option!(target_xr.enable_light_estimation, xr_dto.enable_light_estimation);
+            merge_copy_option!(target_xr.enable_plane_detection, xr_dto.enable_plane_detection);
+            merge_copy_option!(target_xr.enable_scene_understanding, xr_dto.enable_scene_understanding);
+            merge_clone_option!(target_xr.plane_color, xr_dto.plane_color);
+            merge_copy_option!(target_xr.plane_opacity, xr_dto.plane_opacity);
+            merge_copy_option!(target_xr.plane_detection_distance, xr_dto.plane_detection_distance);
+            merge_copy_option!(target_xr.show_plane_overlay, xr_dto.show_plane_overlay);
+            merge_copy_option!(target_xr.snap_to_floor, xr_dto.snap_to_floor);
+            merge_copy_option!(target_xr.enable_passthrough_portal, xr_dto.enable_passthrough_portal);
+            merge_copy_option!(target_xr.passthrough_opacity, xr_dto.passthrough_opacity);
+            merge_copy_option!(target_xr.passthrough_brightness, xr_dto.passthrough_brightness);
+            merge_copy_option!(target_xr.passthrough_contrast, xr_dto.passthrough_contrast);
+            merge_copy_option!(target_xr.portal_size, xr_dto.portal_size);
+            merge_clone_option!(target_xr.portal_edge_color, xr_dto.portal_edge_color);
+            merge_copy_option!(target_xr.portal_edge_width, xr_dto.portal_edge_width);
             
             // Manual merge for Option<T> fields in XRSettings
             if xr_dto.enabled.is_some() { target_xr.enabled = xr_dto.enabled; }
@@ -573,20 +573,20 @@ async fn update_user_settings(
             // target_ui_settings.system is UISystemSettings
             if let Some(ws_dto) = sys_dto.websocket { // ws_dto is ClientPayloadWebSocketSettings DTO
                 let target_ws = &mut target_ui_settings.system.websocket; // Type: config::ClientWebSocketSettings
-                merge_option!(target_ws.reconnect_attempts, ws_dto.reconnect_attempts);
-                merge_option!(target_ws.reconnect_delay, ws_dto.reconnect_delay);
-                merge_option!(target_ws.binary_chunk_size, ws_dto.binary_chunk_size);
-                merge_option!(target_ws.compression_enabled, ws_dto.compression_enabled);
-                merge_option!(target_ws.compression_threshold, ws_dto.compression_threshold);
-                merge_option!(target_ws.update_rate, ws_dto.update_rate);
+                merge_copy_option!(target_ws.reconnect_attempts, ws_dto.reconnect_attempts);
+                merge_copy_option!(target_ws.reconnect_delay, ws_dto.reconnect_delay);
+                merge_copy_option!(target_ws.binary_chunk_size, ws_dto.binary_chunk_size);
+                merge_copy_option!(target_ws.compression_enabled, ws_dto.compression_enabled);
+                merge_copy_option!(target_ws.compression_threshold, ws_dto.compression_threshold);
+                merge_copy_option!(target_ws.update_rate, ws_dto.update_rate);
             }
             if let Some(debug_dto) = sys_dto.debug { // debug_dto is ClientPayloadDebugSettings DTO
                 let target_debug = &mut target_ui_settings.system.debug; // Type: config::DebugSettings
-                merge_option!(target_debug.enabled, debug_dto.enabled);
-                merge_option!(target_debug.enable_data_debug, debug_dto.enable_data_debug);
-                merge_option!(target_debug.enable_websocket_debug, debug_dto.enable_websocket_debug);
-                merge_option!(target_debug.log_binary_headers, debug_dto.log_binary_headers);
-                merge_option!(target_debug.log_full_json, debug_dto.log_full_json);
+                merge_copy_option!(target_debug.enabled, debug_dto.enabled);
+                merge_copy_option!(target_debug.enable_data_debug, debug_dto.enable_data_debug);
+                merge_copy_option!(target_debug.enable_websocket_debug, debug_dto.enable_websocket_debug);
+                merge_copy_option!(target_debug.log_binary_headers, debug_dto.log_binary_headers);
+                merge_copy_option!(target_debug.log_full_json, debug_dto.log_full_json);
                 // Extra fields in ClientPayloadDebugSettings DTO are ignored.
                 // log_level, log_format in config::DebugSettings are not settable by regular users via this DTO.
             }
@@ -645,145 +645,145 @@ async fn update_settings( // This is the deprecated endpoint
     if let Some(vis_dto) = client_payload.visualisation {
         let target_vis = &mut settings_guard.visualisation;
         if let Some(nodes_dto) = vis_dto.nodes {
-            merge_option!(target_vis.nodes.base_color, nodes_dto.base_color, clone);
-            merge_option!(target_vis.nodes.metalness, nodes_dto.metalness);
-            merge_option!(target_vis.nodes.opacity, nodes_dto.opacity);
-            merge_option!(target_vis.nodes.roughness, nodes_dto.roughness);
-            merge_option!(target_vis.nodes.size_range, nodes_dto.size_range, clone);
-            merge_option!(target_vis.nodes.quality, nodes_dto.quality, clone);
-            merge_option!(target_vis.nodes.enable_instancing, nodes_dto.enable_instancing);
-            merge_option!(target_vis.nodes.enable_hologram, nodes_dto.enable_hologram);
-            merge_option!(target_vis.nodes.enable_metadata_shape, nodes_dto.enable_metadata_shape);
-            merge_option!(target_vis.nodes.enable_metadata_visualisation, nodes_dto.enable_metadata_visualisation);
+            merge_clone_option!(target_vis.nodes.base_color, nodes_dto.base_color);
+            merge_copy_option!(target_vis.nodes.metalness, nodes_dto.metalness);
+            merge_copy_option!(target_vis.nodes.opacity, nodes_dto.opacity);
+            merge_copy_option!(target_vis.nodes.roughness, nodes_dto.roughness);
+            merge_clone_option!(target_vis.nodes.size_range, nodes_dto.size_range);
+            merge_clone_option!(target_vis.nodes.quality, nodes_dto.quality);
+            merge_copy_option!(target_vis.nodes.enable_instancing, nodes_dto.enable_instancing);
+            merge_copy_option!(target_vis.nodes.enable_hologram, nodes_dto.enable_hologram);
+            merge_copy_option!(target_vis.nodes.enable_metadata_shape, nodes_dto.enable_metadata_shape);
+            merge_copy_option!(target_vis.nodes.enable_metadata_visualisation, nodes_dto.enable_metadata_visualisation);
         }
         if let Some(edges_dto) = vis_dto.edges {
             let target_edges = &mut target_vis.edges;
-            merge_option!(target_edges.arrow_size, edges_dto.arrow_size);
-            merge_option!(target_edges.base_width, edges_dto.base_width);
-            merge_option!(target_edges.color, edges_dto.color, clone);
-            merge_option!(target_edges.enable_arrows, edges_dto.enable_arrows);
-            merge_option!(target_edges.opacity, edges_dto.opacity);
-            merge_option!(target_edges.width_range, edges_dto.width_range, clone);
-            merge_option!(target_edges.quality, edges_dto.quality, clone);
+            merge_copy_option!(target_edges.arrow_size, edges_dto.arrow_size);
+            merge_copy_option!(target_edges.base_width, edges_dto.base_width);
+            merge_clone_option!(target_edges.color, edges_dto.color);
+            merge_copy_option!(target_edges.enable_arrows, edges_dto.enable_arrows);
+            merge_copy_option!(target_edges.opacity, edges_dto.opacity);
+            merge_clone_option!(target_edges.width_range, edges_dto.width_range);
+            merge_clone_option!(target_edges.quality, edges_dto.quality);
         }
         if let Some(physics_dto) = vis_dto.physics { // physics_dto is ClientPhysicsSettings
             let target_physics = &mut target_vis.physics; // Type: config::PhysicsSettings
-            merge_option!(target_physics.attraction_strength, physics_dto.attraction_strength);
-            merge_option!(target_physics.bounds_size, physics_dto.bounds_size);
-            merge_option!(target_physics.collision_radius, physics_dto.collision_radius);
-            merge_option!(target_physics.damping, physics_dto.damping);
-            merge_option!(target_physics.enable_bounds, physics_dto.enable_bounds);
-            merge_option!(target_physics.enabled, physics_dto.enabled);
-            merge_option!(target_physics.iterations, physics_dto.iterations);
-            merge_option!(target_physics.max_velocity, physics_dto.max_velocity);
-            merge_option!(target_physics.repulsion_strength, physics_dto.repulsion_strength);
-            merge_option!(target_physics.spring_strength, physics_dto.spring_strength);
-            merge_option!(target_physics.repulsion_distance, physics_dto.repulsion_distance);
-            merge_option!(target_physics.mass_scale, physics_dto.mass_scale);
-            merge_option!(target_physics.boundary_damping, physics_dto.boundary_damping);
+            merge_copy_option!(target_physics.attraction_strength, physics_dto.attraction_strength);
+            merge_copy_option!(target_physics.bounds_size, physics_dto.bounds_size);
+            merge_copy_option!(target_physics.collision_radius, physics_dto.collision_radius);
+            merge_copy_option!(target_physics.damping, physics_dto.damping);
+            merge_copy_option!(target_physics.enable_bounds, physics_dto.enable_bounds);
+            merge_copy_option!(target_physics.enabled, physics_dto.enabled);
+            merge_copy_option!(target_physics.iterations, physics_dto.iterations);
+            merge_copy_option!(target_physics.max_velocity, physics_dto.max_velocity);
+            merge_copy_option!(target_physics.repulsion_strength, physics_dto.repulsion_strength);
+            merge_copy_option!(target_physics.spring_strength, physics_dto.spring_strength);
+            merge_copy_option!(target_physics.repulsion_distance, physics_dto.repulsion_distance);
+            merge_copy_option!(target_physics.mass_scale, physics_dto.mass_scale);
+            merge_copy_option!(target_physics.boundary_damping, physics_dto.boundary_damping);
         }
          if let Some(rendering_dto) = vis_dto.rendering { // rendering_dto is ClientRenderingSettings
             let target_rendering = &mut target_vis.rendering; // Type: config::RenderingSettings
-            merge_option!(target_rendering.ambient_light_intensity, rendering_dto.ambient_light_intensity);
-            merge_option!(target_rendering.background_color, rendering_dto.background_color, clone);
-            merge_option!(target_rendering.directional_light_intensity, rendering_dto.directional_light_intensity);
-            merge_option!(target_rendering.enable_ambient_occlusion, rendering_dto.enable_ambient_occlusion);
-            merge_option!(target_rendering.enable_antialiasing, rendering_dto.enable_antialiasing);
-            merge_option!(target_rendering.enable_shadows, rendering_dto.enable_shadows);
-            merge_option!(target_rendering.environment_intensity, rendering_dto.environment_intensity);
+            merge_copy_option!(target_rendering.ambient_light_intensity, rendering_dto.ambient_light_intensity);
+            merge_clone_option!(target_rendering.background_color, rendering_dto.background_color);
+            merge_copy_option!(target_rendering.directional_light_intensity, rendering_dto.directional_light_intensity);
+            merge_copy_option!(target_rendering.enable_ambient_occlusion, rendering_dto.enable_ambient_occlusion);
+            merge_copy_option!(target_rendering.enable_antialiasing, rendering_dto.enable_antialiasing);
+            merge_copy_option!(target_rendering.enable_shadows, rendering_dto.enable_shadows);
+            merge_copy_option!(target_rendering.environment_intensity, rendering_dto.environment_intensity);
         }
          if let Some(anim_dto) = vis_dto.animations { // anim_dto is ClientAnimationSettings
             let target_anim = &mut target_vis.animations; // Type: config::AnimationSettings
-            merge_option!(target_anim.enable_motion_blur, anim_dto.enable_motion_blur);
-            merge_option!(target_anim.enable_node_animations, anim_dto.enable_node_animations);
-            merge_option!(target_anim.motion_blur_strength, anim_dto.motion_blur_strength);
-            merge_option!(target_anim.selection_wave_enabled, anim_dto.selection_wave_enabled);
-            merge_option!(target_anim.pulse_enabled, anim_dto.pulse_enabled);
-            merge_option!(target_anim.pulse_speed, anim_dto.pulse_speed);
-            merge_option!(target_anim.pulse_strength, anim_dto.pulse_strength);
-            merge_option!(target_anim.wave_speed, anim_dto.wave_speed);
+            merge_copy_option!(target_anim.enable_motion_blur, anim_dto.enable_motion_blur);
+            merge_copy_option!(target_anim.enable_node_animations, anim_dto.enable_node_animations);
+            merge_copy_option!(target_anim.motion_blur_strength, anim_dto.motion_blur_strength);
+            merge_copy_option!(target_anim.selection_wave_enabled, anim_dto.selection_wave_enabled);
+            merge_copy_option!(target_anim.pulse_enabled, anim_dto.pulse_enabled);
+            merge_copy_option!(target_anim.pulse_speed, anim_dto.pulse_speed);
+            merge_copy_option!(target_anim.pulse_strength, anim_dto.pulse_strength);
+            merge_copy_option!(target_anim.wave_speed, anim_dto.wave_speed);
         }
          if let Some(labels_dto) = vis_dto.labels { // labels_dto is ClientLabelSettings
             let target_labels = &mut target_vis.labels; // Type: config::LabelSettings
-            merge_option!(target_labels.desktop_font_size, labels_dto.desktop_font_size);
-            merge_option!(target_labels.enable_labels, labels_dto.enable_labels);
-            merge_option!(target_labels.text_color, labels_dto.text_color, clone);
-            merge_option!(target_labels.text_outline_color, labels_dto.text_outline_color, clone);
-            merge_option!(target_labels.text_outline_width, labels_dto.text_outline_width);
-            merge_option!(target_labels.text_resolution, labels_dto.text_resolution);
-            merge_option!(target_labels.text_padding, labels_dto.text_padding);
-            merge_option!(target_labels.billboard_mode, labels_dto.billboard_mode, clone);
+            merge_copy_option!(target_labels.desktop_font_size, labels_dto.desktop_font_size);
+            merge_copy_option!(target_labels.enable_labels, labels_dto.enable_labels);
+            merge_clone_option!(target_labels.text_color, labels_dto.text_color);
+            merge_clone_option!(target_labels.text_outline_color, labels_dto.text_outline_color);
+            merge_copy_option!(target_labels.text_outline_width, labels_dto.text_outline_width);
+            merge_copy_option!(target_labels.text_resolution, labels_dto.text_resolution);
+            merge_copy_option!(target_labels.text_padding, labels_dto.text_padding);
+            merge_clone_option!(target_labels.billboard_mode, labels_dto.billboard_mode);
         }
          if let Some(bloom_dto) = vis_dto.bloom { // bloom_dto is ClientBloomSettings
             let target_bloom = &mut target_vis.bloom; // Type: config::BloomSettings
-            merge_option!(target_bloom.edge_bloom_strength, bloom_dto.edge_bloom_strength);
-            merge_option!(target_bloom.enabled, bloom_dto.enabled);
-            merge_option!(target_bloom.environment_bloom_strength, bloom_dto.environment_bloom_strength);
-            merge_option!(target_bloom.node_bloom_strength, bloom_dto.node_bloom_strength);
-            merge_option!(target_bloom.radius, bloom_dto.radius);
-            merge_option!(target_bloom.strength, bloom_dto.strength);
+            merge_copy_option!(target_bloom.edge_bloom_strength, bloom_dto.edge_bloom_strength);
+            merge_copy_option!(target_bloom.enabled, bloom_dto.enabled);
+            merge_copy_option!(target_bloom.environment_bloom_strength, bloom_dto.environment_bloom_strength);
+            merge_copy_option!(target_bloom.node_bloom_strength, bloom_dto.node_bloom_strength);
+            merge_copy_option!(target_bloom.radius, bloom_dto.radius);
+            merge_copy_option!(target_bloom.strength, bloom_dto.strength);
         }
          if let Some(hologram_dto) = vis_dto.hologram { // hologram_dto is ClientHologramSettings
             let target_hologram = &mut target_vis.hologram; // Type: config::HologramSettings
-            merge_option!(target_hologram.ring_count, hologram_dto.ring_count);
-            merge_option!(target_hologram.ring_color, hologram_dto.ring_color, clone);
-            merge_option!(target_hologram.ring_opacity, hologram_dto.ring_opacity);
-            merge_option!(target_hologram.sphere_sizes, hologram_dto.sphere_sizes, clone);
-            merge_option!(target_hologram.ring_rotation_speed, hologram_dto.ring_rotation_speed);
-            merge_option!(target_hologram.enable_buckminster, hologram_dto.enable_buckminster);
-            merge_option!(target_hologram.buckminster_size, hologram_dto.buckminster_size);
-            merge_option!(target_hologram.buckminster_opacity, hologram_dto.buckminster_opacity);
-            merge_option!(target_hologram.enable_geodesic, hologram_dto.enable_geodesic);
-            merge_option!(target_hologram.geodesic_size, hologram_dto.geodesic_size);
-            merge_option!(target_hologram.geodesic_opacity, hologram_dto.geodesic_opacity);
-            merge_option!(target_hologram.enable_triangle_sphere, hologram_dto.enable_triangle_sphere);
-            merge_option!(target_hologram.triangle_sphere_size, hologram_dto.triangle_sphere_size);
-            merge_option!(target_hologram.triangle_sphere_opacity, hologram_dto.triangle_sphere_opacity);
-            merge_option!(target_hologram.global_rotation_speed, hologram_dto.global_rotation_speed);
+            merge_copy_option!(target_hologram.ring_count, hologram_dto.ring_count);
+            merge_clone_option!(target_hologram.ring_color, hologram_dto.ring_color);
+            merge_copy_option!(target_hologram.ring_opacity, hologram_dto.ring_opacity);
+            merge_clone_option!(target_hologram.sphere_sizes, hologram_dto.sphere_sizes);
+            merge_copy_option!(target_hologram.ring_rotation_speed, hologram_dto.ring_rotation_speed);
+            merge_copy_option!(target_hologram.enable_buckminster, hologram_dto.enable_buckminster);
+            merge_copy_option!(target_hologram.buckminster_size, hologram_dto.buckminster_size);
+            merge_copy_option!(target_hologram.buckminster_opacity, hologram_dto.buckminster_opacity);
+            merge_copy_option!(target_hologram.enable_geodesic, hologram_dto.enable_geodesic);
+            merge_copy_option!(target_hologram.geodesic_size, hologram_dto.geodesic_size);
+            merge_copy_option!(target_hologram.geodesic_opacity, hologram_dto.geodesic_opacity);
+            merge_copy_option!(target_hologram.enable_triangle_sphere, hologram_dto.enable_triangle_sphere);
+            merge_copy_option!(target_hologram.triangle_sphere_size, hologram_dto.triangle_sphere_size);
+            merge_copy_option!(target_hologram.triangle_sphere_opacity, hologram_dto.triangle_sphere_opacity);
+            merge_copy_option!(target_hologram.global_rotation_speed, hologram_dto.global_rotation_speed);
         }
     }
 
     if let Some(xr_dto) = client_payload.xr {
         let target_xr = &mut settings_guard.xr;
-        merge_option!(target_xr.mode, xr_dto.mode, clone);
-        merge_option!(target_xr.room_scale, xr_dto.room_scale);
-        merge_option!(target_xr.space_type, xr_dto.space_type, clone);
-        merge_option!(target_xr.quality, xr_dto.quality, clone);
-        merge_option!(target_xr.enable_hand_tracking, xr_dto.enable_hand_tracking);
-        merge_option!(target_xr.hand_mesh_enabled, xr_dto.hand_mesh_enabled);
-        merge_option!(target_xr.hand_mesh_color, xr_dto.hand_mesh_color, clone);
-        merge_option!(target_xr.hand_mesh_opacity, xr_dto.hand_mesh_opacity);
-        merge_option!(target_xr.hand_point_size, xr_dto.hand_point_size);
-        merge_option!(target_xr.hand_ray_enabled, xr_dto.hand_ray_enabled);
-        merge_option!(target_xr.hand_ray_color, xr_dto.hand_ray_color, clone);
-        merge_option!(target_xr.hand_ray_width, xr_dto.hand_ray_width);
-        merge_option!(target_xr.gesture_smoothing, xr_dto.gesture_smoothing);
-        merge_option!(target_xr.enable_haptics, xr_dto.enable_haptics);
-        merge_option!(target_xr.drag_threshold, xr_dto.drag_threshold);
-        merge_option!(target_xr.pinch_threshold, xr_dto.pinch_threshold);
-        merge_option!(target_xr.rotation_threshold, xr_dto.rotation_threshold);
-        merge_option!(target_xr.interaction_radius, xr_dto.interaction_radius);
-        merge_option!(target_xr.movement_speed, xr_dto.movement_speed);
-        merge_option!(target_xr.dead_zone, xr_dto.dead_zone);
+        merge_clone_option!(target_xr.mode, xr_dto.mode);
+        merge_copy_option!(target_xr.room_scale, xr_dto.room_scale);
+        merge_clone_option!(target_xr.space_type, xr_dto.space_type);
+        merge_clone_option!(target_xr.quality, xr_dto.quality);
+        merge_copy_option!(target_xr.enable_hand_tracking, xr_dto.enable_hand_tracking);
+        merge_copy_option!(target_xr.hand_mesh_enabled, xr_dto.hand_mesh_enabled);
+        merge_clone_option!(target_xr.hand_mesh_color, xr_dto.hand_mesh_color);
+        merge_copy_option!(target_xr.hand_mesh_opacity, xr_dto.hand_mesh_opacity);
+        merge_copy_option!(target_xr.hand_point_size, xr_dto.hand_point_size);
+        merge_copy_option!(target_xr.hand_ray_enabled, xr_dto.hand_ray_enabled);
+        merge_clone_option!(target_xr.hand_ray_color, xr_dto.hand_ray_color);
+        merge_copy_option!(target_xr.hand_ray_width, xr_dto.hand_ray_width);
+        merge_copy_option!(target_xr.gesture_smoothing, xr_dto.gesture_smoothing);
+        merge_copy_option!(target_xr.enable_haptics, xr_dto.enable_haptics);
+        merge_copy_option!(target_xr.drag_threshold, xr_dto.drag_threshold);
+        merge_copy_option!(target_xr.pinch_threshold, xr_dto.pinch_threshold);
+        merge_copy_option!(target_xr.rotation_threshold, xr_dto.rotation_threshold);
+        merge_copy_option!(target_xr.interaction_radius, xr_dto.interaction_radius);
+        merge_copy_option!(target_xr.movement_speed, xr_dto.movement_speed);
+        merge_copy_option!(target_xr.dead_zone, xr_dto.dead_zone);
         if let Some(axes_dto) = xr_dto.movement_axes {
-            merge_option!(target_xr.movement_axes.horizontal, axes_dto.horizontal);
-            merge_option!(target_xr.movement_axes.vertical, axes_dto.vertical);
+            merge_copy_option!(target_xr.movement_axes.horizontal, axes_dto.horizontal);
+            merge_copy_option!(target_xr.movement_axes.vertical, axes_dto.vertical);
         }
-        merge_option!(target_xr.enable_light_estimation, xr_dto.enable_light_estimation);
-        merge_option!(target_xr.enable_plane_detection, xr_dto.enable_plane_detection);
-        merge_option!(target_xr.enable_scene_understanding, xr_dto.enable_scene_understanding);
-        merge_option!(target_xr.plane_color, xr_dto.plane_color, clone);
-        merge_option!(target_xr.plane_opacity, xr_dto.plane_opacity);
-        merge_option!(target_xr.plane_detection_distance, xr_dto.plane_detection_distance);
-        merge_option!(target_xr.show_plane_overlay, xr_dto.show_plane_overlay);
-        merge_option!(target_xr.snap_to_floor, xr_dto.snap_to_floor);
-        merge_option!(target_xr.enable_passthrough_portal, xr_dto.enable_passthrough_portal);
-        merge_option!(target_xr.passthrough_opacity, xr_dto.passthrough_opacity);
-        merge_option!(target_xr.passthrough_brightness, xr_dto.passthrough_brightness);
-        merge_option!(target_xr.passthrough_contrast, xr_dto.passthrough_contrast);
-        merge_option!(target_xr.portal_size, xr_dto.portal_size);
-        merge_option!(target_xr.portal_edge_color, xr_dto.portal_edge_color, clone);
-        merge_option!(target_xr.portal_edge_width, xr_dto.portal_edge_width);
+        merge_copy_option!(target_xr.enable_light_estimation, xr_dto.enable_light_estimation);
+        merge_copy_option!(target_xr.enable_plane_detection, xr_dto.enable_plane_detection);
+        merge_copy_option!(target_xr.enable_scene_understanding, xr_dto.enable_scene_understanding);
+        merge_clone_option!(target_xr.plane_color, xr_dto.plane_color);
+        merge_copy_option!(target_xr.plane_opacity, xr_dto.plane_opacity);
+        merge_copy_option!(target_xr.plane_detection_distance, xr_dto.plane_detection_distance);
+        merge_copy_option!(target_xr.show_plane_overlay, xr_dto.show_plane_overlay);
+        merge_copy_option!(target_xr.snap_to_floor, xr_dto.snap_to_floor);
+        merge_copy_option!(target_xr.enable_passthrough_portal, xr_dto.enable_passthrough_portal);
+        merge_copy_option!(target_xr.passthrough_opacity, xr_dto.passthrough_opacity);
+        merge_copy_option!(target_xr.passthrough_brightness, xr_dto.passthrough_brightness);
+        merge_copy_option!(target_xr.passthrough_contrast, xr_dto.passthrough_contrast);
+        merge_copy_option!(target_xr.portal_size, xr_dto.portal_size);
+        merge_clone_option!(target_xr.portal_edge_color, xr_dto.portal_edge_color);
+        merge_copy_option!(target_xr.portal_edge_width, xr_dto.portal_edge_width);
         
         // Manual merge for Option<T> fields in XRSettings
         if xr_dto.enabled.is_some() { target_xr.enabled = xr_dto.enabled; }
@@ -797,31 +797,31 @@ async fn update_settings( // This is the deprecated endpoint
 
 if let Some(auth_dto) = client_payload.auth {
         let target_auth = &mut settings_guard.auth;
-        merge_option!(target_auth.enabled, auth_dto.enabled);
-        merge_option!(target_auth.provider, auth_dto.provider, clone);
-        merge_option!(target_auth.required, auth_dto.required);
+        merge_copy_option!(target_auth.enabled, auth_dto.enabled);
+        merge_clone_option!(target_auth.provider, auth_dto.provider);
+        merge_copy_option!(target_auth.required, auth_dto.required);
     }
 
     if let Some(sys_dto) = client_payload.system {
         let target_sys_config = &mut settings_guard.system; // ServerSystemConfigFromFile
         if let Some(ws_dto) = sys_dto.websocket {
             let target_ws = &mut target_sys_config.websocket; // ServerFullWebSocketSettings
-            merge_option!(target_ws.reconnect_attempts, ws_dto.reconnect_attempts);
-            merge_option!(target_ws.reconnect_delay, ws_dto.reconnect_delay);
-            merge_option!(target_ws.binary_chunk_size, ws_dto.binary_chunk_size);
-            merge_option!(target_ws.compression_enabled, ws_dto.compression_enabled);
-            merge_option!(target_ws.compression_threshold, ws_dto.compression_threshold);
-            merge_option!(target_ws.update_rate, ws_dto.update_rate);
+            merge_copy_option!(target_ws.reconnect_attempts, ws_dto.reconnect_attempts);
+            merge_copy_option!(target_ws.reconnect_delay, ws_dto.reconnect_delay);
+            merge_copy_option!(target_ws.binary_chunk_size, ws_dto.binary_chunk_size);
+            merge_copy_option!(target_ws.compression_enabled, ws_dto.compression_enabled);
+            merge_copy_option!(target_ws.compression_threshold, ws_dto.compression_threshold);
+            merge_copy_option!(target_ws.update_rate, ws_dto.update_rate);
         }
         if let Some(debug_dto) = sys_dto.debug {
             let target_debug = &mut target_sys_config.debug; // DebugSettings (server version)
-            merge_option!(target_debug.enabled, debug_dto.enabled);
-            merge_option!(target_debug.enable_data_debug, debug_dto.enable_data_debug);
-            merge_option!(target_debug.enable_websocket_debug, debug_dto.enable_websocket_debug);
-            merge_option!(target_debug.log_binary_headers, debug_dto.log_binary_headers);
-            merge_option!(target_debug.log_full_json, debug_dto.log_full_json);
+            merge_copy_option!(target_debug.enabled, debug_dto.enabled);
+            merge_copy_option!(target_debug.enable_data_debug, debug_dto.enable_data_debug);
+            merge_copy_option!(target_debug.enable_websocket_debug, debug_dto.enable_websocket_debug);
+            merge_copy_option!(target_debug.log_binary_headers, debug_dto.log_binary_headers);
+            merge_copy_option!(target_debug.log_full_json, debug_dto.log_full_json);
         }
-        merge_option!(target_sys_config.persist_settings, sys_dto.persist_settings);
+        merge_copy_option!(target_sys_config.persist_settings, sys_dto.persist_settings);
     }
     
     // AI settings merge (all are Option<Struct> on AppFullSettings)
