@@ -23,7 +23,10 @@ export_docker_config() {
     echo -e "\n\n## Docker Configuration\n" >> codebase.txt
     
     # Add each file with proper headers
-    for file in "../docker-compose.yml" "../Dockerfile" "../nginx.conf" "../data/settings.yaml" "../.dockerignore"; do
+    for file in "../docker-compose.yml" "../docker-compose.dev.yml" "../docker-compose.production.yml" \
+                "../Dockerfile" "../Dockerfile.dev" "../Dockerfile.production" \
+                "../nginx.conf" "../nginx.dev.conf" \
+                "../data/settings.yaml" "../.dockerignore"; do
         if [ -f "$file" ]; then
             echo -e "\n### $(basename $file)\n" >> codebase.txt
             cat "$file" >> codebase.txt
@@ -34,9 +37,9 @@ export_docker_config() {
 
     # Add package management and config files
     echo -e "\n\n## Configuration Files\n" >> codebase.txt
-    for file in "../Cargo.toml" "../client/package.json" "../vite.config.ts" "../.env.template" \
+    for file in "../Cargo.toml" "../client/package.json" "../client/vite.config.ts" "../.env.template" \
                 "../tsconfig.json" "../.eslintrc" "../.gitignore" \
-                "../client/tsconfig.json" "../scripts/launch-docker.sh" "../scripts/start.sh"; do
+                "../client/tsconfig.json"; do
         if [ -f "$file" ]; then
             echo -e "\n### $(basename $file)\n" >> codebase.txt
             cat "$file" >> codebase.txt
@@ -55,6 +58,38 @@ export_docker_config() {
             fi
         done
     fi
+
+    echo -e "\n\n## Important Scripts\n" >> codebase.txt
+    for script_file in "../scripts/dev-entrypoint.sh" "../scripts/dev.sh" \
+                       "../scripts/launch-production.sh" "../scripts/start.sh" \
+                       "../scripts/compile_ptx.sh" "../scripts/diagnostics.sh" \
+                       "../scripts/check-rust-logs.sh" "../scripts/check-vite.sh" \
+                       "../scripts/test.sh" "../scripts/generateCodebase.sh"; do
+        if [ -f "$script_file" ]; then
+            echo -e "\n### scripts/$(basename $script_file)\n" >> codebase.txt
+            cat "$script_file" >> codebase.txt
+        else
+            echo -e "\n### scripts/$(basename $script_file) - MISSING\n" >> codebase.txt
+        fi
+    done
+
+    # Vite environment files (example, adjust if actual files differ)
+    echo -e "\n\n## Vite Environment Configuration\n" >> codebase.txt
+    # Add client .env files if they exist and are relevant (usually gitignored)
+    # For now, we'll just note that vite.config.ts and .env.template are captured.
+    # If specific .env files like .env.development or .env.production exist at client root, add them.
+    echo -e "Vite configuration is primarily in 'client/vite.config.ts' (captured above)." >> codebase.txt
+    echo -e "Environment variable templates are in '.env.template' (captured above)." >> codebase.txt
+    # Example for specific vite env files if they were used:
+    # for vite_env_file in "../client/.env.development" "../client/.env.production"; do
+    #     if [ -f "$vite_env_file" ]; then
+    #         echo -e "\n### client/$(basename $vite_env_file)\n" >> codebase.txt
+    #         cat "$vite_env_file" >> codebase.txt
+    #     else
+    #         echo -e "\n### client/$(basename $vite_env_file) - MISSING (or not applicable)\n" >> codebase.txt
+    #     fi
+    # done
+
 }
 
 # Export Docker network information

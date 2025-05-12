@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useState, useMemo } from 'react'
+import React, { useRef, useEffect, useState, useMemo, useCallback } from 'react'
 import { useThree, useFrame } from '@react-three/fiber'
 import { Line } from '@react-three/drei/core/Line'
 // Assuming Text and Billboard are still directly available, if not adjust path later
@@ -51,21 +51,45 @@ const GraphManager = () => {
   const settings = useSettingsStore(state => state.settings)
 
   useEffect(() => {
-    if (!meshRef.current) return
-    
-    // Initialize all matrices to prevent undefined states
-    const mesh = meshRef.current
-    const count = graphData.nodes.length
-    mesh.count = count
-    
-    // Initialize all instances with identity matrix
-    for (let i = 0; i < count; i++) {
-      mesh.setMatrixAt(i, tempMatrix.identity())
+    if (meshRef.current) {
+      const count = graphData.nodes.length;
+      const mesh = meshRef.current;
+      mesh.count = count; // Set the count
+
+      if (count > 0) {
+        // Check if matrices need initialization (e.g., if they are identity)
+        // This avoids re-initializing if positions are already set by useFrame
+        let needsInitialization = false;
+        const identityMatrix = new THREE.Matrix4(); // Re-use for comparison
+        for (let i = 0; i < count; i++) {
+          const currentMatrix = new THREE.Matrix4();
+          // Ensure mesh has enough allocated matrices before calling getMatrixAt
+          if (i < mesh.instanceMatrix.array.length / 16) { // 16 floats per matrix
+            mesh.getMatrixAt(i, currentMatrix);
+            if (currentMatrix.equals(identityMatrix)) {
+              needsInitialization = true;
+              break;
+            }
+          } else {
+            // If count increased beyond allocated, it needs initialization
+            needsInitialization = true;
+            break;
+          }
+        }
+
+        if (needsInitialization) {
+          for (let i = 0; i < count; i++) {
+            // Set to identity or a default non-zero position if appropriate
+            mesh.setMatrixAt(i, tempMatrix.identity());
+          }
+        }
+      }
+      mesh.instanceMatrix.needsUpdate = true;
+      if (debugState.isEnabled()) {
+        logger.debug(`InstancedMesh count updated to: ${count}`);
+      }
     }
-    mesh.instanceMatrix.needsUpdate = true
-    
-    console.debug(`Initialized ${count} instances`)
-  }, [graphData.nodes.length])
+  }, [graphData.nodes.length, tempMatrix]);
 
   // Separate matrix update function for better performance
   const updateInstanceMatrix = (
@@ -116,33 +140,17 @@ const GraphManager = () => {
 
   // Update node positions from binary data
   // Update node positions - Modified to NOT directly update mesh matrices from WebSocket data
-  const updateNodePositions = (positions: Float32Array) => {
-    // This function is called when position updates arrive via WebSocket.
-    // Based on feedback, this data might not be the absolute coordinates.
-    // We will rely on the useFrame loop to update matrices from the graphData state.
-    // We might need to use this data differently later (e.g., updating state or metadata).
-
-    const mesh = meshRef.current
-    if (!mesh) return
-
-    // We might still need to update the count based on WebSocket data if nodes appear/disappear
-    const nodeCount = positions.length / 4
-    if (mesh.count !== nodeCount) {
-        mesh.count = nodeCount;
-        // Mark matrix as needing update if count changes, although positions are set in useFrame
-        mesh.instanceMatrix.needsUpdate = true;
-    }
-
-    // TODO: Determine the correct way to use the 'positions' data.
-    // For now, we log it if debugging is enabled.
+  const updateNodePositions = useCallback((positions: Float32Array) => {
+    // This function is called by GraphDataManager when WebSocket binary data arrives.
+    // GraphDataManager is responsible for updating the central 'graphData' state.
+    // This component (GraphManager) re-renders when 'graphData' (from useState) changes.
+    // The useFrame hook then uses the updated 'graphData' to set instance matrices.
+    // Therefore, this callback doesn't need to directly manipulate meshRef.current.
     if (debugState.isEnabled()) {
-      // Log only a small sample to avoid flooding console
-      const sample = positions.slice(0, 12); // Log first 3 nodes' data
-      logger.debug('Received position update data (sample):', sample);
+      const sample = positions.slice(0, Math.min(12, positions.length)); // Log first few nodes
+      logger.debug('GraphManager received raw position update data (sample):', sample);
     }
-
-    // Do NOT update mesh matrices here. Let useFrame handle it based on graphData state.
-  }
+  }, []); // No dependencies needed if it's just logging or relying on external state updates.
 
   useFrame(() => {
     if (!meshRef.current) return

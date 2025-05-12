@@ -110,7 +110,18 @@ const AppPage: React.FC = () => { // Renamed component
           <Canvas
             className="three-canvas"
             style={{ display: 'block', width: '100%', height: '100%' }}
-            camera={{ position: [0, 10, 50], fov: 75, near: 0.1, far: 2000 }}
+            camera={{
+              fov: useSettingsStore.getState().settings.visualisation?.camera?.fov ?? 75,
+              near: useSettingsStore.getState().settings.visualisation?.camera?.near ?? 0.1,
+              far: useSettingsStore.getState().settings.visualisation?.camera?.far ?? 2000,
+              position: useSettingsStore.getState().settings.visualisation?.camera?.position
+                ? [
+                    useSettingsStore.getState().settings.visualisation.camera.position.x,
+                    useSettingsStore.getState().settings.visualisation.camera.position.y,
+                    useSettingsStore.getState().settings.visualisation.camera.position.z,
+                  ]
+                : [0, 10, 50],
+            }}
             gl={{ antialias: true, alpha: true, powerPreference: 'high-performance' }}
             dpr={[1, 2]}
             shadows

@@ -158,6 +158,13 @@ controllerRayColor?: string; // Add this line
 }
 
 // Visualisation settings
+export interface CameraSettings {
+  fov: number;
+  near: number;
+  far: number;
+  position: { x: number; y: number; z: number };
+  lookAt?: { x: number; y: number; z: number }; // lookAt is often dynamic
+}
 export interface VisualisationSettings {
   nodes: NodeSettings;
   edges: EdgeSettings;
@@ -167,6 +174,7 @@ export interface VisualisationSettings {
   labels: LabelSettings;
   bloom: BloomSettings;
   hologram: HologramSettings;
+  camera?: CameraSettings;
 }
 
 // System settings
@@ -174,6 +182,7 @@ export interface SystemSettings {
   websocket: WebSocketSettings;
   debug: DebugSettings;
   persistSettings: boolean; // Added to control server-side persistence
+  customBackendUrl?: string; // Add if missing
 }
 
 // RAGFlow settings

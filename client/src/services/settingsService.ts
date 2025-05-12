@@ -31,7 +31,7 @@ class SettingsService {
       const rawSettings = await apiService.get<Record<string, any>>('/user-settings');
       
       // Convert from snake_case to camelCase
-      const settings = convertSnakeToCamelCase(rawSettings) as Settings;
+      const settings = rawSettings as Settings; // Expect camelCase from server
       
       if (debugState.isEnabled()) {
         logger.info('Fetched settings from server:', { settings });
@@ -56,7 +56,7 @@ class SettingsService {
   ): Promise<Settings | null> {
     try {
       // Convert settings to snake_case for the server
-      const settingsToSend = convertCamelToSnakeCase(settings);
+      const settingsToSend = settings; // Send camelCase directly
       
       if (debugState.isEnabled()) {
         logger.info('Saving settings to server:', { settingsToSend });
@@ -70,7 +70,7 @@ class SettingsService {
       );
       
       // Convert the response from snake_case to camelCase
-      const updatedSettings = convertSnakeToCamelCase(rawUpdatedSettings) as Settings;
+      const updatedSettings = rawUpdatedSettings as Settings; // Expect camelCase from server
       
       if (debugState.isEnabled()) {
         logger.info('Settings saved successfully:', { updatedSettings });

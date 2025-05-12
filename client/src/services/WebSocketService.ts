@@ -39,42 +39,54 @@ class WebSocketService {
 
     // Update URL when settings change
     this.updateFromSettings();
+
+    // Subscribe to store changes and manually check customBackendUrl
+    let previousCustomBackendUrl = useSettingsStore.getState().settings.system.customBackendUrl;
+    useSettingsStore.subscribe((state) => {
+      const newCustomBackendUrl = state.settings.system.customBackendUrl;
+      if (newCustomBackendUrl !== previousCustomBackendUrl) {
+        if (debugState.isEnabled()) {
+          logger.info(`customBackendUrl setting changed from "${previousCustomBackendUrl}" to "${newCustomBackendUrl}", re-evaluating WebSocket URL.`);
+        }
+        previousCustomBackendUrl = newCustomBackendUrl; // Update for next comparison
+        this.updateFromSettings(); // Sets this.url based on the latest state
+        if (this.isConnected || (this.socket && this.socket.readyState === WebSocket.CONNECTING)) {
+          logger.info('Reconnecting WebSocket due to customBackendUrl change.');
+          this.close();
+          setTimeout(() => {
+            this.connect().catch(error => {
+              logger.error('Failed to reconnect WebSocket after URL change:', createErrorMetadata(error));
+            });
+          }, 100);
+        }
+      }
+    });
   }
 
   private updateFromSettings(): void {
     const settings = useSettingsStore.getState().settings;
+    let newUrl = this.determineWebSocketUrl(); // Default to relative path
 
-    // Update reconnect settings
     if (settings.system?.websocket) {
       this.reconnectInterval = settings.system.websocket.reconnectDelay || 2000;
       this.maxReconnectAttempts = settings.system.websocket.reconnectAttempts || 10;
     }
 
-    // Custom backend URL logic removed as property no longer exists
-    /*
-    if (settings.system?.customBackendUrl) {
-      const customUrl = settings.system.customBackendUrl;
-      if (customUrl && customUrl.trim() !== '') {
-        // Determine protocol (ws or wss)
-        const protocol = customUrl.startsWith('https://') ? 'wss://' : 'ws://';
-        // Extract host and port
-        const hostWithProtocol = customUrl.replace(/^(https?:\/\/)?/, '');
-        // Set the WebSocket URL
-        this.url = `${protocol}${hostWithProtocol}/wss`;
-
-        if (debugState.isEnabled()) {
-          logger.info(`Using custom backend WebSocket URL: ${this.url}`);
-        }
-        return; // Return early if custom URL is set
+    if (settings.system?.customBackendUrl && settings.system.customBackendUrl.trim() !== '') {
+      const customUrl = settings.system.customBackendUrl.trim();
+      const protocol = customUrl.startsWith('https://') ? 'wss://' : 'ws://';
+      const hostAndPath = customUrl.replace(/^(https?:\/\/)?/, '');
+      newUrl = `${protocol}${hostAndPath.replace(/\/$/, '')}/wss`; // Ensure /wss and handle trailing slash
+      if (debugState.isEnabled()) {
+        logger.info(`Using custom backend WebSocket URL: ${newUrl}`);
+      }
+    } else {
+      if (debugState.isEnabled()) {
+        logger.info(`Using default WebSocket URL: ${newUrl}`);
       }
     }
-    */
-
-    // Fall back to default URL if custom URL logic didn't set it
-    // This line might be redundant if the constructor already sets it,
-    // but ensures it's set if the custom logic block is removed/modified.
-    this.url = this.determineWebSocketUrl();
-  } // <-- Correct closing brace for updateFromSettings
+    this.url = newUrl;
+  }
 
   public static getInstance(): WebSocketService {
     if (!WebSocketService.instance) {

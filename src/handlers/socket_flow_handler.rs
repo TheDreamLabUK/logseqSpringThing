@@ -450,7 +450,7 @@ impl Actor for SocketFlowServer {
 // Update signature to accept AppFullSettings
 async fn fetch_nodes(
     app_state: Arc<AppState>,
-    settings: Arc<RwLock<AppFullSettings>> // Changed to AppFullSettings
+    settings_arc: Arc<RwLock<AppFullSettings>> // Renamed for clarity
 ) -> Option<(Vec<(u16, BinaryNodeData)>, bool)> {
     // Fetch raw nodes asynchronously
     let raw_nodes = app_state.graph_service.get_node_positions().await;
@@ -460,13 +460,11 @@ async fn fetch_nodes(
         return None;
     }
 
-    // Check if detailed debugging should be enabled from AppFullSettings
-    let detailed_debug = if let Ok(settings_read) = settings.try_read() {
-        settings_read.system.debug.enabled &&
-        settings_read.system.debug.enable_websocket_debug // Access debug settings correctly
-    } else {
-        false
-    };
+    // Acquire the read lock asynchronously
+    let settings_read = settings_arc.read().await; // <--- USE ASYNC READ LOCK
+    let detailed_debug = settings_read.system.debug.enabled &&
+                         settings_read.system.debug.enable_websocket_debug;
+    drop(settings_read); // Release the lock as soon as it's no longer needed
 
     if detailed_debug {
         debug!("Raw nodes count: {}, showing first 5 nodes IDs:", raw_nodes.len());
