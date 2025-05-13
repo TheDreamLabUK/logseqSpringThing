@@ -21,7 +21,7 @@ import CameraController from '../features/visualisation/components/CameraControl
 import '../types/react-three-fiber.d.ts';
 // Ensure Three.js types are properly loaded
 // THREE is used indirectly through JSX elements
-import LowerControlPanel from '../components/layout/LowerControlPanel'; // Import the new component
+import ControlPanel from '../components/layout/ControlPanel'; // Corrected import name
 
 const logger = createLogger('SimpleGraphPage');
 
@@ -103,10 +103,10 @@ const AppPage: React.FC = () => { // Renamed component
 
     // Structure for fixed canvas and scrollable panel
     return (
-      // Main container: Full height, flex column, overflow hidden to prevent whole page scroll
-      <div className="flex flex-col w-full h-screen overflow-hidden bg-gray-900 text-white" style={{ backgroundColor: '#111827', color: 'white' }}>
-        {/* Main Canvas Container - Fixed height */}
-        <div className="relative flex-shrink-0" style={{ height: '70vh' }}> {/* Reduced height to give more space to settings */}
+      // Main container: Full height, flex row, overflow hidden to prevent whole page scroll
+      <div className="flex flex-row w-full h-screen overflow-hidden bg-gray-900 text-white" style={{ backgroundColor: '#111827', color: 'white' }}>
+        {/* Viewport Area - Takes up most of the width */}
+        <div className="relative flex-1 min-w-0 min-h-0 h-full"> {/* flex-1 allows it to grow and shrink, min-h-0 is key for canvas height */}
           <Canvas
             className="three-canvas"
             style={{ display: 'block', width: '100%', height: '100%' }}
@@ -166,10 +166,10 @@ const AppPage: React.FC = () => { // Renamed component
           {/* Toggle button removed - settings panel is always visible */}
         </div>
 
-        {/* Lower Panel Container - Takes remaining space (flex-1) */}
-        <div className="flex-1 w-full border-t border-gray-700 bg-gray-900 text-white" style={{ backgroundColor: '#111827', color: 'white' }}> {/* Removed overflow-y-auto to let child components handle scrolling */}
-          {/* Render the new LowerControlPanel component */}
-          <LowerControlPanel />
+        {/* Sidebar Area (LowerControlPanel) - Explicit basis, full height, no shrinking */}
+        <div className="flex-shrink-0 basis-[400px] h-full border-l border-gray-700 bg-gray-900 text-white flex flex-col" style={{ backgroundColor: '#111827', color: 'white' }}>
+          {/* Render the new ControlPanel component */}
+          <ControlPanel /> {/* ControlPanel should manage its own internal height and scrolling */}
         </div>
       </div>
     );

@@ -10,7 +10,8 @@ import { useSettingsStore } from '../store/settingsStore'
 import { createLogger, createErrorMetadata } from '../utils/logger'
 // Removed SimpleThreeWindowPage import as it's not used
 // Removed SimpleThreeWindowPage import
-import SimpleGraphPage from '../pages/AppPage' // Corrected path: SimpleGraphPage is exported from AppPage.tsx
+// import SimpleGraphPage from '../pages/AppPage' // Corrected path: SimpleGraphPage is exported from AppPage.tsx
+import TwoPaneLayout from './TwoPaneLayout'; // Added import for TwoPaneLayout
 
 import '../styles/tokens.css'
 // Removed layout.css import
@@ -92,13 +93,11 @@ function App() {
         <ApplicationModeProvider>
           {/* Removed PanelProvider */}
           <SafeXRProvider>
-            {/* Simplified structure: Render SimpleGraphPage directly */}
-            <div className="app-container" style={{ width: '100%', height: '100vh', overflow: 'hidden' }}>
-              <SimpleGraphPage />
-              <AppInitializer onInitialized={handleInitialized} />
-              {/* Toaster remains at the top level */}
-              <Toaster />
-            </div>
+            {/* Render TwoPaneLayout */}
+            <TwoPaneLayout />
+            <AppInitializer onInitialized={handleInitialized} />
+            {/* Toaster remains at the top level */}
+            <Toaster />
           </SafeXRProvider>
         </ApplicationModeProvider>
       </ErrorBoundary>
