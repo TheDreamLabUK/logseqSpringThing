@@ -1,4 +1,4 @@
-import React, { Suspense, useEffect, useState, useCallback } from 'react';
+import React, { Suspense, useEffect, useState, useCallback, useMemo } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls, Stats } from '@react-three/drei';
 import { EffectComposer, Bloom } from '@react-three/postprocessing';
@@ -29,9 +29,13 @@ const GraphViewport: React.FC = () => {
   const fov = cameraSettings?.fov ?? 75;
   const near = cameraSettings?.near ?? 0.1;
   const far = cameraSettings?.far ?? 2000;
-  const cameraPosition = cameraSettings?.position
-    ? [cameraSettings.position.x, cameraSettings.position.y, cameraSettings.position.z]
-    : [0, 10, 50]; // Default camera position
+
+  // Memoize cameraPosition to ensure stable reference unless underlying values change
+  const cameraPosition = useMemo(() => (
+    cameraSettings?.position
+      ? [cameraSettings.position.x, cameraSettings.position.y, cameraSettings.position.z]
+      : [0, 10, 50] // Default camera position
+  ), [cameraSettings?.position]);
 
   const enableBloom = bloomSettingsStore?.enabled ?? true;
   // Using properties from BloomSettings in settings.ts

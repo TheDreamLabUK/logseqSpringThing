@@ -93,8 +93,8 @@ function App() {
         <ApplicationModeProvider>
           {/* Removed PanelProvider */}
           <SafeXRProvider>
-            {/* Render TwoPaneLayout */}
-            <TwoPaneLayout />
+            {/* Render TwoPaneLayout only after settings are initialized */}
+            {initialized ? <TwoPaneLayout /> : <div>Loading application...</div>}
             <AppInitializer onInitialized={handleInitialized} />
             {/* Toaster remains at the top level */}
             <Toaster />

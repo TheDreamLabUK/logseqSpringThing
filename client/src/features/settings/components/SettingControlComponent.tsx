@@ -168,16 +168,48 @@ export function SettingControlComponent({ path, settingDef, value, onChange }: S
             <Input
               id={path}
               type="color"
-              value={value as string}
-              onChange={(e) => onChange(e.target.value)}
-              className="h-8 w-10 p-0.5 border-border cursor-pointer" // Adjusted size and style
+              value={String(value ?? '#000000')} // Ensure value is a string, default if null/undefined
+              onChange={(e) => {
+                // Ensure a valid hex color is always passed
+                const newValue = e.target.value;
+                if (/^#[0-9A-Fa-f]{6}$/i.test(newValue)) {
+                  onChange(newValue);
+                } else {
+                  onChange('#000000'); // Fallback if somehow invalid from color input
+                }
+              }}
+              className="h-8 w-10 p-0.5 border-border cursor-pointer"
             />
             <Input
               type="text"
-              value={value as string}
-              onChange={(e) => onChange(e.target.value)}
-              className="h-8 flex-1 font-mono text-xs" // Take remaining space, smaller font for hex
-              placeholder="Hex"
+              value={String(value ?? '')} // Reflect current value, allow empty for typing
+              onChange={(e) => {
+                const newValue = e.target.value;
+                if (/^#[0-9A-Fa-f]{6}$/i.test(newValue)) {
+                  onChange(newValue);
+                } else if (newValue === '') {
+                  // If user clears the input, set to a default to avoid sending empty string
+                  // Or, you could choose not to call onChange, making the text input temporarily invalid
+                  // For now, let's set a default to prevent server errors.
+                  onChange('#000000'); // Default if cleared
+                }
+                // For other invalid inputs, we don't call onChange,
+                // so the store isn't updated with an invalid partial hex.
+                // The visual input will show the invalid text until corrected or blurred.
+              }}
+              onBlur={(e) => { // Ensure on blur, if invalid, it reverts or uses a default
+                const currentValue = e.target.value;
+                if (!/^#[0-9A-Fa-f]{6}$/i.test(currentValue)) {
+                    // If current store value is valid, revert to it, else default
+                    if (typeof value === 'string' && /^#[0-9A-Fa-f]{6}$/i.test(value)) {
+                        onChange(value); // Revert to last known good value from store
+                    } else {
+                        onChange('#000000'); // Fallback to black
+                    }
+                }
+              }}
+              className="h-8 flex-1 font-mono text-xs"
+              placeholder="#rrggbb"
             />
           </div>
         );
@@ -231,18 +263,45 @@ export function SettingControlComponent({ path, settingDef, value, onChange }: S
       }
 
       case 'dualColorPicker': { // For [string, string] color arrays
-        const [color1, color2] = Array.isArray(value) ? value : ['#ffffff', '#000000'];
-         const handleColor1Change = (e: React.ChangeEvent<HTMLInputElement>) => {
-           onChange([e.target.value, color2]);
-         };
-         const handleColor2Change = (e: React.ChangeEvent<HTMLInputElement>) => {
-           onChange([color1, e.target.value]);
-         };
+        const [color1 = '#ffffff', color2 = '#000000'] = Array.isArray(value) && value.length === 2 ? value : ['#ffffff', '#000000'];
+
+        const createColorChangeHandler = (index: 0 | 1) => (e: React.ChangeEvent<HTMLInputElement>) => {
+          const newColorValue = e.target.value;
+          const currentColors = [color1, color2];
+          
+          if (/^#[0-9A-Fa-f]{6}$/i.test(newColorValue)) {
+            currentColors[index] = newColorValue;
+            onChange([...currentColors]);
+          } else if (newColorValue === '') {
+            currentColors[index] = '#000000'; // Default if cleared
+            onChange([...currentColors]);
+          }
+          // For other invalid inputs, do not call onChange from text input
+        };
+
+        const createColorBlurHandler = (index: 0 | 1) => (e: React.ChangeEvent<HTMLInputElement>) => {
+            const currentColors = [color1, color2];
+            const blurredValue = e.target.value;
+            if (!/^#[0-9A-Fa-f]{6}$/i.test(blurredValue)) {
+                // Revert to original value for this specific color input if it was valid, else default
+                const originalColorAtIndex = (Array.isArray(value) && value.length === 2 && typeof value[index] === 'string' && /^#[0-9A-Fa-f]{6}$/i.test(value[index])) ? value[index] : '#000000';
+                currentColors[index] = originalColorAtIndex;
+                onChange([...currentColors]);
+            }
+        };
+
         return (
-          <div className="flex items-center gap-2">
-            <Input type="color" value={color1} onChange={handleColor1Change} className="h-8 w-10 p-0.5 border-border cursor-pointer" title="Start Color" />
-            <Input type="color" value={color2} onChange={handleColor2Change} className="h-8 w-10 p-0.5 border-border cursor-pointer" title="End Color" />
-            <span className="text-xs font-mono text-muted-foreground">{color1} / {color2}</span>
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center gap-2">
+              <Label className="text-xs w-16">Start:</Label>
+              <Input type="color" value={color1} onChange={createColorChangeHandler(0)} className="h-8 w-10 p-0.5 border-border cursor-pointer" title="Start Color" />
+              <Input type="text" value={color1} onChange={createColorChangeHandler(0)} onBlur={createColorBlurHandler(0)} className="h-8 flex-1 font-mono text-xs" placeholder="#rrggbb" />
+            </div>
+            <div className="flex items-center gap-2">
+              <Label className="text-xs w-16">End:</Label>
+              <Input type="color" value={color2} onChange={createColorChangeHandler(1)} className="h-8 w-10 p-0.5 border-border cursor-pointer" title="End Color" />
+              <Input type="text" value={color2} onChange={createColorChangeHandler(1)} onBlur={createColorBlurHandler(1)} className="h-8 flex-1 font-mono text-xs" placeholder="#rrggbb" />
+            </div>
           </div>
         );
       }
