@@ -1,34 +1,68 @@
 import React, { useState, useCallback, CSSProperties } from 'react';
-import GraphViewport from '../features/graph/components/GraphViewport'; // Added import
+import GraphViewport from '../features/graph/components/GraphViewport';
+import RightPaneControlPanel from './components/RightPaneControlPanel'; // Added import
 
 const TwoPaneLayout: React.FC = () => {
   const [leftPaneWidth, setLeftPaneWidth] = useState<number>(300); // Initial width of the left pane
-  const [isDragging, setIsDragging] = useState<boolean>(false);
+  const [isDraggingVertical, setIsDraggingVertical] = useState<boolean>(false); // Renamed for clarity
   const [isRightPaneDocked, setIsRightPaneDocked] = useState<boolean>(false);
 
-  const handleMouseDown = useCallback((e: React.MouseEvent) => {
-    setIsDragging(true);
+  // State for horizontal splitter in right pane
+  const [rightPaneTopHeight, setRightPaneTopHeight] = useState<number>(200); // Initial height for top section
+  const [isDraggingHorizontal, setIsDraggingHorizontal] = useState<boolean>(false);
+
+
+  const handleVerticalMouseDown = useCallback((e: React.MouseEvent) => {
+    setIsDraggingVertical(true);
     // Prevent text selection while dragging
     e.preventDefault();
   }, []);
 
-  const handleMouseUp = useCallback(() => {
-    setIsDragging(false);
+  const handleVerticalMouseUp = useCallback(() => {
+    setIsDraggingVertical(false);
   }, []);
 
-  const handleMouseMove = useCallback(
+  const handleVerticalMouseMove = useCallback(
     (e: MouseEvent) => {
-      if (isDragging && !isRightPaneDocked) {
-        // Calculate new width based on mouse position
-        // Adjust as needed based on parent container's offset
+      if (isDraggingVertical && !isRightPaneDocked) {
         const newWidth = e.clientX;
-        // Add constraints for min/max width if necessary
-        if (newWidth > 50 && newWidth < window.innerWidth - 50) { // Basic constraints
+        if (newWidth > 50 && newWidth < window.innerWidth - 50) {
           setLeftPaneWidth(newWidth);
         }
       }
     },
-    [isDragging, isRightPaneDocked]
+    [isDraggingVertical, isRightPaneDocked]
+  );
+
+  // Event handlers for horizontal splitter
+  const handleHorizontalMouseDown = useCallback((e: React.MouseEvent) => {
+    setIsDraggingHorizontal(true);
+    e.preventDefault();
+  }, []);
+
+  const handleHorizontalMouseUp = useCallback(() => {
+    setIsDraggingHorizontal(false);
+  }, []);
+
+  const handleHorizontalMouseMove = useCallback(
+    (e: MouseEvent) => {
+      if (isDraggingHorizontal) {
+        // Assuming the right pane is relative to the viewport top for clientY
+        // This might need adjustment if the right pane has a different offset parent
+        const newHeight = e.clientY;
+        const rightPaneElement = document.getElementById('right-pane-container'); // Need an ID for the right pane
+        if (rightPaneElement) {
+            const rect = rightPaneElement.getBoundingClientRect();
+            const relativeNewHeight = e.clientY - rect.top;
+
+            // Min height 50px for top, and bottom pane also needs at least 50px + divider height (10px)
+            if (relativeNewHeight > 50 && relativeNewHeight < rect.height - 50 - 10) {
+                 setRightPaneTopHeight(relativeNewHeight);
+            }
+        }
+      }
+    },
+    [isDraggingHorizontal]
   );
 
   const toggleRightPaneDock = () => {
@@ -43,18 +77,28 @@ const TwoPaneLayout: React.FC = () => {
 
   // Add and remove mouse move/up listeners on the window
   React.useEffect(() => {
-    if (isDragging) {
-      window.addEventListener('mousemove', handleMouseMove);
-      window.addEventListener('mouseup', handleMouseUp);
+    const handleGlobalMouseMove = (e: MouseEvent) => {
+      handleVerticalMouseMove(e);
+      handleHorizontalMouseMove(e);
+    };
+
+    const handleGlobalMouseUp = () => {
+      handleVerticalMouseUp();
+      handleHorizontalMouseUp();
+    };
+
+    if (isDraggingVertical || isDraggingHorizontal) {
+      window.addEventListener('mousemove', handleGlobalMouseMove);
+      window.addEventListener('mouseup', handleGlobalMouseUp);
     } else {
-      window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('mouseup', handleMouseUp);
+      window.removeEventListener('mousemove', handleGlobalMouseMove);
+      window.removeEventListener('mouseup', handleGlobalMouseUp);
     }
     return () => {
-      window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('mouseup', handleMouseUp);
+      window.removeEventListener('mousemove', handleGlobalMouseMove);
+      window.removeEventListener('mouseup', handleGlobalMouseUp);
     };
-  }, [isDragging, handleMouseMove, handleMouseUp]);
+  }, [isDraggingVertical, isDraggingHorizontal, handleVerticalMouseMove, handleHorizontalMouseMove, handleVerticalMouseUp, handleHorizontalMouseUp]);
 
   const containerStyle: CSSProperties = {
     display: 'flex',
@@ -83,12 +127,41 @@ const TwoPaneLayout: React.FC = () => {
     userSelect: 'none',
   };
 
-  const rightPaneStyle: CSSProperties = {
-    flexGrow: 1, // Right pane takes remaining space
-    backgroundColor: '#e0e0e0',
-    padding: '20px',
-    display: isRightPaneDocked ? 'none' : 'block', // Hide right pane when docked
-    overflow: 'auto', // Add scroll if content overflows
+  const rightPaneContainerStyle: CSSProperties = { // Renamed for clarity
+    flexGrow: 1,
+    display: isRightPaneDocked ? 'none' : 'flex', // Use flex column for top/bottom sections
+    flexDirection: 'column',
+    overflow: 'hidden', // Containing div handles overflow
+    height: '100vh', // Ensure it takes full viewport height
+  };
+
+  const rightPaneTopStyle: CSSProperties = {
+    height: `${rightPaneTopHeight}px`,
+    minHeight: '50px', // Min height for top section
+    // backgroundColor: '#e0e0e0', // Removed, panel has its own
+    // padding: '10px', // Removed, panel has its own
+    overflowY: 'hidden', // Panel itself will scroll its content
+    position: 'relative',
+  };
+
+  const horizontalDividerStyle: CSSProperties = {
+    height: '10px',
+    cursor: 'ns-resize',
+    backgroundColor: '#b0b0b0', // Darker for grab handle appearance
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    userSelect: 'none',
+    borderTop: '1px solid #999999',
+    borderBottom: '1px solid #999999',
+  };
+
+  const rightPaneBottomStyle: CSSProperties = {
+    flexGrow: 1, // Bottom section takes remaining space
+    minHeight: '50px', // Min height for bottom section
+    backgroundColor: '#d0d0d0',
+    padding: '10px', // Reduced padding
+    overflowY: 'auto', // Scroll for content overflow
   };
 
   const dockButtonStyle: CSSProperties = {
@@ -108,14 +181,30 @@ const TwoPaneLayout: React.FC = () => {
       </div>
       <div
         style={dividerStyle}
-        onMouseDown={!isRightPaneDocked ? handleMouseDown : undefined}
+        onMouseDown={!isRightPaneDocked ? handleVerticalMouseDown : undefined}
         title={isRightPaneDocked ? "" : "Drag to resize"}
       >
         ||
       </div>
-      <div style={rightPaneStyle}>
-        <h2>Right Pane</h2>
-        <p>Right Pane Placeholder</p>
+      <div id="right-pane-container" style={rightPaneContainerStyle}>
+        {!isRightPaneDocked && (
+          <>
+            <div style={rightPaneTopStyle}>
+              <RightPaneControlPanel />
+            </div>
+            <div
+              style={horizontalDividerStyle}
+              onMouseDown={handleHorizontalMouseDown}
+              title="Drag to resize sections"
+            >
+              ══
+            </div>
+            <div style={rightPaneBottomStyle}>
+              <h2>Bottom Right Section</h2>
+              <p>Placeholder for other content</p>
+            </div>
+          </>
+        )}
       </div>
       <button onClick={toggleRightPaneDock} style={dockButtonStyle} title={isRightPaneDocked ? "Expand Right Pane" : "Collapse Right Pane"}>
         {isRightPaneDocked ? '>' : '<'}

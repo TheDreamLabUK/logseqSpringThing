@@ -109,6 +109,27 @@ export function SettingControlComponent({ path, settingDef, value, onChange }: S
         );
 
       case 'numberInput':
+        // If min and max are defined, prefer Slider for a more intuitive UI
+        if (typeof settingDef.min === 'number' && typeof settingDef.max === 'number') {
+          return (
+            <div className="flex w-full items-center gap-3">
+              <Slider
+                id={path}
+                value={[value as number]} // Slider expects an array
+                min={settingDef.min}
+                max={settingDef.max}
+                step={settingDef.step ?? 0.01} // Default step for slider
+                onValueChange={([val]) => onChange(val)} // Direct change
+                className="flex-1"
+              />
+              <span className="text-xs font-mono w-12 text-right">
+                {(value as number)?.toFixed ? (value as number).toFixed(settingDef.step && settingDef.step < 1 ? 2 : 0) : value}
+                {settingDef.unit}
+              </span>
+            </div>
+          );
+        }
+        // Fallback to Input if min/max not defined for slider behavior
         return (
           <div className="flex items-center w-full">
             <Input
@@ -118,8 +139,8 @@ export function SettingControlComponent({ path, settingDef, value, onChange }: S
               onChange={handleInputChange} // Update local state immediately
               min={settingDef.min}
               max={settingDef.max}
-              step={settingDef.step ?? 1}
-              className="h-8 flex-1" // Allow input to grow
+              step={settingDef.step ?? 1} // Default step for input
+              className="h-8 flex-1"
             />
             {settingDef.unit && <span className="text-xs text-muted-foreground pl-2">{settingDef.unit}</span>}
           </div>
@@ -155,7 +176,8 @@ export function SettingControlComponent({ path, settingDef, value, onChange }: S
               type="text"
               value={value as string}
               onChange={(e) => onChange(e.target.value)}
-              className="h-8 flex-1 font-mono" // Take remaining space
+              className="h-8 flex-1 font-mono text-xs" // Take remaining space, smaller font for hex
+              placeholder="Hex"
             />
           </div>
         );
@@ -194,10 +216,16 @@ export function SettingControlComponent({ path, settingDef, value, onChange }: S
           }
         };
         return (
-          <div className="flex items-center gap-2">
-            <Input type="number" value={minVal} onChange={handleMinChange} min={settingDef.min} max={maxVal} step={settingDef.step} className="h-8 w-1/2" placeholder="Min" />
-            <Input type="number" value={maxVal} onChange={handleMaxChange} min={minVal} max={settingDef.max} step={settingDef.step} className="h-8 w-1/2" placeholder="Max" />
-            {settingDef.unit && <span className="text-xs text-muted-foreground">{settingDef.unit}</span>}
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center gap-2">
+              <Label htmlFor={`${path}-min`} className="text-xs w-10">Min:</Label>
+              <Input id={`${path}-min`} type="number" value={minVal} onChange={handleMinChange} min={settingDef.min} max={maxVal} step={settingDef.step} className="h-8 flex-1" placeholder="Min" />
+            </div>
+            <div className="flex items-center gap-2">
+              <Label htmlFor={`${path}-max`} className="text-xs w-10">Max:</Label>
+              <Input id={`${path}-max`} type="number" value={maxVal} onChange={handleMaxChange} min={minVal} max={settingDef.max} step={settingDef.step} className="h-8 flex-1" placeholder="Max" />
+            </div>
+            {settingDef.unit && <span className="text-xs text-muted-foreground self-end">{settingDef.unit}</span>}
           </div>
         );
       }
