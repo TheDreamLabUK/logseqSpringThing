@@ -1,15 +1,21 @@
 import React, { useState, useCallback, CSSProperties } from 'react';
 import GraphViewport from '../features/graph/components/GraphViewport';
-import RightPaneControlPanel from './components/RightPaneControlPanel'; // Added import
+import RightPaneControlPanel from './components/RightPaneControlPanel';
+import MarkdownDisplayPanel from './components/MarkdownDisplayPanel';
+import NarrativeGoldminePanel from './components/NarrativeGoldminePanel';
 
 const TwoPaneLayout: React.FC = () => {
   const [leftPaneWidth, setLeftPaneWidth] = useState<number>(300); // Initial width of the left pane
-  const [isDraggingVertical, setIsDraggingVertical] = useState<boolean>(false); // Renamed for clarity
+  const [isDraggingVertical, setIsDraggingVertical] = useState<boolean>(false);
   const [isRightPaneDocked, setIsRightPaneDocked] = useState<boolean>(false);
 
-  // State for horizontal splitter in right pane
-  const [rightPaneTopHeight, setRightPaneTopHeight] = useState<number>(200); // Initial height for top section
-  const [isDraggingHorizontal, setIsDraggingHorizontal] = useState<boolean>(false);
+  // State for TOP horizontal splitter in right pane (dividing Control Panel and the rest)
+  const [rightPaneTopHeight, setRightPaneTopHeight] = useState<number>(300); // Adjusted initial height
+  const [isDraggingHorizontalTop, setIsDraggingHorizontalTop] = useState<boolean>(false); // Renamed
+
+  // State for the new BOTTOM horizontal splitter within the lower part of the right pane
+  const [bottomRightUpperHeight, setBottomRightUpperHeight] = useState<number>(200); // Initial height for Markdown panel
+  const [isDraggingHorizontalBottom, setIsDraggingHorizontalBottom] = useState<boolean>(false);
 
 
   const handleVerticalMouseDown = useCallback((e: React.MouseEvent) => {
@@ -34,35 +40,56 @@ const TwoPaneLayout: React.FC = () => {
     [isDraggingVertical, isRightPaneDocked]
   );
 
-  // Event handlers for horizontal splitter
-  const handleHorizontalMouseDown = useCallback((e: React.MouseEvent) => {
-    setIsDraggingHorizontal(true);
+  // Event handlers for TOP horizontal splitter
+  const handleHorizontalTopMouseDown = useCallback((e: React.MouseEvent) => {
+    setIsDraggingHorizontalTop(true);
     e.preventDefault();
   }, []);
 
-  const handleHorizontalMouseUp = useCallback(() => {
-    setIsDraggingHorizontal(false);
+  const handleHorizontalTopMouseUp = useCallback(() => {
+    setIsDraggingHorizontalTop(false);
   }, []);
 
-  const handleHorizontalMouseMove = useCallback(
+  const handleHorizontalTopMouseMove = useCallback(
     (e: MouseEvent) => {
-      if (isDraggingHorizontal) {
-        // Assuming the right pane is relative to the viewport top for clientY
-        // This might need adjustment if the right pane has a different offset parent
-        const newHeight = e.clientY;
-        const rightPaneElement = document.getElementById('right-pane-container'); // Need an ID for the right pane
-        if (rightPaneElement) {
-            const rect = rightPaneElement.getBoundingClientRect();
+      if (isDraggingHorizontalTop) {
+        const rightPaneContainer = document.getElementById('right-pane-container');
+        if (rightPaneContainer) {
+            const rect = rightPaneContainer.getBoundingClientRect();
             const relativeNewHeight = e.clientY - rect.top;
-
-            // Min height 50px for top, and bottom pane also needs at least 50px + divider height (10px)
-            if (relativeNewHeight > 50 && relativeNewHeight < rect.height - 50 - 10) {
+            if (relativeNewHeight > 50 && relativeNewHeight < rect.height - 110) { // Min 50 for top, 110 for bottom container (50+10+50)
                  setRightPaneTopHeight(relativeNewHeight);
             }
         }
       }
     },
-    [isDraggingHorizontal]
+    [isDraggingHorizontalTop]
+  );
+
+  // Event handlers for BOTTOM horizontal splitter
+  const handleHorizontalBottomMouseDown = useCallback((e: React.MouseEvent) => {
+    setIsDraggingHorizontalBottom(true);
+    e.preventDefault();
+  }, []);
+
+  const handleHorizontalBottomMouseUp = useCallback(() => {
+    setIsDraggingHorizontalBottom(false);
+  }, []);
+
+  const handleHorizontalBottomMouseMove = useCallback(
+    (e: MouseEvent) => {
+      if (isDraggingHorizontalBottom) {
+        const bottomRightContainer = document.getElementById('right-pane-bottom-container');
+        if (bottomRightContainer) {
+            const rect = bottomRightContainer.getBoundingClientRect();
+            const relativeNewHeight = e.clientY - rect.top;
+            if (relativeNewHeight > 50 && relativeNewHeight < rect.height - 60) { // Min 50 for upper, 50 for lower + 10 for divider
+                 setBottomRightUpperHeight(relativeNewHeight);
+            }
+        }
+      }
+    },
+    [isDraggingHorizontalBottom]
   );
 
   const toggleRightPaneDock = () => {
@@ -79,15 +106,17 @@ const TwoPaneLayout: React.FC = () => {
   React.useEffect(() => {
     const handleGlobalMouseMove = (e: MouseEvent) => {
       handleVerticalMouseMove(e);
-      handleHorizontalMouseMove(e);
+      handleHorizontalTopMouseMove(e);
+      handleHorizontalBottomMouseMove(e);
     };
 
     const handleGlobalMouseUp = () => {
       handleVerticalMouseUp();
-      handleHorizontalMouseUp();
+      handleHorizontalTopMouseUp();
+      handleHorizontalBottomMouseUp();
     };
 
-    if (isDraggingVertical || isDraggingHorizontal) {
+    if (isDraggingVertical || isDraggingHorizontalTop || isDraggingHorizontalBottom) {
       window.addEventListener('mousemove', handleGlobalMouseMove);
       window.addEventListener('mouseup', handleGlobalMouseUp);
     } else {
@@ -98,7 +127,11 @@ const TwoPaneLayout: React.FC = () => {
       window.removeEventListener('mousemove', handleGlobalMouseMove);
       window.removeEventListener('mouseup', handleGlobalMouseUp);
     };
-  }, [isDraggingVertical, isDraggingHorizontal, handleVerticalMouseMove, handleHorizontalMouseMove, handleVerticalMouseUp, handleHorizontalMouseUp]);
+  }, [
+      isDraggingVertical, isDraggingHorizontalTop, isDraggingHorizontalBottom,
+      handleVerticalMouseMove, handleHorizontalTopMouseMove, handleHorizontalBottomMouseMove,
+      handleVerticalMouseUp, handleHorizontalTopMouseUp, handleHorizontalBottomMouseUp
+    ]);
 
   const containerStyle: CSSProperties = {
     display: 'flex',
@@ -144,24 +177,57 @@ const TwoPaneLayout: React.FC = () => {
     position: 'relative',
   };
 
-  const horizontalDividerStyle: CSSProperties = {
+  const horizontalTopDividerStyle: CSSProperties = { // Renamed
     height: '10px',
     cursor: 'ns-resize',
-    backgroundColor: '#b0b0b0', // Darker for grab handle appearance
+    backgroundColor: '#b0b0b0',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
     userSelect: 'none',
     borderTop: '1px solid #999999',
     borderBottom: '1px solid #999999',
+    flexShrink: 0,
   };
 
-  const rightPaneBottomStyle: CSSProperties = {
-    flexGrow: 1, // Bottom section takes remaining space
-    minHeight: '50px', // Min height for bottom section
-    backgroundColor: '#d0d0d0',
-    padding: '10px', // Reduced padding
-    overflowY: 'auto', // Scroll for content overflow
+  const rightPaneBottomContainerStyle: CSSProperties = { // New container for the split
+    flexGrow: 1,
+    minHeight: '110px', // 50 (upper) + 10 (divider) + 50 (lower)
+    display: 'flex',
+    flexDirection: 'column',
+    overflow: 'hidden',
+    backgroundColor: '#d0d0d0', // Base for this area
+  };
+
+  const bottomRightUpperStyle: CSSProperties = {
+    height: `${bottomRightUpperHeight}px`,
+    minHeight: '50px',
+    // backgroundColor: '#d8d8d8', // Panel has its own bg
+    padding: '0px', // Panel has its own padding
+    overflowY: 'hidden', // Panel handles scroll
+    position: 'relative',
+  };
+
+  const horizontalBottomDividerStyle: CSSProperties = { // New divider
+    height: '10px',
+    cursor: 'ns-resize',
+    backgroundColor: '#a0a0a0',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    userSelect: 'none',
+    borderTop: '1px solid #888888',
+    borderBottom: '1px solid #888888',
+    flexShrink: 0,
+  };
+
+  const bottomRightLowerStyle: CSSProperties = {
+    flexGrow: 1,
+    minHeight: '50px',
+    // backgroundColor: '#c8c8c8', // Panel has its own bg
+    padding: '0px', // Panel has its own padding
+    overflowY: 'hidden', // Panel handles scroll
+    position: 'relative',
   };
 
   const dockButtonStyle: CSSProperties = {
@@ -193,15 +259,26 @@ const TwoPaneLayout: React.FC = () => {
               <RightPaneControlPanel />
             </div>
             <div
-              style={horizontalDividerStyle}
-              onMouseDown={handleHorizontalMouseDown}
-              title="Drag to resize sections"
+              style={horizontalTopDividerStyle}
+              onMouseDown={handleHorizontalTopMouseDown}
+              title="Drag to resize Control Panel / Lower Area"
             >
               ══
             </div>
-            <div style={rightPaneBottomStyle}>
-              <h2>Bottom Right Section</h2>
-              <p>Placeholder for other content</p>
+            <div id="right-pane-bottom-container" style={rightPaneBottomContainerStyle}>
+              <div style={bottomRightUpperStyle}>
+                <MarkdownDisplayPanel />
+              </div>
+              <div
+                style={horizontalBottomDividerStyle}
+                onMouseDown={handleHorizontalBottomMouseDown}
+                title="Drag to resize Markdown / Narrative Goldmine"
+              >
+                ══
+              </div>
+              <div style={bottomRightLowerStyle}>
+                <NarrativeGoldminePanel />
+              </div>
             </div>
           </>
         )}
