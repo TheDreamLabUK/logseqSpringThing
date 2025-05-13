@@ -8,6 +8,8 @@ use actix_web::web::Bytes;
 use crate::services::ragflow_service::RAGFlowError;
 use actix_web::web::ServiceConfig;
 use crate::types::speech::SpeechOptions;
+use crate::models::ragflow_chat::{RagflowChatRequest, RagflowChatResponse};
+use actix_web::HttpRequest;
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -191,11 +193,78 @@ pub async fn get_session_history(
 }
 
 /// Configure RAGFlow API routes
+async fn handle_ragflow_chat(
+    state: web::Data<AppState>,
+    req: HttpRequest, // To get headers for auth
+    payload: web::Json<RagflowChatRequest>,
+) -> impl Responder {
+    // Authentication: Check for power user
+    let pubkey = match req.headers().get("X-Nostr-Pubkey").and_then(|v| v.to_str().ok()) {
+        Some(pk) => pk.to_string(),
+        None => return HttpResponse::Unauthorized().json(json!({"error": "Missing X-Nostr-Pubkey header"})),
+    };
+    let token = match req.headers().get("Authorization").and_then(|v| v.to_str().ok().map(|s| s.trim_start_matches("Bearer "))) {
+        Some(t) => t.to_string(),
+        None => return HttpResponse::Unauthorized().json(json!({"error": "Missing Authorization token"})),
+    };
+
+    if let Some(nostr_service) = &state.nostr_service {
+        if !nostr_service.validate_session(&pubkey, &token).await {
+            return HttpResponse::Unauthorized().json(json!({"error": "Invalid session token"}));
+        }
+        // Accessing is_power_user through AppState method
+        if !state.is_power_user(&pubkey) { 
+             return HttpResponse::Forbidden().json(json!({"error": "This feature requires power user access"}));
+        }
+    } else {
+        // This case should ideally not be reached if nostr_service is integral
+        // and initialized properly. Consider logging a warning or error.
+        error!("Nostr service not available during chat handling for pubkey: {}", pubkey);
+        return HttpResponse::InternalServerError().json(json!({"error": "Nostr service not available"}));
+    }
+
+    let ragflow_service = match &state.ragflow_service {
+        Some(service) => service,
+        None => return HttpResponse::ServiceUnavailable().json(json!({"error": "RAGFlow service not available"})),
+    };
+
+    let mut session_id = payload.session_id.clone();
+    if session_id.is_none() {
+        // Create a new session if none provided. Using pubkey as user_id for RAGFlow session.
+        match ragflow_service.create_session(pubkey.clone()).await {
+            Ok(new_sid) => {
+                info!("Created new RAGFlow session {} for pubkey {}", new_sid, pubkey);
+                session_id = Some(new_sid);
+            }
+            Err(e) => {
+                error!("Failed to create RAGFlow session for pubkey {}: {}", pubkey, e);
+                return HttpResponse::InternalServerError().json(json!({"error": format!("Failed to create RAGFlow session: {}", e)}));
+            }
+        }
+    }
+
+    // We've ensured it's Some by now, or returned an error.
+    let current_session_id = session_id.expect("Session ID should be Some at this point");
+
+    match ragflow_service.send_chat_message(current_session_id.clone(), payload.question.clone()).await {
+        Ok((answer, final_session_id)) => {
+            HttpResponse::Ok().json(RagflowChatResponse {
+                answer,
+                session_id: final_session_id, // RAGFlow service send_chat_message returns the session_id it used
+            })
+        }
+        Err(e) => {
+            error!("Error communicating with RAGFlow for session {}: {}", current_session_id, e);
+            HttpResponse::InternalServerError().json(json!({"error": format!("RAGFlow communication error: {}", e)}))
+        }
+    }
+}
 pub fn config(cfg: &mut ServiceConfig) {
     cfg.service(
         web::scope("/ragflow")
-            .route("/session", web::post().to(create_session))
-            .route("/message", web::post().to(send_message))
-            .route("/history/{session_id}", web::get().to(get_session_history))
+            .route("/session", web::post().to(create_session)) // Existing
+            .route("/message", web::post().to(send_message))   // Existing (streaming)
+            .route("/chat", web::post().to(handle_ragflow_chat)) // New REST chat endpoint
+            .route("/history/{session_id}", web::get().to(get_session_history)) // Existing
     );
 }

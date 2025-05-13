@@ -8,6 +8,7 @@ pub mod simulation_params;
 pub mod ui_settings;
 pub mod user_settings;
 pub mod client_settings_payload; // Add new module
+pub mod ragflow_chat;
 
 pub use metadata::MetadataStore;
 pub use pagination::PaginationParams;

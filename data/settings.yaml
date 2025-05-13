@@ -190,7 +190,7 @@ auth:
   required: false
 ragflow:
   api_key: ''
-  agent_id: '302e58df9d4411ef929c0242ac120006'
+  agent_id: 'aa2e328812ef11f083dc0a0d6226f61b'
   api_base_url: ''
   timeout: 30
   max_retries: 3

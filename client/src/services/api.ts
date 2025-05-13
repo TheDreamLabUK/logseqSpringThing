@@ -1,5 +1,6 @@
 import { createLogger, createErrorMetadata } from '../utils/logger';
 import { debugState } from '../utils/debugState';
+import { RagflowChatRequestPayload, RagflowChatResponsePayload } from '../types/ragflowTypes';
 
 const logger = createLogger('ApiService');
 
@@ -196,6 +197,39 @@ class ApiService {
       throw error;
     }
   }
+
+  public async sendRagflowChatMessage(
+    payload: RagflowChatRequestPayload,
+    headers: Record<string, string> = {} // For auth
+  ): Promise<RagflowChatResponsePayload> {
+    try {
+      const url = `${this.baseUrl}/ragflow/chat`; // Path defined in Rust backend, /api is prepended by baseUrl
+      if (debugState.isEnabled()) {
+        logger.debug(`Making POST request to ${url} for RAGFlow chat`);
+      }
+      // Assume headers (like auth) will be passed in or handled globally by apiService
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...headers, // Include auth headers
+        },
+        body: JSON.stringify(payload),
+      });
+      if (!response.ok) {
+            const errorData = await response.json().catch(() => ({ message: response.statusText, error: response.statusText }));
+            throw new Error(`RAGFlow chat API request failed with status ${response.status}: ${errorData.error || errorData.message}`);
+          }
+          const responseData = await response.json();
+          if (debugState.isEnabled()) {
+            logger.debug(`POST request to ${url} (RAGFlow chat) succeeded`);
+          }
+          return responseData as RagflowChatResponsePayload;
+        } catch (error) {
+          logger.error(`POST request to /ragflow/chat failed:`, createErrorMetadata(error));
+          throw error;
+        }
+      }
 }
 
 export const apiService = ApiService.getInstance();

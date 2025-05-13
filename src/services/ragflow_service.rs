@@ -274,7 +274,98 @@ impl RAGFlowService {
             Err(RAGFlowError::StatusError(status, error_message))
         }
     }
-}
+
+    pub async fn send_chat_message(
+        &self,
+        session_id: String,
+        message: String,
+    ) -> Result<(String, String), RAGFlowError> { // Returns (answer, session_id)
+        info!("Sending chat message to RAGFlow session: {}", session_id);
+        let url = format!(
+            "{}/api/v1/agents/{}/completions",
+            self.base_url.trim_end_matches('/'),
+            self.agent_id
+        );
+
+        let request_body = CompletionRequest {
+            question: message,
+            stream: true, // RAGFlow itself might be streaming, so we request stream and aggregate
+            session_id: Some(session_id.clone()),
+            user_id: None,
+            sync_dsl: Some(false),
+        };
+
+        let response = self.client.post(&url)
+            .header("Authorization", format!("Bearer {}", self.api_key))
+            .header("Content-Type", "application/json")
+            .json(&request_body)
+            .send()
+            .await?;
+
+        let status = response.status();
+        if !status.is_success() {
+            let error_message = response.text().await?;
+            error!("RAGFlow chat API error. Status: {}, Error: {}", status, error_message);
+            return Err(RAGFlowError::StatusError(status, error_message));
+        }
+
+        // Aggregate streamed response
+        let mut full_answer = String::new();
+        let mut stream = response.bytes_stream();
+
+        while let Some(chunk_result) = stream.next().await {
+            match chunk_result {
+                Ok(chunk_bytes) => { // chunk_bytes is Bytes
+                    let chunk_vec: Vec<u8> = chunk_bytes.to_vec(); // Convert to Vec<u8>
+                    let chunk_str = String::from_utf8_lossy(&chunk_vec);
+                    // RAGFlow SSE format is typically "data: {...}\n\n"
+                    // Multiple "data:" lines can appear in a single chunk in some implementations.
+                    for line in chunk_str.lines() {
+                        if line.starts_with("data:") {
+                            let json_str = line.trim_start_matches("data:").trim();
+                            if json_str.is_empty() { // Skip empty data lines often sent as keep-alives
+                                continue;
+                            }
+                            // Deprecated: if json_str == "[DONE]"
+                            // The RAGFlow API doc indicates the end marker is a JSON object:
+                            // data: {"code": 0, "data": true}
+
+                            match serde_json::from_str::<serde_json::Value>(json_str) {
+                                Ok(json_val) => {
+                                    // Check for the end-of-stream marker: {"code": 0, "data": true}
+                                    if json_val.get("code").and_then(|c| c.as_i64()) == Some(0) &&
+                                       json_val.get("data").and_then(|d| d.as_bool()) == Some(true) {
+                                        // info!("RAGFlow stream end marker received via JSON.");
+                                        break; // Exit the inner loop over lines (and will break outer due to no more content)
+                                    }
+                                    
+                                    // Extract answer chunk
+                                    if let Some(answer_chunk) = json_val.get("data").and_then(|d| d.get("answer")).and_then(|a| a.as_str()) {
+                                        full_answer.push_str(answer_chunk);
+                                    } else if let Some(answer_chunk) = json_val.get("answer").and_then(|a| a.as_str()) { // Fallback for direct answer
+                                        full_answer.push_str(answer_chunk);
+                                    }
+                                    // Session ID is usually static for the conversation.
+                                },
+                                Err(e) => log::warn!("Failed to parse RAGFlow stream chunk JSON: {}. Chunk: '{}'", e, json_str),
+                            }
+                        }
+                    }
+                    // Check if the specific end-of-stream JSON structure was found in any line of the chunk
+                    // This ensures the outer loop breaks correctly.
+                    if chunk_str.contains(r#"{"code":0,"data":true}"#) || chunk_str.contains(r#"{"code": 0, "data": true}"#) { // Handle potential spacing variations
+                        break;
+                    }
+                },
+                Err(e) => {
+                    log::error!("Error reading RAGFlow stream chunk: {}", e);
+                    return Err(RAGFlowError::ReqwestError(e));
+                }
+            }
+        }
+        Ok((full_answer, session_id)) // Return aggregated answer and original session_id
+    }
+} // This closing brace now correctly closes impl RAGFlowService
 
 impl Clone for RAGFlowService {
     fn clone(&self) -> Self {

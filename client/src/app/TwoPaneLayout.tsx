@@ -1,7 +1,8 @@
 import React, { useState, useCallback, CSSProperties } from 'react';
 import GraphViewport from '../features/graph/components/GraphViewport';
 import RightPaneControlPanel from './components/RightPaneControlPanel';
-import MarkdownDisplayPanel from './components/MarkdownDisplayPanel';
+// import MarkdownDisplayPanel from './components/MarkdownDisplayPanel'; // Remove this
+import ConversationPane from './components/ConversationPane'; // Add this
 import NarrativeGoldminePanel from './components/NarrativeGoldminePanel';
 
 const TwoPaneLayout: React.FC = () => {
@@ -267,7 +268,8 @@ const TwoPaneLayout: React.FC = () => {
             </div>
             <div id="right-pane-bottom-container" style={rightPaneBottomContainerStyle}>
               <div style={bottomRightUpperStyle}>
-                <MarkdownDisplayPanel />
+                {/* <MarkdownDisplayPanel /> */} {/* Replace this */}
+                <ConversationPane /> {/* With this */}
               </div>
               <div
                 style={horizontalBottomDividerStyle}
