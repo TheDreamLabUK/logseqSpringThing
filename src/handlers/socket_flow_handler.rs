@@ -110,7 +110,7 @@ impl ClientManager {
         // Send the update to all clients
         for (id, addr) in clients.iter() {
             addr.do_send(BroadcastPositionUpdate(binary_data.clone()));
-            debug!("[ClientManager] Sent position update to client {}", id);
+            trace!("[ClientManager] Sent position update to client {}", id);
         }
     }
 }
@@ -628,7 +628,7 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
                                             }
                                             
                                             if detailed_debug && should_log && !binary_data.is_empty() {
-                                                debug!("[WebSocket] Encoded binary data: {} bytes for {} nodes", binary_data.len(), filtered_nodes.len());
+                                                trace!("[WebSocket] Encoded binary data: {} bytes for {} nodes", binary_data.len(), filtered_nodes.len());
                                                 
                                                 // Log details about a sample node to track position changes
                                                 if !filtered_nodes.is_empty() {

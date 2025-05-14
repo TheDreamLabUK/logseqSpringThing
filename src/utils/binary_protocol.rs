@@ -51,7 +51,7 @@ pub fn encode_node_data(nodes: &[(u16, BinaryNodeData)]) -> Vec<u8> {
 
     // Only log non-empty node transmissions to reduce spam
     if nodes.len() > 0 {
-        debug!("Encoded binary data: {} bytes for {} nodes", buffer.len(), nodes.len());
+        trace!("Encoded binary data: {} bytes for {} nodes", buffer.len(), nodes.len());
     }
     buffer
 }
