@@ -134,38 +134,137 @@ export class XRSessionManager {
   }
   
   private createVRButton(): void {
-    if (!this.renderer) return;
-    
-    try {
-      // Create VR button and add to document
-      this.vrButton = VRButton.createButton(this.renderer);
-      
-      // Style the button
-      this.vrButton.style.position = 'absolute';
-      this.vrButton.style.bottom = '20px';
-      this.vrButton.style.right = '20px';
-      this.vrButton.style.zIndex = '100';
-      
-      // Add button to document
-      document.body.appendChild(this.vrButton);
-      
-      // Add session start/end listeners
-      this.renderer.xr.addEventListener('sessionstart', () => {
-        this.sessionActive = true;
-        if (debugState.isEnabled()) {
-          logger.info('XR session started');
-        }
-      });
-      
-      this.renderer.xr.addEventListener('sessionend', () => {
-        this.sessionActive = false;
-        if (debugState.isEnabled()) {
-          logger.info('XR session ended');
-        }
-      });
-    } catch (error) {
-      logger.error('Failed to create VR button:', createErrorMetadata(error));
+    if (!this.renderer || !navigator.xr) {
+      logger.warn('WebXR not supported or renderer not available for VR button creation.');
+      return;
     }
+
+    const button = document.createElement('button');
+    button.id = 'xr-button';
+    button.style.position = 'absolute';
+    button.style.bottom = '20px';
+    button.style.right = '20px';
+    button.style.padding = '12px 24px';
+    button.style.border = '1px solid #fff';
+    button.style.borderRadius = '4px';
+    button.style.background = 'rgba(0,0,0,0.5)';
+    button.style.color = '#fff';
+    button.style.font = 'normal 18px sans-serif';
+    button.style.textAlign = 'center';
+    button.style.opacity = '0.7';
+    button.style.outline = 'none';
+    button.style.zIndex = '100';
+    button.style.cursor = 'pointer';
+
+    const showEnterXR = (supported: boolean, modeText: string) => {
+      button.textContent = supported ? `ENTER ${modeText}` : `${modeText} NOT SUPPORTED`;
+      button.disabled = !supported;
+    };
+
+    const showExitXR = () => {
+      button.textContent = 'EXIT XR';
+      button.disabled = false;
+    };
+    
+    const currentRenderer = this.renderer; // Capture renderer for async operations
+
+    const startSession = async (mode: XRSessionMode, sessionInit: XRSessionInit = {}) => {
+      try {
+        const session = await navigator.xr!.requestSession(mode, sessionInit);
+        await currentRenderer.xr.setSession(session);
+        // showExitXR() will be called by sessionstart listener
+      } catch (e) {
+        logger.error(`Failed to start ${mode} session:`, createErrorMetadata(e));
+        // Attempt to reset button text to a valid enter state
+        const arSupported = await navigator.xr!.isSessionSupported('immersive-ar').catch(() => false);
+        const vrSupported = await navigator.xr!.isSessionSupported('immersive-vr').catch(() => false);
+        if (this.vrButton && !currentRenderer.xr.isPresenting) { // Check if button still exists and not presenting
+            if (arSupported) showEnterXR(true, 'AR');
+            else if (vrSupported) showEnterXR(true, 'VR');
+            else showEnterXR(false, 'XR');
+        }
+      }
+    };
+
+    button.onclick = async () => {
+      if (currentRenderer.xr.isPresenting) {
+        try {
+          // sessionend event will trigger button text update via listener
+          await currentRenderer.xr.getSession()?.end();
+        } catch (e) {
+          logger.error('Failed to end XR session:', createErrorMetadata(e));
+        }
+      } else {
+        try {
+          const arSupported = await navigator.xr!.isSessionSupported('immersive-ar');
+          if (arSupported) {
+            logger.info('Attempting to start AR session.');
+            await startSession('immersive-ar', {
+              requiredFeatures: ['local-floor'],
+              optionalFeatures: ['hand-tracking', 'hit-test', 'anchors', 'plane-detection', 'light-estimation'],
+            });
+          } else {
+            logger.info('AR not supported, attempting to start VR session.');
+            const vrSupported = await navigator.xr!.isSessionSupported('immersive-vr');
+            if (vrSupported) {
+              await startSession('immersive-vr', {
+                requiredFeatures: ['local-floor'],
+                optionalFeatures: ['hand-tracking'],
+              });
+            } else {
+              showEnterXR(false, 'XR');
+              logger.warn('Neither AR nor VR is supported.');
+            }
+          }
+        } catch (e) {
+          logger.error('Error during session support check or start:', createErrorMetadata(e));
+          showEnterXR(false, 'XR'); // Ensure button reflects error state
+        }
+      }
+    };
+
+    // Initial button state determination
+    const setInitialButtonState = async () => {
+        try {
+            const arSupported = await navigator.xr!.isSessionSupported('immersive-ar');
+            if (arSupported) {
+                showEnterXR(true, 'AR');
+            } else {
+                const vrSupported = await navigator.xr!.isSessionSupported('immersive-vr');
+                showEnterXR(vrSupported, vrSupported ? 'VR' : 'XR');
+            }
+        } catch (e) {
+            logger.error('Error checking XR support for initial button state:', createErrorMetadata(e));
+            showEnterXR(false, 'XR');
+        }
+    };
+    
+    setInitialButtonState(); // Call async function to set initial state
+    
+    this.vrButton = button;
+    document.body.appendChild(this.vrButton);
+
+    // Session event listeners
+    currentRenderer.xr.addEventListener('sessionstart', () => {
+      this.sessionActive = true;
+      showExitXR();
+      if (debugState.isEnabled()) {
+        logger.info('XR session started. Environment Blend Mode:', currentRenderer.xr.getSession()?.environmentBlendMode);
+      }
+    });
+
+    currentRenderer.xr.addEventListener('sessionend', () => {
+      this.sessionActive = false;
+      // Reset button to initial state after a short delay
+      setTimeout(() => {
+        if (this.vrButton && !currentRenderer.xr.isPresenting) { // Check button exists and not already re-entered XR
+            setInitialButtonState();
+        }
+      }, 100);
+      if (debugState.isEnabled()) {
+        logger.info('XR session ended');
+      }
+    });
   }
   
   private setupControllers(): void {
