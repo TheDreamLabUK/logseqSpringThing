@@ -170,8 +170,8 @@ extern "C" {
             total_force.z *= scale_factor;
             
             // Additional logging to help debug extreme forces after randomization
-            if (idx == 0 && iteration_count < 5)
-                printf("Force clamped from %f to %f (iteration %d)\n", force_magnitude, MAX_FORCE, iteration_count);
+            // if (idx == 0 && iteration_count < 5)
+            //     printf("Force clamped from %f to %f (iteration %d)\n", force_magnitude, MAX_FORCE, iteration_count);
         }
 
         // Apply damping and bounded forces to velocity
@@ -223,20 +223,20 @@ extern "C" {
         nodes[idx].velocity.z = vel.z;
 
         // Debug output for first node
-        if (idx == 0 && (iteration_count < 5 || iteration_count % 20 == 0)) {
-            float force_mag = sqrtf(
-                total_force.x * total_force.x +
-                total_force.y * total_force.y +
-                total_force.z * total_force.z
-            );
-            printf("Node %d: force_mag=%f, pos=(%f,%f,%f), vel=(%f,%f,%f)\n",
-                idx, force_mag, 
-                pos.x, pos.y, pos.z,
-                vel.x, vel.y, vel.z);
+        // if (idx == 0 && (iteration_count < 5 || iteration_count % 20 == 0)) {
+        //     float force_mag = sqrtf(
+        //         total_force.x * total_force.x +
+        //         total_force.y * total_force.y +
+        //         total_force.z * total_force.z
+        //     );
+        //     printf("Node %d: force_mag=%f, pos=(%f,%f,%f), vel=(%f,%f,%f)\n",
+        //         idx, force_mag,
+        //         pos.x, pos.y, pos.z,
+        //         vel.x, vel.y, vel.z);
                 
-            // More detailed logging during initialization
-            if (iteration_count < WARMUP_ITERATIONS)
-                printf("Node %d: iteration=%d, ramp_up=%f, damping=%f\n", idx, iteration_count, ramp_up_factor, damping);
-        }
+        //     // More detailed logging during initialization
+        //     if (iteration_count < WARMUP_ITERATIONS)
+        //         printf("Node %d: iteration=%d, ramp_up=%f, damping=%f\n", idx, iteration_count, ramp_up_factor, damping);
+        // }
     }
 }
