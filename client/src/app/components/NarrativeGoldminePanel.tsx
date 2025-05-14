@@ -17,7 +17,7 @@ const NarrativeGoldminePanel: React.FC = () => {
   return (
     <div style={panelStyle}>
       <iframe
-        src="https://narrativegoldmine.com"
+        src="https://narrativegoldmine.com//#/graph"
         style={iframeStyle}
         title="Narrative Goldmine"
         sandbox="allow-scripts allow-same-origin allow-popups allow-forms" // Standard sandbox attributes

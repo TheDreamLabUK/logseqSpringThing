@@ -5,8 +5,8 @@ visualisation:
     opacity: 1.0
     roughness: 0.7
     size_range:
-    - 0.1  # Smaller min size
-    - 1.5  # Smaller max size
+    - 0.01  # Smaller min size
+    - 0.15  # Smaller max size
     quality: medium
     enable_instancing: false
     enable_hologram: false

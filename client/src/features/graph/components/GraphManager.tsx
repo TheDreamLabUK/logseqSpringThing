@@ -152,21 +152,40 @@ const GraphManager = () => {
     }
   }, []); // No dependencies needed if it's just logging or relying on external state updates.
 
-  useFrame(() => {
-    if (!meshRef.current) return
+  // Constants for file size normalization
+  const MIN_LOG_FILE_SIZE_ESTIMATE = Math.log10(100 + 1); // Approx 2, for 100 bytes
+  const MAX_LOG_FILE_SIZE_ESTIMATE = Math.log10(5 * 1024 * 1024 + 1); // Approx 6.7, for 5MB
+  const BASE_SPHERE_RADIUS = 0.5;
 
-    let needsUpdate = false
+  useFrame(() => {
+    if (!meshRef.current) return;
+
+    const nodeSettings = settings?.visualisation?.nodes;
+    const settingsSizeRange = nodeSettings?.sizeRange || [0.5, 1.5]; // Default if not loaded
+
+    // Log the settingsSizeRange being used
+    if (debugState.isEnabled()) { // Only log if debug mode is on
+        console.log('GraphManager useFrame - settingsSizeRange:', settingsSizeRange);
+    }
+
+    let needsUpdate = false;
     graphData.nodes.forEach((node, index) => {
-      const pos = node.position // Access position directly, assuming it exists on GraphNode type
+      const pos = node.position;
       if (pos && (pos.x !== 0 || pos.y !== 0 || pos.z !== 0)) {
-        const scale = calculateNodeScale(node) // Implement this based on your needs
-        updateInstanceMatrix(index, pos.x, pos.y, pos.z, scale)
-        needsUpdate = true
+        const scale = calculateNodeScale(
+          node,
+          settingsSizeRange,
+          MIN_LOG_FILE_SIZE_ESTIMATE,
+          MAX_LOG_FILE_SIZE_ESTIMATE,
+          BASE_SPHERE_RADIUS
+        );
+        updateInstanceMatrix(index, pos.x, pos.y, pos.z, scale);
+        needsUpdate = true;
       }
-    })
+    });
 
     if (needsUpdate) {
-      meshRef.current.instanceMatrix.needsUpdate = true
+      meshRef.current.instanceMatrix.needsUpdate = true;
     }
   })
 
@@ -293,19 +312,49 @@ const GraphManager = () => {
   )
 }
 
-// Helper function to calculate node scale based on metadata
-const calculateNodeScale = (node: any) => {
-  let scale = 1.0
-  
+// Helper function to calculate node scale based on metadata and settings
+const calculateNodeScale = (
+  node: GraphNode,
+  settingsSizeRange: [number, number],
+  minLogFileSizeEstimate: number,
+  maxLogFileSizeEstimate: number,
+  baseSphereRadius: number
+): number => {
+  const targetMinRadius = settingsSizeRange[0];
+  const targetMaxRadius = settingsSizeRange[1];
+
+  let normalizedValue = 0; // Default to min size if no metadata
+
   if (node.metadata?.fileSize) {
-    // Logarithmic scale based on file size
-    scale = Math.log10(parseInt(node.metadata.fileSize) + 1) * 0.1 + 0.5
+    const fileSize = parseInt(node.metadata.fileSize, 10);
+    if (!isNaN(fileSize) && fileSize > 0) {
+      const logFileSize = Math.log10(fileSize + 1);
+      if (maxLogFileSizeEstimate > minLogFileSizeEstimate) {
+        normalizedValue = (logFileSize - minLogFileSizeEstimate) / (maxLogFileSizeEstimate - minLogFileSizeEstimate);
+      }
+    }
   } else if (node.metadata?.size) {
-    scale = parseFloat(node.metadata.size) / 100
+    // Fallback for metadata.size, assuming it's a direct value that needs normalization
+    // This part might need adjustment based on typical range of node.metadata.size
+    const numericSize = parseFloat(node.metadata.size);
+    if (!isNaN(numericSize)) {
+      // Example: if metadata.size is 0-100, this normalizes it.
+      // Adjust 100 if the expected range is different.
+      const assumedMaxMetadataSize = 100;
+      normalizedValue = numericSize / assumedMaxMetadataSize;
+    }
   }
-  
-  // Clamp scale to reasonable values
-  return Math.max(0.2, Math.min(scale, 2.0))
-}
+
+  // Clamp normalizedValue to be strictly between 0 and 1
+  normalizedValue = Math.max(0, Math.min(normalizedValue, 1));
+
+  // Determine final radius based on normalized value and settings range
+  const finalRadius = targetMinRadius + normalizedValue * (targetMaxRadius - targetMinRadius);
+
+  // Calculate scale factor based on the base sphere radius
+  const scaleFactor = finalRadius / baseSphereRadius;
+
+  return scaleFactor;
+};
 
 export default GraphManager

@@ -6,22 +6,27 @@ import ConversationPane from './components/ConversationPane'; // Add this
 import NarrativeGoldminePanel from './components/NarrativeGoldminePanel';
 
 const TwoPaneLayout: React.FC = () => {
-  const [leftPaneWidth, setLeftPaneWidth] = useState<number>(300); // Initial width of the left pane
+  // Initialize leftPaneWidth to 80% of window width, or a fallback.
+  const [leftPaneWidth, setLeftPaneWidth] = useState<number>(() => {
+    if (typeof window !== 'undefined') {
+      return window.innerWidth * 0.8;
+    }
+    return 600; // Fallback for environments without window object during initial SSR/render
+  });
   const [isDraggingVertical, setIsDraggingVertical] = useState<boolean>(false);
   const [isRightPaneDocked, setIsRightPaneDocked] = useState<boolean>(false);
 
   // State for TOP horizontal splitter in right pane (dividing Control Panel and the rest)
-  const [rightPaneTopHeight, setRightPaneTopHeight] = useState<number>(300); // Adjusted initial height
-  const [isDraggingHorizontalTop, setIsDraggingHorizontalTop] = useState<boolean>(false); // Renamed
+  // Initial heights will be set by useEffect
+  const [rightPaneTopHeight, setRightPaneTopHeight] = useState<number>(200);
+  const [isDraggingHorizontalTop, setIsDraggingHorizontalTop] = useState<boolean>(false);
 
   // State for the new BOTTOM horizontal splitter within the lower part of the right pane
-  const [bottomRightUpperHeight, setBottomRightUpperHeight] = useState<number>(200); // Initial height for Markdown panel
+  const [bottomRightUpperHeight, setBottomRightUpperHeight] = useState<number>(200);
   const [isDraggingHorizontalBottom, setIsDraggingHorizontalBottom] = useState<boolean>(false);
-
 
   const handleVerticalMouseDown = useCallback((e: React.MouseEvent) => {
     setIsDraggingVertical(true);
-    // Prevent text selection while dragging
     e.preventDefault();
   }, []);
 
@@ -33,7 +38,10 @@ const TwoPaneLayout: React.FC = () => {
     (e: MouseEvent) => {
       if (isDraggingVertical && !isRightPaneDocked) {
         const newWidth = e.clientX;
-        if (newWidth > 50 && newWidth < window.innerWidth - 50) {
+        // Ensure the new width is within reasonable bounds (e.g., not too small or too large)
+        const minPaneWidth = 50; // Minimum width for any pane
+        const maxPaneWidth = window.innerWidth - minPaneWidth - 10; // 10 for divider
+        if (newWidth > minPaneWidth && newWidth < maxPaneWidth) {
           setLeftPaneWidth(newWidth);
         }
       }
@@ -56,15 +64,34 @@ const TwoPaneLayout: React.FC = () => {
       if (isDraggingHorizontalTop) {
         const rightPaneContainer = document.getElementById('right-pane-container');
         if (rightPaneContainer) {
-            const rect = rightPaneContainer.getBoundingClientRect();
-            const relativeNewHeight = e.clientY - rect.top;
-            if (relativeNewHeight > 50 && relativeNewHeight < rect.height - 110) { // Min 50 for top, 110 for bottom container (50+10+50)
-                 setRightPaneTopHeight(relativeNewHeight);
+            const rightPaneRect = rightPaneContainer.getBoundingClientRect();
+            const newTopPanelHeight = e.clientY - rightPaneRect.top;
+
+            const minPanelHeight = 50;
+            const dividerHeight = 10; // From horizontalTopDividerStyle and horizontalBottomDividerStyle
+            
+            // Ensure top panel doesn't get too small or too large, leaving space for two other panels and two dividers
+            if (newTopPanelHeight > minPanelHeight &&
+                newTopPanelHeight < (rightPaneRect.height - (2 * minPanelHeight + 2 * dividerHeight))) {
+                
+                setRightPaneTopHeight(newTopPanelHeight);
+
+                // Recalculate height for the middle panel (ConversationPane)
+                // so it and the bottom panel (NarrativeGoldminePanel) share the remaining space equally.
+                const remainingHeightForBottomTwo = rightPaneRect.height - newTopPanelHeight - dividerHeight;
+                const heightForOneOfTheBottomTwo = (remainingHeightForBottomTwo - dividerHeight) / 2;
+
+                if (heightForOneOfTheBottomTwo > minPanelHeight) {
+                    setBottomRightUpperHeight(heightForOneOfTheBottomTwo);
+                } else {
+                    setBottomRightUpperHeight(minPanelHeight);
+                    // If ConversationPane is at minHeight, NarrativeGoldminePanel will take the rest due to flex-grow.
+                }
             }
         }
       }
     },
-    [isDraggingHorizontalTop]
+    [isDraggingHorizontalTop] // setBottomRightUpperHeight should be added if it's not stable via dispatch
   );
 
   // Event handlers for BOTTOM horizontal splitter
@@ -84,7 +111,8 @@ const TwoPaneLayout: React.FC = () => {
         if (bottomRightContainer) {
             const rect = bottomRightContainer.getBoundingClientRect();
             const relativeNewHeight = e.clientY - rect.top;
-            if (relativeNewHeight > 50 && relativeNewHeight < rect.height - 60) { // Min 50 for upper, 50 for lower + 10 for divider
+            // Min 50 for upper (ConversationPane), 60 for lower (NarrativeGoldminePanel + its potential minHeight + divider)
+            if (relativeNewHeight > 50 && relativeNewHeight < rect.height - 60) {
                  setBottomRightUpperHeight(relativeNewHeight);
             }
         }
@@ -95,15 +123,37 @@ const TwoPaneLayout: React.FC = () => {
 
   const toggleRightPaneDock = () => {
     setIsRightPaneDocked(!isRightPaneDocked);
-    if (!isRightPaneDocked) {
-      // Optionally, reset left pane width or set to a specific value when docking
-    } else {
-      // Optionally, restore left pane width or set to a specific value when undocking
-      // For now, it will just expand based on leftPaneWidth
-    }
   };
+  
+  // Effect for setting initial pane widths and heights
+  React.useEffect(() => {
+    const updateLayout = () => {
+      if (typeof window !== 'undefined') {
+        if (!isDraggingVertical) {
+          setLeftPaneWidth(isRightPaneDocked ? window.innerWidth : window.innerWidth * 0.8);
+        }
 
-  // Add and remove mouse move/up listeners on the window
+        // Calculate heights for right pane panels
+        const rightPaneContainer = document.getElementById('right-pane-container');
+        if (rightPaneContainer && !isDraggingHorizontalTop && !isDraggingHorizontalBottom) {
+          const totalHeight = rightPaneContainer.clientHeight;
+          const dividerHeight = 10; // As per horizontalTopDividerStyle and horizontalBottomDividerStyle
+          const panelHeight = (totalHeight - 2 * dividerHeight) / 3;
+          
+          setRightPaneTopHeight(panelHeight > 50 ? panelHeight : 50); // Ensure minHeight
+          setBottomRightUpperHeight(panelHeight > 50 ? panelHeight : 50); // Ensure minHeight
+        }
+      }
+    };
+
+    updateLayout(); // Initial setup
+
+    window.addEventListener('resize', updateLayout);
+    return () => window.removeEventListener('resize', updateLayout);
+  }, [isRightPaneDocked, isDraggingVertical, isDraggingHorizontalTop, isDraggingHorizontalBottom]);
+
+
+  // Add and remove mouse move/up listeners on the window for dragging
   React.useEffect(() => {
     const handleGlobalMouseMove = (e: MouseEvent) => {
       handleVerticalMouseMove(e);
@@ -149,6 +199,7 @@ const TwoPaneLayout: React.FC = () => {
     height: '100%', // Ensure left pane takes full height for the canvas
     position: 'relative', // For potential absolute positioned elements within GraphViewport
     transition: 'width 0.3s ease', // Smooth transition for docking
+    borderRight: isRightPaneDocked ? 'none' : '1px solid #cccccc', // Visual delineation
   };
 
   const dividerStyle: CSSProperties = {

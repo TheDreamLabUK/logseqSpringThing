@@ -53,9 +53,7 @@ export const defaultSettings: Settings = {
       position: 'top-right'
     },
     nodes: {
-      defaultSize: 1.0,
-      minSize: 0.5,
-      maxSize: 3.0,
+      sizeRange: [0.05, 0.15], // Default min/max node size
       color: '#ff4500',
       highlightColor: '#ffff00',
       outlineWidth: 0.1,
