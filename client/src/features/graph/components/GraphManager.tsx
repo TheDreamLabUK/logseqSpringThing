@@ -165,7 +165,7 @@ const GraphManager = () => {
 
     // Log the settingsSizeRange being used
     if (debugState.isEnabled()) { // Only log if debug mode is on
-        console.log('GraphManager useFrame - settingsSizeRange:', settingsSizeRange);
+        logger.debug('GraphManager useFrame - settingsSizeRange:', settingsSizeRange);
     }
 
     let needsUpdate = false;

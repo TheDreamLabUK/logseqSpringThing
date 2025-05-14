@@ -1,7 +1,7 @@
 use byteorder::{LittleEndian, WriteBytesExt, ReadBytesExt};
 use std::io::Cursor;
 use crate::utils::socket_flow_messages::BinaryNodeData;
-use log::debug;
+use log::{trace, debug};
 
 // Binary format (simplified):
 // - For each node (26 bytes total):
@@ -13,7 +13,7 @@ use log::debug;
 pub fn encode_node_data(nodes: &[(u16, BinaryNodeData)]) -> Vec<u8> {
     // Only log non-empty node transmissions to reduce spam
     if nodes.len() > 0 {
-        debug!("Encoding {} nodes for binary transmission", nodes.len());
+        trace!("Encoding {} nodes for binary transmission", nodes.len());
     }
     
     let mut buffer = Vec::new();
@@ -21,13 +21,13 @@ pub fn encode_node_data(nodes: &[(u16, BinaryNodeData)]) -> Vec<u8> {
     // Log some samples of the encoded data
     let sample_size = std::cmp::min(3, nodes.len());
     if sample_size > 0 {
-        debug!("Sample of nodes being encoded:");
+        trace!("Sample of nodes being encoded:");
     }
     
     for (node_id, node) in nodes {
         // Log the first few nodes for debugging
         if sample_size > 0 && *node_id < sample_size as u16 {
-            debug!("Encoding node {}: pos=[{:.3},{:.3},{:.3}], vel=[{:.3},{:.3},{:.3}]", 
+            trace!("Encoding node {}: pos=[{:.3},{:.3},{:.3}], vel=[{:.3},{:.3},{:.3}]", 
                 node_id, 
                 node.position.x, node.position.y, node.position.z,
                 node.velocity.x, node.velocity.y, node.velocity.z);

@@ -4,7 +4,7 @@ use cudarc::driver::sys::CUdevice_attribute_enum;
 
 use std::io::{Error, ErrorKind};
 use std::sync::Arc;
-use log::{error, warn, info, debug};
+use log::{error, warn, info, debug, trace};
 use crate::models::graph::GraphData;
 use std::collections::HashMap;
 use crate::models::simulation_params::SimulationParams;
@@ -47,9 +47,9 @@ impl GPUCompute {
     pub async fn test_gpu() -> Result<(), Error> {
         info!("Running GPU test");
         sleep(Duration::from_millis(500)).await;
-        debug!("About to create CUDA device for testing");
+        trace!("About to create CUDA device for testing");
         let device = Self::create_cuda_device().await?;
-        debug!("Device created successfully, performing memory test");
+        trace!("Device created successfully, performing memory test");
         sleep(Duration::from_millis(500)).await;
         let test_data: Vec<f32> = vec![1.0, 2.0, 3.0, 4.0, 5.0];
         let gpu_data = device.alloc_zeros::<f32>(5)
@@ -62,32 +62,32 @@ impl GPUCompute {
     }
     
     async fn create_cuda_device() -> Result<Arc<CudaDevice>, Error> {
-        debug!("Starting CUDA device initialization sequence");
+        trace!("Starting CUDA device initialization sequence");
         if let Ok(uuid) = env::var("NVIDIA_GPU_UUID") {
-            debug!("Found NVIDIA_GPU_UUID: {}", uuid);
+            trace!("Found NVIDIA_GPU_UUID: {}", uuid);
             info!("Attempting to create CUDA device with UUID: {}", uuid);
             info!("Using GPU UUID {} via environment variables", uuid);
             if let Ok(devices) = env::var("CUDA_VISIBLE_DEVICES") {
-                debug!("Found CUDA_VISIBLE_DEVICES: {}", devices);
+                trace!("Found CUDA_VISIBLE_DEVICES: {}", devices);
                 info!("CUDA_VISIBLE_DEVICES is set to: {}", devices);
             }
         }
-        debug!("Preparing to create CUDA device with index 0");
+        trace!("Preparing to create CUDA device with index 0");
         sleep(Duration::from_millis(500)).await;
-        debug!("Checking CUDA device availability");
+        trace!("Checking CUDA device availability");
         sleep(Duration::from_millis(500)).await;
-        debug!("Attempting CUDA device creation");
+        trace!("Attempting CUDA device creation");
         sleep(Duration::from_millis(1000)).await;
         info!("Creating CUDA device with index 0");
         match CudaDevice::new(0) {
             Ok(device) => {
-                debug!("CUDA device creation successful");
+                trace!("CUDA device creation successful");
                 info!("Successfully created CUDA device with index 0 (for GPU UUID: {})",
                     env::var("NVIDIA_GPU_UUID").unwrap_or_else(|_| "unknown".to_string()));
                 Ok(device.into())
             },
             Err(e) => {
-                debug!("CUDA device creation failed with error: {}", e);
+                trace!("CUDA device creation failed with error: {}", e);
                 error!("Failed to create CUDA device with index 0: {}", e);
                 Err(Error::new(ErrorKind::Other,
                     format!("Failed to create CUDA device: {}. Ensure CUDA drivers are installed and GPU is detected.", e)))
@@ -112,36 +112,36 @@ impl GPUCompute {
     }
     
     async fn test_gpu_capabilities() -> Result<(), Error> {
-        debug!("Starting GPU capabilities test");
+        trace!("Starting GPU capabilities test");
         info!("Testing CUDA capabilities");
         sleep(Duration::from_millis(300)).await;
-        debug!("Checking environment variables");
+        trace!("Checking environment variables");
         match env::var("NVIDIA_GPU_UUID") {
             Ok(uuid) => {
-                debug!("Found NVIDIA_GPU_UUID");
+                trace!("Found NVIDIA_GPU_UUID");
                 info!("NVIDIA_GPU_UUID is set to: {}", uuid)
             },
             Err(_) => {
-                debug!("NVIDIA_GPU_UUID not found");
+                trace!("NVIDIA_GPU_UUID not found");
                 warn!("NVIDIA_GPU_UUID environment variable is not set")
             }
         }
         sleep(Duration::from_millis(500)).await;
-        debug!("Querying CUDA device count");
+        trace!("Querying CUDA device count");
         match CudaDevice::count() {
             Ok(count) => {
-                debug!("CUDA device count: {}", count);
+                trace!("CUDA device count: {}", count);
                 info!("Found {} CUDA device(s)", count);
                 if count == 0 {
-                    debug!("No CUDA devices found, returning error");
+                    trace!("No CUDA devices found, returning error");
                     return Err(Error::new(ErrorKind::NotFound,
                         "No CUDA devices found. Ensure NVIDIA drivers are installed and working."));
                 }
-                debug!("GPU capabilities test completed successfully");
+                trace!("GPU capabilities test completed successfully");
                 Ok(())
             },
             Err(e) => {
-                debug!("Failed to get CUDA device count: {}", e);
+                trace!("Failed to get CUDA device count: {}", e);
                 error!("Failed to get CUDA device count: {}", e);
                 Err(Error::new(ErrorKind::Other,
                     format!("Failed to get CUDA device count: {}. Check NVIDIA drivers.", e)))
@@ -150,35 +150,35 @@ impl GPUCompute {
     }
     
     fn diagnostic_cuda_info() -> Result<(), Error> {
-        debug!("Starting CUDA diagnostic info collection");
+        trace!("Starting CUDA diagnostic info collection");
         info!("Running CUDA diagnostic checks");
-        debug!("Checking CUDA-related environment variables");
+        trace!("Checking CUDA-related environment variables");
         info!("Checking CUDA-related environment variables:");
         for var in &["NVIDIA_GPU_UUID", "NVIDIA_VISIBLE_DEVICES", "CUDA_VISIBLE_DEVICES"] {
-            debug!("Checking variable: {}", var);
+            trace!("Checking variable: {}", var);
             match env::var(var) {
                 Ok(val) => {
-                    debug!("Found {}: {}", var, val);
+                    trace!("Found {}: {}", var, val);
                     info!("  {}={}", var, val)
                 },
                 Err(_) => {
-                    debug!("{} not set", var);
+                    trace!("{} not set", var);
                     info!("  {} is not set", var)
                 }
             }
         }
-        debug!("Attempting to get CUDA device count");
+        trace!("Attempting to get CUDA device count");
         match CudaDevice::count() {
             Ok(count) => {
-                debug!("Retrieved CUDA device count: {}", count);
+                trace!("Retrieved CUDA device count: {}", count);
                 info!("CUDA device count: {}", count)
             },
             Err(e) => {
-                debug!("Failed to get device count: {}", e);
+                trace!("Failed to get device count: {}", e);
                 error!("Failed to get CUDA device count: {}", e)
             }
         }
-        debug!("CUDA diagnostic info collection completed");
+        trace!("CUDA diagnostic info collection completed");
         Ok(())
     }
     
@@ -304,7 +304,7 @@ impl GPUCompute {
     }
 
     pub fn update_graph_data(&mut self, graph: &GraphData) -> Result<(), Error> {
-        debug!("Updating graph data for {} nodes", graph.nodes.len());
+        trace!("Updating graph data for {} nodes", graph.nodes.len());
         self.node_indices.clear();
         for (idx, node) in graph.nodes.iter().enumerate() {
             self.node_indices.insert(node.id.clone(), idx);
@@ -319,10 +319,10 @@ impl GPUCompute {
         let mut node_data = Vec::with_capacity(graph.nodes.len());
         if !graph.nodes.is_empty() {
             let sample_size = std::cmp::min(3, graph.nodes.len());
-            debug!("Sample of first {} nodes before GPU transfer:", sample_size);
+            trace!("Sample of first {} nodes before GPU transfer:", sample_size);
             for i in 0..sample_size {
                 let node = &graph.nodes[i];
-                debug!(
+                trace!(
                     "Node[{}] id={}: pos=[{:.3},{:.3},{:.3}], vel=[{:.3},{:.3},{:.3}]",
                     i, node.id,
                     node.data.position.x, node.data.position.y, node.data.position.z,
@@ -335,11 +335,11 @@ impl GPUCompute {
                 position: node.data.position.clone(),
                 velocity: node.data.velocity.clone(),
                 mass: node.data.mass,
-                flags: node.data.flags, 
+                flags: node.data.flags,
                 padding: node.data.padding,
             });
             if node.id == "0" || node.id == "1" {
-                debug!(
+                trace!(
                     "Node {} data prepared for GPU: pos=[{:.3},{:.3},{:.3}], vel=[{:.3},{:.3},{:.3}]",
                     node.id,
                     node.data.position.x, node.data.position.y, node.data.position.z,
@@ -347,14 +347,14 @@ impl GPUCompute {
                 );
             }
         }
-        debug!("Copying {} nodes to GPU", graph.nodes.len());
+        trace!("Copying {} nodes to GPU", graph.nodes.len());
         self.device.htod_sync_copy_into(&node_data, &mut self.node_data)
             .map_err(|e| Error::new(ErrorKind::Other, format!("Failed to copy node data to GPU: {}", e)))?;
         Ok(())
     }
 
     pub fn update_simulation_params(&mut self, params: &SimulationParams) -> Result<(), Error> {
-        debug!("Updating simulation parameters: {:?}", params);
+        trace!("Updating simulation parameters: {:?}", params);
         self.simulation_params = params.clone();
         Ok(())
     }
@@ -363,7 +363,7 @@ impl GPUCompute {
     pub fn compute_forces(&mut self) -> Result<(), Error> {
         // Only log detailed GPU computation info every DEBUG_THROTTLE iterations.
         if self.iteration_count % DEBUG_THROTTLE == 0 {
-            debug!("Starting force computation on GPU");
+            trace!("Starting force computation on GPU");
         }
         let blocks = ((self.num_nodes + BLOCK_SIZE - 1) / BLOCK_SIZE).max(1);
         let cfg = LaunchConfig {
@@ -372,7 +372,7 @@ impl GPUCompute {
             shared_mem_bytes: SHARED_MEM_SIZE,
         };
         if self.iteration_count % DEBUG_THROTTLE == 0 {
-            debug!("Launch config: blocks={}, threads={}, shared_mem={}", blocks, BLOCK_SIZE, SHARED_MEM_SIZE);
+            trace!("Launch config: blocks={}, threads={}, shared_mem={}", blocks, BLOCK_SIZE, SHARED_MEM_SIZE);
         }
         unsafe {
             self.force_kernel.clone().launch(cfg, (
@@ -395,7 +395,7 @@ impl GPUCompute {
             })?;
         }
         if self.iteration_count % DEBUG_THROTTLE == 0 {
-            debug!("Force computation completed");
+            trace!("Force computation completed");
         }
         self.iteration_count += 1;
         Ok(())
@@ -413,13 +413,13 @@ impl GPUCompute {
             .map_err(|e| Error::new(ErrorKind::Other, format!("Failed to copy data from GPU: {}", e)))?;
         if !gpu_raw_data.is_empty() {
             let sample_size = std::cmp::min(5, gpu_raw_data.len());
-            debug!("Sample of first {} nodes after GPU calculation:", sample_size);
+            trace!("Sample of first {} nodes after GPU calculation:", sample_size);
             for i in 0..sample_size {
                 let node = &gpu_raw_data[i];
                 let force_mag = (node.velocity.x * node.velocity.x +
                                  node.velocity.y * node.velocity.y +
                                  node.velocity.z * node.velocity.z).sqrt();
-                debug!(
+                trace!(
                     "Node[{}]: force_mag={:.6}, pos=[{:.3},{:.3},{:.3}], vel=[{:.6},{:.6},{:.6}]",
                     i, force_mag,
                     node.position.x, node.position.y, node.position.z,
@@ -432,17 +432,17 @@ impl GPUCompute {
 
     /// Advances one simulation step.
     pub fn step(&mut self) -> Result<(), Error> {
-        debug!("Executing physics step (iteration {})", self.iteration_count);
+        trace!("Executing physics step (iteration {})", self.iteration_count);
         self.compute_forces()?;
         if self.iteration_count % DEBUG_THROTTLE == 0 {
-            debug!("Detailed simulation status:");
-            debug!("  - Iteration: {}", self.iteration_count);
-            debug!("  - Node count: {}", self.num_nodes);
-            debug!("  - Spring strength: {}", self.simulation_params.spring_strength);
-            debug!("  - Repulsion: {}", self.simulation_params.repulsion);
-            debug!("  - Damping: {}", self.simulation_params.damping);
+            trace!("Detailed simulation status:");
+            trace!("  - Iteration: {}", self.iteration_count);
+            trace!("  - Node count: {}", self.num_nodes);
+            trace!("  - Spring strength: {}", self.simulation_params.spring_strength);
+            trace!("  - Repulsion: {}", self.simulation_params.repulsion);
+            trace!("  - Damping: {}", self.simulation_params.damping);
         } else {
-            debug!("Physics step complete, iteration count: {}", self.iteration_count);
+            trace!("Physics step complete, iteration count: {}", self.iteration_count);
         }
         Ok(())
     }
