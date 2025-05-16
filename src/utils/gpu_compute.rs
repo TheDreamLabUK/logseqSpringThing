@@ -4,7 +4,7 @@ use cudarc::driver::sys::CUdevice_attribute_enum;
 
 use std::io::{Error, ErrorKind};
 use std::sync::Arc;
-use log::{error, warn, info, debug, trace};
+use log::{error, warn, info, trace};
 use crate::models::graph::GraphData;
 use std::collections::HashMap;
 use crate::models::simulation_params::SimulationParams;

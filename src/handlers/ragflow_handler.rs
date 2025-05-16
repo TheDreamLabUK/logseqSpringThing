@@ -212,9 +212,12 @@ async fn handle_ragflow_chat(
         if !nostr_service.validate_session(&pubkey, &token).await {
             return HttpResponse::Unauthorized().json(json!({"error": "Invalid session token"}));
         }
-        // Accessing is_power_user through AppState method
-        if !state.is_power_user(&pubkey) { 
-             return HttpResponse::Forbidden().json(json!({"error": "This feature requires power user access"}));
+        // Accessing feature checks through AppState methods
+        let has_ragflow_specific_access = state.has_feature_access(&pubkey, "ragflow");
+        let is_power_user = state.is_power_user(&pubkey);
+
+        if !is_power_user && !has_ragflow_specific_access {
+            return HttpResponse::Forbidden().json(json!({"error": "This feature requires power user access or specific RAGFlow permission"}));
         }
     } else {
         // This case should ideally not be reached if nostr_service is integral

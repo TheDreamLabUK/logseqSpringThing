@@ -3,7 +3,7 @@ use actix_web::{web, Error, HttpRequest, HttpResponse};
 use actix_web_actors::ws;
 use crate::config::AppFullSettings;
 use flate2::{write::ZlibEncoder, Compression};
-use log::{debug, error, info, warn};
+use log::{trace, debug, error, info, warn};
 use std::io::Write;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -147,7 +147,7 @@ impl Handler<BroadcastPositionUpdate> for SocketFlowServer {
             
             // Debug logging - limit to avoid spamming logs
             if self.should_log_update() {
-                debug!("[WebSocket] Position update sent: {} nodes", msg.0.len());
+                trace!("[WebSocket] Position update sent: {} nodes", msg.0.len());
             }
         }
     }
@@ -411,7 +411,7 @@ impl Actor for SocketFlowServer {
         if !self.heartbeat_timer_set {
             ctx.run_interval(std::time::Duration::from_secs(5), |act, ctx| {
                 // Send a heartbeat ping every 5 seconds
-                debug!("[WebSocket] Sending server heartbeat ping");
+                trace!("[WebSocket] Sending server heartbeat ping");
                 ctx.ping(b"");
                 
                 // Update last activity timestamp to prevent client-side timeout

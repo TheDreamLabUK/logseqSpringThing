@@ -10,7 +10,7 @@ use serde_json;
 use std::pin::Pin;
 use std::time::{Duration, Instant};
 use futures::Future;
-use log::{info, warn, error, debug, trace};
+use log::{info, warn, error, trace};
 use scopeguard;
 
 use tokio::fs::File as TokioFile;
