@@ -39,18 +39,18 @@ check_endpoints() {
         "http://localhost:4000/api/health"
         "http://localhost:4000/api/graph/data"
         "http://localhost:4000/api/files/fetch"
-        "http://192.168.0.51/v1/ping" # Check RAGFlow API
+        "http://ragflow-server:9380/api/v1/system/healthz" # Check RAGFlow API using service name and standard health endpoint
     )
 
     for endpoint in "${endpoints[@]}"; do
         echo -e "\nTesting $endpoint"
-        # For RAGFlow, we might need an API key, but a basic connectivity check should work
-        if [[ "$endpoint" == *"192.168.0.51"* ]]; then
-            # Attempt to curl with API key if available in env, otherwise just curl
-            # This assumes diagnostics.sh might be run in an env where RAGFLOW_API_KEY is set
+        if [[ "$endpoint" == *"ragflow-server"* ]]; then
+            # RAGFlow health endpoint usually doesn't require auth, but good to have if testing other RAGFlow endpoints
             if [ -n "$RAGFLOW_API_KEY" ]; then
+                echo "Attempting RAGFlow check with API Key (though /healthz might not need it)"
                 curl -v -H "Authorization: Bearer $RAGFLOW_API_KEY" "$endpoint"
             else
+                echo "Attempting RAGFlow check without API Key"
                 curl -v "$endpoint"
             fi
         else

@@ -226,10 +226,17 @@ async fn handle_ragflow_chat(
         return HttpResponse::InternalServerError().json(json!({"error": "Nostr service not available"}));
     }
 
+    info!("[handle_ragflow_chat] Checking RAGFlow service availability. Is Some: {}", state.ragflow_service.is_some()); // ADDED LOG
+
     let ragflow_service = match &state.ragflow_service {
         Some(service) => service,
-        None => return HttpResponse::ServiceUnavailable().json(json!({"error": "RAGFlow service not available"})),
+        None => {
+            error!("[handle_ragflow_chat] RAGFlow service is None, returning 503."); // ADDED LOG
+            return HttpResponse::ServiceUnavailable().json(json!({"error": "RAGFlow service not available"}));
+        }
     };
+
+    info!("[handle_ragflow_chat] RAGFlow service is Some. Proceeding."); // ADDED LOG
 
     let mut session_id = payload.session_id.clone();
     if session_id.is_none() {

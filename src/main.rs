@@ -14,6 +14,7 @@ use webxr::{
         file_service::FileService,
         graph_service::GraphService,
         github::{GitHubClient, ContentAPI, GitHubConfig},
+        ragflow_service::RAGFlowService, // ADDED IMPORT
     },
     utils::gpu_compute::GPUCompute,
     services::speech_service::SpeechService,
@@ -118,6 +119,25 @@ async fn main() -> std::io::Result<()> {
         let service = SpeechService::new(settings.clone());
         Some(Arc::new(service))
     };
+
+    // Initialize RAGFlow Service
+    info!("[main] Attempting to initialize RAGFlowService...");
+    let ragflow_service_option = match RAGFlowService::new(settings.clone()).await {
+        Ok(service) => {
+            info!("[main] RAGFlowService::new SUCCEEDED. Service instance created.");
+            Some(Arc::new(service))
+        }
+        Err(e) => {
+            error!("[main] RAGFlowService::new FAILED. Error: {}", e);
+            None
+        }
+    };
+
+    if ragflow_service_option.is_some() {
+        info!("[main] ragflow_service_option is Some after RAGFlowService::new attempt.");
+    } else {
+        error!("[main] ragflow_service_option is None after RAGFlowService::new attempt. Chat functionality will be unavailable.");
+    }
     
     // Initialize app state asynchronously
     // AppState::new now correctly receives Arc<RwLock<AppFullSettings>>
@@ -126,7 +146,7 @@ async fn main() -> std::io::Result<()> {
             github_client.clone(),
             content_api.clone(),
             None, // Perplexity placeholder
-            None, // RAGFlow placeholder
+            ragflow_service_option, // Pass the initialized RAGFlow service
             speech_service,
             None, // GPU Compute placeholder
             "default_session".to_string() // RAGFlow session ID placeholder
