@@ -51,27 +51,30 @@ WORKDIR /build
 RUN cargo build --release --features gpu
 
 # Handle PTX compilation
-# First try to copy existing PTX file
-COPY src/utils/compute_forces.ptx ./src/utils/compute_forces.ptx
+# Ensure the script and the .cu file are in expected locations relative to WORKDIR /build
+COPY scripts/compile_ptx.sh ./scripts/compile_ptx.sh
+# The main `COPY src ./src` at line 38 should already make ./src/utils/compute_forces.cu available.
+# If compile_ptx.sh expects paths relative to where it is, adjust accordingly or ensure it uses absolute paths or paths relative to WORKDIR.
+# Assuming compile_ptx.sh uses paths relative to WORKDIR /build, like "src/utils/compute_forces.cu"
 
-# Compile PTX if needed (if REBUILD_PTX=true or if the copy failed)
+# First try to copy existing PTX file from the build context (host)
+# This allows using a pre-compiled PTX if available and REBUILD_PTX is false.
+COPY src/utils/compute_forces.ptx /build/src/utils/compute_forces.ptx
+
 ARG REBUILD_PTX=false
 ARG CUDA_ARCH=89
-RUN if [ "$REBUILD_PTX" = "true" ] || [ ! -f "./src/utils/compute_forces.ptx" ]; then \
-        echo "Compiling PTX file for sm_${CUDA_ARCH}..." && \
-        nvcc \
-            -arch=sm_${CUDA_ARCH} \
-            -O3 \
-            --use_fast_math \
-            -ptx \
-            --compiler-options -fPIC \
-            ./src/utils/compute_forces.cu \
-            -o ./src/utils/compute_forces.ptx && \
-        chmod 644 ./src/utils/compute_forces.ptx && \
-        echo "PTX compilation successful"; \
+RUN chmod +x ./scripts/compile_ptx.sh && \
+    if [ "$REBUILD_PTX" = "true" ] || [ ! -f "/build/src/utils/compute_forces.ptx" ]; then \
+        echo "Compiling PTX file for sm_${CUDA_ARCH} using compile_ptx.sh..." && \
+        # Pass CUDA_ARCH as an environment variable to the script
+        CUDA_ARCH=${CUDA_ARCH} ./scripts/compile_ptx.sh && \
+        echo "PTX compilation via script successful"; \
     else \
-        echo "Using existing PTX file"; \
+        echo "Using existing PTX file: /build/src/utils/compute_forces.ptx"; \
     fi
+# Ensure the PTX file is in the correct final location for the COPY to runtime stage
+# The compile_ptx.sh script writes to "src/utils/compute_forces.ptx" relative to its execution dir.
+# If script is in /build/scripts/ and WORKDIR is /build, it writes to /build/src/utils/compute_forces.ptx
 
 # Second stage: runtime image
 FROM nvidia/cuda:12.8.1-runtime-ubuntu22.04
