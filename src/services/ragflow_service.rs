@@ -91,30 +91,49 @@ pub struct RAGFlowService {
 
 impl RAGFlowService {
     // Updated signature and logic to handle optional settings
-    pub async fn new(settings: Arc<RwLock<AppFullSettings>>) -> Result<Self, RAGFlowError> {
+    pub async fn new(_settings: Arc<RwLock<AppFullSettings>>) -> Result<Self, RAGFlowError> { // settings might still be needed for other parts if any
         let client = Client::new();
-        let settings_read = settings.read().await;
+        // let settings_read = settings.read().await; // Keep if other ragflow settings (timeout, etc.) are used from config
 
-        // Safely extract RAGFlow settings or return an error
-        let ragflow_config = settings_read.ragflow.as_ref()
-            .ok_or_else(|| RAGFlowError::ParseError("RAGFlow settings section is missing".to_string()))?;
+        info!("[RAGFlowService::new] Attempting to load RAGFlow config directly from environment variables.");
 
-        let api_key = ragflow_config.api_key.as_deref()
-            .ok_or_else(|| RAGFlowError::ParseError("RAGFlow api_key is missing".to_string()))?
-            .to_string();
+        let api_key = std::env::var("RAGFLOW_API_KEY")
+            .map_err(|e| {
+                error!("[RAGFlowService::new] Failed to read RAGFLOW_API_KEY: {}", e);
+                RAGFlowError::ParseError(format!("RAGFLOW_API_KEY environment variable not found or invalid: {}", e))
+            })?;
             
-        let base_url = ragflow_config.api_base_url.as_deref()
-            .ok_or_else(|| RAGFlowError::ParseError("RAGFlow api_base_url is missing".to_string()))?
-            .to_string();
+        let base_url = std::env::var("RAGFLOW_API_BASE_URL")
+            .map_err(|e| {
+                error!("[RAGFlowService::new] Failed to read RAGFLOW_API_BASE_URL: {}", e);
+                RAGFlowError::ParseError(format!("RAGFLOW_API_BASE_URL environment variable not found or invalid: {}", e))
+            })?;
             
-        let agent_id = ragflow_config.agent_id.as_deref()
-            .ok_or_else(|| RAGFlowError::ParseError("RAGFlow agent_id is missing".to_string()))?
-            .to_string();
+        let agent_id = std::env::var("RAGFLOW_AGENT_ID")
+            .map_err(|e| {
+                error!("[RAGFlowService::new] Failed to read RAGFLOW_AGENT_ID: {}", e);
+                RAGFlowError::ParseError(format!("RAGFLOW_AGENT_ID environment variable not found or invalid: {}", e))
+            })?;
 
-        // Check if essential fields are empty
-        if api_key.is_empty() || base_url.is_empty() || agent_id.is_empty() {
-             return Err(RAGFlowError::ParseError("RAGFlow api_key, base_url, or agent_id is empty".to_string()));
+        info!("[RAGFlowService::new] RAGFLOW_API_KEY: loaded (value redacted)");
+        info!("[RAGFlowService::new] RAGFLOW_API_BASE_URL: {}", base_url);
+        info!("[RAGFlowService::new] RAGFLOW_AGENT_ID: {}", agent_id);
+
+        // Check if essential fields are empty after loading from env
+        if api_key.is_empty() {
+            error!("[RAGFlowService::new] RAGFLOW_API_KEY is empty after loading from environment.");
+            return Err(RAGFlowError::ParseError("RAGFLOW_API_KEY environment variable is empty".to_string()));
         }
+        if base_url.is_empty() {
+            error!("[RAGFlowService::new] RAGFLOW_API_BASE_URL is empty after loading from environment.");
+            return Err(RAGFlowError::ParseError("RAGFLOW_API_BASE_URL environment variable is empty".to_string()));
+        }
+        if agent_id.is_empty() {
+            error!("[RAGFlowService::new] RAGFLOW_AGENT_ID is empty after loading from environment.");
+            return Err(RAGFlowError::ParseError("RAGFLOW_AGENT_ID environment variable is empty".to_string()));
+        }
+        
+        info!("[RAGFlowService::new] Successfully loaded RAGFlow API key, base URL, and agent ID from environment variables.");
 
         Ok(RAGFlowService {
             client,

@@ -189,9 +189,9 @@ auth:
   provider: ""
   required: false
 ragflow:
-  api_key: ''
+  # api_key: SET_VIA_ENV_VARIABLE # Must be set via RAGFLOW_API_KEY environment variable
   agent_id: 'aa2e328812ef11f083dc0a0d6226f61b'
-  api_base_url: ''
+  # api_base_url: SET_VIA_ENV_VARIABLE # Must be set via RAGFLOW_API_BASE_URL environment variable
   timeout: 30
   max_retries: 3
   chat_id: ''
