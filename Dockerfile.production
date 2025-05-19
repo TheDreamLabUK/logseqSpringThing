@@ -64,7 +64,6 @@ RUN if [ "$REBUILD_PTX" = "true" ] || [ ! -f "./src/utils/compute_forces.ptx" ];
             -O3 \
             --use_fast_math \
             -ptx \
-            -rdc=true \
             --compiler-options -fPIC \
             ./src/utils/compute_forces.cu \
             -o ./src/utils/compute_forces.ptx && \
