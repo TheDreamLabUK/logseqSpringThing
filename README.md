@@ -137,7 +137,7 @@ graph TB
 
     FileHandler --> FileService
     GraphHandler --> GraphService
-    SocketFlowHandler --> SocketFlowHandler %% Handles client connections directly
+    %% SocketFlowHandler handles client connections directly
     PerplexityHandler --> PerplexityService
     RagFlowHandler --> RagFlowService
     NostrAuthHandler --> NostrService
@@ -295,224 +295,125 @@ classDiagram
     GraphService --> GPUComputeService
 ```
 
-### Sequence Diagram
+### Sequence Diagrams
+
+#### Server Initialization Sequence
 
 ```mermaid
 sequenceDiagram
-    participant AppInitializer as App Initializer (Client)
-    participant GraphDataManager as GraphDataManager (Client)
-    participant WebSocketService as WebSocketService (Client)
-    participant SettingsStore as SettingsStore (Client)
-    participant NostrAuthService as NostrAuthService (Client)
-    participant PlatformManager as PlatformManager (Client)
-    participant GraphCanvas as Graph Canvas (Client)
+    participant Server as Actix Server
+    participant AppState as App State
+    participant Services as Services
+    participant GPU as GPU Service
 
-    participant ActixServer as Actix Web Server (Backend)
-    participant AppState as AppState (Backend)
-    participant GraphService as GraphService (Backend)
-    participant GPUComputeService as GPU Compute Service (Backend)
-    participant FileService as File Service (Backend)
-    participant NostrService as Nostr Service (Backend)
-    participant AIService as AI Service (Backend)
-    participant SettingsHandler as Settings Handler (Backend)
-    participant NostrHandler as Nostr Handler (Backend)
-    participant FileHandler as File Handler (Backend)
-    participant GraphHandler as Graph Handler (Backend)
-    participant SocketFlowHandler as Socket Flow Handler (Backend)
+    Server->>Server: Load settings.yaml
+    Server->>AppState: Create AppState
+    AppState->>Services: Initialize services
+    Services->>Services: Create AI, Nostr, File services
+    AppState->>GPU: Initialize GPU compute
+    GPU-->>AppState: GPU ready
+    AppState-->>Server: Server ready
+```
+
+#### Client Initialization Sequence
+
+```mermaid
+sequenceDiagram
+    participant Client as App
+    participant Store as Settings Store
+    participant Auth as Nostr Auth
+    participant WS as WebSocket
+    participant Server as Server
+
+    Client->>Store: Initialize settings
+    Store->>Store: Load from localStorage
+    Store->>Server: GET /api/user-settings
+    Server-->>Store: Settings data
     
-    participant GitHubAPI as GitHub API (External)
-    participant PerplexityAI as Perplexity AI (External)
-    participant RagFlowAPI as RagFlow API (External)
-    participant OpenAI_API as OpenAI API (External)
-    participant NostrPlatform as Nostr Platform (External)
-
-    %% === Server Initialisation ===
-    activate ActixServer
-    ActixServer->>ActixServer: Load AppFullSettings (settings.yaml, env)
-    alt Settings Load Error
-        ActixServer-->>AppInitializer: HTTP 500 (Conceptual)
-    else Settings Loaded
-        ActixServer->>AppState: new(AppFullSettings, GitHubService, FileService, GPUComputeService, MetadataManager, GraphData, AIService, WebSocketTx)
-        activate AppState
-            Note over AppState: Initialises services like GitHubService, FileService
-            AppState->>AIService: new(AppFullSettings)
-            activate AIService; deactivate AIService
-            AppState->>NostrService: new()
-            activate NostrService; deactivate NostrService
-            AppState->>MetadataManager: load_or_create_metadata()
-            activate MetadataManager; deactivate MetadataManager
-            AppState->>GraphService: update_graph_data()
-            activate GraphService
-                GraphService->>GraphService: Initialise random positions
-            deactivate GraphService
-            AppState->>GPUComputeService: new(GraphData) (or test_gpu)
-            activate GPUComputeService; deactivate GPUComputeService
-            AppState->>GraphService: new(AppFullSettings, GPUComputeService, MetadataManager)
-            activate GraphService
-                GraphService->>GraphService: Start physics simulation loop (async)
-            deactivate GraphService
-        AppState-->>ActixServer: Initialised AppState
-        deactivate AppState
+    Client->>Auth: Check auth status
+    Auth->>Auth: Check stored session
+    opt Has stored session
+        Auth->>Server: POST /api/auth/nostr/verify
+        Server-->>Auth: Verification result
     end
-    deactivate ActixServer
-
-    %% === Client Initialisation ===
-    activate AppInitializer
-    AppInitializer->>PlatformManager: initialise()
-    activate PlatformManager; deactivate PlatformManager
-    AppInitializer->>SettingsStore: initialise()
-    activate SettingsStore
-        SettingsStore->>SettingsStore: Load from localStorage
-        SettingsStore->>ActixServer: GET /api/user-settings (fetchSettings)
-        activate ActixServer
-            ActixServer->>SettingsHandler: get_public_settings(AppState)
-            SettingsHandler-->>ActixServer: UserSettings (JSON)
-        deactivate ActixServer
-        ActixServer-->>SettingsStore: Settings JSON
-        SettingsStore->>SettingsStore: Merge and store settings
-    deactivate SettingsStore
     
-    AppInitializer->>NostrAuthService: initialise()
-    activate NostrAuthService
-        NostrAuthService->>NostrAuthService: Check localStorage for session
-        alt Stored Session Found
-            NostrAuthService->>ActixServer: POST /api/auth/nostr/verify (token)
-            activate ActixServer
-                ActixServer->>NostrHandler: verify(AppState, token_payload)
-                NostrHandler->>NostrService: validate_session(pubkey, token)
-                NostrService-->>NostrHandler: Validation Result
-            deactivate ActixServer
-            ActixServer-->>NostrAuthService: VerificationResponse
-            NostrAuthService->>SettingsStore: Update auth state
-        end
-    deactivate NostrAuthService
+    Client->>WS: Connect WebSocket
+    WS->>Server: WebSocket handshake
+    Server-->>WS: Connection established
+    WS->>Server: Request initial data
+    Server-->>WS: Graph data (binary)
+```
 
-    AppInitializer->>WebSocketService: connect()
-    activate WebSocketService
-        WebSocketService->>ActixServer: WebSocket Handshake (/wss)
-        activate ActixServer
-            ActixServer->>SocketFlowHandler: handle_connection(AppState)
-            activate SocketFlowHandler
-                SocketFlowHandler->>SocketFlowHandler: Register client
-            deactivate SocketFlowHandler
-        deactivate ActixServer
-        ActixServer-->>WebSocketService: WebSocket Opened
-        WebSocketService->>WebSocketService: isConnected = true
-        WebSocketService->>ActixServer: {"type":"requestInitialData"} (after connection_established from server)
-        activate ActixServer
-            ActixServer->>SocketFlowHandler: Handle requestInitialData
-            SocketFlowHandler->>GraphService: get_graph_data()
-            GraphService-->>SocketFlowHandler: GraphData
-            SocketFlowHandler->>SocketFlowHandler: Encode to binary
-            SocketFlowHandler-->>WebSocketService: Binary Position Data (Initial Graph)
-        deactivate ActixServer
-        WebSocketService->>GraphDataManager: updateNodePositions(binary_data)
-        activate GraphDataManager
-            GraphDataManager->>GraphDataManager: Parse binary, update internal graph
-            GraphDataManager->>GraphCanvas: Trigger re-render
-        deactivate GraphDataManager
-    deactivate WebSocketService
-    
-    AppInitializer->>GraphDataManager: fetchInitialData() (if WebSocket initial data is not primary)
-    activate GraphDataManager
-        GraphDataManager->>ActixServer: GET /api/graph/data
-        activate ActixServer
-            ActixServer->>GraphHandler: get_graph_data(AppState)
-            GraphHandler->>GraphService: get_graph_data()
-            GraphService-->>GraphHandler: GraphData
-        deactivate ActixServer
-        ActixServer-->>GraphDataManager: GraphData JSON
-        GraphDataManager->>GraphDataManager: Set graph data
-        GraphDataManager->>GraphCanvas: Trigger re-render
-    deactivate GraphDataManager
-    deactivate AppInitializer
+#### Real-time Graph Updates Sequence
 
-    %% === Continuous Graph Updates (Server to Client) ===
-    loop Physics Simulation & Broadcast (Backend)
-        GraphService->>GPUComputeService: compute_forces()
-        GPUComputeService-->>GraphService: Updated Node Data
-        GraphService->>SocketFlowHandler: Broadcast node positions (via AppState.websocket_tx)
-        activate SocketFlowHandler
-            SocketFlowHandler-->>WebSocketService: Binary Position Data
-        deactivate SocketFlowHandler
-        WebSocketService->>GraphDataManager: updateNodePositions(binary_data)
-        activate GraphDataManager
-            GraphDataManager->>GraphDataManager: Parse binary, update internal graph
-            GraphDataManager->>GraphCanvas: Trigger re-render
-        deactivate GraphDataManager
+```mermaid
+sequenceDiagram
+    participant Client as Client
+    participant WS as WebSocket
+    participant Server as Server
+    participant GPU as GPU Service
+
+    loop Physics Simulation
+        Server->>GPU: Compute forces
+        GPU-->>Server: Updated positions
+        Server->>WS: Broadcast positions
+        WS-->>Client: Binary position data
+        Client->>Client: Update visualization
     end
 
-    %% === User Drags Node (Client to Server) ===
-    AppInitializer->>GraphCanvas: User interacts with node
-    GraphCanvas->>GraphDataManager: Node position changed by user
-    activate GraphDataManager
-        GraphDataManager->>GraphDataManager: Update local node position
-        GraphDataManager->>WebSocketService: sendNodePositions(updated_nodes) (sends binary update)
-        activate WebSocketService
-            WebSocketService->>ActixServer: Binary Position Data (Client Update)
-            activate ActixServer
-                ActixServer->>SocketFlowHandler: Handle binary message
-                SocketFlowHandler->>GraphService: update_node_positions(client_updates)
-                activate GraphService
-                    GraphService->>GraphService: Update internal graph, resolve conflicts
-                    GraphService->>GPUComputeService: compute_forces() (recalculate layout)
-                    GPUComputeService-->>GraphService: Updated Node Data
-                deactivate GraphService
-                Note over ActixServer: Server now has authoritative positions.
-                Note over ActixServer: Broadcast loop will send these out.
-            deactivate ActixServer
-        deactivate WebSocketService
-    deactivate GraphDataManager
+    opt User interaction
+        Client->>Client: Drag node
+        Client->>WS: Send position update
+        WS->>Server: Position data
+        Server->>Server: Update graph
+        Server->>GPU: Recalculate
+    end
+```
 
-    %% === Settings Update Flow ===
-    AppInitializer->>SettingsStore: User changes a setting
-    activate SettingsStore
-        SettingsStore->>SettingsStore: Update local settings state
-        SettingsStore->>ActixServer: POST /api/user-settings/sync (settings JSON)
-        activate ActixServer
-            ActixServer->>SettingsHandler: update_user_settings(AppState, settings_payload)
-            activate SettingsHandler
-                SettingsHandler->>AppState: settings.write().await (AppFullSettings)
-                AppState->>AppState: Merge client settings into AppFullSettings
-                AppState->>AppState: AppFullSettings.save() to settings.yaml
-                SettingsHandler->>AppState: Broadcast settings_updated JSON (via websocket_tx)
-                activate AppState
-                    AppState->>SocketFlowHandler: Send JSON to all clients
-                    SocketFlowHandler-->>WebSocketService: {"type":"settings_updated", "payload":...}
-                deactivate AppState
-            deactivate SettingsHandler
-            SettingsHandler-->>ActixServer: Updated UserSettings (JSON)
-        deactivate ActixServer
-        ActixServer-->>SettingsStore: Confirmation
-    deactivate SettingsStore
-    WebSocketService->>SettingsStore: Receive settings_updated message
-    activate SettingsStore
-        SettingsStore->>SettingsStore: Update local settings store
-        SettingsStore->>AppInitializer: Notify UI components of change
-    deactivate SettingsStore
+#### Authentication Flow Sequence
 
-    %% === Nostr Authentication Flow ===
-    AppInitializer->>NostrAuthService: User clicks Login
-    activate NostrAuthService
-        NostrAuthService->>NostrAuthService: Interact with NIP-07 Provider (e.g., window.nostr)
-        NostrAuthService->>NostrAuthService: Get pubkey, sign auth event
-        NostrAuthService->>ActixServer: POST /api/auth/nostr (signed_event_payload)
-        activate ActixServer
-            ActixServer->>NostrHandler: login(AppState, event_payload)
-            activate NostrHandler
-                NostrHandler->>NostrService: verify_auth_event(event)
-                activate NostrService
-                    NostrService->>NostrService: Verify signature, manage user session
-                    NostrService-->>NostrHandler: NostrUser with session_token
-                deactivate NostrService
-            deactivate NostrHandler
-            NostrHandler-->>ActixServer: AuthResponse (user_dto, token, expires_at, features)
-        deactivate ActixServer
-        ActixServer-->>NostrAuthService: AuthResponse JSON
-        NostrAuthService->>NostrAuthService: Store token, update user state
-        NostrAuthService->>SettingsStore: Update auth state in store
-        NostrAuthService-->>AppInitializer: Login successful / UI update
-    deactivate NostrAuthService
+```mermaid
+sequenceDiagram
+    participant User as User
+    participant Client as Client
+    participant Nostr as Nostr Provider
+    participant Server as Server
+
+    User->>Client: Click login
+    Client->>Nostr: Request signature
+    Nostr->>Nostr: Sign auth event
+    Nostr-->>Client: Signed event
+    Client->>Server: POST /api/auth/nostr
+    Server->>Server: Verify signature
+    Server->>Server: Create session
+    Server-->>Client: Auth token
+    Client->>Client: Store token
+    Client->>Client: Update UI
+```
+
+#### Settings Synchronization Sequence
+
+```mermaid
+sequenceDiagram
+    participant User as User
+    participant Client as Client
+    participant Server as Server
+    participant WS as WebSocket
+
+    User->>Client: Change setting
+    Client->>Client: Update local state
+    Client->>Server: POST /api/user-settings/sync
+    
+    alt Power User
+        Server->>Server: Update global settings
+        Server->>Server: Save to settings.yaml
+        Server->>WS: Broadcast to all clients
+        WS-->>Client: Settings update
+    else Regular User
+        Server->>Server: Update user settings
+        Server->>Server: Save to user file
+        Server-->>Client: Confirmation
+    end
 
 ### AR Features Implementation Status
 
