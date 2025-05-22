@@ -11,17 +11,27 @@ pub struct GraphData {
     pub nodes: Vec<Node>,
     pub edges: Vec<Edge>,
     pub metadata: HashMap<String, Metadata>,
+    pub simulation_params: SimulationParams,
 }
 
 pub struct Node {
     pub id: String,
     pub data: NodeData,
+    pub position: Option<[f32; 3]>,
+    pub velocity: Option<[f32; 3]>,
 }
 
 pub struct Edge {
     pub source: String,
     pub target: String,
     pub weight: f32,
+    pub kind: EdgeKind,
+}
+
+pub enum EdgeKind {
+    Link,
+    Reference,
+    // ... other edge types
 }
 ```
 
@@ -44,35 +54,50 @@ pub enum SimulationMode {
 
 ### Settings Models
 ```rust
-pub struct UISettings {
-    pub theme: String,
-    pub layout: LayoutConfig,
+pub struct Settings {
+    pub server: ServerConfig,
     pub visualisation: VisualisationConfig,
+    pub github: GitHubServiceConfig,
+    pub security: SecurityConfig,
+    pub ai: AIServiceConfig,
+    pub file_service: FileServiceConfig,
 }
 
 pub struct UserSettings {
-    pub preferences: HashMap<String, Value>,
-    pub customizations: Vec<CustomSetting>,
+    pub visualisation: VisualisationConfig,
+    pub layout: LayoutConfig,
+    pub theme: ThemeConfig,
+    pub ai: AISettings,
 }
 
 pub struct ProtectedSettings {
     pub api_keys: HashMap<String, String>,
-    pub security_config: SecurityConfig,
+    pub security: SecurityConfig,
 }
 ```
 
 ### Metadata Models
 ```rust
-pub struct MetadataStore {
+pub struct MetadataManager {
     pub files: HashMap<String, FileMetadata>,
     pub relationships: Vec<Relationship>,
+    pub statistics: Statistics,
 }
 
 pub struct FileMetadata {
     pub name: String,
+    pub path: String,
     pub size: usize,
     pub node_id: String,
     pub last_modified: DateTime<Utc>,
+    pub file_type: FileType,
+}
+
+pub enum FileType {
+    Markdown,
+    Image,
+    Pdf,
+    // ... other file types
 }
 ```
 
@@ -84,11 +109,20 @@ pub enum ServiceError {
     IO(std::io::Error),
     Graph(String),
     Config(String),
+    GitHub(String),
+    AI(String),
+    // ... other service-specific errors
 }
 
 impl From<std::io::Error> for ServiceError {
     fn from(err: std::io::Error) -> Self {
         ServiceError::IO(err)
+    }
+}
+
+impl From<reqwest::Error> for ServiceError {
+    fn from(err: reqwest::Error) -> Self {
+        ServiceError::GitHub(format!("GitHub API error: {}", err))
     }
 }
 ```
@@ -110,6 +144,9 @@ pub enum APIError {
 pub type Result<T> = std::result::Result<T, Error>;
 pub type NodeMap = HashMap<String, Node>;
 pub type MetadataMap = HashMap<String, Metadata>;
+pub type SafeAppState = Arc<AppState>;
+pub type SafeSettings = Arc<RwLock<Settings>>;
+pub type SafeMetadataManager = Arc<RwLock<MetadataManager>>;
 ```
 
 ## Constants

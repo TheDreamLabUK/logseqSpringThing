@@ -20,6 +20,8 @@ pub struct SimulationParams {
     pub time_step: f32,
     pub phase: SimulationPhase,
     pub mode: SimulationMode,
+    pub gravity_strength: f32,
+    pub center_attraction_strength: f32,
 }
 ```
 
@@ -32,15 +34,28 @@ pub struct SimulationParams {
 
 ### Configuration
 ```rust
-pub struct UISettings {
+pub struct UserSettings {
     pub visualisation: VisualisationConfig,
     pub layout: LayoutConfig,
     pub theme: ThemeConfig,
+    pub ai: AISettings,
 }
 
 pub struct VisualisationConfig {
     pub physics: PhysicsConfig,
     pub rendering: RenderingConfig,
+    pub nodes: NodeVisualisationConfig,
+    pub edges: EdgeVisualisationConfig,
+    pub labels: LabelVisualisationConfig,
+    pub bloom: BloomVisualisationConfig,
+    pub hologram: HologramVisualisationConfig,
+    pub animations: AnimationConfig,
+}
+
+pub struct AISettings {
+    pub enabled: bool,
+    pub default_model: String,
+    pub temperature: f32,
 }
 ```
 
@@ -53,11 +68,7 @@ pub struct VisualisationConfig {
 
 ### Core Structure
 ```rust
-pub struct UserSettings {
-    pub preferences: HashMap<String, Value>,
-    pub display: DisplaySettings,
-    pub interaction: InteractionSettings,
-}
+// UserSettings is now defined above as part of the main settings structure.
 ```
 
 ### Persistence
@@ -72,7 +83,6 @@ pub struct UserSettings {
 pub struct ProtectedSettings {
     pub api_keys: HashMap<String, String>,
     pub security: SecurityConfig,
-    pub rate_limits: RateLimitConfig,
 }
 ```
 
@@ -85,7 +95,7 @@ pub struct ProtectedSettings {
 
 ### Core Structure
 ```rust
-pub struct MetadataStore {
+pub struct MetadataManager {
     pub files: HashMap<String, FileMetadata>,
     pub relationships: Vec<Relationship>,
     pub statistics: Statistics,
@@ -101,7 +111,7 @@ pub struct MetadataStore {
 
 ### Thread Safety
 ```rust
-pub type SafeMetadataStore = Arc<RwLock<MetadataStore>>;
+pub type SafeMetadataManager = Arc<RwLock<MetadataManager>>;
 pub type SafeSettings = Arc<RwLock<Settings>>;
 ```
 

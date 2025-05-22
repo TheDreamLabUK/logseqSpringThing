@@ -45,8 +45,8 @@ The UI layer consists of modular components for controlling the application, con
 ### State Management
 State management is handled through a combination of state stores, event emitters, and observers. The primary state components include:
 - `SettingsStore` - Manages application settings with validation
-- `GraphData` - Manages the graph data structure
-- Various observers for state changes
+- `GraphDataManager` - Manages the graph data structure and its updates (`client/src/features/graph/managers/graphDataManager.ts`).
+- State changes are primarily managed by Zustand's subscription mechanism, which allows components to react to specific parts of the store.
 
 ### API Layer
 The API layer handles communication with the server through REST endpoints, providing abstracted access to server functionality:
@@ -55,11 +55,11 @@ The API layer handles communication with the server through REST endpoints, prov
 - File and settings management
 
 ### Rendering Engine
-The rendering engine is built on Three.js and provides high-performance visualisation of graph data:
-- Node and edge rendering with instancing for performance
-- Text rendering with SDF fonts
-- Metadata visualisation
-- Camera controls and scene management
+The rendering engine is built on React Three Fiber (`@react-three/fiber`) and Three.js, providing high-performance visualisation of graph data. Key components include `GraphCanvas.tsx`, `GraphManager.tsx`, and `GraphViewport.tsx`.
+- Node and edge rendering, often utilizing instancing for performance.
+- Text rendering with SDF fonts (`TextRenderer.tsx`).
+- Metadata visualisation (`MetadataVisualizer.tsx`).
+- Camera controls and scene management (`CameraController.tsx`, `sceneManager.ts`).
 
 ### WebSocket Client
 The WebSocket client provides real-time communication with the server for:
@@ -112,19 +112,22 @@ flowchart TB
 ## Core Technology Stack
 
 - **TypeScript** - Primary development language
-- **Three.js** - 3D rendering engine
+- **TypeScript** - Primary development language
+- **React Three Fiber (`@react-three/fiber`)** - React renderer for Three.js
+- **Three.js** - Core 3D rendering engine
 - **WebGL** - Hardware-accelerated graphics
 - **WebXR** - VR/AR integration
+- **Zustand** - Lightweight state management
 - **WebSockets** - Real-time communication
-- **Custom Shaders** - GLSL shaders for specialized rendering effects
+- **Custom Shaders** - GLSL shaders for specialized rendering effects (e.g., `HologramMaterial.tsx`)
 
 ## Key Architectural Patterns
 
-1. **Singleton Pattern** - Used for manager classes to ensure single instance
-2. **Observer Pattern** - Used for state change notifications
-3. **Facade Pattern** - Used to simplify complex subsystems (e.g., NodeManagerFacade)
-4. **Factory Pattern** - Used for creating complex objects
-5. **Composition** - Used to build complex behaviors from simpler components
+1. **Component-Based Architecture** - Leveraging React's component model for modular and reusable UI elements.
+2. **State Management with Zustand** - Centralized and reactive state management for application settings and graph data.
+3. **Composition over Inheritance** - Building complex behaviors by combining simpler components and hooks.
+4. **Service Layer** - Abstracting API calls and WebSocket communication into dedicated service modules (`api.ts`, `WebSocketService.ts`).
+5. **Context API** - Used for dependency injection and sharing global state (e.g., `ApplicationModeContext.tsx`, `WindowSizeContext.tsx`).
 
 ## Cross-Cutting Concerns
 

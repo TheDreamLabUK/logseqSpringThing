@@ -5,20 +5,12 @@ The REST API provides endpoints for graph data management, content operations, a
 
 ## Base URL
 ```
-https://api.webxr.dev/v1
+http://localhost:4000/api
 ```
 
 ## Authentication
 
-All API requests require authentication. There are two methods:
-
-### JWT Token
-Include the token in the Authorization header:
-```
-Authorization: Bearer <token>
-```
-
-### Nostr Authentication
+All API requests primarily use Nostr authentication.
 
 #### Login
 ```http
@@ -82,20 +74,6 @@ Returns complete graph structure:
 }
 ```
 
-### Get Specific Node
-```http
-GET /graph/nodes/{nodeId}
-```
-
-**Response:**
-```json
-{
-  "id": "string",
-  "metadata": {...},
-  "connections": [...]
-}
-```
-
 ### Get Paginated Graph Data
 ```http
 GET /api/graph/data/paginated
@@ -155,7 +133,7 @@ GET /api/files/get_content/{filename}
 
 ### Upload Content
 ```http
-POST /content/upload
+POST /api/files/upload
 ```
 
 **Request Body:**
@@ -169,10 +147,19 @@ POST /content/upload
 
 ## Settings API
 
-### Get Visualisation Settings
+### Get User Settings
 ```http
-GET /api/user-settings/visualisation
+GET /api/user-settings
 ```
+
+Returns all UI settings for the authenticated user.
+
+### Get Visualisation Settings by Category
+```http
+GET /api/visualisation/settings/{category}
+```
+
+Returns specific visualisation settings by category.
 
 ### Update API Keys
 ```http
@@ -189,6 +176,27 @@ POST /api/auth/nostr/api-keys
 ```
 
 ## AI Services
+
+### RAGFlow Chat
+```http
+POST /api/ragflow/chat
+```
+
+**Request Body:**
+```json
+{
+  "query": "Your question here",
+  "conversation_id": "optional-previous-conversation-id"
+}
+```
+
+**Response:**
+```json
+{
+  "answer": "The response from RAGFlow AI",
+  "conversation_id": "conversation-id-for-follow-up-queries"
+}
+```
 
 ### Perplexity Query
 ```http
@@ -222,10 +230,10 @@ GET /health
 ```json
 {
   "status": "healthy",
-  "services": {
-    "gpu": "active",
-    "github": "connected"
-  }
+  "metadata_count": 123,
+  "nodes_count": 456,
+  "edges_count": 789,
+  "gpu_status": "active"
 }
 ```
 

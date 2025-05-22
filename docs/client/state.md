@@ -45,7 +45,7 @@ flowchart TB
 
 ## Key State Management Components
 
-### Settings Store (`client/state/SettingsStore.ts`)
+### Settings Store (`client/src/store/settingsStore.ts`)
 
 The Settings Store manages application settings with validation, persistence, and observation.
 
@@ -55,27 +55,49 @@ The Settings Store manages application settings with validation, persistence, an
 - Observable changes through subscribers
 - Default values for all settings
 
-**Implementation Pattern:**
+**Implementation Pattern (Zustand):**
+The `settingsStore` is a Zustand store, which provides a simplified API for state management.
 ```typescript
-class SettingsStore {
-  private settings: Settings;
-  private observers: Set<Observer>;
-  
-  updateSetting(path: string, value: any): boolean {
-    // Validate against schema
-    // Update if valid
-    // Notify observers
-    // Persist to storage
-  }
-  
-  subscribe(observer: Observer): () => void {
-    // Add observer to set
-    // Return unsubscribe function
-  }
+import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
+import { immer } from 'zustand/middleware/immer';
+import { Settings } from '../features/settings/config/settings';
+import { defaultSettings } from '../features/settings/config/defaultSettings';
+import { settingsConfig } from '../features/settings/config/settingsConfig';
+import { validateSettings } from '../features/settings/utils/settingsValidation';
+import { deepMerge } from '../../utils/deepMerge';
+import { logger } from '../../utils/logger';
+
+interface SettingsState {
+  settings: Settings;
+  setSetting: (path: string, value: any) => void;
+  // ... other actions
 }
+
+export const useSettingsStore = create<SettingsState>()(
+  immer(
+    persist(
+      (set, get) => ({
+        settings: defaultSettings,
+        setSetting: (path, value) => {
+          set((state) => {
+            // Logic to update nested state immutably
+            // Validation and persistence handled by middleware or internal logic
+          });
+        },
+        // ... other actions like initialize, reset
+      }),
+      {
+        name: 'logseq-xr-settings',
+        getStorage: () => localStorage,
+        // ... other persist options
+      }
+    )
+  )
+);
 ```
 
-### Graph Data Manager (`client/state/graphData.ts`)
+### Graph Data Manager (`client/src/features/graph/managers/graphDataManager.ts`)
 
 The Graph Data Manager maintains the state of the graph visualisation data.
 
@@ -99,7 +121,8 @@ stateDiagram-v2
     LiveUpdates --> Empty: clear()
 ```
 
-### Settings Observer (`client/state/SettingsObserver.ts`)
+### Settings Observer
+The `SettingsObserver.ts` file is not present in the current codebase. Instead, the `settingsStore.ts` (which uses Zustand) directly handles subscriptions. Components can subscribe to specific parts of the settings store using Zustand's selectors, eliminating the need for a separate observer pattern implementation.
 
 The Settings Observer implements the Observer pattern to propagate settings changes.
 
@@ -156,7 +179,12 @@ flowchart TD
 
 The application uses several mechanisms to propagate state changes:
 
-### Event Emitter (`client/utils/eventEmitter.ts`)
+### Event Emitter
+The `client/utils/eventEmitter.ts` file is not present in the current codebase. Communication between components is primarily handled through:
+- React's component hierarchy (props and context).
+- Zustand store subscriptions.
+- Direct function calls.
+- WebSocket messages for server-client communication.
 
 A publish-subscribe system for loose coupling between components.
 
@@ -198,6 +226,109 @@ const unsubscribe = settingsStore.subscribe((settings) => {
 ```
 
 ## Settings Structure
+
+The settings are defined by the `Settings` interface in `client/src/features/settings/config/settings.ts` and its structure is configured in `client/src/features/settings/config/settingsUIDefinition.ts`. The actual structure is more dynamic and less rigidly nested than the example below, but it generally follows a hierarchical pattern.
+
+```typescript
+// Simplified representation of the Settings interface
+interface Settings {
+  visualisation: {
+    nodes: {
+      quality: 'low' | 'medium' | 'high';
+      enableInstancing: boolean;
+      enableHologram: boolean;
+      enableMetadataShape: boolean;
+      sizeRange: [number, number];
+      baseColor: string;
+      opacity: number;
+      // ... other node settings
+    };
+    edges: {
+      color: string;
+      opacity: number;
+      arrowSize: number;
+      baseWidth: number;
+      enableArrows: boolean;
+      widthRange: [number, number];
+      quality: 'low' | 'medium' | 'high';
+      // ... other edge settings
+    };
+    physics: {
+      enabled: boolean;
+      attractionStrength: number;
+      repulsionStrength: number;
+      springStrength: number;
+      damping: number;
+      // ... other physics settings
+    };
+    rendering: {
+      ambientLightIntensity: number;
+      directionalLightIntensity: number;
+      environmentIntensity: number;
+      backgroundColor: string;
+      enableAmbientOcclusion: boolean;
+      enableAntialiasing: boolean;
+      enableShadows: boolean;
+      // ... other rendering settings
+    };
+    animations: {
+      enableNodeAnimations: boolean;
+      enableMotionBlur: boolean;
+      motionBlurStrength: number;
+      // ... other animation settings
+    };
+    labels: {
+      enableLabels: boolean;
+      desktopFontSize: number;
+      textColor: string;
+      textOutlineColor: string;
+      // ... other label settings
+    };
+    bloom: {
+      enabled: boolean;
+      strength: number;
+      radius: number;
+      threshold: number;
+      // ... other bloom settings
+    };
+    hologram: {
+      ringCount: number;
+      sphereSizes: number[];
+      ringRotationSpeed: number;
+      globalRotationSpeed: number;
+      // ... other hologram settings
+    };
+  };
+  system: {
+    websocket: {
+      reconnectAttempts: number;
+      reconnectDelay: number;
+      binaryChunkSize: number;
+      compressionEnabled: boolean;
+      // ... other websocket settings
+    };
+    debug: {
+      enabled: boolean;
+      enableDataDebug: boolean;
+      enableWebsocketDebug: boolean;
+      logBinaryHeaders: boolean;
+      // ... other debug settings
+    };
+  };
+  xr: {
+    mode: 'immersive-ar';
+    roomScale: number;
+    spaceType: 'local-floor';
+    quality: 'low' | 'medium' | 'high';
+    enableHandTracking: boolean;
+    handMeshEnabled: boolean;
+    handMeshColor: string;
+    handMeshOpacity: number;
+    // ... other XR settings
+  };
+  // ... other top-level categories like 'ai'
+}
+```
 
 The settings are organized hierarchically by domain:
 
@@ -311,6 +442,8 @@ Settings are validated against schemas that define:
 Invalid settings are rejected with error messages.
 
 ## State Immutability
+
+The application uses immutability patterns to prevent unexpected state changes, primarily facilitated by the `immer` middleware in Zustand.
 
 The application uses immutability patterns to prevent unexpected state changes:
 

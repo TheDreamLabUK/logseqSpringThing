@@ -9,11 +9,13 @@ The app state module manages the application's shared state and provides thread-
 ```rust
 pub struct AppState {
     pub settings: Arc<RwLock<Settings>>,
-    pub metadata: Arc<RwLock<MetadataStore>>,
+    pub metadata_manager: Arc<RwLock<MetadataManager>>,
     pub graph_service: GraphService,
-    pub github_client: Arc<GitHubClient>,
-    pub content_api: Arc<ContentAPI>,
-    pub gpu_compute: Option<Arc<RwLock<GPUCompute>>>,
+    pub github_service: Arc<GitHubService>,
+    pub file_service: Arc<FileService>,
+    pub gpu_compute_service: Option<Arc<RwLock<GPUComputeService>>>,
+    pub ai_service: Arc<AIService>,
+    pub websocket_tx: broadcast::Sender<Message>,
 }
 ```
 
@@ -24,12 +26,13 @@ pub struct AppState {
 impl AppState {
     pub async fn new(
         settings: Arc<RwLock<Settings>>,
-        github_client: Arc<GitHubClient>,
-        content_api: Arc<ContentAPI>,
-        gpu_compute: Option<Arc<RwLock<GPUCompute>>>,
-        metadata: Option<MetadataStore>,
+        github_service: Arc<GitHubService>,
+        file_service: Arc<FileService>,
+        gpu_compute_service: Option<Arc<RwLock<GPUComputeService>>>,
+        metadata_manager: Option<MetadataManager>,
         graph_data: Option<GraphData>,
-        conversation_id: String,
+        ai_service: Arc<AIService>,
+        websocket_tx: broadcast::Sender<Message>,
     ) -> Result<Self, Error>
 }
 ```
@@ -44,13 +47,13 @@ impl AppState {
 ### Thread Safety
 ```rust
 pub type SafeState = Arc<AppState>;
-pub type SafeMetadata = Arc<RwLock<MetadataStore>>;
+pub type SafeMetadata = Arc<RwLock<MetadataManager>>;
 ```
 
 ### Access Patterns
 ```rust
 impl AppState {
-    pub async fn get_metadata(&self) -> RwLockReadGuard<MetadataStore>
+    pub async fn get_metadata(&self) -> RwLockReadGuard<MetadataManager>
     pub async fn update_metadata(&self, updates: MetadataUpdates)
 }
 ```
@@ -65,11 +68,11 @@ impl AppState {
 }
 ```
 
-### GitHub Integration
+### File Service
 ```rust
 impl AppState {
-    pub async fn fetch_content(&self, path: &str) -> Result<String>
-    pub async fn update_content(&self, path: &str, content: &str)
+    pub async fn read_file_content(&self, path: &str) -> Result<String>
+    pub async fn write_file_content(&self, path: &str, content: &str)
 }
 ```
 
@@ -187,26 +190,33 @@ The service layer provides high-level operations and business logic.
 ```mermaid
 sequenceDiagram
     participant Client
-    participant WebSocket
+    participant SocketFlowHandler
     participant GraphService
-    participant GPUCompute
+    participant GPUComputeService
     participant FileService
+    participant AIService
 
-    Client->>WebSocket: Connect
-    WebSocket->>GraphService: Request Initial Data
-    GraphService->>GPUCompute: Calculate Layout
-    GPUCompute-->>GraphService: Layout Complete
-    GraphService-->>WebSocket: Send Graph Data
-    WebSocket-->>Client: Binary Update
+    Client->>SocketFlowHandler: Connect
+    SocketFlowHandler->>GraphService: Request Initial Data
+    GraphService->>GPUComputeService: Calculate Layout
+    GPUComputeService-->>GraphService: Layout Complete
+    GraphService-->>SocketFlowHandler: Send Graph Data
+    SocketFlowHandler-->>Client: Binary Update
 
     loop Real-time Updates
-        Client->>WebSocket: Position Update
-        WebSocket->>GraphService: Process Update
-        GraphService->>GPUCompute: Recalculate
-        GPUCompute-->>GraphService: New Positions
-        GraphService-->>WebSocket: Broadcast Update
-        WebSocket-->>Client: Binary Update
+        Client->>SocketFlowHandler: Position Update
+        SocketFlowHandler->>GraphService: Process Update
+        GraphService->>GPUComputeService: Recalculate
+        GPUComputeService-->>GraphService: New Positions
+        GraphService-->>SocketFlowHandler: Broadcast Update
+        SocketFlowHandler-->>Client: Binary Update
     end
+
+    Client->>AIService: RAGFlow Query
+    AIService-->>Client: RAGFlow Response
+
+    Client->>AIService: TTS Request
+    AIService-->>Client: TTS Audio Stream
 ```
 
 ## Next Steps

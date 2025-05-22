@@ -10,13 +10,18 @@ The handler layer manages HTTP and WebSocket endpoints, providing API interfaces
 pub fn config(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("/api")
-            // Route configurations
+            .service(web::resource("/graph").route(web::get().to(graph_handler)))
+            .service(web::resource("/files/upload").route(web::post().to(file_upload_handler)))
+            .service(web::resource("/user-settings").route(web::get().to(get_user_settings_handler)))
+            .service(web::resource("/visualisation/settings/{category}").route(web::get().to(get_visualisation_settings_handler)))
+            .service(web::resource("/ragflow/chat").route(web::post().to(ragflow_chat_handler)))
+            // ... other API routes
     );
 }
 ```
-- REST API endpoints
-- Request validation
-- Response formatting
+- REST API endpoints for graph data, file uploads, user settings, visualization settings, and AI services.
+- Request validation and deserialization.
+- Response serialization and formatting.
 
 ### WebSocket Handler
 ```rust
@@ -26,9 +31,9 @@ pub async fn socket_flow_handler(
     app_state: web::Data<AppState>,
 ) -> Result<HttpResponse, Error>
 ```
-- Real-time communication
-- Graph updates
-- Client state management
+- Handles WebSocket connections for real-time communication.
+- Manages graph data updates and broadcasts them to connected clients.
+- Processes client-sent messages, including position updates and control commands.
 
 ### Health Handler
 ```rust
@@ -40,22 +45,21 @@ pub fn config(cfg: &mut web::ServiceConfig) {
     );
 }
 ```
-- System health monitoring
-- Readiness checks
-- Dependency status
+- Provides endpoints for system health monitoring (`/health`) and readiness checks (`/health/ready`).
+- Reports the status of core services and dependencies.
 
 ### Pages Handler
 ```rust
 pub fn config(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("/pages")
-            // Static and dynamic page routes
+            .route("/index.html", web::get().to(index_html_handler))
+            // ... other static page routes
     );
 }
 ```
-- Static content serving
-- Dynamic page generation
-- Asset management
+- Serves static frontend assets and HTML pages.
+- Manages routing for client-side application entry points.
 
 ## Middleware Integration
 

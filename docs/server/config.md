@@ -10,8 +10,10 @@ The configuration module manages application settings, environment variables, an
 pub struct Settings {
     pub server: ServerConfig,
     pub visualisation: VisualisationConfig,
-    pub github: GitHubConfig,
+    pub github: GitHubServiceConfig,
     pub security: SecurityConfig,
+    pub ai: AIServiceConfig,
+    pub file_service: FileServiceConfig,
 }
 ```
 
@@ -33,6 +35,7 @@ pub struct FeatureFlags {
     pub gpu_enabled: bool,
     pub websocket_enabled: bool,
     pub metrics_enabled: bool,
+    pub ai_enabled: bool,
 }
 ```
 
@@ -57,10 +60,22 @@ pub struct ServerConfig {
 
 ### API Configuration
 ```rust
-pub struct APIConfig {
+pub struct GitHubServiceConfig {
     pub base_url: String,
-    pub timeout: Duration,
-    pub retry_count: u32,
+    pub timeout_seconds: u64,
+    pub max_retries: u32,
+    pub token: Option<String>,
+}
+
+pub struct AIServiceConfig {
+    pub perplexity_api_key: Option<String>,
+    pub openai_api_key: Option<String>,
+    pub ragflow_api_url: Option<String>,
+}
+
+pub struct FileServiceConfig {
+    pub base_path: String,
+    pub max_file_size_mb: u64,
 }
 ```
 
@@ -68,19 +83,16 @@ pub struct APIConfig {
 
 ### Authentication
 ```rust
-pub struct AuthConfig {
-    pub jwt_secret: String,
-    pub token_expiry: Duration,
-    pub refresh_enabled: bool,
+pub struct SecurityConfig {
+    pub nostr_enabled: bool,
+    pub admin_pubkeys: Vec<String>,
+    pub rate_limit_per_minute: u64,
 }
 ```
 
 ### Rate Limiting
 ```rust
-pub struct RateLimitConfig {
-    pub requests_per_second: u32,
-    pub burst_size: u32,
-}
+// Rate limiting is now part of SecurityConfig
 ```
 
 ## Implementation Details

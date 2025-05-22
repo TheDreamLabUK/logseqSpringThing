@@ -7,49 +7,33 @@ The services layer provides core business logic, external integrations, and data
 
 ### Client Configuration
 ```rust
-pub struct GitHubConfig {
-    pub api_token: String,
-    pub repository: String,
-    pub branch: String,
-    pub owner: String,
+pub struct GitHubServiceConfig {
+    pub base_url: String,
+    pub timeout_seconds: u64,
+    pub max_retries: u32,
+    pub token: Option<String>,
 }
 ```
 
 ### Content API
 ```rust
-pub struct ContentAPI {
-    client: Arc<GitHubClient>,
-}
-
-impl ContentAPI {
-    pub async fn fetch_file_content(&self, url: &str) -> Result<String, GitHubError>
-    pub async fn list_markdown_files(&self, path: &str) -> Result<Vec<GitHubFileMetadata>, GitHubError>
-    pub async fn check_file_public(&self, url: &str) -> Result<bool, GitHubError>
-}
-```
-- File content retrieval
-- Markdown file listing
-- Access control checks
+// ContentAPI has been integrated into GitHubService and FileService.
 
 ### File Service
 ```rust
 pub struct FileService {
-    node_id_counter: AtomicU32,
+    config: FileServiceConfig,
 }
 
 impl FileService {
-    pub async fn initialize_local_storage(settings: Arc<RwLock<Settings>>) -> Result<(), Box<dyn StdError>>
-    pub async fn fetch_and_process_files(
-        &self,
-        content_api: Arc<ContentAPI>,
-        settings: Arc<RwLock<Settings>>,
-        metadata_store: &mut MetadataStore,
-    ) -> Result<Vec<ProcessedFile>, Box<dyn StdError>>
+    pub async fn new(config: FileServiceConfig) -> Self
+    pub async fn read_file(&self, path: &Path) -> Result<String, FileServiceError>
+    pub async fn write_file(&self, path: &Path, content: &str) -> Result<(), FileServiceError>
+    pub async fn list_files_recursive(&self, path: &Path) -> Result<Vec<PathBuf>, FileServiceError>
 }
 ```
-- Local storage management
-- File processing
-- Metadata handling
+- Manages file system operations, including reading, writing, and listing files.
+- Enforces file size limits and handles I/O errors.
 
 ### Graph Service
 ```rust
@@ -57,21 +41,20 @@ pub struct GraphService {
     settings: Arc<RwLock<Settings>>,
     graph_data: Arc<RwLock<GraphData>>,
     node_map: Arc<RwLock<HashMap<String, Node>>>,
-    gpu_compute: Option<Arc<RwLock<GPUCompute>>>,
+    gpu_compute_service: Option<Arc<RwLock<GPUComputeService>>>,
+    metadata_manager: Arc<RwLock<MetadataManager>>,
 }
 
 impl GraphService {
     pub async fn new(
         settings: Arc<RwLock<Settings>>,
-        gpu_compute: Option<Arc<RwLock<GPUCompute>>>,
+        gpu_compute_service: Option<Arc<RwLock<GPUComputeService>>>,
+        metadata_manager: Arc<RwLock<MetadataManager>>,
     ) -> Self
 
-    pub async fn calculate_layout_with_retry(
-        gpu_compute: &Arc<RwLock<GPUCompute>>,
-        graph: &mut GraphData,
-        node_map: &mut HashMap<String, Node>,
-        params: &SimulationParams,
-    ) -> std::io::Result<()>
+    pub async fn update_graph_data(&self, new_data: GraphData) -> Result<(), GraphServiceError>
+    pub async fn get_graph_data(&self) -> GraphData
+    pub async fn calculate_layout(&self, params: &SimulationParams) -> Result<(), GraphServiceError>
 }
 ```
 - Graph management
@@ -83,10 +66,12 @@ impl GraphService {
 ### Service Errors
 ```rust
 pub enum ServiceError {
-    GitHub(GitHubError),
-    File(std::io::Error),
-    Graph(String),
+    GitHub(GitHubServiceError),
+    File(FileServiceError),
+    Graph(GraphServiceError),
+    AI(AIServiceError),
     Configuration(String),
+    // ... other service-specific errors
 }
 ```
 
@@ -105,9 +90,13 @@ const RETRY_DELAY: Duration = Duration::from_secs(1);
 ```rust
 pub struct AppState {
     pub settings: Arc<RwLock<Settings>>,
-    pub metadata: Arc<RwLock<MetadataStore>>,
+    pub metadata_manager: Arc<RwLock<MetadataManager>>,
     pub graph_service: GraphService,
-    pub gpu_compute: Option<Arc<RwLock<GPUCompute>>>,
+    pub github_service: Arc<GitHubService>,
+    pub file_service: Arc<FileService>,
+    pub gpu_compute_service: Option<Arc<RwLock<GPUComputeService>>>,
+    pub ai_service: Arc<AIService>,
+    pub websocket_tx: broadcast::Sender<Message>,
 }
 ```
 - Thread-safe access
@@ -133,3 +122,25 @@ for chunk in items.chunks(BATCH_SIZE) {
 - Connection pooling
 - Memory optimization
 - Resource cleanup
+
+## AI Service
+
+### Core Structure
+```rust
+pub struct AIService {
+    config: AIServiceConfig,
+    perplexity_client: Option<PerplexityClient>,
+    openai_client: Option<OpenAIClient>,
+    ragflow_client: Option<RagflowClient>,
+}
+
+impl AIService {
+    pub async fn new(config: AIServiceConfig) -> Self
+    pub async fn chat_completion(&self, model: &str, messages: Vec<ChatMessage>) -> Result<ChatResponse, AIServiceError>
+    pub async fn text_to_speech(&self, text: &str) -> Result<Vec<u8>, AIServiceError>
+    pub async fn ragflow_chat(&self, query: &str) -> Result<RagflowResponse, AIServiceError>
+}
+```
+- Integrates with various AI providers (Perplexity, OpenAI, RAGFlow).
+- Provides functionalities for chat completion, text-to-speech, and RAG-based queries.
+- Manages API keys and service-specific configurations.
