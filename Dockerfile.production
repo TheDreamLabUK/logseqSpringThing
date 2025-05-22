@@ -1,7 +1,7 @@
 FROM nvidia/cuda:12.8.1-devel-ubuntu22.04 as builder
 
 ENV DEBIAN_FRONTEND=noninteractive \
-    RUST_LOG=info \
+    RUST_LOG=warn \
     PATH="/root/.cargo/bin:${PATH}" \
     NVIDIA_DRIVER_CAPABILITIES=all \
     CUDA_HOME=/usr/local/cuda \
@@ -80,7 +80,7 @@ RUN chmod +x ./scripts/compile_ptx.sh && \
 FROM nvidia/cuda:12.8.1-runtime-ubuntu22.04
 
 ENV DEBIAN_FRONTEND=noninteractive \
-    RUST_LOG=info \
+    RUST_LOG=warn \
     NODE_ENV=production \
     NVIDIA_DRIVER_CAPABILITIES=all
 
