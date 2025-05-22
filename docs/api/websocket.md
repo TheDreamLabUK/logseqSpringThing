@@ -18,7 +18,7 @@ Connect to: `wss://your-domain/wss`
 
 ## Authentication
 
-While the documentation previously mentioned an explicit `{"type": "auth", "token": "..."}` WebSocket message, current implementation primarily relies on authentication established during the initial HTTP handshake (e.g., via cookies or headers) before the WebSocket connection is upgraded. There is no explicit `auth` message processed directly over the WebSocket.
+Authentication for WebSocket connections in LogseqXR is primarily handled during the initial HTTP handshake that upgrades to a WebSocket connection. This means that user authentication (e.g., via Nostr) should occur before or during the establishment of the WebSocket connection, typically through standard HTTP mechanisms (like cookies or authorization headers). The server's `socket_flow_handler.rs` does not process an explicit `{"type": "auth", "token": "..."}` message over the WebSocket itself.
 
 ## Message Types
 

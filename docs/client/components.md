@@ -13,6 +13,7 @@ flowchart TB
         SettingsStore[Settings Store]
         Logger[Logger]
         Utils[Utilities]
+        NostrAuthService[Nostr Auth Service]
     end
     
     subgraph Rendering
@@ -26,7 +27,7 @@ flowchart TB
     end
     
     subgraph UI
-        App[App Component]
+        AppInitializer[App Initializer]
         TwoPaneLayout[Two Pane Layout]
         RightPaneControlPanel[Right Pane Control Panel]
         ControlPanel[Control Panel (Tabs)]
@@ -46,20 +47,20 @@ flowchart TB
         SafeXRProvider[Safe XR Provider]
     end
     
-    subgraph Network
+    subgraph Data & Network
         WebSocketService[WebSocket Service]
         GraphDataManager[Graph Data Manager]
     end
     
-    App --> TwoPaneLayout
-    App --> AuthUIHandler
+    AppInitializer --> TwoPaneLayout
+    AppInitializer --> AuthUIHandler
     TwoPaneLayout --> RightPaneControlPanel
     RightPaneControlPanel --> ControlPanel
     ControlPanel --> SettingsSections
     SettingsSections --> SettingControlComponent
     RightPaneControlPanel --> MarkdownRenderer
     
-    App --> GraphCanvas
+    AppInitializer --> GraphCanvas
     GraphCanvas --> GraphManager
     GraphCanvas --> GraphViewport
     GraphManager --> TextRenderer
@@ -67,12 +68,12 @@ flowchart TB
     GraphManager --> HologramManager
     GraphCanvas --> CameraController
     
-    App --> WebSocketService
-    App --> GraphDataManager
+    AppInitializer --> WebSocketService
+    AppInitializer --> GraphDataManager
     WebSocketService --> GraphDataManager
     GraphDataManager --> GraphManager
     
-    App --> XRController
+    AppInitializer --> XRController
     XRController --> XRScene
     XRScene --> XRVisualisationConnector
     XRVisualisationConnector --> HandInteractionSystem
@@ -85,7 +86,7 @@ flowchart TB
     SettingsStore --> SettingControlComponent
     API --> GraphDataManager
     API --> SettingsStore
-    API --> AuthUIHandler
+    API --> NostrAuthService
     
     Logger -.-> API
     Logger -.-> WebSocketService
@@ -164,13 +165,15 @@ Handles camera controls and interactions within the 3D scene.
 ### Edge Manager
 Edge rendering logic is primarily integrated within `GraphManager.tsx`, which handles the creation and updating of edge geometries and materials.
 
+## Network Components
+
 ### WebSocket Service (`client/src/services/WebSocketService.ts`)
 Manages WebSocket connection and communication with the server.
 
 ### Graph Data Manager (`client/src/features/graph/managers/graphDataManager.ts`)
 Manages graph data loading, updates, and state.
 
-## Network Components
+## XR Components
 
 ### XR Controller (`client/src/features/xr/components/XRController.tsx`)
 The main component for managing WebXR sessions and interactions.
@@ -193,49 +196,6 @@ Manages WebXR sessions and their lifecycle.
 ### Safe XR Provider (`client/src/features/xr/providers/SafeXRProvider.tsx`)
 Provides a safe context for WebXR hooks and components, handling browser compatibility.
 
-
-### Right Pane Control Panel (`client/src/app/components/RightPaneControlPanel.tsx`)
-Manages the content displayed in the right pane of the main application layout, including settings and feature tabs.
-
-### Control Panel (`client/src/components/layout/ControlPanel.tsx`)
-Provides the tabbed interface for organizing different categories of settings and tools within the right pane.
-
-### Settings Sections (`client/src/features/settings/components/SettingsSection.tsx`)
-Used within panels to group related settings. Supports collapsible sections and detaching into draggable, floating windows.
-
-### Setting Control Component (`client/src/features/settings/components/SettingControlComponent.tsx`)
-Renders individual UI controls (sliders, toggles, inputs) for each setting, including dynamic tooltips using `Tooltip.tsx`.
-
-### Auth UI Handler (`client/src/features/auth/components/AuthUIHandler.tsx`)
-Manages the authentication user interface and logic, primarily for Nostr authentication.
-
-### Markdown Renderer (`client/src/ui/markdown/MarkdownRenderer.tsx`)
-Renders Markdown content within the application.
-
-
-## XR Components
-
-### Component Initialization Sequence
-
-The application initialization flow is orchestrated by `client/src/app/AppInitializer.tsx` and `client/src/app/main.tsx`.
-
-**Responsibilities:**
-- Check WebXR availability
-- Initialize WebXR sessions
-- Set up XR reference space
-
-### Component Communication Patterns
-
-The application uses several communication patterns:
-
-1. **React Props and State** - Standard React data flow for parent-child communication.
-2. **Zustand Store Subscriptions** - Components subscribe to specific parts of the `SettingsStore` or `GraphDataManager` for reactive updates.
-3. **React Context API** - Used for providing global state and services to components (e.g., `ApplicationModeContext`, `WindowSizeContext`, `control-panel-context`).
-4. **WebSocket Messages** - For real-time server-client communication, managed by `WebSocketService` and `GraphDataManager`.
-
-
-
-
 ## UI Components
 
 ### Right Pane Control Panel (`client/src/app/components/RightPaneControlPanel.tsx`)
@@ -256,39 +216,35 @@ Manages the authentication user interface and logic, primarily for Nostr authent
 ### Markdown Renderer (`client/src/ui/markdown/MarkdownRenderer.tsx`)
 Renders Markdown content within the application.
 
-
-### Settings UI
-Provides interfaces for configuring application settings.
-
-
-### Component Initialization Sequence
+## Component Initialization Sequence
 
 The application initialization flow is orchestrated by `client/src/app/AppInitializer.tsx` and `client/src/app/main.tsx`.
 
 ```mermaid
 sequenceDiagram
-    participant App
-    participant API
-    participant WSService
-    participant RenderManager
-    participant NodeManager
+    participant AppInitializer
+    participant SettingsStore
+    participant NostrAuthService
+    participant WebSocketService
     participant GraphDataManager
+    participant GraphCanvas
     
-    App->>API: Initialize
-    App->>WSService: Initialize
-    App->>RenderManager: Initialize
-    RenderManager->>NodeManager: Initialize
-    App->>GraphDataManager: Initialize
-    GraphDataManager->>API: Fetch initial data
-    GraphDataManager->>WSService: Register for updates
-    WSService-->>GraphDataManager: Real-time updates
-    GraphDataManager-->>NodeManager: Node position updates
-    NodeManager-->>RenderManager: Render updates
+    AppInitializer->>SettingsStore: initialise()
+    SettingsStore-->>AppInitializer: Settings loaded
+    
+    AppInitializer->>NostrAuthService: initialise()
+    NostrAuthService-->>AppInitializer: Auth state ready
+    
+    AppInitializer->>WebSocketService: connect()
+    WebSocketService-->>AppInitializer: Connection established
+    
+    AppInitializer->>GraphDataManager: fetchInitialData()
+    GraphDataManager-->>AppInitializer: Initial graph data
+    
+    AppInitializer->>GraphCanvas: Render 3D scene with initial data
 ```
 
-### Component Communication Patterns
-
-### Component Communication Patterns
+## Component Communication Patterns
 
 The application uses several communication patterns:
 
@@ -297,7 +253,7 @@ The application uses several communication patterns:
 3. **React Context API** - Used for providing global state and services to components (e.g., `ApplicationModeContext`, `WindowSizeContext`, `control-panel-context`).
 4. **WebSocket Messages** - For real-time server-client communication, managed by `WebSocketService` and `GraphDataManager`.
 
-### Interface Contracts
+## Interface Contracts
 
 Key interface contracts between components:
 
@@ -309,11 +265,8 @@ The concept of a `NodeManagerInterface` is primarily embodied by the `GraphManag
 interface WebSocketServiceInterface {
   connect(): Promise<void>;
   sendMessage(message: any): void;
-  onBinaryMessage(callback: BinaryMessageCallback): void;
-  onConnectionStatusChange(handler: (status: boolean) => void): void;
-  // Note: enableRandomization and sendNodeUpdates are not directly part of the public interface in WebSocketService.ts
-  // sendNodeUpdates is handled by GraphDataManager which uses WebSocketService internally.
-  // enableRandomization is not present.
+  onBinaryMessage(callback: (data: ArrayBuffer) => void): () => void;
+  onConnectionStatusChange(handler: (status: boolean) => void): () => void;
   getConnectionStatus(): ConnectionState;
   dispose(): void;
 }
@@ -324,8 +277,8 @@ interface WebSocketServiceInterface {
 interface GraphDataManagerInterface {
   fetchInitialData(): Promise<void>;
   updateGraphData(data: any): void;
-  // Note: enableBinaryUpdates is not a public method. Binary updates are inherent to the WebSocket communication.
   updateNodePositions(positions: Float32Array): void;
+  sendNodePositions(nodes: Node[]): void; // Added based on README.md sequence diagram
   getGraphData(): GraphData;
   getNode(id: string): Node | undefined;
   subscribe(listener: (data: GraphData) => void): () => void;
@@ -336,11 +289,11 @@ interface GraphDataManagerInterface {
 
 ## Dependency Injection
 
-The application uses a mix of dependency injection patterns:
+The application primarily uses React's built-in mechanisms for dependency injection:
 
-1. **Singleton Registry** - Most manager classes provide static getInstance() methods
-2. **Constructor Injection** - Some components take dependencies in constructors
-3. **Method Injection** - Some methods accept dependencies as parameters
+1.  **React Context API**: For providing global services and state (e.g., `ApplicationModeContext`, `ControlPanelContext`).
+2.  **Prop Drilling**: For passing dependencies down the component tree where appropriate.
+3.  **Zustand Store**: Components directly import and use the Zustand store, which acts as a global injectable state.
 
 ## Related Documentation
 

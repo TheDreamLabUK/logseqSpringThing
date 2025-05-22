@@ -57,7 +57,7 @@ Our documentation is organised into several key sections:
 graph TB
     %% Frontend Components
     subgraph Frontend
-        UI[User Interface Layer]
+        AppInitializer[App Initializer]
         R3FRenderer[React Three Fiber Renderer]
         XR[WebXR Integration]
         WSClient[WebSocket Client]
@@ -70,10 +70,11 @@ graph TB
         PlatformManager[Platform Manager]
         XRSessionManager[XR Session Manager]
         XRInitializer[XR Initializer]
-        HologramRenderer[Hologram Renderer]
+        HologramManager[Hologram Manager]
         TextRenderer[Text Renderer]
         SettingsStore[Settings Store]
         NostrAuthClient[Nostr Auth Client UI]
+        GraphCanvas[Graph Canvas]
     end
 
     %% Backend Components
@@ -84,23 +85,23 @@ graph TB
         SocketFlowHandler[Socket Flow Handler]
         PerplexityHandler[Perplexity Handler]
         RagFlowHandler[RagFlow Handler]
-        VisualizationHandler[Visualization Handler]
+        VisualisationHandler[Visualisation Handler]
         NostrAuthHandler[Nostr Auth Handler]
         HealthHandler[Health Handler]
         PagesHandler[Pages Handler]
         SettingsHandler[Settings Handler]
         FileService[File Service]
         GraphService[Graph Service]
-        GPUCompute[GPU Compute]
+        GPUComputeService[GPU Compute Service]
         PerplexityService[Perplexity Service]
         RagFlowService[RagFlow Service]
         SpeechService[Speech Service]
         NostrService[Nostr Service]
-        ClientManager[Client Manager]
         PhysicsEngine[Physics Engine]
         AudioProcessor[Audio Processor]
-        MetadataStoreModel[Metadata Store Model]
-        ProtectedSettingsModel[Protected Settings Model]
+        MetadataManager[Metadata Manager]
+        ProtectedSettings[Protected Settings]
+        AIService[AI Service]
     end
 
     %% External Components
@@ -113,13 +114,12 @@ graph TB
     end
 
     %% Connections between Frontend Components
-    UI --> GraphDisplay
-    UI --> RightPaneControlPanel
-    UI --> ControlPanelLayout
-    UI --> NostrAuthClient
-    UI --> XRControlPanel
-
-    XR --> R3FRenderer
+    AppInitializer --> GraphCanvas
+    AppInitializer --> RightPaneControlPanel
+    AppInitializer --> ControlPanelLayout
+    AppInitializer --> NostrAuthClient
+    AppInitializer --> XRControlPanel
+    GraphCanvas --> R3FRenderer
     WSClient --> WSService
     WSService --> ActixServer
 
@@ -129,7 +129,7 @@ graph TB
     ActixServer --> SocketFlowHandler
     ActixServer --> PerplexityHandler
     ActixServer --> RagFlowHandler
-    ActixServer --> VisualizationHandler
+    ActixServer --> VisualisationHandler
     ActixServer --> NostrAuthHandler
     ActixServer --> HealthHandler
     ActixServer --> PagesHandler
@@ -137,21 +137,23 @@ graph TB
 
     FileHandler --> FileService
     GraphHandler --> GraphService
-    SocketFlowHandler --> ClientManager
+    SocketFlowHandler --> SocketFlowHandler %% Handles client connections directly
     PerplexityHandler --> PerplexityService
     RagFlowHandler --> RagFlowService
     NostrAuthHandler --> NostrService
 
     GraphService --> PhysicsEngine
-    PhysicsEngine --> GPUCompute
-    PhysicsEngine --> ClientManager
+    PhysicsEngine --> GPUComputeService
 
     %% Connections to External Components
     FileService --> GitHubAPI
     PerplexityService --> PerplexityAI
     RagFlowService --> RagFlowAPI
     SpeechService --> OpenAI_API
-    NostrAuthService --> NostrPlatformAPI
+    NostrService --> NostrPlatformAPI
+    AIService --> PerplexityAI
+    AIService --> RagFlowAPI
+    AIService --> OpenAI_API
 
     %% Styling for clarity
     style Frontend fill:#f9f,stroke:#333,stroke-width:2px
@@ -165,168 +167,161 @@ graph TB
 classDiagram
     direction LR
 
-    class AppClient {
+    class AppInitializer {
         <<React Component>>
         +graphDataManager: GraphDataManager
         +webSocketService: WebSocketService
         +settingsStore: SettingsStore
         +platformManager: PlatformManager
         +xrSessionManager: XRSessionManager
-        +nostrAuthService: NostrAuthService (Client)
-        +initialize()
-        +render()
+        +nostrAuthService: NostrAuthService
+        +initialize(): Promise<void>
+        +render(): JSX.Element
     }
 
     class GraphManager {
         <<React Component>>
-        +nodes: GraphNode[]
+        +nodes: Node[]
         +edges: Edge[]
-        +updateNodePositions(data: ArrayBuffer)
-        +renderGraph()
+        +updateNodePositions(data: ArrayBuffer): void
+        +renderGraph(): JSX.Element
     }
 
     class WebSocketService {
         <<TypeScript Service>>
         -socket: WebSocket
-        +connect()
-        +sendMessage(data: object)
-        +onBinaryMessage(callback: function)
-        +onConnectionStatusChange(callback: function)
+        +connect(): Promise<void>
+        +sendMessage(data: object): void
+        +onBinaryMessage(callback: (data: ArrayBuffer) => void): () => void
+        +onConnectionStatusChange(callback: (status: boolean) => void): () => void
         +isReady(): boolean
     }
 
     class SettingsStore {
         <<Zustand Store>>
         +settings: Settings
-        +get(path: string): any
-        +set(path: string, value: any)
-        +initialize(): Promise<Settings>
+        +setSetting(path: string, value: any): void
+        +initialize(): Promise<void>
     }
 
     class GraphDataManager {
         <<TypeScript Service>>
         -data: GraphData
         +fetchInitialData(): Promise<GraphData>
-        +updateNodePositions(data: ArrayBuffer)
-        +sendNodePositions()
+        +updateNodePositions(data: ArrayBuffer): void
+        +sendNodePositions(nodes: Node[]): void
         +getGraphData(): GraphData
     }
 
     class NostrAuthService {
         <<TypeScript Service>>
-        +login(): Promise<AuthState>
+        +login(): Promise<AuthResponse>
         +logout(): Promise<void>
-        +onAuthStateChanged(listener: function): function
+        +onAuthStateChanged(listener: (state: AuthState) => void): () => void
         +isAuthenticated(): boolean
     }
 
-    AppClient --> GraphManager
-    AppClient --> WebSocketService
-    AppClient --> SettingsStore
-    AppClient --> GraphDataManager
-    AppClient --> NostrAuthService
+    AppInitializer --> GraphManager
+    AppInitializer --> WebSocketService
+    AppInitializer --> SettingsStore
+    AppInitializer --> GraphDataManager
+    AppInitializer --> NostrAuthService
     GraphDataManager --> WebSocketService
 
     class AppState {
         <<Rust Struct>>
-        +graph_service: GraphService_Server
-        +gpu_compute: Option<Arc<RwLock<GPUCompute_Util>>>
         +settings: Arc<RwLock<AppFullSettings>>
-        +protected_settings: Arc<RwLock<ProtectedSettings_Model>>
-        +metadata: Arc<RwLock<MetadataStore_Model>>
-        +github_client: Arc<GitHubClient_Service>
-        +content_api: Arc<ContentAPI_Service>
-        +speech_service: Option<Arc<SpeechService_Server>>
-        +nostr_service: Option<web::Data<NostrService_Server>>
-        +client_manager: Arc<ClientManager_Server>
-        +new(settings, github_client, content_api, speech_service, gpu_compute, client_manager)
+        +protected_settings: Arc<RwLock<ProtectedSettings>>
+        +metadata_manager: Arc<RwLock<MetadataManager>>
+        +graph_service: GraphService
+        +github_service: Arc<GitHubService>
+        +file_service: Arc<FileService>
+        +gpu_compute_service: Option<Arc<RwLock<GPUComputeService>>>
+        +ai_service: Arc<AIService>
+        +nostr_service: Arc<NostrService>
+        +websocket_tx: broadcast::Sender<Message>
+        +new(settings, github_service, file_service, gpu_compute_service, metadata_manager, graph_data, ai_service, websocket_tx): Result<Self, Error>
     }
 
     class GraphService {
         <<Rust Struct>>
-        +graph_data: Arc<RwLock<GraphData_Model>>
-        +node_map: Arc<RwLock<HashMap_String_NodeModel_>>
-        +gpu_compute: Option<Arc<RwLock<GPUCompute_Util>>>
-        +client_manager: Arc<ClientManager_Server>
-        +new(settings, gpu_compute, client_manager)
-        +build_graph_from_metadata(metadata: &MetadataStore_Model): Result<GraphData_Model>
-        +calculate_layout(gpu_compute, graph, node_map, params): Result<()>
-        +start_broadcast_loop(client_manager)
-        +get_node_positions(): Vec<Node_Model>
+        +settings: Arc<RwLock<AppFullSettings>>
+        +graph_data: Arc<RwLock<GraphData>>
+        +node_map: Arc<RwLock<HashMap<String, Node>>>
+        +gpu_compute_service: Option<Arc<RwLock<GPUComputeService>>>
+        +metadata_manager: Arc<RwLock<MetadataManager>>
+        +new(settings, gpu_compute_service, metadata_manager): Self
+        +update_graph_data(new_data: GraphData): Result<(), GraphServiceError>
+        +get_graph_data(): GraphData
+        +calculate_layout(params: &SimulationParams): Result<(), GraphServiceError>
     }
 
-    class SpeechService {
+    class AIService {
         <<Rust Struct>>
-        +settings: Arc<RwLock<AppFullSettings>>
-        +tts_provider: Arc<RwLock<TTSProvider_Enum>>
-        +audio_tx: broadcast.Sender_Vec_u8_
-        +new(settings)
-        +text_to_speech(text: String, options: SpeechOptions): Result<()>
+        +config: AIServiceConfig
+        +perplexity_client: Option<PerplexityClient>
+        +openai_client: Option<OpenAIClient>
+        +ragflow_client: Option<RagflowClient>
+        +new(config: AIServiceConfig): Self
+        +chat_completion(model: &str, messages: Vec<ChatMessage>): Result<ChatResponse, AIServiceError>
+        +text_to_speech(text: &str) -> Result<Vec<u8>, AIServiceError>
+        +ragflow_chat(query: &str) -> Result<RagflowResponse, AIServiceError>
     }
 
     class NostrService {
         <<Rust Struct>>
-        +users: Arc<RwLock<HashMap_String_NostrUser_>>
-        +verify_auth_event(event: AuthEvent): Result<NostrUser_Model>
-        +validate_session(pubkey: str, token: str): bool
-        +get_user(pubkey: str): Option<NostrUser_Model>
+        +users: Arc<RwLock<HashMap<String, NostrUser>>>
+        +verify_auth_event(event: &AuthEvent): Result<NostrUser, NostrError>
+        +validate_session(pubkey: &str, token: &str): bool
+        +get_user(pubkey: &str): Option<NostrUser>
     }
     
-    class GPUCompute {
+    class GPUComputeService {
         <<Rust Struct>>
         +device: Arc<CudaDevice>
         +force_kernel: CudaFunction
-        +node_data: CudaSlice_BinaryNodeData_
-        +new(graph: &GraphData_Model): Result<Arc<RwLock<Self>>>
-        +compute_forces(): Result<()>
-        +get_node_data(): Result<Vec<BinaryNodeData>>
+        +node_data: CudaSlice<BinaryNodeData>
+        +new(graph: &GraphData): Result<Arc<RwLock<Self>>, GPUComputeError>
+        +compute_forces(): Result<(), GPUComputeError>
+        +get_node_data(): Result<Vec<BinaryNodeData>, GPUComputeError>
     }
     
-    class ClientManager {
-        <<Rust Struct>>
-        +clients: RwLock<HashMap_usize_Addr_SocketFlowServer_>>
-        +register(addr): usize
-        +unregister(id: usize)
-        +broadcast_node_positions(nodes: Vec<Node_Model>)
-    }
-
     AppState --> GraphService
     AppState --> NostrService
-    AppState --> SpeechService
-    AppState --> GPUCompute
-    AppState --> ClientManager
-    GraphService --> GPUCompute
-    GraphService --> ClientManager
+    AppState --> AIService
+    AppState --> GPUComputeService
+    AppState --> FileService
+    AppState --> GitHubService
+    GraphService --> GPUComputeService
 ```
 
 ### Sequence Diagram
 
 ```mermaid
 sequenceDiagram
-    participant ClientUI as Client UI (React)
+    participant AppInitializer as App Initializer (Client)
     participant GraphDataManager as GraphDataManager (Client)
     participant WebSocketService as WebSocketService (Client)
     participant SettingsStore as SettingsStore (Client)
     participant NostrAuthService as NostrAuthService (Client)
     participant PlatformManager as PlatformManager (Client)
-    participant ReactThreeFiber as ReactThreeFiber (Client)
+    participant GraphCanvas as Graph Canvas (Client)
 
     participant ActixServer as Actix Web Server (Backend)
     participant AppState as AppState (Backend)
     participant GraphService as GraphService (Backend)
-    participant GPUCompute as GPUCompute (Backend)
-    participant ClientManager as ClientManager (Backend)
-    participant FileService as FileService (Backend)
-    participant NostrService as NostrService (Backend)
-    participant SpeechService as SpeechService (Backend)
-    participant SettingsHandler as SettingsHandler (Backend)
-    participant NostrHandler as NostrHandler (Backend)
-    participant FileHandler as FileHandler (Backend)
-    participant GraphHandler as GraphHandler (Backend)
-    participant SocketFlowHandler as SocketFlowHandler (Backend)
+    participant GPUComputeService as GPU Compute Service (Backend)
+    participant FileService as File Service (Backend)
+    participant NostrService as Nostr Service (Backend)
+    participant AIService as AI Service (Backend)
+    participant SettingsHandler as Settings Handler (Backend)
+    participant NostrHandler as Nostr Handler (Backend)
+    participant FileHandler as File Handler (Backend)
+    participant GraphHandler as Graph Handler (Backend)
+    participant SocketFlowHandler as Socket Flow Handler (Backend)
     
     participant GitHubAPI as GitHub API (External)
-    participant PerplexityAPI as Perplexity AI (External)
+    participant PerplexityAI as Perplexity AI (External)
     participant RagFlowAPI as RagFlow API (External)
     participant OpenAI_API as OpenAI API (External)
     participant NostrPlatform as Nostr Platform (External)
@@ -335,27 +330,26 @@ sequenceDiagram
     activate ActixServer
     ActixServer->>ActixServer: Load AppFullSettings (settings.yaml, env)
     alt Settings Load Error
-        ActixServer-->>ClientUI: HTTP 500 (Conceptual)
+        ActixServer-->>AppInitializer: HTTP 500 (Conceptual)
     else Settings Loaded
-        ActixServer->>AppState: new(AppFullSettings, GitHubClient, ContentAPI, SpeechService, GPUCompute, ClientManager)
+        ActixServer->>AppState: new(AppFullSettings, GitHubService, FileService, GPUComputeService, MetadataManager, GraphData, AIService, WebSocketTx)
         activate AppState
-            Note over AppState: Initialises services like GitHubClient, ContentAPI
-            AppState->>SpeechService: new(AppFullSettings)
-            activate SpeechService; deactivate SpeechService
-            AppState->>NostrService: new() (via init_nostr_service)
+            Note over AppState: Initialises services like GitHubService, FileService
+            AppState->>AIService: new(AppFullSettings)
+            activate AIService; deactivate AIService
+            AppState->>NostrService: new()
             activate NostrService; deactivate NostrService
-            AppState->>FileService: load_or_create_metadata()
-            activate FileService; deactivate FileService
-            AppState->>GraphService: build_graph_from_metadata()
+            AppState->>MetadataManager: load_or_create_metadata()
+            activate MetadataManager; deactivate MetadataManager
+            AppState->>GraphService: update_graph_data()
             activate GraphService
                 GraphService->>GraphService: Initialise random positions
             deactivate GraphService
-            AppState->>GPUCompute: new(GraphData) (or test_gpu)
-            activate GPUCompute; deactivate GPUCompute
-            AppState->>GraphService: new(AppFullSettings, GPUCompute, ClientManager)
+            AppState->>GPUComputeService: new(GraphData) (or test_gpu)
+            activate GPUComputeService; deactivate GPUComputeService
+            AppState->>GraphService: new(AppFullSettings, GPUComputeService, MetadataManager)
             activate GraphService
                 GraphService->>GraphService: Start physics simulation loop (async)
-                GraphService->>GraphService: Start broadcast loop (async)
             deactivate GraphService
         AppState-->>ActixServer: Initialised AppState
         deactivate AppState
@@ -363,22 +357,22 @@ sequenceDiagram
     deactivate ActixServer
 
     %% === Client Initialisation ===
-    activate ClientUI
-    ClientUI->>PlatformManager: initialise()
+    activate AppInitializer
+    AppInitializer->>PlatformManager: initialise()
     activate PlatformManager; deactivate PlatformManager
-    ClientUI->>SettingsStore: initialise()
+    AppInitializer->>SettingsStore: initialise()
     activate SettingsStore
         SettingsStore->>SettingsStore: Load from localStorage
         SettingsStore->>ActixServer: GET /api/user-settings (fetchSettings)
         activate ActixServer
             ActixServer->>SettingsHandler: get_public_settings(AppState)
-            SettingsHandler-->>ActixServer: UISettings (JSON)
+            SettingsHandler-->>ActixServer: UserSettings (JSON)
         deactivate ActixServer
         ActixServer-->>SettingsStore: Settings JSON
         SettingsStore->>SettingsStore: Merge and store settings
     deactivate SettingsStore
     
-    ClientUI->>NostrAuthService: initialise()
+    AppInitializer->>NostrAuthService: initialise()
     activate NostrAuthService
         NostrAuthService->>NostrAuthService: Check localStorage for session
         alt Stored Session Found
@@ -393,69 +387,67 @@ sequenceDiagram
         end
     deactivate NostrAuthService
 
-    ClientUI->>WebSocketService: connect()
+    AppInitializer->>WebSocketService: connect()
     activate WebSocketService
         WebSocketService->>ActixServer: WebSocket Handshake (/wss)
         activate ActixServer
-            ActixServer->>SocketFlowHandler: handle_connection(AppState, ClientManager)
+            ActixServer->>SocketFlowHandler: handle_connection(AppState)
             activate SocketFlowHandler
-                SocketFlowHandler->>ClientManager: register(client_addr)
-                activate ClientManager; deactivate ClientManager
+                SocketFlowHandler->>SocketFlowHandler: Register client
             deactivate SocketFlowHandler
         deactivate ActixServer
         ActixServer-->>WebSocketService: WebSocket Opened
         WebSocketService->>WebSocketService: isConnected = true
-        WebSocketService-->>ActixServer: {"type":"requestInitialData"} (on connection_established from server)
+        WebSocketService->>ActixServer: {"type":"requestInitialData"} (after connection_established from server)
         activate ActixServer
             ActixServer->>SocketFlowHandler: Handle requestInitialData
-            SocketFlowHandler->>GraphService: get_node_positions()
-            GraphService-->>SocketFlowHandler: Vec<Node_Model>
+            SocketFlowHandler->>GraphService: get_graph_data()
+            GraphService-->>SocketFlowHandler: GraphData
             SocketFlowHandler->>SocketFlowHandler: Encode to binary
             SocketFlowHandler-->>WebSocketService: Binary Position Data (Initial Graph)
         deactivate ActixServer
         WebSocketService->>GraphDataManager: updateNodePositions(binary_data)
         activate GraphDataManager
             GraphDataManager->>GraphDataManager: Parse binary, update internal graph
-            GraphDataManager->>ReactThreeFiber: Trigger re-render
+            GraphDataManager->>GraphCanvas: Trigger re-render
         deactivate GraphDataManager
     deactivate WebSocketService
     
-    ClientUI->>GraphDataManager: fetchInitialData() (if WebSocket initial data is not primary)
+    AppInitializer->>GraphDataManager: fetchInitialData() (if WebSocket initial data is not primary)
     activate GraphDataManager
         GraphDataManager->>ActixServer: GET /api/graph/data
         activate ActixServer
             ActixServer->>GraphHandler: get_graph_data(AppState)
-            GraphHandler->>GraphService: get_graph_data_mut()
-            GraphService-->>GraphHandler: GraphData_Model
+            GraphHandler->>GraphService: get_graph_data()
+            GraphService-->>GraphHandler: GraphData
         deactivate ActixServer
         ActixServer-->>GraphDataManager: GraphData JSON
         GraphDataManager->>GraphDataManager: Set graph data
-        GraphDataManager->>ReactThreeFiber: Trigger re-render
+        GraphDataManager->>GraphCanvas: Trigger re-render
     deactivate GraphDataManager
-    deactivate ClientUI
+    deactivate AppInitializer
 
     %% === Continuous Graph Updates (Server to Client) ===
     loop Physics Simulation & Broadcast (Backend)
-        GraphService->>GPUCompute: compute_forces()
-        GPUCompute-->>GraphService: Updated Node Data
-        GraphService->>ClientManager: broadcast_node_positions(updated_nodes)
-        activate ClientManager
-            ClientManager->>SocketFlowHandler: Send binary to all clients
+        GraphService->>GPUComputeService: compute_forces()
+        GPUComputeService-->>GraphService: Updated Node Data
+        GraphService->>SocketFlowHandler: Broadcast node positions (via AppState.websocket_tx)
+        activate SocketFlowHandler
             SocketFlowHandler-->>WebSocketService: Binary Position Data
-        deactivate ClientManager
+        deactivate SocketFlowHandler
         WebSocketService->>GraphDataManager: updateNodePositions(binary_data)
         activate GraphDataManager
             GraphDataManager->>GraphDataManager: Parse binary, update internal graph
-            GraphDataManager->>ReactThreeFiber: Trigger re-render
+            GraphDataManager->>GraphCanvas: Trigger re-render
         deactivate GraphDataManager
     end
 
     %% === User Drags Node (Client to Server) ===
-    ClientUI->>ReactThreeFiber: User interacts with node
-    ReactThreeFiber->>GraphDataManager: Node position changed by user
+    AppInitializer->>GraphCanvas: User interacts with node
+    GraphCanvas->>GraphDataManager: Node position changed by user
     activate GraphDataManager
         GraphDataManager->>GraphDataManager: Update local node position
-        GraphDataManager->>WebSocketService: sendNodePositions() (sends binary update)
+        GraphDataManager->>WebSocketService: sendNodePositions(updated_nodes) (sends binary update)
         activate WebSocketService
             WebSocketService->>ActixServer: Binary Position Data (Client Update)
             activate ActixServer
@@ -463,8 +455,8 @@ sequenceDiagram
                 SocketFlowHandler->>GraphService: update_node_positions(client_updates)
                 activate GraphService
                     GraphService->>GraphService: Update internal graph, resolve conflicts
-                    GraphService->>GPUCompute: compute_forces() (recalculate layout)
-                    GPUCompute-->>GraphService: Updated Node Data
+                    GraphService->>GPUComputeService: compute_forces() (recalculate layout)
+                    GPUComputeService-->>GraphService: Updated Node Data
                 deactivate GraphService
                 Note over ActixServer: Server now has authoritative positions.
                 Note over ActixServer: Broadcast loop will send these out.
@@ -473,7 +465,7 @@ sequenceDiagram
     deactivate GraphDataManager
 
     %% === Settings Update Flow ===
-    ClientUI->>SettingsStore: User changes a setting
+    AppInitializer->>SettingsStore: User changes a setting
     activate SettingsStore
         SettingsStore->>SettingsStore: Update local settings state
         SettingsStore->>ActixServer: POST /api/user-settings/sync (settings JSON)
@@ -483,24 +475,24 @@ sequenceDiagram
                 SettingsHandler->>AppState: settings.write().await (AppFullSettings)
                 AppState->>AppState: Merge client settings into AppFullSettings
                 AppState->>AppState: AppFullSettings.save() to settings.yaml
-                SettingsHandler->>ClientManager: Broadcast settings_updated JSON
-                activate ClientManager
-                    ClientManager->>SocketFlowHandler: Send JSON to all clients
+                SettingsHandler->>AppState: Broadcast settings_updated JSON (via websocket_tx)
+                activate AppState
+                    AppState->>SocketFlowHandler: Send JSON to all clients
                     SocketFlowHandler-->>WebSocketService: {"type":"settings_updated", "payload":...}
-                deactivate ClientManager
+                deactivate AppState
             deactivate SettingsHandler
-            SettingsHandler-->>ActixServer: Updated UISettings (JSON)
+            SettingsHandler-->>ActixServer: Updated UserSettings (JSON)
         deactivate ActixServer
         ActixServer-->>SettingsStore: Confirmation
     deactivate SettingsStore
     WebSocketService->>SettingsStore: Receive settings_updated message
     activate SettingsStore
         SettingsStore->>SettingsStore: Update local settings store
-        SettingsStore->>ClientUI: Notify UI components of change
+        SettingsStore->>AppInitializer: Notify UI components of change
     deactivate SettingsStore
 
     %% === Nostr Authentication Flow ===
-    ClientUI->>NostrAuthService: User clicks Login
+    AppInitializer->>NostrAuthService: User clicks Login
     activate NostrAuthService
         NostrAuthService->>NostrAuthService: Interact with NIP-07 Provider (e.g., window.nostr)
         NostrAuthService->>NostrAuthService: Get pubkey, sign auth event
@@ -511,7 +503,7 @@ sequenceDiagram
                 NostrHandler->>NostrService: verify_auth_event(event)
                 activate NostrService
                     NostrService->>NostrService: Verify signature, manage user session
-                    NostrService-->>NostrHandler: NostrUser_Model with session_token
+                    NostrService-->>NostrHandler: NostrUser with session_token
                 deactivate NostrService
             deactivate NostrHandler
             NostrHandler-->>ActixServer: AuthResponse (user_dto, token, expires_at, features)
@@ -519,9 +511,8 @@ sequenceDiagram
         ActixServer-->>NostrAuthService: AuthResponse JSON
         NostrAuthService->>NostrAuthService: Store token, update user state
         NostrAuthService->>SettingsStore: Update auth state in store
-        NostrAuthService-->>ClientUI: Login successful / UI update
+        NostrAuthService-->>AppInitializer: Login successful / UI update
     deactivate NostrAuthService
-```
 
 ### AR Features Implementation Status
 
@@ -620,26 +611,6 @@ The main UI is structured as follows:
 
 The conceptual interfaces for settings provided in the original README are useful for understanding the data structure but are not direct props to a single "ModularControlPanel" component. Instead, settings are managed by `zustand` (`SettingsStore.ts`) and individual panel components consume and update this store.
 
-```typescript
-// Conceptual structure of a setting item (managed by SettingsStore)
-interface UISetting { // From client/src/features/settings/types/uiSetting.ts
-  type: 'slider' | 'toggle' | 'colour' | 'select' | 'number' | 'text'; // Simplified
-  id?: string;
-  label?: string;
-  value?: any;
-  min?: number;
-  max?: number;
-  step?: number;
-  options?: Array<{ value: string; label: string }>;
-  // ... other properties like description, help, advanced
-}
-
-// Conceptual structure for how settings are organised in the store (e.g., settings.visualisation.nodes)
-interface SettingsCategory {
-  [settingId: string]: UISetting | SettingsCategory;
-}
-```
-
 #### Layout Management
 The overall layout is a fixed two-pane structure managed by `TwoPaneLayout.tsx`.
 Individual `SettingsSection` components can be detached, and their position is managed by `react-draggable` locally. There isn't a global `LayoutConfig` prop managing all detachable panel positions in the way the conceptual interface suggested. User preferences for advanced settings visibility are handled by `control-panel-context.tsx` and `useControlPanelContext`.
@@ -663,4 +634,3 @@ This project is licensed under the MIT License. See the [LICENSE](LICENSE) file 
 - Perplexity AI and RAGFlow: For their AI services enhancing content processing and interaction.
 - Three.js: For the robust 3D rendering capabilities utilised in the frontend.
 - Actix: For the high-performance web framework powering the backend server.
-

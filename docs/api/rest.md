@@ -7,6 +7,7 @@ The REST API provides endpoints for graph data management, content operations, a
 ```
 http://localhost:4000/api
 ```
+(or deployment-dependent, e.g., `https://api.webxr.dev/v1`)
 
 ## Authentication
 
@@ -20,8 +21,18 @@ POST /api/auth/nostr
 **Request Body:**
 ```json
 {
-  "pubkey": "your_public_key",
-  "signature": "signed_challenge"
+  "event": {
+    "id": "event_id",
+    "pubkey": "your_public_key",
+    "created_at": 1678886400,
+    "kind": 22242,
+    "tags": [
+      ["challenge", "random_challenge_string"],
+      ["relay", "wss://relay.damus.io"]
+    ],
+    "content": "Login to LogseqXR",
+    "sig": "event_signature"
+  }
 }
 ```
 
@@ -32,11 +43,10 @@ POST /api/auth/nostr
     "pubkey": "user_public_key",
     "npub": "user_npub",
     "is_power_user": boolean,
-    "last_seen": 1234567890
+    "features": ["feature1", "feature2"]
   },
   "token": "session_token",
-  "expires_at": 1234567890,
-  "features": ["feature1", "feature2"]
+  "expires_at": 1234567890
 }
 ```
 
@@ -70,7 +80,8 @@ Returns complete graph structure:
 {
   "nodes": [...],
   "edges": [...],
-  "metadata": {...}
+  "metadata": {...},
+  "simulation_params": {...}
 }
 ```
 
@@ -90,19 +101,7 @@ GET /api/graph/data/paginated
 POST /api/graph/update
 ```
 
-**Request Body:**
-```json
-{
-  "nodes": [
-    {
-      "id": "string",
-      "position": {"x": 0, "y": 0, "z": 0},
-      "mass": 1.0
-    }
-  ],
-  "edges": [...]
-}
-```
+This endpoint triggers a rebuild of the graph from the current metadata. It does not accept a request body for direct node/edge updates. Client-side node position updates are handled via the WebSocket API.
 
 ### Refresh Graph
 ```http
@@ -136,14 +135,7 @@ GET /api/files/get_content/{filename}
 POST /api/files/upload
 ```
 
-**Request Body:**
-```json
-{
-  "path": "string",
-  "content": "string",
-  "metadata": {...}
-}
-```
+This endpoint is currently not implemented in the server. File content is primarily managed via GitHub integration or direct file system access on the server.
 
 ## Settings API
 
@@ -159,7 +151,7 @@ Returns all UI settings for the authenticated user.
 GET /api/visualisation/settings/{category}
 ```
 
-Returns specific visualisation settings by category.
+Returns specific visualisation settings by category. The category corresponds to top-level keys in the `visualisation` settings, e.g., `nodes`, `edges`, `physics`.
 
 ### Update API Keys
 ```http
@@ -200,7 +192,7 @@ POST /api/ragflow/chat
 
 ### Perplexity Query
 ```http
-POST /api/perplexity
+POST /api/perplexity/chat
 ```
 
 **Request Body:**
@@ -219,6 +211,21 @@ POST /api/perplexity
 }
 ```
 
+### OpenAI Text-to-Speech
+```http
+POST /api/ai/tts
+```
+
+**Request Body:**
+```json
+{
+  "text": "The text to convert to speech."
+}
+```
+
+**Response:**
+Returns an audio stream (e.g., `audio/mpeg` for MP3).
+
 ## System Status
 
 ### Health Check
@@ -232,8 +239,7 @@ GET /health
   "status": "healthy",
   "metadata_count": 123,
   "nodes_count": 456,
-  "edges_count": 789,
-  "gpu_status": "active"
+  "edges_count": 789
 }
 ```
 
@@ -247,7 +253,7 @@ All endpoints may return the following error responses:
   "error": {
     "code": "string",
     "message": "string",
-    "details": {...}
+    "details": {}
   }
 }
 ```
