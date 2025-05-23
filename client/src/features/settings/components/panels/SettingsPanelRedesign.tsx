@@ -4,8 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/ui/
 import { Button } from '@/ui/Button';
 import {
   Eye,
-  Settings,
-  Lock,
+  Settings, // Reverted to Settings
   Smartphone,
   Info,
   ChevronDown,
@@ -140,7 +139,7 @@ export function SettingsPanelRedesign() {
     },
     advanced: {
       label: 'Advanced',
-      icon: <Lock className="h-4 w-4" />,
+      icon: <Settings className="h-4 w-4" />,
       isPowerUser: true,
       groups: [
         {
@@ -257,7 +256,7 @@ export function SettingsPanelRedesign() {
     if (tab.isPowerUser && !isPowerUser) {
       return (
         <div className="flex flex-col items-center justify-center h-64 text-center p-6">
-          <Lock className="h-12 w-12 text-muted-foreground mb-4" />
+          <Settings className="h-12 w-12 text-muted-foreground mb-4" />
           <h3 className="text-lg font-medium mb-2">Power User Features</h3>
           <p className="text-sm text-muted-foreground max-w-sm">
             Authenticate with Nostr to unlock advanced settings and features.
@@ -267,7 +266,7 @@ export function SettingsPanelRedesign() {
     }
 
     return (
-      <div className="space-y-3">
+      <div className="space-y-3 custom-scrollbar overflow-y-auto h-full">
         {tab.groups.map(group => renderSettingGroup(group))}
       </div>
     );
@@ -306,7 +305,7 @@ export function SettingsPanelRedesign() {
         </div>
         {isPowerUser && (
           <div className="flex items-center gap-1">
-            <Lock className="h-3 w-3 text-primary" />
+            <Settings className="h-3 w-3 text-primary" />
             <span className="text-primary">Power User</span>
           </div>
         )}
