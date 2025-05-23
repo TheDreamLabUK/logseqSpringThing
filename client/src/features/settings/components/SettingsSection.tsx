@@ -41,7 +41,7 @@ export function SettingsSection({ id, title, subsectionSettings }: SettingsSecti
         }
 
         // Visibility/Read-only check: Power User
-        const isPowerUser = settingsStore.user?.isPowerUser ?? false;
+        const isPowerUser = useSettingsStore.getState().isPowerUser;
         if (settingDef.isPowerUserOnly && !isPowerUser) {
           // Decide whether to hide or show as read-only. Hiding for now.
           // TODO: Implement read-only display if needed

@@ -16,6 +16,7 @@ interface SettingsState {
   initialized: boolean
   authenticated: boolean
   user: { isPowerUser: boolean; pubkey: string } | null
+  isPowerUser: boolean // Direct access to power user state
   subscribers: Map<string, Set<() => void>>
 
   // Actions
@@ -26,7 +27,8 @@ interface SettingsState {
   set: <T>(path: SettingsPath, value: T) => void
   subscribe: (path: SettingsPath, callback: () => void, immediate?: boolean) => () => void;
   unsubscribe: (path: SettingsPath, callback: () => void) => void;
-  updateSettings: (updater: (draft: Settings) => void) => void; // Add updateSettings signature
+  updateSettings: (updater: (draft: Settings) => void) => void;
+  notifyViewportUpdate: (path: SettingsPath) => void; // For real-time viewport updates
 }
 
 export const useSettingsStore = create<SettingsState>()(
@@ -36,6 +38,7 @@ export const useSettingsStore = create<SettingsState>()(
       initialized: false,
       authenticated: false,
       user: null,
+      isPowerUser: false,
       subscribers: new Map(),
 
       initialize: async () => {
@@ -104,7 +107,24 @@ export const useSettingsStore = create<SettingsState>()(
 
       setAuthenticated: (authenticated: boolean) => set({ authenticated }),
 
-      setUser: (user: { isPowerUser: boolean; pubkey: string } | null) => set({ user }),
+      setUser: (user: { isPowerUser: boolean; pubkey: string } | null) => set({
+        user,
+        isPowerUser: user?.isPowerUser || false
+      }),
+
+      notifyViewportUpdate: (path: SettingsPath) => {
+        // This method will be called for settings that need immediate viewport updates
+        const callbacks = get().subscribers.get('viewport.update')
+        if (callbacks) {
+          Array.from(callbacks).forEach(callback => {
+            try {
+              callback()
+            } catch (error) {
+              logger.error(`Error in viewport update subscriber:`, createErrorMetadata(error))
+            }
+          })
+        }
+      },
 
       get: <T>(path: SettingsPath): T => {
         const settings = get().settings
@@ -158,6 +178,18 @@ export const useSettingsStore = create<SettingsState>()(
           // Return the updated settings
           return { settings: newSettings }
         })
+
+        // Check if this is a visualization setting that needs immediate viewport update
+        const needsImmediateUpdate = path.startsWith('visualisation.') ||
+                                    path.startsWith('xr.') ||
+                                    path === 'system.debug.enablePhysicsDebug' ||
+                                    path === 'system.debug.enableNodeDebug' ||
+                                    path === 'system.debug.enablePerformanceDebug'
+
+        if (needsImmediateUpdate) {
+          // Trigger immediate viewport update
+          get().notifyViewportUpdate(path)
+        }
 
         // Notify subscribers
         const notifySubscribers = async () => {
@@ -375,7 +407,8 @@ export const useSettingsStore = create<SettingsState>()(
       partialize: (state) => ({
         settings: state.settings,
         authenticated: state.authenticated,
-        user: state.user
+        user: state.user,
+        isPowerUser: state.isPowerUser
       })
     }
   )

@@ -49,6 +49,7 @@ const GraphManager = () => {
   const [graphData, setGraphData] = useState<GraphData>({ nodes: [], edges: [] })
   const [nodesAreAtOrigin, setNodesAreAtOrigin] = useState(false)
   const settings = useSettingsStore(state => state.settings)
+  const [forceUpdate, setForceUpdate] = useState(0) // Force re-render on settings change
 
   useEffect(() => {
     if (meshRef.current) {
@@ -132,9 +133,24 @@ const GraphManager = () => {
       updateNodePositions(positions)
     })
 
+    // Subscribe to viewport updates from settings store
+    // We'll use a different approach - subscribe to the whole store and check for changes
+    const unsubscribeViewport = useSettingsStore.subscribe((state, prevState) => {
+      // Check if any visualization settings changed
+      const visualizationChanged = state.settings?.visualisation !== prevState.settings?.visualisation
+      const xrChanged = state.settings?.xr !== prevState.settings?.xr
+      const debugChanged = state.settings?.system?.debug !== prevState.settings?.system?.debug
+      
+      if (visualizationChanged || xrChanged || debugChanged) {
+        logger.debug('GraphManager: Detected settings change, forcing update')
+        setForceUpdate(prev => prev + 1)
+      }
+    })
+
     return () => {
       unsubscribeData()
       unsubscribePositions()
+      unsubscribeViewport()
     }
   }, [])
 

@@ -132,6 +132,7 @@ export interface WebSocketSettings {
 // Debug settings
 export interface DebugSettings {
   enabled: boolean;
+  logLevel?: 'debug' | 'info' | 'warn' | 'error'; // Added for client-side logging
   enableDataDebug: boolean;
   enableWebsocketDebug: boolean;
   logBinaryHeaders: boolean;
@@ -146,6 +147,7 @@ export interface DebugSettings {
 // XR settings
 export interface XRSettings {
   enabled: boolean;
+  clientSideEnableXR?: boolean; // Client-side XR toggle
   handTracking: boolean;
   controllerModel: string;
   renderScale: number;
@@ -153,8 +155,25 @@ export interface XRSettings {
   locomotionMethod: 'teleport' | 'continuous';
   teleportRayColor: string;
   enableHaptics: boolean;
-  displayMode: 'stereo' | 'mono';
-controllerRayColor?: string; // Add this line
+  displayMode: 'inline' | 'immersive-vr' | 'immersive-ar'; // Fixed to match server
+  controllerRayColor?: string;
+  quality?: 'low' | 'medium' | 'high';
+  roomScale?: number;
+  spaceType?: 'local-floor' | 'bounded-floor' | 'unbounded';
+  // Hand tracking features
+  handMeshEnabled?: boolean;
+  handMeshColor?: string;
+  handMeshOpacity?: number;
+  handPointSize?: number;
+  handRayEnabled?: boolean;
+  handRayWidth?: number;
+  gestureSmoothing?: number;
+  hapticIntensity?: number;
+  dragThreshold?: number;
+  pinchThreshold?: number;
+  rotationThreshold?: number;
+  movementSpeed?: number;
+  deadZone?: number;
 }
 
 // Visualisation settings
@@ -187,46 +206,46 @@ export interface SystemSettings {
 
 // RAGFlow settings
 export interface RAGFlowSettings {
-  api_key?: string;
-  agent_id?: string;
-  api_base_url?: string;
+  apiKey?: string;
+  agentId?: string;
+  apiBaseUrl?: string;
   timeout?: number;
-  max_retries?: number;
-  chat_id?: string;
+  maxRetries?: number;
+  chatId?: string;
 }
 
 // Perplexity settings
 export interface PerplexitySettings {
-  api_key?: string;
+  apiKey?: string;
   model?: string;
-  api_url?: string;
-  max_tokens?: number;
+  apiUrl?: string;
+  maxTokens?: number;
   temperature?: number;
-  top_p?: number;
-  presence_penalty?: number;
-  frequency_penalty?: number;
+  topP?: number;
+  presencePenalty?: number;
+  frequencyPenalty?: number;
   timeout?: number;
-  rate_limit?: number;
+  rateLimit?: number;
 }
 
 // OpenAI settings
 export interface OpenAISettings {
-  api_key?: string;
-  base_url?: string;
+  apiKey?: string;
+  baseUrl?: string;
   timeout?: number;
-  rate_limit?: number;
+  rateLimit?: number;
 }
 
 // Kokoro TTS settings
 export interface KokoroSettings {
-  api_url?: string;
-  default_voice?: string;
-  default_format?: string;
-  default_speed?: number;
+  apiUrl?: string;
+  defaultVoice?: string;
+  defaultFormat?: string;
+  defaultSpeed?: number;
   timeout?: number;
   stream?: boolean;
-  return_timestamps?: boolean;
-  sample_rate?: number;
+  returnTimestamps?: boolean;
+  sampleRate?: number;
 }
 
 // Auth settings

@@ -7,7 +7,7 @@ import { Input } from '@/ui/Input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/ui/Select';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/ui/Tooltip';
 import { Button } from '@/ui/Button';
-import { Info } from 'lucide-react';
+import { Info, Eye, EyeOff } from 'lucide-react';
 
 // Simple inline useDebounce hook
 function useDebounce<T>(value: T, delay: number): T {
@@ -38,6 +38,7 @@ export function SettingControlComponent({ path, settingDef, value, onChange }: S
   // State for debounced inputs
   const [inputValue, setInputValue] = useState(String(value ?? ''));
   const debouncedInputValue = useDebounce(inputValue, 300); // 300ms debounce
+  const [showPassword, setShowPassword] = useState(false); // For password visibility toggle
 
   // Update internal state when the external value changes
   useEffect(() => {
@@ -148,17 +149,32 @@ export function SettingControlComponent({ path, settingDef, value, onChange }: S
 
       case 'textInput':
         // Special handling for obscured fields like API keys
-        const isSensitive = settingDef.label.toLowerCase().includes('key') || settingDef.label.toLowerCase().includes('secret');
+        const isSensitive = settingDef.label.toLowerCase().includes('key') ||
+                           settingDef.label.toLowerCase().includes('secret') ||
+                           settingDef.label.toLowerCase().includes('token');
         return (
-          <div className="flex items-center w-full">
+          <div className="flex items-center w-full gap-2">
             <Input
               id={path}
-              type={isSensitive ? "password" : "text"}
+              type={isSensitive && !showPassword ? "password" : "text"}
               value={inputValue} // Use local state for debouncing
               onChange={handleInputChange} // Update local state immediately
               className="h-8 flex-1" // Allow input to grow
+              placeholder={isSensitive ? "Enter secure value" : "Enter value"}
             />
-            {settingDef.unit && <span className="text-xs text-muted-foreground pl-2">{settingDef.unit}</span>}
+            {isSensitive && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                onClick={() => setShowPassword(!showPassword)}
+                title={showPassword ? "Hide value" : "Show value"}
+              >
+                {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </Button>
+            )}
+            {settingDef.unit && <span className="text-xs text-muted-foreground">{settingDef.unit}</span>}
           </div>
         );
 
@@ -326,18 +342,19 @@ export function SettingControlComponent({ path, settingDef, value, onChange }: S
   }
 
   return (
-    <div className="setting-control flex items-center justify-between gap-4 py-2 border-b border-border/50 last:border-b-0">
-      <Label htmlFor={path} className="text-sm flex items-center gap-1 flex-shrink-0 max-w-[40%]"> {/* Limit label width */}
-        <span>{settingDef.label}</span>
-        {settingDef.description && (
-          <TooltipProvider delayDuration={100}>
-            <Tooltip content={settingDef.description} side="top" align="start">
-              {/* The Info icon will be the trigger, Tooltip content is via prop */}
-              <Info className="h-3 w-3 text-muted-foreground cursor-help" />
-            </Tooltip>
-          </TooltipProvider>
-        )}
-      </Label>
+    <div className="setting-control flex items-center justify-between gap-4 py-2 border-b border-border/50 last:border-b-0 hover:bg-muted/30 transition-colors rounded px-2 -mx-2">
+      <div className="flex items-center gap-2 flex-shrink-0 max-w-[40%]">
+        <Label htmlFor={path} className="text-sm flex items-center gap-1">
+          <span>{settingDef.label}</span>
+          {settingDef.description && (
+            <TooltipProvider delayDuration={100}>
+              <Tooltip content={settingDef.description} side="top" align="start">
+                <Info className="h-3 w-3 text-muted-foreground cursor-help" />
+              </Tooltip>
+            </TooltipProvider>
+          )}
+        </Label>
+      </div>
       <div className="flex-1 min-w-0"> {/* Allow control area to grow and shrink */}
         {renderControl()}
       </div>
