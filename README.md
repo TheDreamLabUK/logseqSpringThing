@@ -414,6 +414,7 @@ sequenceDiagram
         Server->>Server: Save to user file
         Server-->>Client: Confirmation
     end
+```
 
 ### AR Features Implementation Status
 
