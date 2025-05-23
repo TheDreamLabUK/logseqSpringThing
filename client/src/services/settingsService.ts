@@ -56,7 +56,8 @@ class SettingsService {
   ): Promise<Settings | null> {
     try {
       // Convert settings to snake_case for the server
-      const settingsToSend = settings; // Send camelCase directly as server expects it for this endpoint
+      // Convert settings to snake_case for the server
+      const settingsToSend = convertCamelToSnakeCase(settings);
       
       if (debugState.isEnabled()) {
         logger.info('Saving settings to server (camelCase):', { settingsToSend });

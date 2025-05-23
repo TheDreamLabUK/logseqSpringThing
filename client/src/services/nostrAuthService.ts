@@ -111,21 +111,33 @@ class NostrAuthService {
             token: storedToken
           });
 
-          if (verificationResponse.valid && verificationResponse.user) {
-            // Session is valid, restore state
+          if (verificationResponse.valid) { // Check only for token validity
             this.sessionToken = storedToken;
-            this.currentUser = { // Use SimpleNostrUser for local state
-              pubkey: verificationResponse.user.pubkey,
-              npub: verificationResponse.user.npub || this.hexToNpub(verificationResponse.user.pubkey),
-              isPowerUser: verificationResponse.user.isPowerUser,
-            };
-            // Re-store potentially updated user info
-            this.storeCurrentUser();
+            if (verificationResponse.user) { // If backend provides updated user info
+              this.currentUser = {
+                pubkey: verificationResponse.user.pubkey,
+                npub: verificationResponse.user.npub || this.hexToNpub(verificationResponse.user.pubkey),
+                isPowerUser: verificationResponse.user.isPowerUser,
+              };
+              logger.info('Token verified and user details updated from backend.');
+            } else if (storedUser) {
+              // Token is valid, but backend didn't return user info.
+              // Trust the locally stored user info for this session.
+              this.currentUser = storedUser; // storedUser is confirmed non-null here
+              logger.info('Token verified, using stored user details as backend did not provide them on verify.');
+            } else {
+              // This case should ideally not be reached if storedUser was parsed correctly.
+              logger.error('Token verified but no user details available from backend or local storage. Clearing session.');
+              this.clearSession();
+              this.notifyListeners({ authenticated: false, error: 'User details missing after verification' });
+              return; // Exit early
+            }
+            this.storeCurrentUser(); // Store potentially updated or re-confirmed user
             this.notifyListeners(this.getCurrentAuthState());
             logger.info('Restored and verified session from local storage.');
           } else {
-            // Session invalid
-            logger.warn('Stored session token is invalid or user mismatch, clearing session.');
+            // Session invalid (verificationResponse.valid is false)
+            logger.warn('Stored session token is invalid (verification failed), clearing session.');
             this.clearSession();
             this.notifyListeners({ authenticated: false });
           }
