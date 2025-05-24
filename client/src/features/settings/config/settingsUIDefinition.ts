@@ -7,6 +7,7 @@ export type SettingWidgetType =
   | 'textInput'
   | 'colorPicker'
   | 'select'
+  | 'radioGroup' // For a small set of mutually exclusive choices
   | 'rangeSlider' // For [number, number] arrays
   | 'buttonAction'
   | 'dualColorPicker'; // Custom type for [string, string] color arrays
@@ -50,7 +51,7 @@ export const settingsUIDefinition: Record<string, UICategoryDefinition> = {
           opacity: { label: 'Opacity', type: 'slider', min: 0, max: 1, step: 0.01, path: 'visualisation.nodes.opacity', description: 'Overall opacity of nodes.' },
           roughness: { label: 'Roughness', type: 'slider', min: 0, max: 1, step: 0.01, path: 'visualisation.nodes.roughness', description: 'Surface roughness of nodes.' },
           sizeRange: { label: 'Size Range', type: 'rangeSlider', min: 0.1, max: 5, step: 0.1, path: 'visualisation.nodes.sizeRange', description: 'Minimum and maximum size for nodes.' },
-          quality: { label: 'Quality', type: 'select', options: [{value: 'low', label: 'Low'}, {value: 'medium', label: 'Medium'}, {value: 'high', label: 'High'}], path: 'visualisation.nodes.quality', description: 'Render quality of nodes.' },
+          quality: { label: 'Quality', type: 'radioGroup', options: [{value: 'low', label: 'Low'}, {value: 'medium', label: 'Medium'}, {value: 'high', label: 'High'}], path: 'visualisation.nodes.quality', description: 'Render quality of nodes.' },
           enableInstancing: { label: 'Enable Instancing', type: 'toggle', path: 'visualisation.nodes.enableInstancing', description: 'Use instanced rendering for nodes (performance).' },
           enableHologram: { label: 'Enable Hologram Effect', type: 'toggle', path: 'visualisation.nodes.enableHologram', description: 'Apply hologram effect to nodes.' },
           enableMetadataShape: { label: 'Enable Metadata Shape', type: 'toggle', path: 'visualisation.nodes.enableMetadataShape', description: 'Use shapes based on metadata.' },

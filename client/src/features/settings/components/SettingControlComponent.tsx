@@ -5,6 +5,7 @@ import { Slider } from '@/ui/Slider';
 import { Switch } from '@/ui/Switch';
 import { Input } from '@/ui/Input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/ui/Select';
+import { RadioGroup, RadioGroupItem } from '@/ui/RadioGroup'; // Added RadioGroup imports
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/ui/Tooltip';
 import { Button } from '@/ui/Button';
 import { Info, Eye, EyeOff } from 'lucide-react';
@@ -95,53 +96,34 @@ export function SettingControlComponent({ path, settingDef, value, onChange }: S
           <div className="flex w-full items-center gap-3">
             <Slider
               id={path}
-              value={[value as number]} // Slider expects an array
+              value={typeof value === 'number' && !isNaN(value) ? [value] : [settingDef.min ?? 0]} // Ensure valid array
               min={settingDef.min ?? 0}
               max={settingDef.max ?? 1}
-              step={settingDef.step ?? 0.01} // Sensible default step
+              step={settingDef.step ?? 0.01}
               onValueChange={([val]) => onChange(val)}
               className="flex-1"
             />
-            <span className="text-xs font-mono w-12 text-right">
-              {(value as number)?.toFixed ? (value as number).toFixed(settingDef.step && settingDef.step < 1 ? 2 : 0) : value}
-              {settingDef.unit}
+            <span className="text-xs font-mono w-16 text-right tabular-nums"> {/* Increased width for value + unit */}
+              {typeof value === 'number' ? value.toFixed(settingDef.step && settingDef.step < 1 ? 2 : (settingDef.step && settingDef.step === 1 ? 0 : 2)) : (settingDef.min ?? 0).toFixed(2)}
+              {settingDef.unit && <span className="ml-1">{settingDef.unit}</span>}
             </span>
           </div>
         );
 
       case 'numberInput':
-        // If min and max are defined, prefer Slider for a more intuitive UI
-        if (typeof settingDef.min === 'number' && typeof settingDef.max === 'number') {
-          return (
-            <div className="flex w-full items-center gap-3">
-              <Slider
-                id={path}
-                value={[value as number]} // Slider expects an array
-                min={settingDef.min}
-                max={settingDef.max}
-                step={settingDef.step ?? 0.01} // Default step for slider
-                onValueChange={([val]) => onChange(val)} // Direct change
-                className="flex-1"
-              />
-              <span className="text-xs font-mono w-12 text-right">
-                {(value as number)?.toFixed ? (value as number).toFixed(settingDef.step && settingDef.step < 1 ? 2 : 0) : value}
-                {settingDef.unit}
-              </span>
-            </div>
-          );
-        }
-        // Fallback to Input if min/max not defined for slider behavior
+        // Always render an Input for 'numberInput' type.
+        // If a slider is preferred, 'slider' type should be used in definition.
         return (
           <div className="flex items-center w-full">
             <Input
               id={path}
               type="number"
-              value={inputValue} // Use local state for debouncing
-              onChange={handleInputChange} // Update local state immediately
+              value={inputValue}
+              onChange={handleInputChange}
               min={settingDef.min}
               max={settingDef.max}
-              step={settingDef.step ?? 1} // Default step for input
-              className="h-8 flex-1"
+              step={settingDef.step ?? 1}
+              className="h-8 flex-1 tabular-nums"
             />
             {settingDef.unit && <span className="text-xs text-muted-foreground pl-2">{settingDef.unit}</span>}
           </div>
@@ -248,6 +230,25 @@ export function SettingControlComponent({ path, settingDef, value, onChange }: S
             </SelectContent>
           </Select>
         );
+      
+      case 'radioGroup':
+        return (
+          <RadioGroup
+            id={path}
+            value={String(value)}
+            onValueChange={(val) => onChange(val)}
+            className="flex flex-row gap-4" // Arrange radio buttons horizontally
+          >
+            {settingDef.options?.map(opt => (
+              <div key={String(opt.value)} className="flex items-center space-x-2">
+                <RadioGroupItem value={String(opt.value)} id={`${path}-${opt.value}`} />
+                <Label htmlFor={`${path}-${opt.value}`} className="text-sm font-normal">
+                  {opt.label}
+                </Label>
+              </div>
+            ))}
+          </RadioGroup>
+        );
 
       case 'rangeSlider': { // For [number, number] arrays
         const [minVal, maxVal] = Array.isArray(value) ? value : [settingDef.min ?? 0, settingDef.max ?? 1];
@@ -342,20 +343,20 @@ export function SettingControlComponent({ path, settingDef, value, onChange }: S
   }
 
   return (
-    <div className="setting-control flex items-center justify-between gap-4 py-2 border-b border-border/50 last:border-b-0 hover:bg-muted/30 transition-colors rounded px-2 -mx-2">
-      <div className="flex items-center gap-2 flex-shrink-0 max-w-[40%]">
-        <Label htmlFor={path} className="text-sm flex items-center gap-1">
+    <div className="setting-control grid grid-cols-3 items-center gap-x-4 gap-y-2 py-3 border-b border-border/30 last:border-b-0 hover:bg-muted/20 transition-colors rounded-sm px-1 -mx-1">
+      <div className="col-span-1 flex items-center"> {/* Label takes 1/3rd */}
+        <Label htmlFor={path} className="text-sm flex items-center gap-1.5">
           <span>{settingDef.label}</span>
           {settingDef.description && (
             <TooltipProvider delayDuration={100}>
               <Tooltip content={settingDef.description} side="top" align="start">
-                <Info className="h-3 w-3 text-muted-foreground cursor-help" />
+                <Info className="h-3.5 w-3.5 text-muted-foreground/70 hover:text-muted-foreground cursor-help" />
               </Tooltip>
             </TooltipProvider>
           )}
         </Label>
       </div>
-      <div className="flex-1 min-w-0"> {/* Allow control area to grow and shrink */}
+      <div className="col-span-2"> {/* Control takes 2/3rds */}
         {renderControl()}
       </div>
     </div>

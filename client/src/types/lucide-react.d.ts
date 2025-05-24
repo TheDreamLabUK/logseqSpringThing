@@ -18,6 +18,7 @@ declare module 'lucide-react' {
   export const ChevronUp: Icon;
   export const Dock: Icon;
   export const Eye: Icon;
+  export const EyeOff: Icon;
   export const Circle: Icon;
   export const CircleDashed: Icon;
   export const BrushIcon: Icon;
