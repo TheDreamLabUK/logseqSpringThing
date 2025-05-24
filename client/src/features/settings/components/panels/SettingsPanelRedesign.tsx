@@ -8,6 +8,7 @@ import {
   Smartphone,
   Info,
   ChevronDown,
+  ChevronUp, // Added ChevronUp
   Check
 } from 'lucide-react';
 import { useSettingsStore } from '@/store/settingsStore';
@@ -29,7 +30,12 @@ interface SettingGroup {
   isPowerUser?: boolean;
 }
 
-export function SettingsPanelRedesign() {
+interface SettingsPanelRedesignProps {
+  toggleLowerRightPaneDock: () => void;
+  isLowerRightPaneDocked: boolean;
+}
+
+export function SettingsPanelRedesign({ toggleLowerRightPaneDock, isLowerRightPaneDocked }: SettingsPanelRedesignProps) {
   const { settings, isPowerUser } = useSettingsStore();
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set(['Node Appearance']));
   const [savedNotification, setSavedNotification] = useState<string | null>(null);
@@ -281,11 +287,21 @@ export function SettingsPanelRedesign() {
 
   return (
     <div className="w-full h-full flex flex-col">
-      <div className="px-4 py-3 border-b">
-        <h2 className="text-lg font-semibold">Settings</h2>
-        <p className="text-sm text-muted-foreground">
-          Customize your visualization
-        </p>
+      <div className="px-4 py-3 border-b flex items-center justify-between">
+        <div>
+          <h2 className="text-lg font-semibold">Settings</h2>
+          <p className="text-sm text-muted-foreground">
+            Customize your visualization
+          </p>
+        </div>
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={toggleLowerRightPaneDock}
+          title={isLowerRightPaneDocked ? "Expand lower panels" : "Collapse lower panels"}
+        >
+          {isLowerRightPaneDocked ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
+        </Button>
       </div>
 
       <div className="flex-1 overflow-hidden">

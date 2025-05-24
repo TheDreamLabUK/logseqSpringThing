@@ -2,7 +2,12 @@ import React from 'react';
 import { SettingsPanelRedesign } from '../../features/settings/components/panels/SettingsPanelRedesign';
 import NostrAuthSection from '../../features/auth/components/NostrAuthSection';
 
-const RightPaneControlPanel: React.FC = () => {
+interface RightPaneControlPanelProps {
+  toggleLowerRightPaneDock: () => void;
+  isLowerRightPaneDocked: boolean;
+}
+
+const RightPaneControlPanel: React.FC<RightPaneControlPanelProps> = ({ toggleLowerRightPaneDock, isLowerRightPaneDocked }) => {
   return (
     <div className="h-full flex flex-col bg-background">
       {/* Auth Section */}
@@ -12,7 +17,7 @@ const RightPaneControlPanel: React.FC = () => {
       
       {/* Settings Panel */}
       <div className="flex-1 overflow-hidden">
-        <SettingsPanelRedesign />
+        <SettingsPanelRedesign toggleLowerRightPaneDock={toggleLowerRightPaneDock} isLowerRightPaneDocked={isLowerRightPaneDocked} />
       </div>
     </div>
   );

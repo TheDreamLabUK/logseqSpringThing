@@ -24,6 +24,8 @@ const TwoPaneLayout: React.FC = () => {
   // State for the new BOTTOM horizontal splitter within the lower part of the right pane
   const [bottomRightUpperHeight, setBottomRightUpperHeight] = useState<number>(200);
   const [isDraggingHorizontalBottom, setIsDraggingHorizontalBottom] = useState<boolean>(false);
+  const [isBottomPaneDocked, setIsBottomPaneDocked] = useState<boolean>(false);
+  const [isLowerRightPaneDocked, setIsLowerRightPaneDocked] = useState<boolean>(false); // New state for docking middle and bottom panes
 
   const handleVerticalMouseDown = useCallback((e: React.MouseEvent) => {
     setIsDraggingVertical(true);
@@ -125,6 +127,14 @@ const TwoPaneLayout: React.FC = () => {
     setIsRightPaneDocked(!isRightPaneDocked);
   };
   
+  const toggleBottomPaneDock = () => {
+    setIsBottomPaneDocked(!isBottomPaneDocked);
+  };
+  
+  const toggleLowerRightPaneDock = () => {
+    setIsLowerRightPaneDocked(!isLowerRightPaneDocked);
+  };
+  
   // Effect for setting initial pane widths and heights
   React.useEffect(() => {
     const updateLayout = () => {
@@ -137,11 +147,21 @@ const TwoPaneLayout: React.FC = () => {
         const rightPaneContainer = document.getElementById('right-pane-container');
         if (rightPaneContainer && !isDraggingHorizontalTop && !isDraggingHorizontalBottom) {
           const totalHeight = rightPaneContainer.clientHeight;
-          const dividerHeight = 10; // As per horizontalTopDividerStyle and horizontalBottomDividerStyle
-          const panelHeight = (totalHeight - 2 * dividerHeight) / 3;
+          const dividerHeight = 10;
           
-          setRightPaneTopHeight(panelHeight > 50 ? panelHeight : 50); // Ensure minHeight
-          setBottomRightUpperHeight(panelHeight > 50 ? panelHeight : 50); // Ensure minHeight
+          if (isLowerRightPaneDocked) {
+            // When lower right pane is docked, top pane takes all available space
+            setRightPaneTopHeight(totalHeight);
+          } else if (isBottomPaneDocked) {
+            // When bottom pane is docked, ConversationPane takes all available space below the top panel
+            const remainingHeight = totalHeight - rightPaneTopHeight - dividerHeight;
+            setBottomRightUpperHeight(remainingHeight > 50 ? remainingHeight : 50);
+          } else {
+            // Normal three-panel split
+            const panelHeight = (totalHeight - 2 * dividerHeight) / 3;
+            setRightPaneTopHeight(panelHeight > 50 ? panelHeight : 50);
+            setBottomRightUpperHeight(panelHeight > 50 ? panelHeight : 50);
+          }
         }
       }
     };
@@ -221,19 +241,20 @@ const TwoPaneLayout: React.FC = () => {
   };
 
   const rightPaneTopStyle: CSSProperties = {
-    height: `${rightPaneTopHeight}px`,
-    minHeight: '50px', // Min height for top section
+    height: isLowerRightPaneDocked ? '100%' : `${rightPaneTopHeight}px`, // Take full height when lower is docked
+    flexGrow: isLowerRightPaneDocked ? 1 : 0, // Allow it to grow when lower is docked
+    minHeight: '50px',
     // backgroundColor: '#e0e0e0', // Removed, panel has its own
     // padding: '10px', // Removed, panel has its own
     overflowY: 'hidden', // Panel itself will scroll its content
     position: 'relative',
   };
 
-  const horizontalTopDividerStyle: CSSProperties = { // Renamed
+  const horizontalTopDividerStyle: CSSProperties = {
     height: '10px',
     cursor: 'ns-resize',
     backgroundColor: '#b0b0b0',
-    display: 'flex',
+    display: isLowerRightPaneDocked ? 'none' : 'flex', // Hide when lower is docked
     alignItems: 'center',
     justifyContent: 'center',
     userSelect: 'none',
@@ -242,17 +263,18 @@ const TwoPaneLayout: React.FC = () => {
     flexShrink: 0,
   };
 
-  const rightPaneBottomContainerStyle: CSSProperties = { // New container for the split
+  const rightPaneBottomContainerStyle: CSSProperties = {
     flexGrow: 1,
-    minHeight: '110px', // 50 (upper) + 10 (divider) + 50 (lower)
-    display: 'flex',
+    minHeight: isLowerRightPaneDocked ? '0px' : '110px', // Collapse when lower is docked
+    display: isLowerRightPaneDocked ? 'none' : 'flex', // Hide when lower is docked
     flexDirection: 'column',
     overflow: 'hidden',
     backgroundColor: '#d0d0d0', // Base for this area
   };
 
   const bottomRightUpperStyle: CSSProperties = {
-    height: `${bottomRightUpperHeight}px`,
+    height: isBottomPaneDocked ? 'auto' : `${bottomRightUpperHeight}px`, // Auto height when docked
+    flexGrow: isBottomPaneDocked ? 1 : 0, // Take all available space when docked
     minHeight: '50px',
     // backgroundColor: '#d8d8d8', // Panel has its own bg
     padding: '0px', // Panel has its own padding
@@ -275,7 +297,9 @@ const TwoPaneLayout: React.FC = () => {
 
   const bottomRightLowerStyle: CSSProperties = {
     flexGrow: 1,
-    minHeight: '50px',
+    minHeight: isBottomPaneDocked ? '0px' : '50px', // Collapse when docked
+    height: isBottomPaneDocked ? '0px' : 'auto', // Collapse when docked
+    display: isBottomPaneDocked ? 'none' : 'flex', // Hide when docked
     // backgroundColor: '#c8c8c8', // Panel has its own bg
     padding: '0px', // Panel has its own padding
     overflowY: 'hidden', // Panel handles scroll
@@ -308,31 +332,53 @@ const TwoPaneLayout: React.FC = () => {
         {!isRightPaneDocked && (
           <>
             <div style={rightPaneTopStyle}>
-              <RightPaneControlPanel />
+              <RightPaneControlPanel toggleLowerRightPaneDock={toggleLowerRightPaneDock} isLowerRightPaneDocked={isLowerRightPaneDocked} />
             </div>
-            <div
-              style={horizontalTopDividerStyle}
-              onMouseDown={handleHorizontalTopMouseDown}
-              title="Drag to resize Control Panel / Lower Area"
-            >
-              ══
-            </div>
-            <div id="right-pane-bottom-container" style={rightPaneBottomContainerStyle}>
-              <div style={bottomRightUpperStyle}>
-                {/* <MarkdownDisplayPanel /> */} {/* Replace this */}
-                <ConversationPane /> {/* With this */}
-              </div>
-              <div
-                style={horizontalBottomDividerStyle}
-                onMouseDown={handleHorizontalBottomMouseDown}
-                title="Drag to resize Markdown / Narrative Goldmine"
-              >
-                ══
-              </div>
-              <div style={bottomRightLowerStyle}>
-                <NarrativeGoldminePanel />
-              </div>
-            </div>
+            {!isLowerRightPaneDocked && ( // Hide divider and lower container when docked
+              <>
+                <div
+                  style={horizontalTopDividerStyle}
+                  onMouseDown={handleHorizontalTopMouseDown}
+                  title="Drag to resize Control Panel / Lower Area"
+                >
+                  ══
+                </div>
+                <div id="right-pane-bottom-container" style={rightPaneBottomContainerStyle}>
+                  <div style={bottomRightUpperStyle}>
+                    <ConversationPane />
+                    {/* Dock button for ConversationPane */}
+                    <button
+                      onClick={toggleBottomPaneDock}
+                      style={{
+                        position: 'absolute',
+                        bottom: '10px',
+                        right: '10px',
+                        zIndex: 100,
+                        padding: '5px 10px',
+                        cursor: 'pointer',
+                      }}
+                      title={isBottomPaneDocked ? "Expand Lower Panel" : "Collapse Lower Panel"}
+                    >
+                      {isBottomPaneDocked ? '^' : 'v'}
+                    </button>
+                  </div>
+                  {!isBottomPaneDocked && (
+                    <>
+                      <div
+                        style={horizontalBottomDividerStyle}
+                        onMouseDown={handleHorizontalBottomMouseDown}
+                        title="Drag to resize Markdown / Narrative Goldmine"
+                      >
+                        ══
+                      </div>
+                      <div style={bottomRightLowerStyle}>
+                        <NarrativeGoldminePanel />
+                      </div>
+                    </>
+                  )}
+                </div>
+              </>
+            )}
           </>
         )}
       </div>
