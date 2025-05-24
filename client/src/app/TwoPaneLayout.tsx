@@ -246,7 +246,7 @@ const TwoPaneLayout: React.FC = () => {
     minHeight: '50px',
     // backgroundColor: '#e0e0e0', // Removed, panel has its own
     // padding: '10px', // Removed, panel has its own
-    overflowY: 'hidden', // Panel itself will scroll its content
+    overflowY: 'auto',   // Allow scrolling of panel content
     position: 'relative',
   };
 

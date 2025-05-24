@@ -315,7 +315,7 @@ export function SettingsPanelRedesign({ toggleLowerRightPaneDock, isLowerRightPa
     }
 
     return (
-      <div className="space-y-3 custom-scrollbar overflow-y-auto h-full">
+      <div className="flex-1 min-h-0 space-y-3">
         {tab.groups.map(group => renderSettingGroup(group))}
       </div>
     );
@@ -329,7 +329,7 @@ export function SettingsPanelRedesign({ toggleLowerRightPaneDock, isLowerRightPa
   }));
 
   return (
-    <div className="w-full h-full flex flex-col">
+    <div className="w-full h-full flex flex-col min-h-0">
       <div className="px-4 py-3 border-b flex items-center justify-between">
         <div>
           <h2 className="text-lg font-semibold">Settings</h2>
@@ -347,7 +347,7 @@ export function SettingsPanelRedesign({ toggleLowerRightPaneDock, isLowerRightPa
         </Button>
       </div>
 
-      <div className="flex-1 overflow-hidden">
+      <div className="flex-1 overflow-auto">
         <Tabs 
           tabs={tabs}
           className="h-full"

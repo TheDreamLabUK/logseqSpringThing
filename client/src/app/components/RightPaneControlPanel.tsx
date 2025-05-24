@@ -16,7 +16,7 @@ const RightPaneControlPanel: React.FC<RightPaneControlPanelProps> = ({ toggleLow
       </div>
       
       {/* Settings Panel */}
-      <div className="flex-1 overflow-hidden">
+      <div className="flex-1 overflow-y-auto">
         <SettingsPanelRedesign toggleLowerRightPaneDock={toggleLowerRightPaneDock} isLowerRightPaneDocked={isLowerRightPaneDocked} />
       </div>
     </div>

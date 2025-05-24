@@ -34,7 +34,7 @@ const Tabs: React.FC<TabsProps> = ({
 
   return (
     // Added default dark theme classes
-    <div className={cn('flex flex-col h-full', className)}>
+    <div className={cn('flex flex-col h-full min-h-0', className)}>
       {/* Tab List */}
       <div
         className={cn(
