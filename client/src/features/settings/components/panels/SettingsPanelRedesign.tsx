@@ -80,6 +80,11 @@ export function SettingsPanelRedesign({ toggleLowerRightPaneDock, isLowerRightPa
             { key: 'enableLabels', path: settingsUIDefinition.visualisation.subsections.labels.settings.enableLabels.path, definition: settingsUIDefinition.visualisation.subsections.labels.settings.enableLabels },
             { key: 'desktopFontSize', path: 'visualisation.labels.desktopFontSize', definition: settingsUIDefinition.visualisation.subsections.labels.settings.desktopFontSize },
             { key: 'textColor', path: 'visualisation.labels.textColor', definition: settingsUIDefinition.visualisation.subsections.labels.settings.textColor },
+            { key: 'textOutlineColor', path: 'visualisation.labels.textOutlineColor', definition: settingsUIDefinition.visualisation.subsections.labels.settings.textOutlineColor },
+            { key: 'textOutlineWidth', path: 'visualisation.labels.textOutlineWidth', definition: settingsUIDefinition.visualisation.subsections.labels.settings.textOutlineWidth },
+            { key: 'textResolution', path: 'visualisation.labels.textResolution', definition: settingsUIDefinition.visualisation.subsections.labels.settings.textResolution },
+            { key: 'textPadding', path: 'visualisation.labels.textPadding', definition: settingsUIDefinition.visualisation.subsections.labels.settings.textPadding },
+            { key: 'billboardMode', path: 'visualisation.labels.billboardMode', definition: settingsUIDefinition.visualisation.subsections.labels.settings.billboardMode },
           ]
         },
         {
@@ -116,6 +121,20 @@ export function SettingsPanelRedesign({ toggleLowerRightPaneDock, isLowerRightPa
             { key: 'sphereSizes', path: 'visualisation.hologram.sphereSizes', definition: settingsUIDefinition.visualisation.subsections.hologram.settings.sphereSizes },
             { key: 'ringRotationSpeed', path: 'visualisation.hologram.ringRotationSpeed', definition: settingsUIDefinition.visualisation.subsections.hologram.settings.ringRotationSpeed },
             { key: 'globalRotationSpeed', path: 'visualisation.hologram.globalRotationSpeed', definition: settingsUIDefinition.visualisation.subsections.hologram.settings.globalRotationSpeed },
+          ]
+        }, // Missing comma was here
+        {
+          title: 'Animations',
+          description: 'Animation controls',
+          items: [
+            { key: 'enableNodeAnimations', path: 'visualisation.animations.enableNodeAnimations', definition: settingsUIDefinition.visualisation.subsections.animations.settings.enableNodeAnimations },
+            { key: 'enableMotionBlur', path: 'visualisation.animations.enableMotionBlur', definition: settingsUIDefinition.visualisation.subsections.animations.settings.enableMotionBlur, isPowerUser: true },
+            { key: 'motionBlurStrength', path: 'visualisation.animations.motionBlurStrength', definition: settingsUIDefinition.visualisation.subsections.animations.settings.motionBlurStrength, isPowerUser: true },
+            { key: 'selectionWaveEnabled', path: 'visualisation.animations.selectionWaveEnabled', definition: settingsUIDefinition.visualisation.subsections.animations.settings.selectionWaveEnabled },
+            { key: 'pulseEnabled', path: 'visualisation.animations.pulseEnabled', definition: settingsUIDefinition.visualisation.subsections.animations.settings.pulseEnabled },
+            { key: 'pulseSpeed', path: 'visualisation.animations.pulseSpeed', definition: settingsUIDefinition.visualisation.subsections.animations.settings.pulseSpeed },
+            { key: 'pulseStrength', path: 'visualisation.animations.pulseStrength', definition: settingsUIDefinition.visualisation.subsections.animations.settings.pulseStrength },
+            { key: 'waveSpeed', path: 'visualisation.animations.waveSpeed', definition: settingsUIDefinition.visualisation.subsections.animations.settings.waveSpeed },
           ]
         }
       ]
@@ -316,7 +335,11 @@ export function SettingsPanelRedesign({ toggleLowerRightPaneDock, isLowerRightPa
 
     return (
       <div className="flex-1 min-h-0 space-y-3">
-        {tab.groups.map(group => renderSettingGroup(group))}
+        {tab.groups.map(group => (
+          <React.Fragment key={group.title}>
+            {renderSettingGroup(group)}
+          </React.Fragment>
+        ))}
       </div>
     );
   };

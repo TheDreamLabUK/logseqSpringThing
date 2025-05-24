@@ -85,7 +85,7 @@ export const settingsUIDefinition: Record<string, UICategoryDefinition> = {
           collisionRadius: { label: 'Collision Radius', type: 'slider', min: 0.1, max: 5, step: 0.1, path: 'visualisation.physics.collisionRadius', description: 'Radius for node collision detection.' },
           damping: { label: 'Damping', type: 'slider', min: 0, max: 1, step: 0.01, path: 'visualisation.physics.damping', description: 'Damping factor to slow down node movement.' },
           enableBounds: { label: 'Enable Bounds', type: 'toggle', path: 'visualisation.physics.enableBounds', description: 'Confine nodes within the bounds size.' },
-          iterations: { label: 'Iterations', type: 'numberInput', min: 10, max: 500, step: 10, path: 'visualisation.physics.iterations', description: 'Number of physics iterations per step.' },
+          iterations: { label: 'Iterations', type: 'slider', min: 10, max: 500, step: 10, path: 'visualisation.physics.iterations', description: 'Number of physics iterations per step.' },
           maxVelocity: { label: 'Max Velocity', type: 'slider', min: 0.001, max: 0.5, step: 0.001, path: 'visualisation.physics.maxVelocity', description: 'Maximum velocity of nodes.' },
           repulsionStrength: { label: 'Repulsion Strength', type: 'slider', min: 0, max: 2, step: 0.01, path: 'visualisation.physics.repulsionStrength', description: 'Strength of repulsion between nodes.' },
           springStrength: { label: 'Spring Strength', type: 'slider', min: 0, max: 1, step: 0.01, path: 'visualisation.physics.springStrength', description: 'Strength of springs (edges) pulling nodes together.' },
@@ -137,7 +137,7 @@ export const settingsUIDefinition: Record<string, UICategoryDefinition> = {
       hologram: {
         label: 'Hologram Effect',
         settings: {
-          ringCount: { label: 'Ring Count', type: 'numberInput', min: 0, max: 10, step: 1, path: 'visualisation.hologram.ringCount', description: 'Number of rings in hologram effect.' },
+          ringCount: { label: 'Ring Count', type: 'slider', min: 0, max: 10, step: 1, path: 'visualisation.hologram.ringCount', description: 'Number of rings in hologram effect.' },
           ringColor: { label: 'Ring Color', type: 'colorPicker', path: 'visualisation.hologram.ringColor', description: 'Color of hologram rings.' },
           ringOpacity: { label: 'Ring Opacity', type: 'slider', min: 0, max: 1, step: 0.01, path: 'visualisation.hologram.ringOpacity', description: 'Opacity of hologram rings.' },
           sphereSizes: { label: 'Sphere Sizes (Min/Max)', type: 'rangeSlider', min: 0.1, max: 20, step: 0.1, path: 'visualisation.hologram.sphereSizes', description: 'Min/max sizes for hologram spheres.' },
@@ -184,11 +184,11 @@ export const settingsUIDefinition: Record<string, UICategoryDefinition> = {
         label: 'WebSocket',
         settings: {
           updateRate: { label: 'Update Rate (Hz)', type: 'slider', min: 1, max: 60, step: 1, path: 'system.websocket.updateRate', description: 'Frequency of position updates from server.' },
-          reconnectAttempts: { label: 'Reconnect Attempts', type: 'numberInput', min: 0, max: 10, step: 1, path: 'system.websocket.reconnectAttempts', description: 'Number of WebSocket reconnect attempts.' },
-          reconnectDelay: { label: 'Reconnect Delay', type: 'numberInput', unit: 'ms', min: 500, max: 10000, step: 100, path: 'system.websocket.reconnectDelay', description: 'Delay between WebSocket reconnect attempts.' },
-          binaryChunkSize: { label: 'Binary Chunk Size', type: 'numberInput', unit: 'bytes', min: 256, max: 8192, step: 256, path: 'system.websocket.binaryChunkSize', description: 'Chunk size for binary data transmission.' },
+          reconnectAttempts: { label: 'Reconnect Attempts', type: 'slider', min: 0, max: 10, step: 1, path: 'system.websocket.reconnectAttempts', description: 'Number of WebSocket reconnect attempts.' },
+          reconnectDelay: { label: 'Reconnect Delay', type: 'slider', unit: 'ms', min: 500, max: 10000, step: 100, path: 'system.websocket.reconnectDelay', description: 'Delay between WebSocket reconnect attempts.' },
+          binaryChunkSize: { label: 'Binary Chunk Size', type: 'slider', unit: 'bytes', min: 256, max: 8192, step: 256, path: 'system.websocket.binaryChunkSize', description: 'Chunk size for binary data transmission.' },
           compressionEnabled: { label: 'Compression Enabled', type: 'toggle', path: 'system.websocket.compressionEnabled', description: 'Enable WebSocket message compression.' },
-          compressionThreshold: { label: 'Compression Threshold', type: 'numberInput', unit: 'bytes', min: 64, max: 4096, step: 64, path: 'system.websocket.compressionThreshold', description: 'Threshold for WebSocket compression.' },
+          compressionThreshold: { label: 'Compression Threshold', type: 'slider', unit: 'bytes', min: 64, max: 4096, step: 64, path: 'system.websocket.compressionThreshold', description: 'Threshold for WebSocket compression.' },
         },
       },
       debug: {
@@ -262,8 +262,8 @@ export const settingsUIDefinition: Record<string, UICategoryDefinition> = {
           apiKey: { label: 'API Key', type: 'textInput', path: 'ragflow.apiKey', description: 'Your RAGFlow API Key. Will be obscured.', isPowerUserOnly: true },
           agentId: { label: 'Agent ID', type: 'textInput', path: 'ragflow.agentId', description: 'RAGFlow Agent ID.', isPowerUserOnly: true },
           apiBaseUrl: { label: 'API Base URL', type: 'textInput', path: 'ragflow.apiBaseUrl', description: 'Custom RAGFlow API Base URL.', isPowerUserOnly: true, isAdvanced: true },
-          timeout: { label: 'Timeout (s)', type: 'numberInput', unit: 's', min: 1, max: 300, step: 1, path: 'ragflow.timeout', description: 'API request timeout in seconds.' },
-          maxRetries: { label: 'Max Retries', type: 'numberInput', min: 0, max: 10, step: 1, path: 'ragflow.maxRetries', description: 'Maximum retry attempts for API calls.' },
+          timeout: { label: 'Timeout (s)', type: 'slider', unit: 's', min: 1, max: 300, step: 1, path: 'ragflow.timeout', description: 'API request timeout in seconds.' },
+          maxRetries: { label: 'Max Retries', type: 'slider', min: 0, max: 10, step: 1, path: 'ragflow.maxRetries', description: 'Maximum retry attempts for API calls.' },
           chatId: { label: 'Chat ID', type: 'textInput', path: 'ragflow.chatId', description: 'Default RAGFlow Chat ID.', isPowerUserOnly: true, isAdvanced: true },
         },
       },
@@ -273,13 +273,13 @@ export const settingsUIDefinition: Record<string, UICategoryDefinition> = {
           apiKey: { label: 'API Key', type: 'textInput', path: 'perplexity.apiKey', description: 'Your Perplexity API Key. Will be obscured.', isPowerUserOnly: true },
           model: { label: 'Model', type: 'textInput', path: 'perplexity.model', description: 'Perplexity model name (e.g., llama-3.1-sonar-small-128k-online).' },
           apiUrl: { label: 'API URL', type: 'textInput', path: 'perplexity.apiUrl', description: 'Custom Perplexity API URL.', isPowerUserOnly: true, isAdvanced: true },
-          maxTokens: { label: 'Max Tokens', type: 'numberInput', min: 1, max: 130000, step: 128, path: 'perplexity.maxTokens', description: 'Maximum tokens for API response.' }, // Adjusted max for sonar 128k
+          maxTokens: { label: 'Max Tokens', type: 'slider', min: 1, max: 130000, step: 128, path: 'perplexity.maxTokens', description: 'Maximum tokens for API response.' }, // Adjusted max for sonar 128k
           temperature: { label: 'Temperature', type: 'slider', min: 0, max: 2, step: 0.1, path: 'perplexity.temperature', description: 'Sampling temperature.' },
           topP: { label: 'Top P', type: 'slider', min: 0, max: 1, step: 0.01, path: 'perplexity.topP', description: 'Nucleus sampling parameter.' },
           presencePenalty: { label: 'Presence Penalty', type: 'slider', min: -2, max: 2, step: 0.1, path: 'perplexity.presencePenalty', description: 'Penalty for new token presence.' },
           frequencyPenalty: { label: 'Frequency Penalty', type: 'slider', min: -2, max: 2, step: 0.1, path: 'perplexity.frequencyPenalty', description: 'Penalty for token frequency.' },
-          timeout: { label: 'Timeout (s)', type: 'numberInput', unit: 's', min: 1, max: 300, step: 1, path: 'perplexity.timeout', description: 'API request timeout.' },
-          rateLimit: { label: 'Rate Limit (req/min)', type: 'numberInput', min: 1, max: 1000, step: 1, path: 'perplexity.rateLimit', description: 'Requests per minute.', isAdvanced: true },
+          timeout: { label: 'Timeout (s)', type: 'slider', unit: 's', min: 1, max: 300, step: 1, path: 'perplexity.timeout', description: 'API request timeout.' },
+          rateLimit: { label: 'Rate Limit (req/min)', type: 'slider', min: 1, max: 1000, step: 1, path: 'perplexity.rateLimit', description: 'Requests per minute.', isAdvanced: true },
         },
       },
       openai: {
@@ -287,8 +287,8 @@ export const settingsUIDefinition: Record<string, UICategoryDefinition> = {
         settings: {
           apiKey: { label: 'API Key', type: 'textInput', path: 'openai.apiKey', description: 'Your OpenAI API Key. Will be obscured.', isPowerUserOnly: true },
           baseUrl: { label: 'Base URL', type: 'textInput', path: 'openai.baseUrl', description: 'Custom OpenAI Base URL (e.g., for Azure).', isPowerUserOnly: true, isAdvanced: true },
-          timeout: { label: 'Timeout (s)', type: 'numberInput', unit: 's', min: 1, max: 300, step: 1, path: 'openai.timeout', description: 'API request timeout.' },
-          rateLimit: { label: 'Rate Limit (req/min)', type: 'numberInput', min: 1, max: 1000, step: 1, path: 'openai.rateLimit', description: 'Requests per minute.', isAdvanced: true },
+          timeout: { label: 'Timeout (s)', type: 'slider', unit: 's', min: 1, max: 300, step: 1, path: 'openai.timeout', description: 'API request timeout.' },
+          rateLimit: { label: 'Rate Limit (req/min)', type: 'slider', min: 1, max: 1000, step: 1, path: 'openai.rateLimit', description: 'Requests per minute.', isAdvanced: true },
         },
       },
       kokoro: {
@@ -298,7 +298,7 @@ export const settingsUIDefinition: Record<string, UICategoryDefinition> = {
           defaultVoice: { label: 'Default Voice', type: 'textInput', path: 'kokoro.defaultVoice', description: 'Default voice for TTS.' },
           defaultFormat: { label: 'Default Format', type: 'select', options: [{value: 'mp3', label: 'MP3'}, {value: 'ogg', label: 'OGG Vorbis'}, {value: 'wav', label: 'WAV'}, {value: 'pcm', label: 'PCM'}], path: 'kokoro.defaultFormat', description: 'Default audio format.' },
           defaultSpeed: { label: 'Default Speed', type: 'slider', min: 0.25, max: 4.0, step: 0.05, path: 'kokoro.defaultSpeed', description: 'Default speech speed.' },
-          timeout: { label: 'Timeout (s)', type: 'numberInput', unit: 's', min: 1, max: 300, step: 1, path: 'kokoro.timeout', description: 'API request timeout.' },
+          timeout: { label: 'Timeout (s)', type: 'slider', unit: 's', min: 1, max: 300, step: 1, path: 'kokoro.timeout', description: 'API request timeout.' },
           stream: { label: 'Stream Audio', type: 'toggle', path: 'kokoro.stream', description: 'Enable audio streaming.' },
           returnTimestamps: { label: 'Return Timestamps', type: 'toggle', path: 'kokoro.returnTimestamps', description: 'Request word timestamps from TTS.', isAdvanced: true },
           sampleRate: { label: 'Sample Rate', type: 'select', options: [{value: '8000', label: '8000 Hz'}, {value: '16000', label: '16000 Hz'}, {value: '22050', label: '22050 Hz'}, {value: '24000', label: '24000 Hz'}, {value: '44100', label: '44100 Hz'}, {value: '48000', label: '48000 Hz'}], path: 'kokoro.sampleRate', description: 'Audio sample rate.' },
