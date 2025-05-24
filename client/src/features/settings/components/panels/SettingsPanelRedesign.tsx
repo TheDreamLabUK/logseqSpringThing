@@ -71,6 +71,13 @@ export function SettingsPanelRedesign({ toggleLowerRightPaneDock, isLowerRightPa
             { key: 'enableArrows', path: 'visualisation.edges.enableArrows', definition: settingsUIDefinition.visualisation.subsections.edges.settings.enableArrows },
             { key: 'arrowSize', path: 'visualisation.edges.arrowSize', definition: settingsUIDefinition.visualisation.subsections.edges.settings.arrowSize },
             { key: 'widthRange', path: 'visualisation.edges.widthRange', definition: settingsUIDefinition.visualisation.subsections.edges.settings.widthRange },
+            { key: 'enableFlowEffect', path: 'visualisation.edges.enableFlowEffect', definition: settingsUIDefinition.visualisation.subsections.edges.settings.enableFlowEffect },
+            { key: 'flowSpeed', path: 'visualisation.edges.flowSpeed', definition: settingsUIDefinition.visualisation.subsections.edges.settings.flowSpeed },
+            { key: 'flowIntensity', path: 'visualisation.edges.flowIntensity', definition: settingsUIDefinition.visualisation.subsections.edges.settings.flowIntensity },
+            { key: 'glowStrength', path: 'visualisation.edges.glowStrength', definition: settingsUIDefinition.visualisation.subsections.edges.settings.glowStrength },
+            { key: 'distanceIntensity', path: 'visualisation.edges.distanceIntensity', definition: settingsUIDefinition.visualisation.subsections.edges.settings.distanceIntensity },
+            { key: 'useGradient', path: 'visualisation.edges.useGradient', definition: settingsUIDefinition.visualisation.subsections.edges.settings.useGradient },
+            { key: 'gradientColors', path: 'visualisation.edges.gradientColors', definition: settingsUIDefinition.visualisation.subsections.edges.settings.gradientColors },
           ]
         },
         {
@@ -94,6 +101,10 @@ export function SettingsPanelRedesign({ toggleLowerRightPaneDock, isLowerRightPa
             { key: 'bloomEnabled', path: 'visualisation.bloom.enabled', definition: settingsUIDefinition.visualisation.subsections.bloom.settings.enabled },
             { key: 'bloomStrength', path: 'visualisation.bloom.strength', definition: settingsUIDefinition.visualisation.subsections.bloom.settings.strength },
             { key: 'bloomRadius', path: 'visualisation.bloom.radius', definition: settingsUIDefinition.visualisation.subsections.bloom.settings.radius },
+            { key: 'edgeBloomStrength', path: 'visualisation.bloom.edgeBloomStrength', definition: settingsUIDefinition.visualisation.subsections.bloom.settings.edgeBloomStrength },
+            { key: 'environmentBloomStrength', path: 'visualisation.bloom.environmentBloomStrength', definition: settingsUIDefinition.visualisation.subsections.bloom.settings.environmentBloomStrength },
+            { key: 'nodeBloomStrength', path: 'visualisation.bloom.nodeBloomStrength', definition: settingsUIDefinition.visualisation.subsections.bloom.settings.nodeBloomStrength },
+            { key: 'threshold', path: 'visualisation.bloom.threshold', definition: settingsUIDefinition.visualisation.subsections.bloom.settings.threshold },
           ]
         },
         {
@@ -122,7 +133,7 @@ export function SettingsPanelRedesign({ toggleLowerRightPaneDock, isLowerRightPa
             { key: 'ringRotationSpeed', path: 'visualisation.hologram.ringRotationSpeed', definition: settingsUIDefinition.visualisation.subsections.hologram.settings.ringRotationSpeed },
             { key: 'globalRotationSpeed', path: 'visualisation.hologram.globalRotationSpeed', definition: settingsUIDefinition.visualisation.subsections.hologram.settings.globalRotationSpeed },
           ]
-        }, // Missing comma was here
+        },
         {
           title: 'Animations',
           description: 'Animation controls',
@@ -159,6 +170,13 @@ export function SettingsPanelRedesign({ toggleLowerRightPaneDock, isLowerRightPa
             { key: 'physicsEnabled', path: 'visualisation.physics.enabled', definition: settingsUIDefinition.visualisation.subsections.physics.settings.enabled },
             { key: 'iterations', path: 'visualisation.physics.iterations', definition: settingsUIDefinition.visualisation.subsections.physics.settings.iterations },
             { key: 'damping', path: 'visualisation.physics.damping', definition: settingsUIDefinition.visualisation.subsections.physics.settings.damping },
+            { key: 'boundsSize', path: 'visualisation.physics.boundsSize', definition: settingsUIDefinition.visualisation.subsections.physics.settings.boundsSize },
+            { key: 'collisionRadius', path: 'visualisation.physics.collisionRadius', definition: settingsUIDefinition.visualisation.subsections.physics.settings.collisionRadius },
+            { key: 'enableBounds', path: 'visualisation.physics.enableBounds', definition: settingsUIDefinition.visualisation.subsections.physics.settings.enableBounds },
+            { key: 'maxVelocity', path: 'visualisation.physics.maxVelocity', definition: settingsUIDefinition.visualisation.subsections.physics.settings.maxVelocity },
+            { key: 'repulsionDistance', path: 'visualisation.physics.repulsionDistance', definition: settingsUIDefinition.visualisation.subsections.physics.settings.repulsionDistance },
+            { key: 'massScale', path: 'visualisation.physics.massScale', definition: settingsUIDefinition.visualisation.subsections.physics.settings.massScale },
+            { key: 'boundaryDamping', path: 'visualisation.physics.boundaryDamping', definition: settingsUIDefinition.visualisation.subsections.physics.settings.boundaryDamping },
           ]
         },
         {
@@ -198,8 +216,40 @@ export function SettingsPanelRedesign({ toggleLowerRightPaneDock, isLowerRightPa
           title: 'Interaction',
           description: 'Hand tracking and controls',
           items: [
-            { key: 'handTracking', path: settingsUIDefinition.xr.subsections.handFeatures.settings.handTracking.path, definition: settingsUIDefinition.xr.subsections.handFeatures.settings.handTracking },
-            { key: 'haptics', path: settingsUIDefinition.xr.subsections.handFeatures.settings.enableHaptics.path, definition: settingsUIDefinition.xr.subsections.handFeatures.settings.enableHaptics },
+            { key: 'enableHandTracking', path: 'xr.handFeatures.enableHandTracking', definition: settingsUIDefinition.xr.subsections.handFeatures.settings.enableHandTracking },
+            { key: 'enableHaptics', path: 'xr.handFeatures.enableHaptics', definition: settingsUIDefinition.xr.subsections.handFeatures.settings.enableHaptics },
+            { key: 'interactionRadius', path: 'xr.handFeatures.interactionRadius', definition: settingsUIDefinition.xr.subsections.handFeatures.settings.interactionRadius },
+            { key: 'movementAxesHorizontal', path: 'xr.handFeatures.movementAxesHorizontal', definition: settingsUIDefinition.xr.subsections.handFeatures.settings.movementAxesHorizontal },
+            { key: 'movementAxesVertical', path: 'xr.handFeatures.movementAxesVertical', definition: settingsUIDefinition.xr.subsections.handFeatures.settings.movementAxesVertical },
+          ],
+          isPowerUser: true
+        },
+        {
+          title: 'Environment Understanding',
+          description: 'Settings for AR environment features',
+          items: [
+            { key: 'enableLightEstimation', path: 'xr.environmentUnderstanding.enableLightEstimation', definition: settingsUIDefinition.xr.subsections.environmentUnderstanding.settings.enableLightEstimation },
+            { key: 'enablePlaneDetection', path: 'xr.environmentUnderstanding.enablePlaneDetection', definition: settingsUIDefinition.xr.subsections.environmentUnderstanding.settings.enablePlaneDetection },
+            { key: 'enableSceneUnderstanding', path: 'xr.environmentUnderstanding.enableSceneUnderstanding', definition: settingsUIDefinition.xr.subsections.environmentUnderstanding.settings.enableSceneUnderstanding },
+            { key: 'planeColor', path: 'xr.environmentUnderstanding.planeColor', definition: settingsUIDefinition.xr.subsections.environmentUnderstanding.settings.planeColor },
+            { key: 'planeOpacity', path: 'xr.environmentUnderstanding.planeOpacity', definition: settingsUIDefinition.xr.subsections.environmentUnderstanding.settings.planeOpacity },
+            { key: 'planeDetectionDistance', path: 'xr.environmentUnderstanding.planeDetectionDistance', definition: settingsUIDefinition.xr.subsections.environmentUnderstanding.settings.planeDetectionDistance },
+            { key: 'showPlaneOverlay', path: 'xr.environmentUnderstanding.showPlaneOverlay', definition: settingsUIDefinition.xr.subsections.environmentUnderstanding.settings.showPlaneOverlay },
+            { key: 'snapToFloor', path: 'xr.environmentUnderstanding.snapToFloor', definition: settingsUIDefinition.xr.subsections.environmentUnderstanding.settings.snapToFloor },
+          ],
+          isPowerUser: true
+        },
+        {
+          title: 'Passthrough',
+          description: 'Control passthrough portal settings',
+          items: [
+            { key: 'enablePassthroughPortal', path: 'xr.passthrough.enablePassthroughPortal', definition: settingsUIDefinition.xr.subsections.passthrough.settings.enablePassthroughPortal },
+            { key: 'passthroughOpacity', path: 'xr.passthrough.passthroughOpacity', definition: settingsUIDefinition.xr.subsections.passthrough.settings.passthroughOpacity },
+            { key: 'passthroughBrightness', path: 'xr.passthrough.passthroughBrightness', definition: settingsUIDefinition.xr.subsections.passthrough.settings.passthroughBrightness },
+            { key: 'passthroughContrast', path: 'xr.passthrough.passthroughContrast', definition: settingsUIDefinition.xr.subsections.passthrough.settings.passthroughContrast },
+            { key: 'portalSize', path: 'xr.passthrough.portalSize', definition: settingsUIDefinition.xr.subsections.passthrough.settings.portalSize },
+            { key: 'portalEdgeColor', path: 'xr.passthrough.portalEdgeColor', definition: settingsUIDefinition.xr.subsections.passthrough.settings.portalEdgeColor },
+            { key: 'portalEdgeWidth', path: 'xr.passthrough.portalEdgeWidth', definition: settingsUIDefinition.xr.subsections.passthrough.settings.portalEdgeWidth },
           ],
           isPowerUser: true
         }

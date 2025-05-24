@@ -124,8 +124,18 @@ export interface WebSocketSettings {
   reconnectAttempts: number;
   reconnectDelay: number;
   binaryChunkSize: number;
+  binaryUpdateRate?: number;
+  minUpdateRate?: number;
+  maxUpdateRate?: number;
+  motionThreshold?: number;
+  motionDamping?: number;
+  binaryMessageVersion?: number;
   compressionEnabled: boolean;
   compressionThreshold: number;
+  heartbeatInterval?: number;
+  heartbeatTimeout?: number;
+  maxConnections?: number;
+  maxMessageSize?: number;
   updateRate: number;
 }
 
@@ -133,47 +143,67 @@ export interface WebSocketSettings {
 export interface DebugSettings {
   enabled: boolean;
   logLevel?: 'debug' | 'info' | 'warn' | 'error'; // Added for client-side logging
+  logFormat?: 'json' | 'text';
   enableDataDebug: boolean;
   enableWebsocketDebug: boolean;
   logBinaryHeaders: boolean;
   logFullJson: boolean;
-  enablePhysicsDebug: boolean;
-  enableNodeDebug: boolean;
-  enableShaderDebug: boolean;
-  enableMatrixDebug: boolean;
-  enablePerformanceDebug: boolean;
+  enablePhysicsDebug?: boolean;
+  enableNodeDebug?: boolean;
+  enableShaderDebug?: boolean;
+  enableMatrixDebug?: boolean;
+  enablePerformanceDebug?: boolean;
 }
 
 // XR settings
 export interface XRSettings {
   enabled: boolean;
   clientSideEnableXR?: boolean; // Client-side XR toggle
-  handTracking: boolean;
-  controllerModel: string;
-  renderScale: number;
-  interactionDistance: number;
-  locomotionMethod: 'teleport' | 'continuous';
-  teleportRayColor: string;
-  enableHaptics: boolean;
-  displayMode: 'inline' | 'immersive-vr' | 'immersive-ar'; // Fixed to match server
-  controllerRayColor?: string;
-  quality?: 'low' | 'medium' | 'high';
+  mode?: 'inline' | 'immersive-vr' | 'immersive-ar'; // Added from YAML
   roomScale?: number;
   spaceType?: 'local-floor' | 'bounded-floor' | 'unbounded';
-  // Hand tracking features
+  quality?: 'low' | 'medium' | 'high';
+  enableHandTracking: boolean;
   handMeshEnabled?: boolean;
   handMeshColor?: string;
   handMeshOpacity?: number;
   handPointSize?: number;
   handRayEnabled?: boolean;
+  handRayColor?: string;
   handRayWidth?: number;
   gestureSmoothing?: number;
+  enableHaptics: boolean;
   hapticIntensity?: number;
   dragThreshold?: number;
   pinchThreshold?: number;
   rotationThreshold?: number;
+  interactionRadius?: number;
   movementSpeed?: number;
   deadZone?: number;
+  movementAxesHorizontal?: number;
+  movementAxesVertical?: number;
+  enableLightEstimation?: boolean;
+  enablePlaneDetection?: boolean;
+  enableSceneUnderstanding?: boolean;
+  planeColor?: string;
+  planeOpacity?: number;
+  planeDetectionDistance?: number;
+  showPlaneOverlay?: boolean;
+  snapToFloor?: boolean;
+  enablePassthroughPortal?: boolean;
+  passthroughOpacity?: number;
+  passthroughBrightness?: number;
+  passthroughContrast?: number;
+  portalSize?: number;
+  portalEdgeColor?: string;
+  portalEdgeWidth?: number;
+  controllerModel?: string;
+  renderScale?: number;
+  interactionDistance?: number;
+  locomotionMethod?: 'teleport' | 'continuous';
+  teleportRayColor?: string;
+  displayMode?: 'inline' | 'immersive-vr' | 'immersive-ar';
+  controllerRayColor?: string;
 }
 
 // Visualisation settings

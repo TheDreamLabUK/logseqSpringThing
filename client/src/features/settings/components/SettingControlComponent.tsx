@@ -91,24 +91,29 @@ export function SettingControlComponent({ path, settingDef, value, onChange }: S
           />
         );
 
-      case 'slider':
+      case 'slider': {
+        // Defensive fallback if value is undefined or invalid
+        const numericValue = typeof value === 'number' && !isNaN(value)
+          ? value
+          : (settingDef.min ?? 0);
         return (
           <div className="flex w-full items-center gap-3">
             <Slider
               id={path}
-              value={typeof value === 'number' && !isNaN(value) ? [value] : [settingDef.min ?? 0]} // Ensure valid array
+              value={[numericValue]}
               min={settingDef.min ?? 0}
               max={settingDef.max ?? 1}
               step={settingDef.step ?? 0.01}
               onValueChange={([val]) => onChange(val)}
               className="flex-1"
             />
-            <span className="text-xs font-mono w-16 text-right tabular-nums"> {/* Increased width for value + unit */}
-              {typeof value === 'number' ? value.toFixed(settingDef.step && settingDef.step < 1 ? 2 : (settingDef.step && settingDef.step === 1 ? 0 : 2)) : (settingDef.min ?? 0).toFixed(2)}
+            <span className="text-xs font-mono w-16 text-right tabular-nums">
+              {numericValue.toFixed(settingDef.step && settingDef.step < 1 ? 2 : 0)}
               {settingDef.unit && <span className="ml-1">{settingDef.unit}</span>}
             </span>
           </div>
         );
+      }
 
       case 'numberInput':
         // Always render an Input for 'numberInput' type.
