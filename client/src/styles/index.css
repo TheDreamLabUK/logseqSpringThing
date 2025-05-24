@@ -1,4 +1,23 @@
 @import '@radix-ui/themes/styles.css';
+
+/* Hardcode control panel background for visibility */
+.settings-panel,
+.h-full.flex.flex-col.bg-background,
+.w-full.h-full.flex.flex-col.min-h-0,
+/* Force all text on the control panel background to be white for visibility */
+.settings-panel,
+.h-full.flex.flex-col.bg-background,
+.w-full.h-full.flex.flex-col.min-h-0,
+.bg-background {
+  color: #fff !important;
+}
+
+.settings-panel * {
+  color: #fff !important;
+}
+.bg-background {
+  background: #18181b !important;
+}
 @tailwind base;
 @tailwind components;
 @tailwind utilities;

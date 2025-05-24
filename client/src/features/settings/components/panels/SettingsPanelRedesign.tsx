@@ -40,6 +40,10 @@ export function SettingsPanelRedesign({ toggleLowerRightPaneDock, isLowerRightPa
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set(['Node Appearance']));
   const [savedNotification, setSavedNotification] = useState<string | null>(null);
 
+  // Dynamically get background and text color from settings
+  const panelBackground: string = String(useSettingsStore.getState().get('visualisation.rendering.backgroundColor') || '#18181b');
+  const panelForeground: string = String(useSettingsStore.getState().get('visualisation.labels.textOutlineColor') || '#fff');
+
   // Organize settings into logical groups with better structure
   const settingsStructure = useMemo(() => ({
     appearance: {
@@ -402,11 +406,18 @@ export function SettingsPanelRedesign({ toggleLowerRightPaneDock, isLowerRightPa
   }));
 
   return (
-    <div className="w-full h-full flex flex-col min-h-0">
+    // Dynamically set background and text color from settings
+    <div
+      className="w-full h-full flex flex-col min-h-0"
+      style={{
+        background: panelBackground,
+        color: panelForeground,
+      }}
+    >
       <div className="px-4 py-3 border-b flex items-center justify-between">
         <div>
           <h2 className="text-lg font-semibold">Settings</h2>
-          <p className="text-sm text-muted-foreground">
+          <p className="text-sm" style={{ color: panelForeground }}>
             Customize your visualization
           </p>
         </div>
@@ -421,7 +432,7 @@ export function SettingsPanelRedesign({ toggleLowerRightPaneDock, isLowerRightPa
       </div>
 
       <div className="flex-1 overflow-auto">
-        <Tabs 
+        <Tabs
           tabs={tabs}
           className="h-full"
           tabListClassName="px-4"
@@ -430,13 +441,13 @@ export function SettingsPanelRedesign({ toggleLowerRightPaneDock, isLowerRightPa
       </div>
 
       {/* Status bar */}
-      <div className="px-4 py-2 border-t bg-muted/30 flex items-center justify-between text-xs">
-        <div className="flex items-center gap-2 text-muted-foreground">
+      <div className="px-4 py-2 border-t bg-muted/30 flex items-center justify-between text-xs" style={{ color: panelForeground }}>
+        <div className="flex items-center gap-2" style={{ color: panelForeground }}>
           <Info className="h-3 w-3" />
           <span>Changes save automatically</span>
         </div>
         {isPowerUser && (
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1" style={{ color: panelForeground }}>
             <Settings className="h-3 w-3 text-primary" />
             <span className="text-primary">Power User</span>
           </div>
