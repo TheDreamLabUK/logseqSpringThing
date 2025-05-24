@@ -54,6 +54,11 @@ export function SettingsPanelRedesign({ toggleLowerRightPaneDock, isLowerRightPa
             { key: 'opacity', path: 'visualisation.nodes.opacity', definition: settingsUIDefinition.visualisation.subsections.nodes.settings.opacity },
             { key: 'metalness', path: 'visualisation.nodes.metalness', definition: settingsUIDefinition.visualisation.subsections.nodes.settings.metalness },
             { key: 'roughness', path: 'visualisation.nodes.roughness', definition: settingsUIDefinition.visualisation.subsections.nodes.settings.roughness },
+            { key: 'sizeRange', path: 'visualisation.nodes.sizeRange', definition: settingsUIDefinition.visualisation.subsections.nodes.settings.sizeRange },
+            { key: 'enableInstancing', path: 'visualisation.nodes.enableInstancing', definition: settingsUIDefinition.visualisation.subsections.nodes.settings.enableInstancing },
+            { key: 'enableHologram', path: 'visualisation.nodes.enableHologram', definition: settingsUIDefinition.visualisation.subsections.nodes.settings.enableHologram },
+            { key: 'enableMetadataShape', path: 'visualisation.nodes.enableMetadataShape', definition: settingsUIDefinition.visualisation.subsections.nodes.settings.enableMetadataShape },
+            { key: 'enableMetadataVisualisation', path: 'visualisation.nodes.enableMetadataVisualisation', definition: settingsUIDefinition.visualisation.subsections.nodes.settings.enableMetadataVisualisation },
           ]
         },
         {
@@ -64,6 +69,8 @@ export function SettingsPanelRedesign({ toggleLowerRightPaneDock, isLowerRightPa
             { key: 'opacity', path: 'visualisation.edges.opacity', definition: settingsUIDefinition.visualisation.subsections.edges.settings.opacity },
             { key: 'baseWidth', path: 'visualisation.edges.baseWidth', definition: settingsUIDefinition.visualisation.subsections.edges.settings.baseWidth },
             { key: 'enableArrows', path: 'visualisation.edges.enableArrows', definition: settingsUIDefinition.visualisation.subsections.edges.settings.enableArrows },
+            { key: 'arrowSize', path: 'visualisation.edges.arrowSize', definition: settingsUIDefinition.visualisation.subsections.edges.settings.arrowSize },
+            { key: 'widthRange', path: 'visualisation.edges.widthRange', definition: settingsUIDefinition.visualisation.subsections.edges.settings.widthRange },
           ]
         },
         {
@@ -82,6 +89,33 @@ export function SettingsPanelRedesign({ toggleLowerRightPaneDock, isLowerRightPa
             { key: 'bloomEnabled', path: 'visualisation.bloom.enabled', definition: settingsUIDefinition.visualisation.subsections.bloom.settings.enabled },
             { key: 'bloomStrength', path: 'visualisation.bloom.strength', definition: settingsUIDefinition.visualisation.subsections.bloom.settings.strength },
             { key: 'bloomRadius', path: 'visualisation.bloom.radius', definition: settingsUIDefinition.visualisation.subsections.bloom.settings.radius },
+          ]
+        },
+        {
+          title: 'Lighting & Rendering',
+          description: 'Control lighting and background',
+          items: [
+            { key: 'ambientLightIntensity', path: 'visualisation.rendering.ambientLightIntensity', definition: settingsUIDefinition.visualisation.subsections.rendering.settings.ambientLightIntensity },
+            { key: 'directionalLightIntensity', path: 'visualisation.rendering.directionalLightIntensity', definition: settingsUIDefinition.visualisation.subsections.rendering.settings.directionalLightIntensity },
+            { key: 'environmentIntensity', path: 'visualisation.rendering.environmentIntensity', definition: settingsUIDefinition.visualisation.subsections.rendering.settings.environmentIntensity },
+            { key: 'backgroundColor', path: 'visualisation.rendering.backgroundColor', definition: settingsUIDefinition.visualisation.subsections.rendering.settings.backgroundColor },
+            { key: 'enableAmbientOcclusion', path: 'visualisation.rendering.enableAmbientOcclusion', definition: settingsUIDefinition.visualisation.subsections.rendering.settings.enableAmbientOcclusion, isPowerUser: true },
+            { key: 'enableShadows', path: 'visualisation.rendering.enableShadows', definition: settingsUIDefinition.visualisation.subsections.rendering.settings.enableShadows, isPowerUser: true },
+            { key: 'shadowMapSize', path: 'visualisation.rendering.shadowMapSize', definition: settingsUIDefinition.visualisation.subsections.rendering.settings.shadowMapSize, isPowerUser: true },
+            { key: 'shadowBias', path: 'visualisation.rendering.shadowBias', definition: settingsUIDefinition.visualisation.subsections.rendering.settings.shadowBias, isPowerUser: true },
+            { key: 'context', path: 'visualisation.rendering.context', definition: settingsUIDefinition.visualisation.subsections.rendering.settings.context },
+          ]
+        },
+        {
+          title: 'Hologram Effect',
+          description: 'Control hologram visualization',
+          items: [
+            { key: 'ringCount', path: 'visualisation.hologram.ringCount', definition: settingsUIDefinition.visualisation.subsections.hologram.settings.ringCount },
+            { key: 'ringColor', path: 'visualisation.hologram.ringColor', definition: settingsUIDefinition.visualisation.subsections.hologram.settings.ringColor },
+            { key: 'ringOpacity', path: 'visualisation.hologram.ringOpacity', definition: settingsUIDefinition.visualisation.subsections.hologram.settings.ringOpacity },
+            { key: 'sphereSizes', path: 'visualisation.hologram.sphereSizes', definition: settingsUIDefinition.visualisation.subsections.hologram.settings.sphereSizes },
+            { key: 'ringRotationSpeed', path: 'visualisation.hologram.ringRotationSpeed', definition: settingsUIDefinition.visualisation.subsections.hologram.settings.ringRotationSpeed },
+            { key: 'globalRotationSpeed', path: 'visualisation.hologram.globalRotationSpeed', definition: settingsUIDefinition.visualisation.subsections.hologram.settings.globalRotationSpeed },
           ]
         }
       ]
@@ -106,6 +140,15 @@ export function SettingsPanelRedesign({ toggleLowerRightPaneDock, isLowerRightPa
             { key: 'physicsEnabled', path: 'visualisation.physics.enabled', definition: settingsUIDefinition.visualisation.subsections.physics.settings.enabled },
             { key: 'iterations', path: 'visualisation.physics.iterations', definition: settingsUIDefinition.visualisation.subsections.physics.settings.iterations },
             { key: 'damping', path: 'visualisation.physics.damping', definition: settingsUIDefinition.visualisation.subsections.physics.settings.damping },
+          ]
+        },
+        {
+          title: 'Force Settings',
+          description: 'Control attraction, repulsion, and spring forces',
+          items: [
+            { key: 'attractionStrength', path: 'visualisation.physics.attractionStrength', definition: settingsUIDefinition.visualisation.subsections.physics.settings.attractionStrength },
+            { key: 'repulsionStrength', path: 'visualisation.physics.repulsionStrength', definition: settingsUIDefinition.visualisation.subsections.physics.settings.repulsionStrength },
+            { key: 'springStrength', path: 'visualisation.physics.springStrength', definition: settingsUIDefinition.visualisation.subsections.physics.settings.springStrength },
           ]
         },
         {
