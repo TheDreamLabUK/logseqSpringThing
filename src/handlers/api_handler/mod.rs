@@ -23,7 +23,7 @@ use actix_web::web;
 // Configure all API routes
 pub fn config(cfg: &mut web::ServiceConfig) {
     cfg.service(
-        web::scope("/api")
+        web::scope("") // Removed redundant /api prefix
             .configure(files::config)
             .configure(graph::config)
             .configure(visualisation::config)

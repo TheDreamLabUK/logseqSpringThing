@@ -324,9 +324,9 @@ async fn main() -> std::io::Result<()> {
             .route("/wss", web::get().to(socket_flow_handler)) // Changed from /ws to /wss
             .route("/speech", web::get().to(speech_socket_handler))
             .service(
-                web::scope("")
-                    .configure(api_handler::config)
-                    .service(web::scope("/health").configure(health_handler::config))
+                web::scope("/api") // Add /api prefix for these routes
+                    .configure(api_handler::config) // This will now serve /api/user-settings etc.
+                    .service(web::scope("/health").configure(health_handler::config)) // This will now serve /api/health
                     .service(web::scope("/pages").configure(pages_handler::config))
             );
         
