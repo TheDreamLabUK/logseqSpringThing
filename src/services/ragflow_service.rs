@@ -119,6 +119,51 @@ pub struct RAGFlowBody {
     pub user_id: Option<String>,
 }
 
+// Structs for OpenAI-Compatible Chat Completions API
+#[derive(Debug, Serialize, Clone)]
+pub struct OpenAIChatMessage {
+    pub role: String,
+    pub content: String,
+}
+
+#[derive(Debug, Serialize, Clone)]
+pub struct OpenAIChatCompletionRequest {
+    pub model: String,
+    pub messages: Vec<OpenAIChatMessage>,
+    pub stream: bool,
+    // Add other OpenAI compatible fields if needed, e.g., temperature, max_tokens
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct OpenAIMessageContent {
+    pub content: String,
+    // role: Option<String>, // if needed
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct OpenAIChatCompletionChoice {
+    pub message: OpenAIMessageContent,
+    // finish_reason: Option<String>, // if needed
+    // index: Option<u32>, // if needed
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct OpenAIChatCompletionResponse {
+    pub choices: Vec<OpenAIChatCompletionChoice>,
+    // id: Option<String>, // if needed
+    // object: Option<String>, // if needed
+    // created: Option<u64>, // if needed
+    // model: Option<String>, // if needed
+    // usage: Option<OpenAIUsage>, // if needed
+}
+
+// #[derive(Debug, Deserialize, Clone)]
+// pub struct OpenAIUsage {
+//     prompt_tokens: u32,
+//     completion_tokens: u32,
+//     total_tokens: u32,
+// }
+
 
 pub struct RAGFlowService {
     client: Client,
@@ -422,6 +467,59 @@ impl RAGFlowService {
         }
         Ok((full_answer, session_id)) // Return aggregated answer and original session_id
     }
+
+    // New method for OpenAI-Compatible Agent Chat Completions
+    pub async fn send_openai_compatible_completion(
+        &self,
+        query: String,
+        // session_id: Option<String>, // The OpenAI compatible API for agents doesn't seem to use session_id in the path or body explicitly for this endpoint
+    ) -> Result<String, RAGFlowError> {
+        info!("Sending OpenAI-compatible completion request to RAGFlow agent_id: {}", self.agent_id);
+        let url = format!(
+            "{}/api/v1/agents_openai/{}/chat/completions",
+            self.base_url.trim_end_matches('/'),
+            self.agent_id
+        );
+
+        let messages = vec![OpenAIChatMessage {
+            role: "user".to_string(),
+            content: query,
+        }];
+
+        let request_body = OpenAIChatCompletionRequest {
+            model: "ragflow-agent".to_string(), // As per docs, this can be any string
+            messages,
+            stream: false, // We want the full response for TTS
+        };
+
+        let response = self.client.post(&url)
+            .header("Authorization", format!("Bearer {}", self.api_key))
+            .header("Content-Type", "application/json")
+            .json(&request_body)
+            .send()
+            .await?;
+
+        let status = response.status();
+        if !status.is_success() {
+            let error_body = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+            error!(
+                "RAGFlow OpenAI-compatible API error. Status: {}, Body: {}",
+                status, error_body
+            );
+            return Err(RAGFlowError::StatusError(status, error_body));
+        }
+
+        let completion_response = response.json::<OpenAIChatCompletionResponse>().await?;
+
+        if let Some(first_choice) = completion_response.choices.get(0) {
+            Ok(first_choice.message.content.clone())
+        } else {
+            Err(RAGFlowError::ParseError(
+                "No choices found in RAGFlow OpenAI-compatible response".to_string(),
+            ))
+        }
+    }
+
 } // This closing brace now correctly closes impl RAGFlowService
 
 impl Clone for RAGFlowService {

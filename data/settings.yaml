@@ -218,3 +218,7 @@ kokoro:
   stream: true
   return_timestamps: true
   sample_rate: 24000
+whisper:
+  api_url: "http://whisper-webui:8000" # Base URL for the Whisper WebUI backend API
+  # model_size: "large-v2" # Optional: Default model size to use for transcriptions
+  # lang: "en"             # Optional: Default language for transcriptions

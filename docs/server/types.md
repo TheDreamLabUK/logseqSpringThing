@@ -111,6 +111,7 @@ pub enum ServiceError {
     Config(String),
     GitHub(String),
     AI(String),
+    Speech(SpeechError),
     // ... other service-specific errors
 }
 
@@ -125,6 +126,67 @@ impl From<reqwest::Error> for ServiceError {
         ServiceError::GitHub(format!("GitHub API error: {}", err))
     }
 }
+
+## Speech Types
+
+### Speech Commands
+```rust
+pub enum SpeechCommand {
+    StartAudioStream,
+    ProcessAudioChunk(Vec<u8>),
+    EndAudioStream,
+    // ... other speech commands
+}
+```
+- Defines commands for controlling the speech processing pipeline, including starting/ending audio streams and processing audio chunks.
+
+### Speech Errors
+```rust
+pub enum SpeechError {
+    SttError(String),
+    TtsError(String),
+    RagFlowError(String),
+    WebSocketError(String),
+    InternalError(String),
+    // ... other speech-specific errors
+}
+```
+- Defines error types specific to speech processing, covering STT, TTS, RAGFlow interactions, and WebSocket communication.
+
+## AI Service Models
+
+### OpenAI-Compatible Chat Models
+```rust
+pub struct OpenAIChatMessage {
+    pub role: String,
+    pub content: String,
+}
+
+pub struct OpenAIChatCompletionRequest {
+    pub model: String,
+    pub messages: Vec<OpenAIChatMessage>,
+    pub stream: bool,
+}
+
+pub struct OpenAIMessageContent {
+    pub content: String,
+}
+
+pub struct OpenAIChatCompletionChoice {
+    pub index: u32,
+    pub message: OpenAIChatMessage,
+    pub finish_reason: String,
+}
+
+pub struct OpenAIChatCompletionResponse {
+    pub id: String,
+    pub object: String,
+    pub created: u64,
+    pub model: String,
+    pub choices: Vec<OpenAIChatCompletionChoice>,
+}
+```
+- Defines the data structures used for interacting with OpenAI-compatible chat completion APIs, specifically for RAGFlow integration.
 ```
 
 ### API Errors

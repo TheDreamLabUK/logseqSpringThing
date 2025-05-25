@@ -144,3 +144,48 @@ impl AIService {
 - Integrates with various AI providers (Perplexity, OpenAI, RAGFlow).
 - Provides functionalities for chat completion, text-to-speech, and RAG-based queries.
 - Manages API keys and service-specific configurations.
+
+## Speech Service
+
+### Core Structure
+```rust
+pub struct SpeechService {
+    command_tx: mpsc::Sender<SpeechCommand>,
+    stt_audio_buffer: Arc<Mutex<Vec<u8>>>,
+    stt_stream_active: Arc<AtomicBool>,
+}
+
+impl SpeechService {
+    pub async fn new(
+        speech_command_tx: mpsc::Sender<SpeechCommand>,
+        ragflow_service: Arc<RAGFlowService>,
+        kokoro_tts_service: Arc<KokoroTTSService>,
+        whisper_stt_service: Arc<WhisperSttService>,
+    ) -> Self
+    pub async fn start(self)
+    pub async fn send_command(&self, command: SpeechCommand) -> Result<(), SpeechError>
+}
+```
+- Orchestrates speech-related functionalities, including Speech-to-Text (STT) and Text-to-Speech (TTS).
+- Manages audio streaming from the client, processes it for STT, sends transcriptions to RAGFlow, and handles TTS responses.
+- Uses an internal command queue for asynchronous processing of speech commands.
+
+## Whisper STT Service
+
+### Core Structure
+```rust
+pub struct WhisperSttService {
+    http_client: Client,
+    api_url: String,
+    model: String,
+    language: Option<String>,
+}
+
+impl WhisperSttService {
+    pub fn new(settings: &WhisperSettings) -> Self
+    pub async fn transcribe(&self, audio_data: Vec<u8>) -> Result<String, SpeechError>
+}
+```
+- Integrates with the `whisper-webui` service for Speech-to-Text transcription.
+- Handles sending audio data as `multipart/form-data` and polling the `whisper-webui` API for transcription results.
+- Configurable via `whisper.api_url` in `data/settings.yaml`.

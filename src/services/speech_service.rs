@@ -18,7 +18,7 @@ use crate::types::speech::{SpeechError, SpeechCommand, TTSProvider, SpeechOption
 use reqwest::Client;
 use crate::services::whisper_stt_service::WhisperSttService;
 use crate::services::ragflow_service::RAGFlowService;
-use crate::services::ragflow_service::RAGFlowBody; // For RAGFlow request - Changed path
+// RAGFlowBody is not used here anymore, the new method in RAGFlowService handles its own request construction.
 
 
 pub struct SpeechService {
@@ -344,8 +344,7 @@ impl SpeechService {
                                 }
                             }
                         }
-                        // info!("TextToSpeech arm commented out for debugging delimiter issue."); // This line can be removed now
-                    }, // Added comma
+                    },
                     SpeechCommand::StartAudioStream => {
                         let mut stream_active = stt_stream_active.write().await;
                         *stream_active = true;
@@ -379,42 +378,17 @@ impl SpeechService {
                                         Ok(transcription) => {
                                             info!("STT Transcription: {}", transcription);
                                             if let Some(rf_service) = &ragflow_service {
-                                                // Assuming RAGFlowBody is the correct request structure
-                                                // We need a chat_id, let's use a default or get from settings if available
-                                                let settings_read = settings.read().await;
-                                                let chat_id = settings_read.ragflow.as_ref().and_then(|rf| rf.chat_id.clone()).unwrap_or_else(|| "default_chat_id".to_string());
-                                                drop(settings_read);
-
-                                                let rag_request = RAGFlowBody {
-                                                    chat_id, // This might need to be managed per user/session
-                                                    query: transcription,
-                                                    stream: false, // For now, get full response for TTS
-                                                    // Other fields like `doc_ids` might be needed depending on context
-                                                    doc_ids: None,
-                                                    enable_citation: None,
-                                                    enable_rag_citation: None,
-                                                    enable_rag_rewrite: None,
-                                                    enable_rewrite: None,
-                                                    enable_search: None,
-                                                    enable_vertical_search: None,
-                                                    llm_config: None,
-                                                    prompt_config: None,
-                                                    prompt_variables: None,
-                                                    rerank_config: None,
-                                                    retrieve_config: None,
-                                                    user_id: None, // Or some identifier
-                                                };
-
-                                                match rf_service.send_chat_message_full(rag_request).await {
-                                                    Ok(rag_response) => {
-                                                        info!("RAGFlow Response: {:?}", rag_response.answer);
+                                                // Call the new OpenAI-compatible completion method
+                                                match rf_service.send_openai_compatible_completion(transcription.clone()).await {
+                                                    Ok(rag_answer) => {
+                                                        info!("RAGFlow OpenAI-Compatible Response: {}", rag_answer);
                                                         // Send RAGFlow's answer to TTS
-                                                        let tts_command = SpeechCommand::TextToSpeech(rag_response.answer, SpeechOptions::default());
+                                                        let tts_command = SpeechCommand::TextToSpeech(rag_answer, SpeechOptions::default());
                                                         if let Err(e) = self_sender.lock().await.send(tts_command).await {
                                                             error!("Failed to send TTS command for RAGFlow response: {}", e);
                                                         }
                                                     }
-                                                    Err(e) => error!("RAGFlow service error: {}", e),
+                                                    Err(e) => error!("RAGFlow service error (OpenAI-compatible): {}", e),
                                                 }
                                             } else {
                                                 error!("RAGFlow service not available to process transcription.");

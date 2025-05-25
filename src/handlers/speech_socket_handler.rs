@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use crate::app_state::AppState;
-use crate::types::speech::{SpeechCommand, SpeechOptions}; // Added SpeechCommand
+use crate::types::speech::SpeechOptions; // SpeechCommand not directly used by name here
 use tokio::sync::broadcast;
 use futures::FutureExt;
 
@@ -188,9 +188,9 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SpeechSocket {
                             }
                             Some("startAudioStream") => {
                                 if let Some(speech_service) = &self.app_state.speech_service {
-                                    let cmd = SpeechCommand::StartAudioStream;
                                     let service = speech_service.clone();
                                     let fut = async move {
+                                        // Directly call the method on the service
                                         if let Err(e) = service.start_audio_stream().await {
                                             error!("Failed to send StartAudioStream command: {}", e);
                                             // Optionally send an error message back to the client
@@ -206,9 +206,9 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SpeechSocket {
                             }
                             Some("endAudioStream") => {
                                 if let Some(speech_service) = &self.app_state.speech_service {
-                                    let cmd = SpeechCommand::EndAudioStream;
                                     let service = speech_service.clone();
                                     let fut = async move {
+                                        // Directly call the method on the service
                                         if let Err(e) = service.end_audio_stream().await {
                                             error!("Failed to send EndAudioStream command: {}", e);
                                             // Optionally send an error message back to the client
@@ -235,17 +235,13 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SpeechSocket {
                 self.heartbeat = Instant::now();
                 debug!("[SpeechSocket] Received binary data: {} bytes", bin.len());
                 if let Some(speech_service) = &self.app_state.speech_service {
-                    let cmd = SpeechCommand::ProcessAudioChunk(bin.to_vec());
+                    let audio_chunk_data = bin.to_vec(); // Clone binary data
                     let service = speech_service.clone();
                     let fut = async move {
-                        if let SpeechCommand::ProcessAudioChunk(audio_chunk_data) = cmd {
-                            if let Err(e) = service.process_audio_chunk(audio_chunk_data).await {
-                                error!("Failed to send ProcessAudioChunk command: {}", e);
-                                // Optionally send an error message back to the client if this fails often
-                            }
-                        } else {
-                            // This case should ideally not occur given how cmd is constructed
-                             error!("Unexpected command variant in ProcessAudioChunk handling logic. Expected ProcessAudioChunk.");
+                        // Directly call the method on the service with the cloned data
+                        if let Err(e) = service.process_audio_chunk(audio_chunk_data).await {
+                            error!("Failed to send ProcessAudioChunk command: {}", e);
+                            // Optionally send an error message back to the client if this fails often
                         }
                     }.into_actor(self).map(|_, _, _| {});
                     ctx.spawn(fut);
