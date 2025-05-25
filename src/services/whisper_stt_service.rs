@@ -3,7 +3,7 @@ use serde::Deserialize;
 use std::sync::Arc;
 use log::{info, error, debug};
 
-use crate::types::speech::SpeechError; // Assuming SttError will be part of SpeechError or a new error type
+// use crate::types::speech::SpeechError; // Assuming SttError will be part of SpeechError or a new error type - Removed unused import
 use crate::config::AppFullSettings; // To potentially get whisper-webui URL from settings
 
 #[derive(Deserialize, Debug)]

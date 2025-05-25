@@ -4,9 +4,7 @@ visualisation:
     metalness: 0.2
     opacity: 1.0
     roughness: 0.7
-    size_range:
-    - 0.01  # Smaller min size
-    - 0.15  # Smaller max size
+    node_size: 0.1 # Changed from size_range
     quality: medium
     enable_instancing: false
     enable_hologram: false

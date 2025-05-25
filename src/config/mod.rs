@@ -73,7 +73,7 @@ pub struct NodeSettings {
     pub metalness: f32,
     pub opacity: f32,
     pub roughness: f32,
-    pub size_range: Vec<f32>,
+    pub node_size: f32, // Changed from size_range: Vec<f32>
     pub quality: String,
     pub enable_instancing: bool,
     pub enable_hologram: bool,

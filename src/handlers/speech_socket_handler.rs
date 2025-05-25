@@ -191,7 +191,7 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SpeechSocket {
                                     let cmd = SpeechCommand::StartAudioStream;
                                     let service = speech_service.clone();
                                     let fut = async move {
-                                        if let Err(e) = service.send_command(cmd).await {
+                                        if let Err(e) = service.start_audio_stream().await {
                                             error!("Failed to send StartAudioStream command: {}", e);
                                             // Optionally send an error message back to the client
                                             // ctx.text(json!({"type": "error", "message": format!("STT StartStream error: {}", e)}).to_string());
@@ -209,7 +209,7 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SpeechSocket {
                                     let cmd = SpeechCommand::EndAudioStream;
                                     let service = speech_service.clone();
                                     let fut = async move {
-                                        if let Err(e) = service.send_command(cmd).await {
+                                        if let Err(e) = service.end_audio_stream().await {
                                             error!("Failed to send EndAudioStream command: {}", e);
                                             // Optionally send an error message back to the client
                                         }
@@ -238,9 +238,14 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SpeechSocket {
                     let cmd = SpeechCommand::ProcessAudioChunk(bin.to_vec());
                     let service = speech_service.clone();
                     let fut = async move {
-                        if let Err(e) = service.send_command(cmd).await {
-                            error!("Failed to send ProcessAudioChunk command: {}", e);
-                            // Optionally send an error message back to the client if this fails often
+                        if let SpeechCommand::ProcessAudioChunk(audio_chunk_data) = cmd {
+                            if let Err(e) = service.process_audio_chunk(audio_chunk_data).await {
+                                error!("Failed to send ProcessAudioChunk command: {}", e);
+                                // Optionally send an error message back to the client if this fails often
+                            }
+                        } else {
+                            // This case should ideally not occur given how cmd is constructed
+                             error!("Unexpected command variant in ProcessAudioChunk handling logic. Expected ProcessAudioChunk.");
                         }
                     }.into_actor(self).map(|_, _, _| {});
                     ctx.spawn(fut);

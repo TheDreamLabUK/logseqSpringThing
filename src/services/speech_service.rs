@@ -18,7 +18,7 @@ use crate::types::speech::{SpeechError, SpeechCommand, TTSProvider, SpeechOption
 use reqwest::Client;
 use crate::services::whisper_stt_service::WhisperSttService;
 use crate::services::ragflow_service::RAGFlowService;
-use crate::models::ragflow_chat::RAGFlowBody; // For RAGFlow request
+use crate::services::ragflow_service::RAGFlowBody; // For RAGFlow request - Changed path
 
 
 pub struct SpeechService {
@@ -345,7 +345,7 @@ impl SpeechService {
                             }
                         }
                         // info!("TextToSpeech arm commented out for debugging delimiter issue."); // This line can be removed now
-                    }
+                    }, // Added comma
                     SpeechCommand::StartAudioStream => {
                         let mut stream_active = stt_stream_active.write().await;
                         *stream_active = true;

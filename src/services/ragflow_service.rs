@@ -82,6 +82,44 @@ struct CompletionRequest {
     sync_dsl: Option<bool>,
 }
 
+// This struct is used by speech_service to construct a request for RAGFlow
+// It should align with the parameters expected by the RAGFlow API endpoint
+// that speech_service intends to call (e.g., via a send_chat_message_full method).
+#[derive(Debug, Serialize, Deserialize, Clone)] // Added Deserialize for completeness if ever needed
+#[serde(rename_all = "camelCase")] // Assuming client/API consistency
+pub struct RAGFlowBody {
+    pub chat_id: String,
+    pub query: String,
+    pub stream: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub doc_ids: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub enable_citation: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub enable_rag_citation: Option<bool>, // Specific to RAGFlow's RAG capabilities
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub enable_rag_rewrite: Option<bool>, // Specific to RAGFlow's RAG capabilities
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub enable_rewrite: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub enable_search: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub enable_vertical_search: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub llm_config: Option<serde_json::Value>, // Using Value for flexibility
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prompt_config: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prompt_variables: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rerank_config: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub retrieve_config: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub user_id: Option<String>,
+}
+
+
 pub struct RAGFlowService {
     client: Client,
     api_key: String,

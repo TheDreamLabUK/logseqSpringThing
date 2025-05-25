@@ -75,7 +75,7 @@ pub struct ClientNodeSettings {
     pub metalness: Option<f32>,
     pub opacity: Option<f32>,
     pub roughness: Option<f32>,
-    pub size_range: Option<Vec<f32>>, // Client sends [number, number]
+    pub node_size: Option<f32>, // Changed from size_range: Option<Vec<f32>>
     pub quality: Option<String>, // "low" | "medium" | "high"
     pub enable_instancing: Option<bool>,
     pub enable_hologram: Option<bool>,
