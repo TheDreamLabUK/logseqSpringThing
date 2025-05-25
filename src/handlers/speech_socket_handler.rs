@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use crate::app_state::AppState;
-use crate::types::speech::SpeechOptions;
+use crate::types::speech::{SpeechCommand, SpeechOptions}; // Added SpeechCommand
 use tokio::sync::broadcast;
 use futures::FutureExt;
 
@@ -186,6 +186,41 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SpeechSocket {
                                     ctx.text(json!({"type": "error", "message": "Invalid TTS request format"}).to_string());
                                 }
                             }
+                            Some("startAudioStream") => {
+                                if let Some(speech_service) = &self.app_state.speech_service {
+                                    let cmd = SpeechCommand::StartAudioStream;
+                                    let service = speech_service.clone();
+                                    let fut = async move {
+                                        if let Err(e) = service.send_command(cmd).await {
+                                            error!("Failed to send StartAudioStream command: {}", e);
+                                            // Optionally send an error message back to the client
+                                            // ctx.text(json!({"type": "error", "message": format!("STT StartStream error: {}", e)}).to_string());
+                                        }
+                                    }.into_actor(self).map(|_, _, _| {});
+                                    ctx.spawn(fut);
+                                    // Optionally send a confirmation to the client
+                                    // ctx.text(json!({"type": "info", "message": "Audio stream started"}).to_string());
+                                } else {
+                                    ctx.text(json!({"type": "error", "message": "Speech service not available for STT"}).to_string());
+                                }
+                            }
+                            Some("endAudioStream") => {
+                                if let Some(speech_service) = &self.app_state.speech_service {
+                                    let cmd = SpeechCommand::EndAudioStream;
+                                    let service = speech_service.clone();
+                                    let fut = async move {
+                                        if let Err(e) = service.send_command(cmd).await {
+                                            error!("Failed to send EndAudioStream command: {}", e);
+                                            // Optionally send an error message back to the client
+                                        }
+                                    }.into_actor(self).map(|_, _, _| {});
+                                    ctx.spawn(fut);
+                                    // Optionally send a confirmation to the client
+                                    // ctx.text(json!({"type": "info", "message": "Audio stream ended"}).to_string());
+                                } else {
+                                    ctx.text(json!({"type": "error", "message": "Speech service not available for STT"}).to_string());
+                                }
+                            }
                             _ => {
                                 ctx.text(json!({"type": "error", "message": "Unknown message type"}).to_string());
                             }
@@ -196,9 +231,26 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SpeechSocket {
                     }
                 }
             }
-            Ok(ws::Message::Binary(_)) => {
-                // Binary data from client not supported in this handler
-                ctx.text(json!({"type": "error", "message": "Binary data not supported"}).to_string());
+            Ok(ws::Message::Binary(bin)) => {
+                self.heartbeat = Instant::now();
+                debug!("[SpeechSocket] Received binary data: {} bytes", bin.len());
+                if let Some(speech_service) = &self.app_state.speech_service {
+                    let cmd = SpeechCommand::ProcessAudioChunk(bin.to_vec());
+                    let service = speech_service.clone();
+                    let fut = async move {
+                        if let Err(e) = service.send_command(cmd).await {
+                            error!("Failed to send ProcessAudioChunk command: {}", e);
+                            // Optionally send an error message back to the client if this fails often
+                        }
+                    }.into_actor(self).map(|_, _, _| {});
+                    ctx.spawn(fut);
+                } else {
+                    // This case should ideally not happen if startAudioStream was successful
+                    // and speech_service was available then.
+                    error!("[SpeechSocket] Speech service not available for binary audio chunk.");
+                    // Optionally, inform client if this state is possible and problematic.
+                    // ctx.text(json!({"type": "error", "message": "Speech service became unavailable for audio chunk"}).to_string());
+                }
             }
             Ok(ws::Message::Close(reason)) => {
                 info!("[SpeechSocket] Client disconnected: {}", self.id);

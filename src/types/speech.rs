@@ -12,6 +12,7 @@ pub enum SpeechError {
     Base64Error(base64::DecodeError),
     BroadcastError(String),
     TTSError(String),
+    SttError(String),
 }
 
 impl fmt::Display for SpeechError {
@@ -25,6 +26,7 @@ impl fmt::Display for SpeechError {
             SpeechError::Base64Error(e) => write!(f, "Base64 error: {}", e),
             SpeechError::BroadcastError(msg) => write!(f, "Broadcast error: {}", msg),
             SpeechError::TTSError(msg) => write!(f, "TTS error: {}", msg),
+            SpeechError::SttError(msg) => write!(f, "STT error: {}", msg),
         }
     }
 }
@@ -72,6 +74,9 @@ pub enum SpeechCommand {
     Initialize,
     SendMessage(String),
     TextToSpeech(String, SpeechOptions),
+    StartAudioStream, // Client signals the start of an audio stream
+    ProcessAudioChunk(Vec<u8>), // Client sends an audio chunk
+    EndAudioStream,   // Client signals the end of an audio stream
     Close,
     SetTTSProvider(TTSProvider),
 }

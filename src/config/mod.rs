@@ -450,6 +450,17 @@ pub struct KokoroSettings { // Client-facing
     #[serde(default)] pub sample_rate: Option<u32>,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+// #[serde(rename_all = "camelCase")] // Reverted - for YAML, expect snake_case
+pub struct WhisperSettings { // For STT
+    #[serde(default)] pub api_url: Option<String>, // e.g., http://whisper-webui:8000/asr
+    #[serde(default)] pub model: Option<String>, // e.g., "large-v3"
+    #[serde(default)] pub language: Option<String>, // e.g., "en"
+    #[serde(default)] pub timeout: Option<u64>, // in milliseconds
+    // Add any other relevant whisper settings here
+}
+
+
 // --- Client-Facing Settings Struct (for JSON deserialization) ---
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
 #[serde(rename_all = "camelCase")]
@@ -462,6 +473,7 @@ pub struct Settings { // Renamed to ClientFacingSettings conceptually
     #[serde(default)] pub perplexity: Option<PerplexitySettings>,
     #[serde(default)] pub openai: Option<OpenAISettings>,
     #[serde(default)] pub kokoro: Option<KokoroSettings>,
+    #[serde(default)] pub whisper: Option<WhisperSettings>, // Added for client to potentially see/set
 }
 
 // --- Full App Settings Struct (for server state, loaded from YAML) ---
@@ -476,6 +488,7 @@ pub struct AppFullSettings {
     #[serde(default)] pub perplexity: Option<PerplexitySettings>,
     #[serde(default)] pub openai: Option<OpenAISettings>,
     #[serde(default)] pub kokoro: Option<KokoroSettings>,
+    #[serde(default)] pub whisper: Option<WhisperSettings>, // Added for server-side STT config
 }
 
 // Manual Serialize implementation for AppFullSettings to ensure snake_case YAML output

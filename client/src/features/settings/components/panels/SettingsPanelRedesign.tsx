@@ -435,7 +435,7 @@ export function SettingsPanelRedesign({ toggleLowerRightPaneDock, isLowerRightPa
         <Tabs
           tabs={tabs}
           className="h-full"
-          tabListClassName="px-4"
+          tabListClassName="px-4 bg-muted/30" // Added subtle background to tab list
           tabContentClassName="px-4 py-3"
         />
       </div>

@@ -15,12 +15,14 @@ use webxr::{
         graph_service::GraphService,
         github::{GitHubClient, ContentAPI, GitHubConfig},
         ragflow_service::RAGFlowService, // ADDED IMPORT
+        whisper_stt_service::WhisperSttService, // Added
     },
     utils::gpu_compute::GPUCompute,
     services::speech_service::SpeechService,
 };
 
 use actix_web::{web, App, HttpServer, middleware};
+use reqwest::Client as HttpClient; // Alias for clarity
 use actix_cors::Cors;
 // use actix_files::Files; // Removed unused import
 use std::sync::Arc;
@@ -113,16 +115,10 @@ async fn main() -> std::io::Result<()> {
 
     let content_api = Arc::new(ContentAPI::new(github_client.clone()));
 
-    // Initialize speech service
-    // SpeechService::new might need adjustment if it expects client-facing Settings
-    let speech_service = {
-        let service = SpeechService::new(settings.clone());
-        Some(Arc::new(service))
-    };
+    // Create a shared HTTP client for services that need it
+    let http_client = Arc::new(HttpClient::new());
 
-    // Initialize RAGFlow Service
-    info!("[main] Attempting to initialize RAGFlowService...");
-    let ragflow_service_option = match RAGFlowService::new(settings.clone()).await {
+    let ragflow_service_option = match RAGFlowService::new(settings.clone(), http_client.clone()).await { // Pass http_client
         Ok(service) => {
             info!("[main] RAGFlowService::new SUCCEEDED. Service instance created.");
             Some(Arc::new(service))
@@ -138,6 +134,32 @@ async fn main() -> std::io::Result<()> {
     } else {
         error!("[main] ragflow_service_option is None after RAGFlowService::new attempt. Chat functionality will be unavailable.");
     }
+
+    // Initialize Whisper STT Service
+    info!("[main] Attempting to initialize WhisperSttService...");
+    let whisper_stt_service_option = match WhisperSttService::new(settings.clone(), http_client.clone()) {
+        Ok(service) => {
+            info!("[main] WhisperSttService::new SUCCEEDED.");
+            Some(Arc::new(service))
+        }
+        Err(e) => {
+            error!("[main] WhisperSttService::new FAILED. Error: {}. STT functionality will be unavailable.", e);
+            None
+        }
+    };
+
+    // Initialize Speech Service (now depends on Whisper and RAGFlow services)
+    info!("[main] Attempting to initialize SpeechService...");
+    let speech_service_option = {
+        // SpeechService::new now takes whisper_stt_service and ragflow_service
+        let service = SpeechService::new(
+            settings.clone(),
+            whisper_stt_service_option.clone(), // Pass initialized whisper service
+            ragflow_service_option.clone()      // Pass initialized RAGFlow service
+        );
+        info!("[main] SpeechService instance created.");
+        Some(Arc::new(service))
+    };
     
     // Initialize app state asynchronously
     // AppState::new now correctly receives Arc<RwLock<AppFullSettings>>
@@ -147,7 +169,8 @@ async fn main() -> std::io::Result<()> {
             content_api.clone(),
             None, // Perplexity placeholder
             ragflow_service_option, // Pass the initialized RAGFlow service
-            speech_service,
+            speech_service_option, // Pass the initialized Speech service
+            whisper_stt_service_option, // Pass the initialized Whisper STT service
             None, // GPU Compute placeholder
             "default_session".to_string() // RAGFlow session ID placeholder
         ).await {

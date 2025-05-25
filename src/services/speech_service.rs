@@ -16,6 +16,9 @@ use base64::Engine as _;
 use base64::engine::general_purpose::{STANDARD as BASE64};
 use crate::types::speech::{SpeechError, SpeechCommand, TTSProvider, SpeechOptions};
 use reqwest::Client;
+use crate::services::whisper_stt_service::WhisperSttService;
+use crate::services::ragflow_service::RAGFlowService;
+use crate::models::ragflow_chat::RAGFlowBody; // For RAGFlow request
 
 
 pub struct SpeechService {
@@ -25,10 +28,20 @@ pub struct SpeechService {
     // Audio broadcast channel for distributing TTS audio to all connected clients
     audio_tx: broadcast::Sender<Vec<u8>>,
     http_client: Arc<Client>,
+    // STT specific state
+    stt_audio_buffer: Arc<Mutex<Vec<u8>>>,
+    stt_stream_active: Arc<RwLock<bool>>,
+    // Other services for STT -> RAG -> TTS flow
+    whisper_stt_service: Option<Arc<WhisperSttService>>,
+    ragflow_service: Option<Arc<RAGFlowService>>,
 }
 
 impl SpeechService {
-    pub fn new(settings: Arc<RwLock<AppFullSettings>>) -> Self {
+    pub fn new(
+        settings: Arc<RwLock<AppFullSettings>>,
+        whisper_stt_service: Option<Arc<WhisperSttService>>,
+        ragflow_service: Option<Arc<RAGFlowService>>,
+    ) -> Self {
         let (tx, rx) = mpsc::channel(100);
         let sender = Arc::new(Mutex::new(tx));
 
@@ -44,6 +57,10 @@ impl SpeechService {
             tts_provider: Arc::new(RwLock::new(TTSProvider::Kokoro)), // Updated default to Kokoro
             audio_tx,
             http_client,
+            stt_audio_buffer: Arc::new(Mutex::new(Vec::new())),
+            stt_stream_active: Arc::new(RwLock::new(false)),
+            whisper_stt_service,
+            ragflow_service,
         };
 
         service.start(rx);
@@ -55,6 +72,11 @@ impl SpeechService {
         let http_client = Arc::clone(&self.http_client);
         let tts_provider = Arc::clone(&self.tts_provider);
         let audio_tx = self.audio_tx.clone();
+        let stt_audio_buffer = Arc::clone(&self.stt_audio_buffer);
+        let stt_stream_active = Arc::clone(&self.stt_stream_active);
+        let whisper_stt_service = self.whisper_stt_service.clone();
+        let ragflow_service = self.ragflow_service.clone();
+        let self_sender = Arc::clone(&self.sender); // For sending TTS command back to self
 
         task::spawn(async move {
             let mut ws_stream: Option<WebSocketStream<MaybeTlsStream<TcpStream>>> = None;
@@ -324,6 +346,92 @@ impl SpeechService {
                         }
                         // info!("TextToSpeech arm commented out for debugging delimiter issue."); // This line can be removed now
                     }
+                    SpeechCommand::StartAudioStream => {
+                        let mut stream_active = stt_stream_active.write().await;
+                        *stream_active = true;
+                        let mut buffer = stt_audio_buffer.lock().await;
+                        buffer.clear();
+                        info!("STT: Audio stream started. Buffer cleared.");
+                    }
+                    SpeechCommand::ProcessAudioChunk(chunk) => {
+                        let stream_active = stt_stream_active.read().await;
+                        if *stream_active {
+                            let mut buffer = stt_audio_buffer.lock().await;
+                            buffer.extend_from_slice(&chunk);
+                            debug!("STT: Received audio chunk of size {}. Total buffer size: {}", chunk.len(), buffer.len());
+                        } else {
+                            error!("STT: Received audio chunk while no stream is active. Ignoring.");
+                        }
+                    }
+                    SpeechCommand::EndAudioStream => {
+                        let mut stream_active = stt_stream_active.write().await;
+                        if *stream_active {
+                            *stream_active = false;
+                            let audio_buffer_clone = { // Clone buffer data for processing
+                                let buffer_guard = stt_audio_buffer.lock().await;
+                                buffer_guard.clone()
+                            };
+                            info!("STT: Audio stream ended. Total audio received: {} bytes.", audio_buffer_clone.len());
+
+                            if !audio_buffer_clone.is_empty() {
+                                if let Some(stt_service) = &whisper_stt_service {
+                                    match stt_service.transcribe(audio_buffer_clone).await {
+                                        Ok(transcription) => {
+                                            info!("STT Transcription: {}", transcription);
+                                            if let Some(rf_service) = &ragflow_service {
+                                                // Assuming RAGFlowBody is the correct request structure
+                                                // We need a chat_id, let's use a default or get from settings if available
+                                                let settings_read = settings.read().await;
+                                                let chat_id = settings_read.ragflow.as_ref().and_then(|rf| rf.chat_id.clone()).unwrap_or_else(|| "default_chat_id".to_string());
+                                                drop(settings_read);
+
+                                                let rag_request = RAGFlowBody {
+                                                    chat_id, // This might need to be managed per user/session
+                                                    query: transcription,
+                                                    stream: false, // For now, get full response for TTS
+                                                    // Other fields like `doc_ids` might be needed depending on context
+                                                    doc_ids: None,
+                                                    enable_citation: None,
+                                                    enable_rag_citation: None,
+                                                    enable_rag_rewrite: None,
+                                                    enable_rewrite: None,
+                                                    enable_search: None,
+                                                    enable_vertical_search: None,
+                                                    llm_config: None,
+                                                    prompt_config: None,
+                                                    prompt_variables: None,
+                                                    rerank_config: None,
+                                                    retrieve_config: None,
+                                                    user_id: None, // Or some identifier
+                                                };
+
+                                                match rf_service.send_chat_message_full(rag_request).await {
+                                                    Ok(rag_response) => {
+                                                        info!("RAGFlow Response: {:?}", rag_response.answer);
+                                                        // Send RAGFlow's answer to TTS
+                                                        let tts_command = SpeechCommand::TextToSpeech(rag_response.answer, SpeechOptions::default());
+                                                        if let Err(e) = self_sender.lock().await.send(tts_command).await {
+                                                            error!("Failed to send TTS command for RAGFlow response: {}", e);
+                                                        }
+                                                    }
+                                                    Err(e) => error!("RAGFlow service error: {}", e),
+                                                }
+                                            } else {
+                                                error!("RAGFlow service not available to process transcription.");
+                                            }
+                                        }
+                                        Err(e) => error!("STT Error: {}", e),
+                                    }
+                                } else {
+                                    error!("Whisper STT service not available.");
+                                }
+                            } else {
+                                info!("STT: Audio buffer was empty, nothing to transcribe.");
+                            }
+                        } else {
+                            error!("STT: Received EndAudioStream command but no stream was active.");
+                        }
+                    }
                 }
             }
 }
@@ -356,6 +464,25 @@ impl SpeechService {
     
     pub async fn set_tts_provider(&self, provider: TTSProvider) -> Result<(), Box<dyn Error>> {
         let command = SpeechCommand::SetTTSProvider(provider);
+        self.sender.lock().await.send(command).await.map_err(|e| Box::new(SpeechError::from(e)))?;
+        Ok(())
+    }
+
+    // Methods to send STT commands
+    pub async fn start_audio_stream(&self) -> Result<(), Box<dyn Error>> {
+        let command = SpeechCommand::StartAudioStream;
+        self.sender.lock().await.send(command).await.map_err(|e| Box::new(SpeechError::from(e)))?;
+        Ok(())
+    }
+
+    pub async fn process_audio_chunk(&self, chunk: Vec<u8>) -> Result<(), Box<dyn Error>> {
+        let command = SpeechCommand::ProcessAudioChunk(chunk);
+        self.sender.lock().await.send(command).await.map_err(|e| Box::new(SpeechError::from(e)))?;
+        Ok(())
+    }
+
+    pub async fn end_audio_stream(&self) -> Result<(), Box<dyn Error>> {
+        let command = SpeechCommand::EndAudioStream;
         self.sender.lock().await.send(command).await.map_err(|e| Box::new(SpeechError::from(e)))?;
         Ok(())
     }

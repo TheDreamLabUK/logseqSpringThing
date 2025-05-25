@@ -15,6 +15,7 @@ use crate::services::perplexity_service::PerplexityService;
 use crate::services::speech_service::SpeechService;
 use crate::services::ragflow_service::RAGFlowService;
 use crate::services::nostr_service::NostrService;
+use crate::services::whisper_stt_service::WhisperSttService; // Added
 use crate::utils::gpu_compute::GPUCompute;
 use once_cell::sync::Lazy;
 
@@ -30,6 +31,7 @@ pub struct AppState {
     pub perplexity_service: Option<Arc<PerplexityService>>,
     pub ragflow_service: Option<Arc<RAGFlowService>>,
     pub speech_service: Option<Arc<SpeechService>>,
+    pub whisper_stt_service: Option<Arc<WhisperSttService>>, // Added
     pub nostr_service: Option<web::Data<NostrService>>,
     pub feature_access: web::Data<FeatureAccess>,
     pub ragflow_session_id: String,
@@ -48,6 +50,7 @@ impl AppState {
         perplexity_service: Option<Arc<PerplexityService>>,
         ragflow_service: Option<Arc<RAGFlowService>>,
         speech_service: Option<Arc<SpeechService>>,
+        whisper_stt_service: Option<Arc<WhisperSttService>>, // Added
         gpu_compute: Option<Arc<RwLock<GPUCompute>>>,
         ragflow_session_id: String,
     ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
@@ -70,6 +73,7 @@ impl AppState {
             perplexity_service,
             ragflow_service,
             speech_service,
+            whisper_stt_service, // Added
             nostr_service: None,
             feature_access: web::Data::new(FeatureAccess::from_env()),
             ragflow_session_id,
