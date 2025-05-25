@@ -58,7 +58,7 @@ export function SettingsPanelRedesign({ toggleLowerRightPaneDock, isLowerRightPa
             { key: 'opacity', path: 'visualisation.nodes.opacity', definition: settingsUIDefinition.visualisation.subsections.nodes.settings.opacity },
             { key: 'metalness', path: 'visualisation.nodes.metalness', definition: settingsUIDefinition.visualisation.subsections.nodes.settings.metalness },
             { key: 'roughness', path: 'visualisation.nodes.roughness', definition: settingsUIDefinition.visualisation.subsections.nodes.settings.roughness },
-            { key: 'sizeRange', path: 'visualisation.nodes.sizeRange', definition: settingsUIDefinition.visualisation.subsections.nodes.settings.sizeRange },
+            { key: 'nodeSize', path: 'visualisation.nodes.nodeSize', definition: settingsUIDefinition.visualisation.subsections.nodes.settings.nodeSize },
             { key: 'enableInstancing', path: 'visualisation.nodes.enableInstancing', definition: settingsUIDefinition.visualisation.subsections.nodes.settings.enableInstancing },
             { key: 'enableHologram', path: 'visualisation.nodes.enableHologram', definition: settingsUIDefinition.visualisation.subsections.nodes.settings.enableHologram },
             { key: 'enableMetadataShape', path: 'visualisation.nodes.enableMetadataShape', definition: settingsUIDefinition.visualisation.subsections.nodes.settings.enableMetadataShape },
