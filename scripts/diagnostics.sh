@@ -40,6 +40,8 @@ check_endpoints() {
         "http://localhost:4000/api/graph/data"
         "http://localhost:4000/api/files/fetch"
         "http://ragflow-server:9380/api/v1/system/healthz" # Check RAGFlow API using service name and standard health endpoint
+        "http://whisper-webui:8000/health" # Check Whisper WebUI health
+        "http://reverent_murdock:8880/health" # Check Kokoro TTS health
     )
 
     for endpoint in "${endpoints[@]}"; do

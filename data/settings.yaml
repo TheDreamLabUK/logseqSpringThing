@@ -210,7 +210,7 @@ openai:
   timeout: 30
   rate_limit: 100
 kokoro:
-  api_url: 'http://pedantic_morse:8880'
+  api_url: 'http://reverent_murdock:8880'
   default_voice: 'af_heart'
   default_format: 'mp3'
   default_speed: 1.0

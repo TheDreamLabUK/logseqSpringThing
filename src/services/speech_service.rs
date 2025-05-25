@@ -342,8 +342,9 @@ impl SpeechService {
                                         }
                                     }
                                 }
-                            }
+                            } 
                         }
+} // <-- Close match provider
                     },
                     SpeechCommand::StartAudioStream => {
                         let mut stream_active = stt_stream_active.write().await;
@@ -408,8 +409,7 @@ impl SpeechService {
                     }
                 }
             }
-}
-        }); // Removed semicolon
+        });
     }
 
     pub async fn initialize(&self) -> Result<(), Box<dyn Error>> {

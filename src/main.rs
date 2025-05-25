@@ -118,7 +118,7 @@ async fn main() -> std::io::Result<()> {
     // Create a shared HTTP client for services that need it
     let http_client = Arc::new(HttpClient::new());
 
-    let ragflow_service_option = match RAGFlowService::new(settings.clone(), http_client.clone()).await { // Pass http_client
+    let ragflow_service_option = match RAGFlowService::new(settings.clone()).await {
         Ok(service) => {
             info!("[main] RAGFlowService::new SUCCEEDED. Service instance created.");
             Some(Arc::new(service))
