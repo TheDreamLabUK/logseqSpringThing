@@ -190,7 +190,7 @@ async fn update_user_settings(
                 merge_copy_option!(target_vis.nodes.metalness, nodes_dto.metalness);
                 merge_copy_option!(target_vis.nodes.opacity, nodes_dto.opacity);
                 merge_copy_option!(target_vis.nodes.roughness, nodes_dto.roughness);
-                merge_clone_option!(target_vis.nodes.size_range, nodes_dto.size_range);
+                merge_copy_option!(target_vis.nodes.node_size, nodes_dto.node_size); // Changed from size_range, and to merge_copy_option
                 merge_clone_option!(target_vis.nodes.quality, nodes_dto.quality);
                 merge_copy_option!(target_vis.nodes.enable_instancing, nodes_dto.enable_instancing);
                 merge_copy_option!(target_vis.nodes.enable_hologram, nodes_dto.enable_hologram);
@@ -419,7 +419,7 @@ async fn update_user_settings(
                 merge_copy_option!(target_nodes.metalness, nodes_dto.metalness);
                 merge_copy_option!(target_nodes.opacity, nodes_dto.opacity);
                 merge_copy_option!(target_nodes.roughness, nodes_dto.roughness);
-                merge_clone_option!(target_nodes.size_range, nodes_dto.size_range);
+                merge_copy_option!(target_nodes.node_size, nodes_dto.node_size); // Changed from size_range, and to merge_copy_option
                 merge_clone_option!(target_nodes.quality, nodes_dto.quality);
                 merge_copy_option!(target_nodes.enable_instancing, nodes_dto.enable_instancing);
                 merge_copy_option!(target_nodes.enable_hologram, nodes_dto.enable_hologram);
@@ -649,7 +649,7 @@ async fn update_settings( // This is the deprecated endpoint
             merge_copy_option!(target_vis.nodes.metalness, nodes_dto.metalness);
             merge_copy_option!(target_vis.nodes.opacity, nodes_dto.opacity);
             merge_copy_option!(target_vis.nodes.roughness, nodes_dto.roughness);
-            merge_clone_option!(target_vis.nodes.size_range, nodes_dto.size_range);
+            merge_copy_option!(target_vis.nodes.node_size, nodes_dto.node_size); // Changed from size_range, and to merge_copy_option
             merge_clone_option!(target_vis.nodes.quality, nodes_dto.quality);
             merge_copy_option!(target_vis.nodes.enable_instancing, nodes_dto.enable_instancing);
             merge_copy_option!(target_vis.nodes.enable_hologram, nodes_dto.enable_hologram);

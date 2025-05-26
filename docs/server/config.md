@@ -18,6 +18,7 @@ pub struct AppFullSettings {
     pub perplexity: Option<PerplexitySettings>,
     pub openai: Option<OpenAISettings>,
     pub kokoro: Option<KokoroSettings>,
+    pub whisper: Option<WhisperSettings>,
 }
 ```
 
@@ -43,6 +44,7 @@ pub struct AppFullSettings {
 -   **`PerplexitySettings`**: Configuration for the Perplexity AI service.
 -   **`OpenAISettings`**: Configuration for OpenAI services (e.g., TTS).
 -   **`KokoroSettings`**: Configuration for the Kokoro AI service (if integrated).
+-   **`WhisperSettings`**: Configuration for the Whisper Speech-to-Text service.
 
 ### Environment Loading
 Settings are loaded from a YAML file (defaulting to `/app/settings.yaml`) and can be overridden by environment variables. The `config` crate is used for this hierarchical loading.

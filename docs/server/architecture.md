@@ -248,6 +248,24 @@ sequenceDiagram
     Client->>AIService: TTS Request
     AIService-->>Client: TTS Audio Stream
 
+    Client->>SocketFlowHandler: Start Audio Stream
+    SocketFlowHandler->>SpeechService: Start Audio Stream Command
+    loop Audio Chunks
+        Client->>SocketFlowHandler: Audio Chunk
+        SocketFlowHandler->>SpeechService: Process Audio Chunk Command
+    end
+    Client->>SocketFlowHandler: End Audio Stream
+    SocketFlowHandler->>SpeechService: End Audio Stream Command
+    SpeechService->>WhisperSttService: Transcribe Audio
+    WhisperSttService-->>SpeechService: Transcription Result
+    SpeechService->>AIService: Send Transcription to RAGFlow
+    AIService-->>SpeechService: RAGFlow Response
+    SpeechService->>AIService: TTS Request (from RAGFlow Response)
+    AIService-->>SpeechService: TTS Audio Stream
+    SpeechService-->>SocketFlowHandler: Send TTS Audio
+    SocketFlowHandler-->>Client: TTS Audio Stream
+
+
     Client->>NostrService: Authenticate
     NostrService-->>Client: Auth Token
 

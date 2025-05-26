@@ -4,9 +4,7 @@ visualisation:
     metalness: 0.2
     opacity: 1.0
     roughness: 0.7
-    size_range:
-    - 0.01  # Smaller min size
-    - 0.15  # Smaller max size
+    node_size: 0.1 # Changed from size_range
     quality: medium
     enable_instancing: false
     enable_hologram: false
@@ -212,7 +210,7 @@ openai:
   timeout: 30
   rate_limit: 100
 kokoro:
-  api_url: 'http://pedantic_morse:8880'
+  api_url: 'http://reverent_murdock:8880'
   default_voice: 'af_heart'
   default_format: 'mp3'
   default_speed: 1.0
@@ -220,3 +218,7 @@ kokoro:
   stream: true
   return_timestamps: true
   sample_rate: 24000
+whisper:
+  api_url: "http://whisper-webui:8000" # Base URL for the Whisper WebUI backend API
+  # model_size: "large-v2" # Optional: Default model size to use for transcriptions
+  # lang: "en"             # Optional: Default language for transcriptions

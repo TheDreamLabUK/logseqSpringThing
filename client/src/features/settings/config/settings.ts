@@ -8,7 +8,7 @@ export interface NodeSettings {
   metalness: number;
   opacity: number;
   roughness: number;
-  sizeRange: [number, number];
+  nodeSize: number; // Changed from sizeRange: [number, number]
   quality: 'low' | 'medium' | 'high';
   enableInstancing: boolean;
   enableHologram: boolean;

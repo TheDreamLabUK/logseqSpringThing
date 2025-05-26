@@ -33,7 +33,7 @@ pub async fn socket_flow_handler(
 ```
 - Handles WebSocket connections for real-time communication.
 - Manages graph data updates and broadcasts them to connected clients.
-- Processes client-sent messages, including position updates and control commands.
+- Processes client-sent messages, including position updates, control commands, and audio streams for STT.
 
 ### Health Handler
 ```rust
