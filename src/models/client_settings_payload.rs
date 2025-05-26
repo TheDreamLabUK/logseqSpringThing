@@ -4,7 +4,6 @@ use serde::Deserialize;
 
 // --- MovementAxes DTO ---
 #[derive(Deserialize, Debug, Default, Clone)]
-#[serde(rename_all = "camelCase")]
 pub struct ClientMovementAxes {
     pub horizontal: Option<i32>,
     pub vertical: Option<i32>,
@@ -12,7 +11,6 @@ pub struct ClientMovementAxes {
 
 // --- XR Settings DTO ---
 #[derive(Deserialize, Debug, Default, Clone)]
-#[serde(rename_all = "camelCase")]
 pub struct ClientXRSettings {
     pub enabled: Option<bool>,
     pub mode: Option<String>, // Maps to client's displayMode or server's mode
@@ -69,7 +67,6 @@ pub struct ClientXRSettings {
 
 // --- Node Settings DTO ---
 #[derive(Deserialize, Debug, Default, Clone)]
-#[serde(rename_all = "camelCase")]
 pub struct ClientNodeSettings {
     pub base_color: Option<String>,
     pub metalness: Option<f32>,
@@ -85,7 +82,6 @@ pub struct ClientNodeSettings {
 
 // --- Edge Settings DTO ---
 #[derive(Deserialize, Debug, Default, Clone)]
-#[serde(rename_all = "camelCase")]
 pub struct ClientEdgeSettings {
     pub arrow_size: Option<f32>,
     pub base_width: Option<f32>,
@@ -108,7 +104,6 @@ pub struct ClientEdgeSettings {
 
 // --- Physics Settings DTO ---
 #[derive(Deserialize, Debug, Default, Clone)]
-#[serde(rename_all = "camelCase")]
 pub struct ClientPhysicsSettings {
     pub attraction_strength: Option<f32>,
     pub bounds_size: Option<f32>,
@@ -127,7 +122,6 @@ pub struct ClientPhysicsSettings {
 
 // --- Rendering Settings DTO ---
 #[derive(Deserialize, Debug, Default, Clone)]
-#[serde(rename_all = "camelCase")]
 pub struct ClientRenderingSettings {
     pub ambient_light_intensity: Option<f32>,
     pub background_color: Option<String>,
@@ -144,7 +138,6 @@ pub struct ClientRenderingSettings {
 
 // --- Animation Settings DTO ---
 #[derive(Deserialize, Debug, Default, Clone)]
-#[serde(rename_all = "camelCase")]
 pub struct ClientAnimationSettings {
     pub enable_motion_blur: Option<bool>,
     pub enable_node_animations: Option<bool>,
@@ -158,7 +151,6 @@ pub struct ClientAnimationSettings {
 
 // --- Label Settings DTO ---
 #[derive(Deserialize, Debug, Default, Clone)]
-#[serde(rename_all = "camelCase")]
 pub struct ClientLabelSettings {
     pub desktop_font_size: Option<f32>,
     pub enable_labels: Option<bool>,
@@ -172,7 +164,6 @@ pub struct ClientLabelSettings {
 
 // --- Bloom Settings DTO ---
 #[derive(Deserialize, Debug, Default, Clone)]
-#[serde(rename_all = "camelCase")]
 pub struct ClientBloomSettings {
     pub edge_bloom_strength: Option<f32>,
     pub enabled: Option<bool>,
@@ -186,7 +177,6 @@ pub struct ClientBloomSettings {
 
 // --- Hologram Settings DTO ---
 #[derive(Deserialize, Debug, Default, Clone)]
-#[serde(rename_all = "camelCase")]
 pub struct ClientHologramSettings {
     pub ring_count: Option<u32>,
     pub ring_color: Option<String>,
@@ -207,14 +197,12 @@ pub struct ClientHologramSettings {
 
 // --- Camera Settings DTO ---
 #[derive(Deserialize, Debug, Default, Clone)]
-#[serde(rename_all = "camelCase")]
 pub struct ClientCameraPosition {
     pub x: Option<f32>,
     pub y: Option<f32>,
     pub z: Option<f32>,
 }
 #[derive(Deserialize, Debug, Default, Clone)]
-#[serde(rename_all = "camelCase")]
 pub struct ClientCameraSettings {
     pub fov: Option<f32>,
     pub near: Option<f32>,
@@ -226,7 +214,6 @@ pub struct ClientCameraSettings {
 
 // --- Visualisation Settings DTO (Aggregator) ---
 #[derive(Deserialize, Debug, Default, Clone)]
-#[serde(rename_all = "camelCase")]
 pub struct ClientVisualisationSettings {
     pub nodes: Option<ClientNodeSettings>,
     pub edges: Option<ClientEdgeSettings>,
@@ -243,7 +230,6 @@ pub struct ClientVisualisationSettings {
 // This can reuse src/config/mod.rs::ClientWebSocketSettings if it's identical
 // For clarity, defining it here based on client's definition.
 #[derive(Deserialize, Debug, Default, Clone)]
-#[serde(rename_all = "camelCase")]
 pub struct ClientPayloadWebSocketSettings {
     pub reconnect_attempts: Option<u32>,
     pub reconnect_delay: Option<u64>, // TS number can be u64
@@ -255,7 +241,6 @@ pub struct ClientPayloadWebSocketSettings {
 
 // --- Debug Settings DTO (from client/src/features/settings/config/settings.ts) ---
 #[derive(Deserialize, Debug, Default, Clone)]
-#[serde(rename_all = "camelCase")]
 pub struct ClientPayloadDebugSettings {
     pub enabled: Option<bool>,
     pub enable_data_debug: Option<bool>,
@@ -273,7 +258,6 @@ pub struct ClientPayloadDebugSettings {
 
 // --- System Settings DTO (Aggregator) ---
 #[derive(Deserialize, Debug, Default, Clone)]
-#[serde(rename_all = "camelCase")]
 pub struct ClientSystemSettings {
     pub websocket: Option<ClientPayloadWebSocketSettings>,
     pub debug: Option<ClientPayloadDebugSettings>,
@@ -283,7 +267,6 @@ pub struct ClientSystemSettings {
 
 // --- Auth Settings DTO ---
 #[derive(Deserialize, Debug, Default, Clone)]
-#[serde(rename_all = "camelCase")]
 pub struct ClientAuthSettings {
     pub enabled: Option<bool>,
     pub provider: Option<String>, // "nostr" | string
@@ -292,7 +275,6 @@ pub struct ClientAuthSettings {
 
 // --- AI Service Settings DTOs ---
 #[derive(Deserialize, Debug, Default, Clone)]
-#[serde(rename_all = "camelCase")]
 pub struct ClientRagFlowSettings {
     pub api_key: Option<String>,
     pub agent_id: Option<String>,
@@ -303,7 +285,6 @@ pub struct ClientRagFlowSettings {
 }
 
 #[derive(Deserialize, Debug, Default, Clone)]
-#[serde(rename_all = "camelCase")]
 pub struct ClientPerplexitySettings {
     pub api_key: Option<String>,
     pub model: Option<String>,
@@ -318,7 +299,6 @@ pub struct ClientPerplexitySettings {
 }
 
 #[derive(Deserialize, Debug, Default, Clone)]
-#[serde(rename_all = "camelCase")]
 pub struct ClientOpenAISettings {
     pub api_key: Option<String>,
     pub base_url: Option<String>,
@@ -327,7 +307,6 @@ pub struct ClientOpenAISettings {
 }
 
 #[derive(Deserialize, Debug, Default, Clone)]
-#[serde(rename_all = "camelCase")]
 pub struct ClientKokoroSettings {
     pub api_url: Option<String>,
     pub default_voice: Option<String>,
@@ -342,7 +321,6 @@ pub struct ClientKokoroSettings {
 
 // --- Top-Level Client Settings Payload DTO ---
 #[derive(Deserialize, Debug, Default, Clone)]
-#[serde(rename_all = "camelCase")]
 pub struct ClientSettingsPayload {
     pub visualisation: Option<ClientVisualisationSettings>,
     pub system: Option<ClientSystemSettings>,

@@ -177,24 +177,19 @@ const GraphManager = () => {
     if (!meshRef.current) return;
 
     const nodeSettings = settings?.visualisation?.nodes;
-    const settingsSizeRange = nodeSettings?.sizeRange || [0.5, 1.5]; // Default if not loaded
+    const nodeSize = nodeSettings?.nodeSize || 0.01; // Default if not loaded
 
-    // Log the settingsSizeRange being used
+    // Log the nodeSize being used
     if (debugState.isEnabled()) { // Only log if debug mode is on
-        logger.debug('GraphManager useFrame - settingsSizeRange:', settingsSizeRange);
+        logger.debug('GraphManager useFrame - nodeSize:', nodeSize);
     }
 
     let needsUpdate = false;
     graphData.nodes.forEach((node, index) => {
       const pos = node.position;
       if (pos && (pos.x !== 0 || pos.y !== 0 || pos.z !== 0)) {
-        const scale = calculateNodeScale(
-          node,
-          settingsSizeRange,
-          MIN_LOG_FILE_SIZE_ESTIMATE,
-          MAX_LOG_FILE_SIZE_ESTIMATE,
-          BASE_SPHERE_RADIUS
-        );
+        // Use nodeSize directly as the scale
+        const scale = nodeSize / BASE_SPHERE_RADIUS;
         updateInstanceMatrix(index, pos.x, pos.y, pos.z, scale);
         needsUpdate = true;
       }
@@ -328,49 +323,5 @@ const GraphManager = () => {
   )
 }
 
-// Helper function to calculate node scale based on metadata and settings
-const calculateNodeScale = (
-  node: GraphNode,
-  settingsSizeRange: [number, number],
-  minLogFileSizeEstimate: number,
-  maxLogFileSizeEstimate: number,
-  baseSphereRadius: number
-): number => {
-  const targetMinRadius = settingsSizeRange[0];
-  const targetMaxRadius = settingsSizeRange[1];
-
-  let normalizedValue = 0; // Default to min size if no metadata
-
-  if (node.metadata?.fileSize) {
-    const fileSize = parseInt(node.metadata.fileSize, 10);
-    if (!isNaN(fileSize) && fileSize > 0) {
-      const logFileSize = Math.log10(fileSize + 1);
-      if (maxLogFileSizeEstimate > minLogFileSizeEstimate) {
-        normalizedValue = (logFileSize - minLogFileSizeEstimate) / (maxLogFileSizeEstimate - minLogFileSizeEstimate);
-      }
-    }
-  } else if (node.metadata?.size) {
-    // Fallback for metadata.size, assuming it's a direct value that needs normalization
-    // This part might need adjustment based on typical range of node.metadata.size
-    const numericSize = parseFloat(node.metadata.size);
-    if (!isNaN(numericSize)) {
-      // Example: if metadata.size is 0-100, this normalizes it.
-      // Adjust 100 if the expected range is different.
-      const assumedMaxMetadataSize = 100;
-      normalizedValue = numericSize / assumedMaxMetadataSize;
-    }
-  }
-
-  // Clamp normalizedValue to be strictly between 0 and 1
-  normalizedValue = Math.max(0, Math.min(normalizedValue, 1));
-
-  // Determine final radius based on normalized value and settings range
-  const finalRadius = targetMinRadius + normalizedValue * (targetMaxRadius - targetMinRadius);
-
-  // Calculate scale factor based on the base sphere radius
-  const scaleFactor = finalRadius / baseSphereRadius;
-
-  return scaleFactor;
-};
 
 export default GraphManager
