@@ -396,7 +396,8 @@ class GraphDataManager {
       // Create Float32Array for position updates (4 values per node: id, x, y, z)
       // This format is expected by the GraphManager component
       const positionArray = new Float32Array(nodeUpdates.length * 4);
-      let updatedNodes = 0;
+      let updatedNodesCount = 0;
+      let nodesWereUpdated = false;
       
       // Process each node update
       nodeUpdates.forEach((nodeUpdate, index) => {
@@ -409,13 +410,18 @@ class GraphDataManager {
           // Find and update the node
           const nodeIndex = this.data.nodes.findIndex(node => node.id === stringNodeId);
           if (nodeIndex >= 0) {
-            this.data.nodes[nodeIndex].position = position;
-            // Store velocity in metadata if needed
-            this.data.nodes[nodeIndex].metadata = {
-              ...this.data.nodes[nodeIndex].metadata,
-              velocity
+            const oldNode = this.data.nodes[nodeIndex];
+            // Create a new node object for the update
+            this.data.nodes[nodeIndex] = {
+              ...oldNode,
+              position: { ...position }, // Ensure new object for position
+              metadata: {
+                ...oldNode.metadata,
+                velocity: { ...velocity } // Ensure new object for velocity
+              }
             };
-            updatedNodes++;
+            nodesWereUpdated = true;
+            updatedNodesCount++;
           } else if (debugState.isDataDebugEnabled()) {
             logger.debug(`Node with ID ${stringNodeId} (numeric: ${nodeId}) not found in data`);
           }
@@ -434,11 +440,16 @@ class GraphDataManager {
       // Notify position update listeners with the Float32Array
       this.notifyPositionUpdateListeners(positionArray);
 
-      // Also notify graph data listeners so components using graphData state get updated positions
-      this.notifyGraphDataListeners();
+      if (nodesWereUpdated) {
+        // Crucial: Create a new array reference for this.data.nodes
+        // so that React components subscribing to graphData will detect a change.
+        this.data.nodes = [...this.data.nodes];
+        // Also notify graph data listeners so components using graphData state get updated positions
+        this.notifyGraphDataListeners();
+      }
 
       if (debugState.isDataDebugEnabled()) {
-        logger.debug(`Updated positions for ${updatedNodes} out of ${nodeUpdates.length} nodes (${this.data.nodes.length} total nodes in graph)`);
+        logger.debug(`Updated positions for ${updatedNodesCount} out of ${nodeUpdates.length} nodes (${this.data.nodes.length} total nodes in graph). Graph data listeners ${nodesWereUpdated ? 'notified' : 'not notified'}.`);
       }
     } catch (error) {
       logger.error('Error processing binary position data:', createErrorMetadata(error));
