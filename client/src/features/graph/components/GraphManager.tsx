@@ -143,39 +143,83 @@ const GraphManager: React.FC<GraphManagerProps> = ({ onNodeDragStateChange }) =>
   }
 
   // Optimized drag event handlers
-  const handlePointerDown = useCallback((event: ThreeEvent<PointerEvent>) => {
+  const clickTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const lastClickTimeRef = useRef<number>(0);
+  const DOUBLE_CLICK_THRESHOLD = 300; // ms
+
+  const slugifyNodeLabel = (label: string): string => {
+    return label.toLowerCase().replace(/\s+/g, '%20');
+  };
+
+  const handleNodeClick = useCallback((event: ThreeEvent<PointerEvent>) => {
     const instanceId = event.instanceId;
     if (instanceId === undefined) return;
-    
+
     event.stopPropagation();
     const node = graphData.nodes[instanceId];
-    if (!node) return;
-    
-    // Use R3F's pointer coordinates directly
-    const pointer = event.pointer;
-    
-    // Store in ref (no re-render)
-    dragDataRef.current = {
-      isDragging: true,
-      nodeId: node.id,
-      instanceId,
-      startPosition: new THREE.Vector3(node.position.x, node.position.y, node.position.z),
-      currentPosition: new THREE.Vector3(node.position.x, node.position.y, node.position.z),
-      offset: new THREE.Vector2(pointer.x, pointer.y),
-      lastUpdateTime: 0,
-      pendingUpdate: null
-    };
-    
-    
-    onNodeDragStateChange(true); // <--- Signal drag start to parent
-    
-    // Single state update for UI feedback if needed
-    setDragState({ nodeId: node.id, instanceId });
-    
-    if (debugState.isEnabled()) {
-      logger.debug(`Started dragging node ${node.id} (instance ${instanceId}) at position [${node.position.x}, ${node.position.y}, ${node.position.z}]`);
+    if (!node || !node.label) return;
+
+    const currentTime = Date.now();
+
+    if (clickTimeoutRef.current) {
+      clearTimeout(clickTimeoutRef.current);
+      clickTimeoutRef.current = null;
     }
-  }, [graphData.nodes, onNodeDragStateChange, camera, size]); // Add camera & size if used by projection logic
+
+    // Double click
+    if (currentTime - lastClickTimeRef.current < DOUBLE_CLICK_THRESHOLD) {
+      if (debugState.isEnabled()) {
+        logger.debug(`Double-clicked node ${node.id} (instance ${instanceId})`);
+      }
+      // Initiate drag on double click
+      const pointer = event.pointer;
+      dragDataRef.current = {
+        isDragging: true,
+        nodeId: node.id,
+        instanceId,
+        startPosition: new THREE.Vector3(node.position.x, node.position.y, node.position.z),
+        currentPosition: new THREE.Vector3(node.position.x, node.position.y, node.position.z),
+        offset: new THREE.Vector2(pointer.x, pointer.y),
+        lastUpdateTime: 0,
+        pendingUpdate: null
+      };
+      onNodeDragStateChange(true);
+      setDragState({ nodeId: node.id, instanceId });
+      lastClickTimeRef.current = 0; // Reset for next double click
+    } else {
+      // Single click (or first click of a potential double click)
+      clickTimeoutRef.current = setTimeout(() => {
+        if (debugState.isEnabled()) {
+          logger.debug(`Single-clicked node ${node.id} (instance ${instanceId})`);
+        }
+        const slug = slugifyNodeLabel(node.label!);
+        const narrativeGoldmineUrl = `https://narrativegoldmine.com//#/page/${slug}`;
+        // This assumes the Narrative Goldmine panel is an iframe or a component that listens to URL changes.
+        // If it's an iframe, you might target its src. If it's a React component, you might use react-router or a state management solution.
+        // For now, let's log it. A more robust solution would involve a shared service or context.
+        logger.info(`Updating Narrative Goldmine URL to: ${narrativeGoldmineUrl}`);
+        // Example: window.postMessage({ type: 'UPDATE_NARRATIVE_URL', url: narrativeGoldmineUrl }, '*');
+        // Or if it's a sibling iframe:
+        // const iframe = document.getElementById('narrative-goldmine-iframe') as HTMLIFrameElement;
+        // if (iframe) iframe.src = narrativeGoldmineUrl;
+
+        // To actually change the browser's URL (if Narrative Goldmine is part of the same SPA but different route):
+        // window.history.pushState({}, '', narrativeGoldmineUrl); // or router.push(...)
+
+        // For now, we'll assume a global event or direct update if possible.
+        // This part needs to be integrated with how NarrativeGoldminePanel actually receives its URL.
+        // One simple way, if it's an iframe with a known ID:
+        const narrativeIframe = document.getElementById('narrative-goldmine-iframe') as HTMLIFrameElement | null;
+        if (narrativeIframe) {
+           narrativeIframe.src = narrativeGoldmineUrl;
+        } else {
+           logger.warn('Narrative Goldmine iframe not found. Cannot update URL.');
+        }
+
+      }, DOUBLE_CLICK_THRESHOLD);
+    }
+    lastClickTimeRef.current = currentTime;
+  }, [graphData.nodes, onNodeDragStateChange, camera, size]);
 
   const handlePointerMove = useCallback((event: ThreeEvent<PointerEvent>) => {
     const drag = dragDataRef.current;
@@ -533,7 +577,7 @@ const GraphManager: React.FC<GraphManagerProps> = ({ onNodeDragStateChange }) =>
         ref={meshRef}
         args={[undefined, undefined, graphData.nodes.length]} // Geometry, Material, Count
         frustumCulled={false}
-        onPointerDown={handlePointerDown}
+        onPointerDown={handleNodeClick} // Corrected to use handleNodeClick
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp} // To handle release on the mesh
         onPointerMissed={() => { // To handle release outside the mesh but on canvas
