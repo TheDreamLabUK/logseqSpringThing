@@ -210,7 +210,7 @@ openai:
   timeout: 30
   rate_limit: 100
 kokoro:
-  api_url: 'http://reverent_murdock:8880'
+  api_url: 'http://recursing_bhaskara:8880'
   default_voice: 'af_heart'
   default_format: 'mp3'
   default_speed: 1.0
@@ -219,6 +219,6 @@ kokoro:
   return_timestamps: true
   sample_rate: 24000
 whisper:
-  api_url: "http://whisper-webui:8000" # Base URL for the Whisper WebUI backend API
+  api_url: "http://whisper-webui-backend:8000" # Base URL for the Whisper WebUI backend API
   # model_size: "large-v2" # Optional: Default model size to use for transcriptions
   # lang: "en"             # Optional: Default language for transcriptions
