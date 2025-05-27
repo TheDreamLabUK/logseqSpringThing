@@ -231,61 +231,102 @@ const GraphManager = () => {
 
   // Node labels component using settings from YAML
   const NodeLabels = () => {
-    // Get label settings from the settings store (in camelCase)
     const labelSettings = settings?.visualisation?.labels || {
       enabled: true,
-      desktopFontSize: 0.1, // Fallback to a small size if not specified
+      desktopFontSize: 0.1,
       textColor: '#000000',
       textOutlineColor: '#ffffff',
       textOutlineWidth: 0.01,
       textPadding: 0.3,
       textResolution: 32,
       billboardMode: 'camera'
-    }
+    };
 
-    // Don't render if labels are disabled
-    // Type guard to safely access 'enabled' property
-    const isEnabled = typeof labelSettings === 'object' && labelSettings !== null && 'enabled' in labelSettings ? labelSettings.enabled : true; // Default to true if structure is unexpected
-    if (!isEnabled) return null
+    const isEnabled = typeof labelSettings === 'object' && labelSettings !== null && 'enabled' in labelSettings ? labelSettings.enabled : true;
+    if (!isEnabled) return null;
 
-    // Use the desktopFontSize (camelCase) from settings
-    // The settings are converted from snake_case to camelCase when loaded
-    const fontSize = labelSettings.desktopFontSize || 0.1
+    const mainLabelFontSize = labelSettings.desktopFontSize || 0.1;
+    const metadataFontSize = mainLabelFontSize * 0.7; // Smaller font for metadata
+    const lineSpacing = mainLabelFontSize * 0.15; // Space between main label and metadata
 
     return (
       <group>
         {graphData.nodes.map(node => {
-          // Skip nodes without position or label
-          if (!node.position || !node.label) return null
+          if (!node.position || !node.label) return null;
 
-          // Use the font size directly from settings without any scaling
+          // Construct metadata string
+          let metadataString = '';
+          if (node.metadata) {
+            const fileSize = node.metadata.fileSize; // Already a string from server
+            const hyperlinkCount = node.metadata.hyperlinkCount; // Already a string
+
+            if (fileSize) {
+              const sizeInKB = parseInt(fileSize, 10) / 1024;
+              metadataString += `${sizeInKB.toFixed(1)} KB`;
+            }
+            if (hyperlinkCount) {
+              if (metadataString) metadataString += ' | ';
+              metadataString += `${hyperlinkCount} links`;
+            }
+            // Could add lastModified here too, but might be too much info
+            // const lastModified = node.metadata.lastModified;
+            // if (lastModified) {
+            //   if (metadataString) metadataString += ' | ';
+            //   metadataString += `Mod: ${new Date(lastModified).toLocaleDateString()}`;
+            // }
+          }
 
           return (
             <Billboard
               key={node.id}
-              position={[node.position.x, node.position.y + (labelSettings.textPadding || 0.3), node.position.z]} // Use textPadding from settings
-              follow={labelSettings.billboardMode === 'camera'} // Use billboardMode from settings
+              // Position the billboard slightly above the node center to accommodate two lines of text
+              position={[
+                node.position.x,
+                node.position.y + (labelSettings.textPadding || 0.3) + (metadataString ? mainLabelFontSize / 2 + lineSpacing / 2 : 0),
+                node.position.z
+              ]}
+              follow={labelSettings.billboardMode === 'camera'}
             >
+              {/* Main Label (Filename) */}
               <Text
-                fontSize={fontSize}
+                fontSize={mainLabelFontSize}
                 color={labelSettings.textColor || '#000000'}
                 anchorX="center"
-                anchorY="middle"
+                anchorY="middle" // Anchor to middle for the main label
                 outlineWidth={labelSettings.textOutlineWidth || 0.01}
                 outlineColor={labelSettings.textOutlineColor || '#ffffff'}
-                outlineOpacity={1.0} // Full opacity for outline
+                outlineOpacity={1.0}
                 renderOrder={10}
                 material-depthTest={false}
-                maxWidth={labelSettings.textResolution || 32} // Use textResolution for max width
+                maxWidth={labelSettings.textResolution || 32}
               >
                 {node.label}
               </Text>
+
+              {/* Metadata String (File Size, Links) - rendered below the main label */}
+              {metadataString && (
+                <Text
+                  fontSize={metadataFontSize}
+                  color={labelSettings.textColor ? new THREE.Color(labelSettings.textColor).multiplyScalar(0.8).getStyle() : '#333333'} // Slightly dimmer
+                  anchorX="center"
+                  anchorY="top" // Anchor to top, so it sits below the main label
+                  position={[0, -mainLabelFontSize / 2 - lineSpacing, 0]} // Position it below the main label
+                  outlineWidth={(labelSettings.textOutlineWidth || 0.01) * 0.7}
+                  outlineColor={labelSettings.textOutlineColor || '#ffffff'}
+                  outlineOpacity={0.8}
+                  renderOrder={10}
+                  material-depthTest={false}
+                  maxWidth={(labelSettings.textResolution || 32) * 1.5} // Allow metadata to be a bit wider
+                >
+                  {metadataString}
+                </Text>
+              )}
             </Billboard>
-          )
+          );
         })}
       </group>
-    )
-  }
+    );
+  };
 
   return (
     <>
