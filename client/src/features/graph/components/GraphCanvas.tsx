@@ -79,19 +79,6 @@ const GraphCanvas = () => {
             <GraphManager />
             {xrEnabled && <XRController />}
             {xrEnabled && <XRVisualisationConnector />}
-            <OrbitControls
-                enableDamping={true}
-                dampingFactor={0.1}
-                screenSpacePanning={true}
-                minDistance={1}
-                maxDistance={2000}
-                enableRotate={true}
-                enableZoom={true}
-                enablePan={true}
-                rotateSpeed={1.0}
-                zoomSpeed={1.2}
-                panSpeed={0.8}
-            />
             {showStats && <Stats />}
         </Canvas>
     );

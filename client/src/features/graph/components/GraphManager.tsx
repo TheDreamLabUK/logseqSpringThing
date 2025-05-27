@@ -1,14 +1,15 @@
 import React, { useRef, useEffect, useState, useMemo, useCallback } from 'react'
-import { useThree, useFrame } from '@react-three/fiber'
+import { useThree, useFrame, ThreeEvent } from '@react-three/fiber'
 import { Line } from '@react-three/drei/core/Line'
 // Assuming Text and Billboard are still directly available, if not adjust path later
-import { Text, Billboard } from '@react-three/drei'
+import { Text, Billboard } from '@react-three/drei' // OrbitControls removed
 // Use namespace import for THREE to access constructors
 import * as THREE from 'three'
 import { graphDataManager, type GraphData, type Node as GraphNode } from '../managers/graphDataManager'
 import { createLogger, createErrorMetadata } from '../../../utils/logger'
 import { debugState } from '../../../utils/debugState'
 import { useSettingsStore } from '../../../store/settingsStore'
+import { BinaryNodeData, createBinaryNodeData } from '../../../types/binaryProtocol'
 
 const logger = createLogger('GraphManager')
 
@@ -40,16 +41,46 @@ const getPositionForNode = (node: GraphNode, index: number): [number, number, nu
   return [node.position.x, node.position.y, node.position.z]
 }
 
-const GraphManager = () => {
+// Define props for GraphManager
+interface GraphManagerProps {
+  onNodeDragStateChange: (isDragging: boolean) => void;
+}
+
+const GraphManager: React.FC<GraphManagerProps> = ({ onNodeDragStateChange }) => { // Accept prop
   const meshRef = useRef<THREE.InstancedMesh>(null) // Initialize with null, use THREE namespace
+  // REMOVE: const orbitControlsRef = useRef<any>(null);
+  
   // Use useMemo for stable object references across renders
   const tempMatrix = useMemo(() => new THREE.Matrix4(), [])
   const tempPosition = useMemo(() => new THREE.Vector3(), [])
   const tempScale = useMemo(() => new THREE.Vector3(), [])
+  const tempQuaternion = useMemo(() => new THREE.Quaternion(), [])
+  const screenPosition = useMemo(() => new THREE.Vector2(), [])
+  
   const [graphData, setGraphData] = useState<GraphData>({ nodes: [], edges: [] })
   const [nodesAreAtOrigin, setNodesAreAtOrigin] = useState(false)
   const settings = useSettingsStore(state => state.settings)
   const [forceUpdate, setForceUpdate] = useState(0) // Force re-render on settings change
+  
+  // Minimal drag state for UI feedback
+  const [dragState, setDragState] = useState<{
+    nodeId: string | null;
+    instanceId: number | null;
+  }>({ nodeId: null, instanceId: null });
+
+  // Performance-optimized drag data using refs (no re-renders)
+  const dragDataRef = useRef({
+    isDragging: false,
+    nodeId: null as string | null,
+    instanceId: null as number | null,
+    startPosition: new THREE.Vector3(),
+    currentPosition: new THREE.Vector3(),
+    offset: new THREE.Vector2(),
+    lastUpdateTime: 0,
+    pendingUpdate: null as BinaryNodeData | null
+  });
+
+  const { camera, size } = useThree()
 
   useEffect(() => {
     if (meshRef.current) {
@@ -110,6 +141,161 @@ const GraphManager = () => {
     
     meshRef.current.setMatrixAt(index, tempMatrix)
   }
+
+  // Optimized drag event handlers
+  const handlePointerDown = useCallback((event: ThreeEvent<PointerEvent>) => {
+    const instanceId = event.instanceId;
+    if (instanceId === undefined) return;
+    
+    event.stopPropagation();
+    const node = graphData.nodes[instanceId];
+    if (!node) return;
+    
+    // Use R3F's pointer coordinates directly
+    const pointer = event.pointer;
+    
+    // Store in ref (no re-render)
+    dragDataRef.current = {
+      isDragging: true,
+      nodeId: node.id,
+      instanceId,
+      startPosition: new THREE.Vector3(node.position.x, node.position.y, node.position.z),
+      currentPosition: new THREE.Vector3(node.position.x, node.position.y, node.position.z),
+      offset: new THREE.Vector2(pointer.x, pointer.y),
+      lastUpdateTime: 0,
+      pendingUpdate: null
+    };
+    
+    
+    onNodeDragStateChange(true); // <--- Signal drag start to parent
+    
+    // Single state update for UI feedback if needed
+    setDragState({ nodeId: node.id, instanceId });
+    
+    if (debugState.isEnabled()) {
+      logger.debug(`Started dragging node ${node.id} (instance ${instanceId}) at position [${node.position.x}, ${node.position.y}, ${node.position.z}]`);
+    }
+  }, [graphData.nodes, onNodeDragStateChange, camera, size]); // Add camera & size if used by projection logic
+
+  const handlePointerMove = useCallback((event: ThreeEvent<PointerEvent>) => {
+    const drag = dragDataRef.current;
+    if (!drag.isDragging || !meshRef.current) return;
+    
+    event.stopPropagation();
+    
+    // Use R3F's pointer coordinates directly
+    const pointer = event.pointer;
+    
+    // Create a plane at the node's depth perpendicular to the camera
+    const cameraDirection = new THREE.Vector3();
+    camera.getWorldDirection(cameraDirection);
+    
+    // Create a plane at the drag start position
+    const planeNormal = cameraDirection.clone().negate();
+    const plane = new THREE.Plane(planeNormal, -planeNormal.dot(drag.startPosition));
+    
+    // Cast a ray from the camera through the mouse position
+    const raycaster = new THREE.Raycaster();
+    raycaster.setFromCamera(pointer, camera);
+    
+    // Find where the ray intersects the plane
+    const intersection = new THREE.Vector3();
+    raycaster.ray.intersectPlane(plane, intersection);
+    
+    if (intersection) {
+      drag.currentPosition.copy(intersection);
+      
+      // Update visual immediately (no React state)
+      const nodeSize = settings?.visualisation?.nodes?.nodeSize || 0.01;
+      const BASE_SPHERE_RADIUS = 0.5; // Ensure this matches your sphereGeometry radius
+      const scale = nodeSize / BASE_SPHERE_RADIUS;
+      
+      const tempMatrix = new THREE.Matrix4(); // Local temp matrix
+      tempMatrix.makeScale(scale, scale, scale);
+      tempMatrix.setPosition(drag.currentPosition);
+      meshRef.current.setMatrixAt(drag.instanceId!, tempMatrix);
+      meshRef.current.instanceMatrix.needsUpdate = true;
+      
+      // Update the node in graphData to keep edges and labels in sync
+      setGraphData(prev => ({
+        ...prev,
+        nodes: prev.nodes.map((node, idx) =>
+          idx === drag.instanceId
+            ? { ...node, position: {
+                x: drag.currentPosition.x,
+                y: drag.currentPosition.y,
+                z: drag.currentPosition.z
+              }}
+            : node
+        )
+      }));
+      
+      // Prepare update for throttled send
+      const now = Date.now();
+      if (now - drag.lastUpdateTime > 30) { // Throttle WebSocket updates (e.g., ~30fps)
+        const numericId = graphDataManager.nodeIdMap.get(drag.nodeId!);
+        if (numericId !== undefined) {
+          drag.pendingUpdate = {
+            nodeId: numericId,
+            position: {
+              x: drag.currentPosition.x,
+              y: drag.currentPosition.y,
+              z: drag.currentPosition.z
+            },
+            velocity: { x: 0, y: 0, z: 0 } // Assuming velocity resets or is handled server-side
+          };
+          drag.lastUpdateTime = now;
+        }
+      }
+    }
+  }, [settings?.visualisation?.nodes?.nodeSize, camera, setGraphData]); // Added setGraphData to deps
+
+  const handlePointerUp = useCallback(() => {
+    const drag = dragDataRef.current;
+    if (!drag.isDragging) return;
+    
+    // Send final position
+    if (drag.nodeId && graphDataManager.webSocketService) {
+      const numericId = graphDataManager.nodeIdMap.get(drag.nodeId);
+      if (numericId !== undefined) {
+        const finalUpdate: BinaryNodeData = {
+          nodeId: numericId,
+          position: {
+            x: drag.currentPosition.x,
+            y: drag.currentPosition.y,
+            z: drag.currentPosition.z
+          },
+          velocity: { x: 0, y: 0, z: 0 }
+        };
+        graphDataManager.webSocketService.send(
+          createBinaryNodeData([finalUpdate])
+        );
+        
+        if (debugState.isEnabled()) {
+          logger.debug(`Sent final position for node ${drag.nodeId}`);
+        }
+      }
+    }
+    
+    dragDataRef.current.isDragging = false;
+    dragDataRef.current.pendingUpdate = null; // Clear pending update
+    onNodeDragStateChange(false); // <--- Signal drag end to parent
+    setDragState({ nodeId: null, instanceId: null });
+  }, [onNodeDragStateChange]); // Add onNodeDragStateChange to deps
+
+  // Global pointer up listener for cases where mouse is released outside canvas
+  useEffect(() => {
+    const handleGlobalPointerUp = () => {
+      if (dragDataRef.current.isDragging) {
+        handlePointerUp();
+      }
+    };
+
+    window.addEventListener('pointerup', handleGlobalPointerUp);
+    return () => {
+      window.removeEventListener('pointerup', handleGlobalPointerUp);
+    };
+  }, [handlePointerUp]);
 
   // Subscribe to graph data changes
   useEffect(() => {
@@ -175,6 +361,15 @@ const GraphManager = () => {
 
   useFrame(() => {
     if (!meshRef.current) return;
+
+    // Handle pending drag updates via RAF
+    const drag = dragDataRef.current;
+    if (drag.pendingUpdate && graphDataManager.webSocketService && graphDataManager.webSocketService.isReady()) {
+      graphDataManager.webSocketService.send(
+        createBinaryNodeData([drag.pendingUpdate])
+      );
+      drag.pendingUpdate = null; // Clear after sending
+    }
 
     const nodeSettings = settings?.visualisation?.nodes;
     const nodeSize = nodeSettings?.nodeSize || 0.01; // Default if not loaded
@@ -330,10 +525,22 @@ const GraphManager = () => {
 
   return (
     <>
+      {/* REMOVE THE LOCAL OrbitControls INSTANCE:
+      <OrbitControls ref={orbitControlsRef} ... />
+      */}
+      
       <instancedMesh
         ref={meshRef}
-        args={[null, null, graphData.nodes.length]}
+        args={[undefined, undefined, graphData.nodes.length]} // Geometry, Material, Count
         frustumCulled={false}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp} // To handle release on the mesh
+        onPointerMissed={() => { // To handle release outside the mesh but on canvas
+          if (dragDataRef.current.isDragging) {
+            handlePointerUp();
+          }
+        }}
       >
         <sphereGeometry args={[0.5, 16, 16]} />
         <meshStandardMaterial

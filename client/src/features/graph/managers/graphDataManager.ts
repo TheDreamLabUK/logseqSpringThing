@@ -37,12 +37,12 @@ class GraphDataManager {
   private static instance: GraphDataManager;
   private data: GraphData = { nodes: [], edges: [] };
   private binaryUpdatesEnabled: boolean = false;
-  private webSocketService: WebSocketAdapter | null = null;
+  public webSocketService: WebSocketAdapter | null = null;
   private graphDataListeners: GraphDataChangeListener[] = [];
   private positionUpdateListeners: PositionUpdateListener[] = [];
   private lastBinaryUpdateTime: number = 0;
   private retryTimeout: number | null = null;
-  private nodeIdMap: Map<string, number> = new Map();
+  public nodeIdMap: Map<string, number> = new Map();
   private reverseNodeIdMap: Map<number, string> = new Map();
 
   private constructor() {
@@ -609,3 +609,4 @@ class GraphDataManager {
 
 // Create singleton instance
 export const graphDataManager = GraphDataManager.getInstance();
+
