@@ -1,47 +1,81 @@
 visualisation:
   nodes:
-    base_color: '#66d9ef'  # Light Teal
-    metalness: 0.2
-    opacity: 1.0
-    roughness: 0.7
-    node_size: 0.02 # Changed from size_range
-    quality: medium
+    base_color: '#66d9ef'
+    metalness: 0.63
+    opacity: 0.65
+    roughness: 0.73
+    node_size: 0.02
+    quality: 'medium'
     enable_instancing: false
     enable_hologram: false
     enable_metadata_shape: false
     enable_metadata_visualisation: true
+    size_range:
+      - 0.01
+      - 0.15
+    color: '#ff4500'
+    highlight_color: '#ffff00'
+    outline_width: 0.1
+    outline_color: '#ffffff'
+    selected_color: '#00ff00'
   edges:
     arrow_size: 0.02
     base_width: 0.1
-    color: '#56b6c2'  # Muted Cyan
+    color: '#56b6c2'
     enable_arrows: false
-    opacity: 0.85
+    opacity: 0.25
     width_range:
-    - 0.1
-    - 1.0
-    quality: medium
+      - 0.1
+      - 1.0
+    quality: 'medium'
+    enable_flow_effect: true
+    flow_speed: 1
+    flow_intensity: 0.6
+    glow_strength: 1
+    distance_intensity: 1
+    use_gradient: true
+    gradient_colors:
+      - '#ffffff'
+      - '#000000'
+    width: 1
+    highlight_color: '#ffff00'
+    show_labels: false
+    dash_size: 3
+    gap_size: 1
   physics:
-    attraction_strength: 0.05      # Lowered for less pull
-    bounds_size: 15.0             # Increased for wider spread
+    attraction_strength: 0.05
+    bounds_size: 15.0
     collision_radius: 0.5
     damping: 0.95
     enable_bounds: true
     enabled: true
     iterations: 100
     max_velocity: 0.02
-    repulsion_strength: 0.1       # Increased for more push apart
+    repulsion_strength: 0.1
     spring_strength: 0.2
-    repulsion_distance: 2.0       # Increased distance for repulsion
+    repulsion_distance: 2.0
     mass_scale: 1.0
     boundary_damping: 0.95
+    gravity: 0
+    friction: 0.9
+    attraction: 0.5
+    spring_length: 30
   rendering:
     ambient_light_intensity: 0.8
-    background_color: '#181c28'  # Dark Blue/Grey
+    background_color: '#181c28'
     directional_light_intensity: 0.7
     enable_ambient_occlusion: false
     enable_antialiasing: false
     enable_shadows: false
     environment_intensity: 0.7
+    shadow_map_size: '2048'
+    shadow_bias: 0.0001
+    context: 'desktop'
+    pixel_ratio: 1.5
+    enable_bloom: true
+    bloom_strength: 1.5
+    bloom_threshold: 0.4
+    bloom_radius: 0.85
   animations:
     enable_motion_blur: false
     enable_node_animations: false
@@ -52,28 +86,30 @@ visualisation:
     pulse_strength: 0.6
     wave_speed: 0.5
   labels:
-    desktop_font_size: 0.15  # Smaller font size
-    enable_labels: true
-    text_color: '#f8f8f2'  # Off-White
-    text_outline_color: '#181c28'  # Dark background for contrast
+    desktop_font_size: 0.15
+    enable_labels: true # Note: JSON also has 'enabled: true', this one is more specific
+    text_color: '#f8f8f2'
+    text_outline_color: '#181c28'
     text_outline_width: 0.01
     text_resolution: 32
     text_padding: 0.3
-    billboard_mode: camera
-  bloom:
+    billboard_mode: 'camera'
+    enabled: true # General enabled flag for labels
+  bloom: # This is for visualisation.bloom specific settings
     edge_bloom_strength: 0.4
-    enabled: false
+    enabled: true # This is visualisation.bloom.enabled
     environment_bloom_strength: 2.0
     node_bloom_strength: 3.0
-    radius: 2.0
-    strength: 3.0
+    radius: 0.4
+    strength: 1.77
+    threshold: 0.06
   hologram:
     ring_count: 1
     ring_color: '#c2a200'
     ring_opacity: 0.001
     sphere_sizes:
-    - 4
-    - 8
+      - 4
+      - 8
     ring_rotation_speed: 10.0
     enable_buckminster: false
     buckminster_size: 10
@@ -84,7 +120,34 @@ visualisation:
     enable_triangle_sphere: false
     triangle_sphere_size: 10
     triangle_sphere_opacity: 0.05
-    global_rotation_speed: 3
+    global_rotation_speed: 3.0
+    color: 65535
+    opacity: 0.7
+  camera:
+    fov: 75
+    near: 0.1
+    far: 2000
+    position:
+      x: 0
+      y: 10
+      z: 50
+    look_at:
+      x: 0
+      y: 0
+      z: 0
+  scene_background: 0
+  icons:
+    enabled: true
+    size: 1
+    opacity: 0.8
+    color: '#ffffff'
+  metrics:
+    enabled: false
+    refresh_rate: 1000
+    position: 'top-right'
+  show_stats: false
+  show_axes: false
+  show_grid: false
 system:
   network:
     bind_address: 0.0.0.0

@@ -256,7 +256,8 @@ async fn handle_ragflow_chat(
     // We've ensured it's Some by now, or returned an error.
     let current_session_id = session_id.expect("Session ID should be Some at this point");
 
-    match ragflow_service.send_chat_message(current_session_id.clone(), payload.question.clone()).await {
+    let stream_preference = payload.stream.unwrap_or(false); // Default to false if not provided
+    match ragflow_service.send_chat_message(current_session_id.clone(), payload.question.clone(), stream_preference).await {
         Ok((answer, final_session_id)) => {
             HttpResponse::Ok().json(RagflowChatResponse {
                 answer,

@@ -298,8 +298,9 @@ impl RAGFlowService {
         &self,
         session_id: String,
         message: String,
+        stream_preference: bool, // Added stream_preference parameter
     ) -> Result<(String, String), RAGFlowError> { // Returns (answer, session_id)
-        info!("Sending chat message to RAGFlow session: {}", session_id);
+        info!("Sending chat message to RAGFlow session: {}, stream_preference: {}", session_id, stream_preference);
         let url = format!(
             "{}/api/v1/agents/{}/completions",
             self.base_url.trim_end_matches('/'),
@@ -308,7 +309,7 @@ impl RAGFlowService {
 
         let request_body = CompletionRequest {
             question: message,
-            stream: true, // RAGFlow itself might be streaming, so we request stream and aggregate
+            stream: stream_preference, // Use the passed-in stream_preference
             session_id: Some(session_id.clone()),
             user_id: None,
             sync_dsl: Some(false),
@@ -328,61 +329,75 @@ impl RAGFlowService {
             return Err(RAGFlowError::StatusError(status, error_message));
         }
 
-        // Aggregate streamed response
-        let mut full_answer = String::new();
-        let mut stream = response.bytes_stream();
+        if !stream_preference {
+            // Handle non-streamed response directly
+            let result: serde_json::Value = response.json().await
+                .map_err(|e| RAGFlowError::ParseError(format!("Failed to parse non-streamed JSON response: {}", e)))?;
+            
+            info!("RAGFlow non-streamed response: {:?}", result);
 
-        while let Some(chunk_result) = stream.next().await {
-            match chunk_result {
-                Ok(chunk_bytes) => { // chunk_bytes is Bytes
-                    let chunk_vec: Vec<u8> = chunk_bytes.to_vec(); // Convert to Vec<u8>
-                    let chunk_str = String::from_utf8_lossy(&chunk_vec);
-                    // RAGFlow SSE format is typically "data: {...}\n\n"
-                    // Multiple "data:" lines can appear in a single chunk in some implementations.
-                    for line in chunk_str.lines() {
-                        if line.starts_with("data:") {
-                            let json_str = line.trim_start_matches("data:").trim();
-                            if json_str.is_empty() { // Skip empty data lines often sent as keep-alives
-                                continue;
-                            }
-                            // Deprecated: if json_str == "[DONE]"
-                            // The RAGFlow API doc indicates the end marker is a JSON object:
-                            // data: {"code": 0, "data": true}
+            let answer = result.get("data")
+                .and_then(|data| data.get("answer"))
+                .and_then(|ans| ans.as_str())
+                .map(|s| s.to_string())
+                .ok_or_else(|| RAGFlowError::ParseError("Answer not found in non-streamed RAGFlow response".to_string()))?;
+            
+            // The session_id in the response data might be the same or a new one if RAGFlow refreshed it.
+            // For consistency, we can use the session_id from the response if available, otherwise the one we sent.
+            let final_session_id = result.get("data")
+                .and_then(|data| data.get("session_id"))
+                .and_then(|sid| sid.as_str())
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| session_id.clone()); // Fallback to original session_id
 
-                            match serde_json::from_str::<serde_json::Value>(json_str) {
-                                Ok(json_val) => {
-                                    // Check for the end-of-stream marker: {"code": 0, "data": true}
-                                    if json_val.get("code").and_then(|c| c.as_i64()) == Some(0) &&
-                                       json_val.get("data").and_then(|d| d.as_bool()) == Some(true) {
-                                        // info!("RAGFlow stream end marker received via JSON.");
-                                        break; // Exit the inner loop over lines (and will break outer due to no more content)
-                                    }
-                                    
-                                    // Extract answer chunk
-                                    if let Some(answer_chunk) = json_val.get("data").and_then(|d| d.get("answer")).and_then(|a| a.as_str()) {
-                                        full_answer.push_str(answer_chunk);
-                                    } else if let Some(answer_chunk) = json_val.get("answer").and_then(|a| a.as_str()) { // Fallback for direct answer
-                                        full_answer.push_str(answer_chunk);
-                                    }
-                                    // Session ID is usually static for the conversation.
-                                },
-                                Err(e) => log::warn!("Failed to parse RAGFlow stream chunk JSON: {}. Chunk: '{}'", e, json_str),
+            Ok((answer, final_session_id))
+        } else {
+            // Aggregate streamed response (existing logic)
+            let mut full_answer = String::new();
+            let mut response_stream = response.bytes_stream();
+
+            while let Some(chunk_result) = response_stream.next().await {
+                match chunk_result {
+                    Ok(chunk_bytes) => {
+                        let chunk_vec: Vec<u8> = chunk_bytes.to_vec();
+                        let chunk_str = String::from_utf8_lossy(&chunk_vec);
+                        for line in chunk_str.lines() {
+                            if line.starts_with("data:") {
+                                let json_str = line.trim_start_matches("data:").trim();
+                                if json_str.is_empty() { continue; }
+
+                                match serde_json::from_str::<serde_json::Value>(json_str) {
+                                    Ok(json_val) => {
+                                        if json_val.get("code").and_then(|c| c.as_i64()) == Some(0) &&
+                                           json_val.get("data").and_then(|d| d.as_bool()) == Some(true) {
+                                            // End of stream marker
+                                            return Ok((full_answer, session_id)); // Return aggregated answer
+                                        }
+                                        
+                                        if let Some(answer_chunk) = json_val.get("data").and_then(|d| d.get("answer")).and_then(|a| a.as_str()) {
+                                            full_answer.push_str(answer_chunk);
+                                        } else if let Some(answer_chunk) = json_val.get("answer").and_then(|a| a.as_str()) {
+                                            full_answer.push_str(answer_chunk);
+                                        }
+                                    },
+                                    Err(e) => log::warn!("Failed to parse RAGFlow stream chunk JSON: {}. Chunk: '{}'", e, json_str),
+                                }
                             }
                         }
+                         // Check for end marker in the whole chunk if not caught by line-by-line parsing
+                        if chunk_str.contains(r#"{"code":0,"data":true}"#) || chunk_str.contains(r#"{"code": 0, "data": true}"#) {
+                             return Ok((full_answer, session_id)); // Return aggregated answer
+                        }
+                    },
+                    Err(e) => {
+                        log::error!("Error reading RAGFlow stream chunk: {}", e);
+                        return Err(RAGFlowError::ReqwestError(e));
                     }
-                    // Check if the specific end-of-stream JSON structure was found in any line of the chunk
-                    // This ensures the outer loop breaks correctly.
-                    if chunk_str.contains(r#"{"code":0,"data":true}"#) || chunk_str.contains(r#"{"code": 0, "data": true}"#) { // Handle potential spacing variations
-                        break;
-                    }
-                },
-                Err(e) => {
-                    log::error!("Error reading RAGFlow stream chunk: {}", e);
-                    return Err(RAGFlowError::ReqwestError(e));
                 }
             }
+            // If loop finishes without explicit end marker, return what was aggregated.
+            Ok((full_answer, session_id))
         }
-        Ok((full_answer, session_id)) // Return aggregated answer and original session_id
     }
 } // This closing brace now correctly closes impl RAGFlowService
 

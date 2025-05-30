@@ -6,59 +6,79 @@ import { Settings } from './settings';
 export const defaultSettings: Settings = {
   visualisation: {
     nodes: {
-      baseColor: '#66d9ef',
-      metalness: 0.2,
-      opacity: 1.0,
-      roughness: 0.7,
-      nodeSize: 0.2, // Changed from sizeRange: [0.01, 0.15]
-      quality: 'medium',
-      enableInstancing: false,
-      enableHologram: false,
+      baseColor: "#0008ff",
+      metalness: 0.63,
+      opacity: 0.65,
+      roughness: 0.73,
+      nodeSize: 0.04,
+      quality: "medium",
+      enableInstancing: false, // From JSON (camelCase)
+      enableHologram: true,    // From JSON (camelCase)
       enableMetadataShape: false,
-      enableMetadataVisualisation: true,
+      enableMetadataVisualisation: false, // From JSON (camelCase)
+      // sizeRange: [0.01, 0.15], // Removed, does not exist in NodeSettings
+      // color: "#ff4500", // Removed, not in NodeSettings
+      // highlightColor: "#ffff00", // Removed, not in NodeSettings
+      // outlineWidth: 0.1, // Removed, not in NodeSettings
+      // outlineColor: "#ffffff", // Removed, not in NodeSettings
+      // selectedColor: "#00ff00", // Removed, not in NodeSettings
     },
     edges: {
-      arrowSize: 0.02,
-      baseWidth: 0.1,
-      color: '#56b6c2',
+      arrowSize: 0.02, // From JSON (camelCase, was 0.5)
+      baseWidth: 0.1,  // From JSON (camelCase, was 0.64)
+      color: "#56b6c2",
       enableArrows: false,
-      opacity: 0.85,
-      widthRange: [0.1, 1.0],
-      quality: 'medium',
-      enableFlowEffect: false,
-      flowSpeed: 1.0,
-      flowIntensity: 1.0,
-      glowStrength: 1.0,
-      distanceIntensity: 1.0,
-      useGradient: false,
-      gradientColors: ['#ffffff', '#000000'],
+      opacity: 0.25,
+      widthRange: [0.1, 1.0], // Kept existing, JSON had [0.1, 0.2] and [0.1, 1]
+      quality: "medium",
+      enableFlowEffect: true,
+      flowSpeed: 1,
+      flowIntensity: 0.6,
+      glowStrength: 1,
+      distanceIntensity: 1,
+      useGradient: true,
+      gradientColors: ["#ffffff", "#000000"],
+      // width: 1, // Removed, does not exist in EdgeSettings
+      // highlightColor: "#ffff00", // Removed, not in EdgeSettings
+      // showLabels: false, // Removed, not in EdgeSettings
+      // dashSize: 3, // Removed, not in EdgeSettings
+      // gapSize: 1, // Removed, not in EdgeSettings
     },
     physics: {
       attractionStrength: 0.05,
-      boundsSize: 15.0,
-      collisionRadius: 0.5,
+      boundsSize: 15.0, // From JSON (camelCase, was 45)
+      collisionRadius: 0.5, // From JSON (camelCase, was 0.9)
       damping: 0.95,
       enableBounds: true,
       enabled: true,
       iterations: 100,
-      maxVelocity: 0.02,
+      maxVelocity: 0.02, // From JSON (camelCase, was 0.446)
       repulsionStrength: 0.1,
       springStrength: 0.2,
-      repulsionDistance: 2.0,
-      massScale: 1.0,
-      boundaryDamping: 0.95,
+      repulsionDistance: 2.0, // From JSON (camelCase, was 7.6)
+      massScale: 1.0, // From JSON (camelCase, was 6.3)
+      boundaryDamping: 0.95, // From JSON (camelCase, was 0.15)
+      // gravity: 0, // Removed, does not exist in PhysicsSettings
+      // friction: 0.9, // Removed, not in PhysicsSettings
+      // attraction: 0.5, // Removed, not in PhysicsSettings
+      // springLength: 30, // Removed, not in PhysicsSettings
     },
     rendering: {
-      ambientLightIntensity: 0.8,
-      backgroundColor: '#181c28',
-      directionalLightIntensity: 0.7,
+      ambientLightIntensity: 0.8, // From JSON (camelCase, was 1.65)
+      backgroundColor: "#181c28", // From JSON (camelCase, was #000000)
+      directionalLightIntensity: 0.7, // From JSON (camelCase, was 1.3)
       enableAmbientOcclusion: false,
-      enableAntialiasing: false,
-      enableShadows: false,
+      enableAntialiasing: false, // From JSON (camelCase, was true)
+      enableShadows: false, // From JSON (camelCase, was true)
       environmentIntensity: 0.7,
-      shadowMapSize: '2048', // Default from settingsUIDefinition
-      shadowBias: 0.0001, // Default from settingsUIDefinition
-      context: 'desktop', // Default from settingsUIDefinition
+      shadowMapSize: "2048",
+      shadowBias: 0.0001,
+      context: "desktop",
+      // pixelRatio: 1.5, // Removed, does not exist in RenderingSettings
+      // enableBloom: true, // Removed, not in RenderingSettings. Use visualisation.bloom.enabled
+      // bloomStrength: 1.5, // Removed, not in RenderingSettings
+      // bloomThreshold: 0.4, // Removed, not in RenderingSettings
+      // bloomRadius: 0.85, // Removed, not in RenderingSettings
     },
     animations: {
       enableMotionBlur: false,
@@ -71,67 +91,87 @@ export const defaultSettings: Settings = {
       waveSpeed: 0.5,
     },
     labels: {
-      desktopFontSize: 0.15,
-      enableLabels: true,
-      textColor: '#f8f8f2',
-      textOutlineColor: '#181c28',
-      textOutlineWidth: 0.01,
-      textResolution: 32,
-      textPadding: 0.3,
-      billboardMode: 'camera',
+      desktopFontSize: 0.15, // From JSON (camelCase, was 0.02)
+      enableLabels: true, // From JSON (camelCase, was false)
+      textColor: "#f8f8f2", // From JSON (camelCase, was #851414)
+      textOutlineColor: "#181c28", // From JSON (camelCase, was #dcdbdb)
+      textOutlineWidth: 0.01, // From JSON (camelCase, was 0.001)
+      textResolution: 32, // From JSON (camelCase, was 15)
+      textPadding: 0.3, // From JSON (camelCase, was 0.06)
+      billboardMode: "camera",
+      // enabled: true, // Removed, 'enableLabels' is used
     },
-    bloom: {
-      edgeBloomStrength: 0.4,
-      enabled: false,
-      environmentBloomStrength: 2.0,
-      nodeBloomStrength: 3.0,
-      radius: 2.0,
-      strength: 3.0,
-      threshold: 0.4, // Default from settingsUIDefinition
+    bloom: { // This section is for visualisation.bloom specific settings
+      edgeBloomStrength: 0.4, // From JSON (camelCase, was 2.8)
+      enabled: true, // From JSON (camelCase)
+      environmentBloomStrength: 2.0, // From JSON (camelCase, was 3.8)
+      nodeBloomStrength: 3.0, // From JSON (camelCase, was 1.5)
+      radius: 0.4,
+      strength: 1.77,
+      threshold: 0.06,
     },
     hologram: {
-      ringCount: 1,
-      ringColor: '#c2a200',
-      ringOpacity: 0.001,
-      sphereSizes: [4, 8],
-      ringRotationSpeed: 10.0,
+      ringCount: 1, // From JSON (camelCase, was 3)
+      ringColor: "#c2a200", // From JSON (camelCase, was #ffffff)
+      ringOpacity: 0.001, // From JSON (camelCase, was 1)
+      sphereSizes: [4, 8], // From JSON (camelCase, was [40.5, 80])
+      ringRotationSpeed: 10.0, // From JSON (camelCase, was 12)
       enableBuckminster: false,
       buckminsterSize: 10,
       buckminsterOpacity: 0.05,
       enableGeodesic: false,
       geodesicSize: 10,
       geodesicOpacity: 0.05,
-      enableTriangleSphere: false,
-      triangleSphereSize: 10,
-      triangleSphereOpacity: 0.05,
-      globalRotationSpeed: 3,
+      enableTriangleSphere: false, // From JSON (camelCase, was true)
+      triangleSphereSize: 10, // From JSON (camelCase, was 60)
+      triangleSphereOpacity: 0.05, // From JSON (camelCase, was 0.3)
+      globalRotationSpeed: 3.0, // From JSON (camelCase, was 0.2)
+      // color: 65535, // Removed, does not exist in HologramSettings
+      // opacity: 0.7, // Removed, not in HologramSettings
     },
-    camera: { // Default values for camera, assuming a common setup
+    camera: {
       fov: 75,
       near: 0.1,
       far: 2000,
       position: { x: 0, y: 10, z: 50 },
       lookAt: { x: 0, y: 0, z: 0 },
     },
+    // sceneBackground: 0, // Removed, not in VisualisationSettings
+    // icons: { // Removed, not in VisualisationSettings
+    //   enabled: true,
+    //   size: 1,
+    //   opacity: 0.8,
+    //   color: "#ffffff",
+    // },
+    // metrics: { // Removed, not in VisualisationSettings
+    //   enabled: false,
+    //   refreshRate: 1000,
+    //   position: "top-right",
+    // },
+    // showStats: false, // Removed, not in VisualisationSettings; likely controlled by system.debug.enablePerformanceDebug
+    // showAxes: false, // Removed, not in VisualisationSettings
+    // showGrid: false, // Removed, not in VisualisationSettings
   },
   system: {
     websocket: {
       binaryChunkSize: 2048,
-      binaryUpdateRate: 30, // Not in settings.ts, but in YAML
-      minUpdateRate: 5, // Not in settings.ts, but in YAML
-      maxUpdateRate: 60, // Not in settings.ts, but in YAML
-      motionThreshold: 0.05, // Not in settings.ts, but in YAML
-      motionDamping: 0.9, // Not in settings.ts, but in YAML
-      binaryMessageVersion: 1, // Not in settings.ts, but in YAML
+      binaryUpdateRate: 30,
+      minUpdateRate: 5,
+      maxUpdateRate: 60,
+      motionThreshold: 0.05,
+      motionDamping: 0.9,
+      binaryMessageVersion: 1,
       compressionEnabled: false,
       compressionThreshold: 512,
-      heartbeatInterval: 10000, // Not in settings.ts, but in YAML
-      heartbeatTimeout: 600000, // Not in settings.ts, but in YAML
-      maxConnections: 100, // Not in settings.ts, but in YAML
-      maxMessageSize: 10485760, // Not in settings.ts, but in YAML
-      reconnectAttempts: 5,
-      reconnectDelay: 1000,
+      heartbeatInterval: 10000,
+      heartbeatTimeout: 600000, // Added from JSON
+      maxConnections: 100,
+      maxMessageSize: 10485760, // Added from JSON
+      reconnectAttempts: 5, // Added from JSON (was not present before under websocket)
+      reconnectDelay: 1000, // Added from JSON (was not present before under websocket)
       updateRate: 60,
+      // reconnectInterval: 2000, // Removed, does not exist in WebSocketSettings
+      // maxReconnectAttempts: 10, // Removed, not in WebSocketSettings. 'reconnectAttempts' is used.
     },
     debug: {
       enabled: false,
@@ -139,31 +179,34 @@ export const defaultSettings: Settings = {
       enableWebsocketDebug: false,
       logBinaryHeaders: false,
       logFullJson: false,
-      logLevel: 'warn',
-      logFormat: 'json', // Not in settings.ts, but in YAML
-      enablePhysicsDebug: false, // Default from settingsUIDefinition
-      enableNodeDebug: false, // Default from settingsUIDefinition
-      enableShaderDebug: false, // Default from settingsUIDefinition
-      enableMatrixDebug: false, // Default from settingsUIDefinition
-      enablePerformanceDebug: false, // Default from settingsUIDefinition
+      logLevel: "info", // From JSON (camelCase, was 'warn')
+      logFormat: "text", // From JSON (camelCase, was 'json')
+      enablePhysicsDebug: false,
+      enableNodeDebug: false,
+      enableShaderDebug: false,
+      enableMatrixDebug: false,
+      enablePerformanceDebug: false,
+      // showPerformance: false, // Removed, does not exist in DebugSettings
+      // showDataUpdates: false, // Removed, not in DebugSettings
     },
-    persistSettings: true, // Default from settingsUIDefinition
-    customBackendUrl: '', // Default from settingsUIDefinition
+    persistSettings: false, // From JSON (camelCase, was true)
+    customBackendUrl: "",
+    // apiEndpoint: "/api", // Removed, not in SystemSettings type
   },
   xr: {
-    enabled: true, // Default from settingsUIDefinition
-    clientSideEnableXR: false, // Default from settingsUIDefinition
-    displayMode: 'inline',
-    roomScale: 1.0,
-    spaceType: 'local-floor',
-    quality: 'medium',
+    enabled: false, // Changed from null to boolean based on type
+    clientSideEnableXR: false,
+    displayMode: "immersive-vr", // From JSON (camelCase, was 'inline')
+    roomScale: 1.0, // Changed from true to 1.0 based on type
+    spaceType: "local-floor",
+    quality: "medium",
     enableHandTracking: true,
     handMeshEnabled: true,
-    handMeshColor: '#4287f5',
+    handMeshColor: "#4287f5",
     handMeshOpacity: 0.3,
     handPointSize: 0.006,
     handRayEnabled: true,
-    handRayColor: '#4287f5',
+    handRayColor: "#4287f5",
     handRayWidth: 0.003,
     gestureSmoothing: 0.7,
     enableHaptics: true,
@@ -172,14 +215,14 @@ export const defaultSettings: Settings = {
     pinchThreshold: 0.3,
     rotationThreshold: 0.08,
     interactionRadius: 0.15,
-    movementSpeed: 0.08,
+    movementSpeed: 1.0, // From JSON (camelCase, was 0.08)
     deadZone: 0.12,
-    movementAxesHorizontal: 2,
-    movementAxesVertical: 3,
+    movementAxesHorizontal: 2, // From JSON (camelCase, was movementAxes: {horizontal: 2, vertical: 3})
+    movementAxesVertical: 3,   // From JSON (camelCase, was movementAxes: {horizontal: 2, vertical: 3})
     enableLightEstimation: false,
     enablePlaneDetection: false,
     enableSceneUnderstanding: false,
-    planeColor: '#4287f5',
+    planeColor: "#4287f5",
     planeOpacity: 0.001,
     planeDetectionDistance: 3.0,
     showPlaneOverlay: false,
@@ -189,30 +232,38 @@ export const defaultSettings: Settings = {
     passthroughBrightness: 1.1,
     passthroughContrast: 1.2,
     portalSize: 2.5,
-    portalEdgeColor: '#4287f5',
+    portalEdgeColor: "#4287f5",
     portalEdgeWidth: 0.02,
-    controllerModel: 'default',
+    controllerModel: "default",
     renderScale: 1.0,
-    interactionDistance: 1.0,
-    locomotionMethod: 'teleport',
-    teleportRayColor: '#ffffff',
-    controllerRayColor: '#ffffff',
+    interactionDistance: 1.5, // From JSON (camelCase, was 1.0)
+    locomotionMethod: "teleport",
+    teleportRayColor: "#ffffff",
+    controllerRayColor: "#ffffff",
+    // handTracking: true, // Duplicate of enableHandTracking
+    // mode: "inline", // Duplicate of displayMode
+    // teleportEnabled: true, // Removed, not in XRSettings
+    // showFloor: true, // Removed, not in XRSettings
+    // handInteraction: true, // Removed, not in XRSettings
+    // grabThreshold: 0.1, // Removed, not in XRSettings
+    // controllerPointerSize: 0.01, // Removed, not in XRSettings
+    // hapticFeedback: true, // Duplicate of enableHaptics
   },
   auth: {
-    enabled: false,
-    provider: '',
+    enabled: true, // From JSON (camelCase, was false)
+    provider: "nostr", // From JSON (camelCase, was '')
     required: false,
   },
   ragflow: {
-    agentId: 'aa2e328812ef11f083dc0a0d6226f61b',
+    agentId: "aa2e328812ef11f083dc0a0d6226f61b",
     timeout: 30,
     maxRetries: 3,
-    chatId: '',
+    chatId: "",
   },
   perplexity: {
-    apiKey: '',
-    model: 'llama-3.1-sonar-small-128k-online',
-    apiUrl: '',
+    apiKey: "",
+    model: "llama-3.1-sonar-small-128k-online",
+    apiUrl: "",
     maxTokens: 4096,
     temperature: 0.5,
     topP: 0.9,
@@ -222,15 +273,15 @@ export const defaultSettings: Settings = {
     rateLimit: 100,
   },
   openai: {
-    apiKey: '',
-    baseUrl: '',
+    apiKey: "",
+    baseUrl: "",
     timeout: 30,
     rateLimit: 100,
   },
   kokoro: {
-    apiUrl: 'http://pedantic_morse:8880',
-    defaultVoice: 'af_heart',
-    defaultFormat: 'mp3',
+    apiUrl: "http://pedantic_morse:8880",
+    defaultVoice: "af_heart",
+    defaultFormat: "mp3",
     defaultSpeed: 1.0,
     timeout: 30,
     stream: true,
