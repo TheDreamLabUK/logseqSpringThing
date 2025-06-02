@@ -2,7 +2,7 @@
 
 use actix::prelude::*;
 use serde_json::Value;
-use log::{debug, info, warn, error};
+use log::{debug, info, warn};
 
 use crate::actors::messages::*;
 use crate::config::AppFullSettings;

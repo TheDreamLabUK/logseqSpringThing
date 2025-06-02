@@ -15,7 +15,7 @@ use scopeguard;
 
 use tokio::fs::File as TokioFile;
 use crate::models::graph::GraphData;
-use crate::utils::socket_flow_messages::Node;
+use crate::models::node::Node; // Corrected Node import
 use crate::models::edge::Edge;
 use crate::models::metadata::MetadataStore;
 use crate::app_state::AppState;
@@ -23,7 +23,12 @@ use crate::config::AppFullSettings; // Use AppFullSettings, ClientFacingSettings
 use crate::utils::gpu_compute::GPUCompute;
 use crate::models::simulation_params::{SimulationParams, SimulationPhase, SimulationMode};
 use crate::models::pagination::PaginatedGraphData;
-use crate::handlers::socket_flow_handler::ClientManager;
+// Removed: use crate::handlers::socket_flow_handler::ClientManager;
+// ClientManagerActor is used instead
+use crate::actors::client_manager_actor::ClientManagerActor;
+use actix::Addr; // Added Addr import
+use crate::actors::messages::BroadcastNodePositions;
+use crate::utils::binary_protocol;
 use tokio::sync::Mutex;
 use once_cell::sync::Lazy;
 
@@ -67,7 +72,7 @@ pub struct GraphService {
     _pending_updates: Arc<RwLock<HashMap<u32, (Node, Instant)>>>, // Dead Code
     cache_enabled: bool,
     simulation_id: String,
-    // client_manager: Option<Arc<ClientManager>>, // Removed: ClientManager will be passed to methods needing it
+    // client_manager: Option<Addr<ClientManagerActor>>, // ClientManagerActor address
     _is_initialized: Arc<AtomicBool>, // Dead Code
     shutdown_requested: Arc<AtomicBool>,
 }
@@ -76,7 +81,7 @@ impl GraphService {
     pub async fn new(
         settings: Arc<RwLock<AppFullSettings>>, // Changed to AppFullSettings
         gpu_compute: Option<Arc<RwLock<GPUCompute>>>,
-        client_manager_for_loop: Arc<ClientManager> // Added for the simulation loop
+        client_manager_for_loop: Addr<ClientManagerActor> // Changed to Addr<ClientManagerActor>
     ) -> Self {
         // Get physics settings
         let physics_settings = settings.read().await.visualisation.physics.clone();
@@ -298,12 +303,21 @@ impl GraphService {
     // }
  
     // Helper method to broadcast position updates to all clients
-    async fn broadcast_positions(client_manager: Arc<ClientManager>, nodes: &[Node]) {
-        // Clone nodes for broadcasting
-        let nodes_to_broadcast = nodes.to_vec();
-        
-        // Broadcast to all clients through the client manager
-        client_manager.broadcast_node_positions(nodes_to_broadcast).await;
+    async fn broadcast_positions(client_manager_addr: Addr<ClientManagerActor>, nodes: &[Node]) {
+        // Encode node data for broadcasting
+        // The binary_protocol::encode_node_data expects a slice of (u32, BinaryNodeData)
+        // We need to convert our Vec<Node> to this format.
+        let positions_to_encode: Vec<(u32, crate::utils::socket_flow_messages::BinaryNodeData)> = nodes.iter().map(|node| (node.id, node.data)).collect();
+
+        match binary_protocol::encode_node_data(&positions_to_encode) {
+            Ok(binary_data) => {
+                // Send BroadcastNodePositions message to ClientManagerActor
+                client_manager_addr.do_send(BroadcastNodePositions { positions: binary_data });
+            }
+            Err(e) => {
+                error!("Failed to encode node positions for broadcast: {}", e);
+            }
+        }
     }
 
     /// Shutdown the simulation loop to allow creating a new instance
@@ -1196,7 +1210,7 @@ impl GraphService {
         self.gpu_compute.clone()
     }
  
-    pub async fn update_node_positions(&self, updates: Vec<(u32, Node)>, client_manager: Arc<ClientManager>) -> Result<(), Error> {
+    pub async fn update_node_positions(&self, updates: Vec<(u32, Node)>, client_manager_addr: Addr<ClientManagerActor>) -> Result<(), Error> {
         let mut graph = self.graph_data.write().await;
         let mut node_map = self.node_map.write().await;
         
@@ -1236,7 +1250,7 @@ impl GraphService {
         });
         
         // Broadcast all positions
-        Self::broadcast_positions(client_manager, &graph.nodes).await;
+        Self::broadcast_positions(client_manager_addr, &graph.nodes).await;
         
         Ok(())
     }
@@ -1392,13 +1406,13 @@ pub async fn initialize_gpu(&mut self, graph_data: &GraphData) -> Result<(), Err
     }
     
     /// Start a separate broadcast loop to periodically push position updates to all clients
-    pub fn start_broadcast_loop(&self, client_manager: Arc<ClientManager>) {
+    pub fn start_broadcast_loop(&self, client_manager_addr: Addr<ClientManagerActor>) {
         info!("[GraphService] Starting position broadcast loop for client synchronization...");
  
         // Clone what we need for the async task
         let service_clone = self.clone();
         let simulation_id = self.simulation_id.clone();
-        let captured_client_manager = client_manager.clone(); // Capture ClientManager for the loop
+        let captured_client_manager_addr = client_manager_addr.clone(); // Capture ClientManagerActor Addr for the loop
  
         // Spawn a new task for the broadcast loop
         tokio::spawn(async move {
@@ -1414,11 +1428,11 @@ pub async fn initialize_gpu(&mut self, graph_data: &GraphData) -> Result<(), Err
  
                 // Get current node positions
                 let nodes = service_clone.get_node_positions().await;
- 
-                // Broadcast positions to all clients if we have any
-                if !nodes.is_empty() {
-                    GraphService::broadcast_positions(captured_client_manager.clone(), &nodes).await;
-                }
+ // Broadcast positions to all clients if we have any
+ if !nodes.is_empty() {
+     GraphService::broadcast_positions(captured_client_manager_addr.clone(), &nodes).await;
+ }
+
  
                 // Sleep to avoid excessive updates
                 tokio::time::sleep(Duration::from_millis(100)).await;

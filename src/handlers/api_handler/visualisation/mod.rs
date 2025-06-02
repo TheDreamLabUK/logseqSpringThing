@@ -1,4 +1,4 @@
-use crate::config::Settings;
+use crate::config::{Settings, SystemSettings, ClientWebSocketSettings, DebugSettings as ConfigDebugSettings, VisualisationSettings, XRSettings, AuthSettings, RagFlowSettings, PerplexitySettings, OpenAISettings, KokoroSettings};
 use crate::AppState;
 use crate::actors::messages::{GetSettings, UpdateSettings};
 use actix_web::{error::ErrorInternalServerError, web, Error, HttpResponse, Result};
@@ -267,17 +267,25 @@ pub async fn get_setting(
 
     // Convert AppFullSettings to Settings for compatibility with existing helper functions
     let converted_settings = Settings {
-        // Map the relevant fields from AppFullSettings to Settings
-        // This is a temporary compatibility layer
-        debug_mode: settings.system.debug.enabled,
-        debug: crate::config::DebugSettings {
-            enable_websocket_debug: settings.system.debug.enable_websocket_debug,
-            enable_data_debug: settings.system.debug.enable_data_debug,
-            log_binary_headers: settings.system.debug.log_binary_headers,
-            log_full_json: settings.system.debug.log_full_json,
+        visualisation: settings.visualisation.clone(),
+        system: SystemSettings {
+            websocket: ClientWebSocketSettings {
+                reconnect_attempts: settings.system.websocket.reconnect_attempts,
+                reconnect_delay: settings.system.websocket.reconnect_delay,
+                binary_chunk_size: settings.system.websocket.binary_chunk_size,
+                compression_enabled: settings.system.websocket.compression_enabled,
+                compression_threshold: settings.system.websocket.compression_threshold,
+                update_rate: settings.system.websocket.update_rate,
+            },
+            debug: settings.system.debug.clone(),
+            persist_settings: settings.system.persist_settings,
         },
-        // Add other field mappings as needed
-        ..Default::default()
+        xr: settings.xr.clone(),
+        auth: settings.auth.clone(),
+        ragflow: settings.ragflow.clone(),
+        perplexity: settings.perplexity.clone(),
+        openai: settings.openai.clone(),
+        kokoro: settings.kokoro.clone(),
     };
 
     match get_setting_value(&converted_settings, &category, &setting) {
@@ -342,24 +350,49 @@ pub async fn update_setting(
 
     // Convert AppFullSettings to Settings for compatibility with existing helper functions
     let mut converted_settings = Settings {
-        debug_mode: settings.system.debug.enabled,
-        debug: crate::config::DebugSettings {
-            enable_websocket_debug: settings.system.debug.enable_websocket_debug,
-            enable_data_debug: settings.system.debug.enable_data_debug,
-            log_binary_headers: settings.system.debug.log_binary_headers,
-            log_full_json: settings.system.debug.log_full_json,
+        visualisation: settings.visualisation.clone(),
+        system: SystemSettings {
+            websocket: ClientWebSocketSettings {
+                reconnect_attempts: settings.system.websocket.reconnect_attempts,
+                reconnect_delay: settings.system.websocket.reconnect_delay,
+                binary_chunk_size: settings.system.websocket.binary_chunk_size,
+                compression_enabled: settings.system.websocket.compression_enabled,
+                compression_threshold: settings.system.websocket.compression_threshold,
+                update_rate: settings.system.websocket.update_rate,
+            },
+            debug: settings.system.debug.clone(),
+            persist_settings: settings.system.persist_settings,
         },
-        ..Default::default()
+        xr: settings.xr.clone(),
+        auth: settings.auth.clone(),
+        ragflow: settings.ragflow.clone(),
+        perplexity: settings.perplexity.clone(),
+        openai: settings.openai.clone(),
+        kokoro: settings.kokoro.clone(),
     };
 
     match update_setting_value(&mut converted_settings, &category, &setting, &value) {
         Ok(_) => {
             // Convert back to AppFullSettings and update
-            settings.system.debug.enabled = converted_settings.debug_mode;
-            settings.system.debug.enable_websocket_debug = converted_settings.debug.enable_websocket_debug;
-            settings.system.debug.enable_data_debug = converted_settings.debug.enable_data_debug;
-            settings.system.debug.log_binary_headers = converted_settings.debug.log_binary_headers;
-            settings.system.debug.log_full_json = converted_settings.debug.log_full_json;
+            settings.visualisation = converted_settings.visualisation.clone();
+            
+            // Update only the client-modifiable parts of system.websocket
+            settings.system.websocket.reconnect_attempts = converted_settings.system.websocket.reconnect_attempts;
+            settings.system.websocket.reconnect_delay = converted_settings.system.websocket.reconnect_delay;
+            settings.system.websocket.binary_chunk_size = converted_settings.system.websocket.binary_chunk_size;
+            settings.system.websocket.compression_enabled = converted_settings.system.websocket.compression_enabled;
+            settings.system.websocket.compression_threshold = converted_settings.system.websocket.compression_threshold;
+            settings.system.websocket.update_rate = converted_settings.system.websocket.update_rate;
+            // Other fields of settings.system.websocket (ServerFullWebSocketSettings) remain untouched from the original AppFullSettings load.
+
+            settings.system.debug = converted_settings.system.debug.clone();
+            settings.system.persist_settings = converted_settings.system.persist_settings;
+            settings.xr = converted_settings.xr.clone();
+            settings.auth = converted_settings.auth.clone();
+            settings.ragflow = converted_settings.ragflow.clone();
+            settings.perplexity = converted_settings.perplexity.clone();
+            settings.openai = converted_settings.openai.clone();
+            settings.kokoro = converted_settings.kokoro.clone();
 
             // Update settings via actor
             match app_state.settings_addr.send(UpdateSettings { settings }).await {
@@ -437,14 +470,25 @@ pub async fn get_category_settings(
 
     // Convert AppFullSettings to Settings for compatibility with existing helper functions
     let converted_settings = Settings {
-        debug_mode: settings.system.debug.enabled,
-        debug: crate::config::DebugSettings {
-            enable_websocket_debug: settings.system.debug.enable_websocket_debug,
-            enable_data_debug: settings.system.debug.enable_data_debug,
-            log_binary_headers: settings.system.debug.log_binary_headers,
-            log_full_json: settings.system.debug.log_full_json,
+        visualisation: settings.visualisation.clone(),
+        system: SystemSettings {
+            websocket: ClientWebSocketSettings {
+                reconnect_attempts: settings.system.websocket.reconnect_attempts,
+                reconnect_delay: settings.system.websocket.reconnect_delay,
+                binary_chunk_size: settings.system.websocket.binary_chunk_size,
+                compression_enabled: settings.system.websocket.compression_enabled,
+                compression_threshold: settings.system.websocket.compression_threshold,
+                update_rate: settings.system.websocket.update_rate,
+            },
+            debug: settings.system.debug.clone(),
+            persist_settings: settings.system.persist_settings,
         },
-        ..Default::default()
+        xr: settings.xr.clone(),
+        auth: settings.auth.clone(),
+        ragflow: settings.ragflow.clone(),
+        perplexity: settings.perplexity.clone(),
+        openai: settings.openai.clone(),
+        kokoro: settings.kokoro.clone(),
     };
 
     let settings_value = serde_json::to_value(&converted_settings)

@@ -220,3 +220,8 @@ pub fn array_to_vec3data(arr: [f32; 3]) -> Vec3Data {
 pub fn vec3data_to_glam(vec: &Vec3Data) -> Vec3 {
     Vec3::new(vec.x, vec.y, vec.z)
 }
+
+#[inline]
+pub fn glam_to_vec3data(vec: glam::Vec3) -> Vec3Data {
+    Vec3Data::new(vec.x, vec.y, vec.z)
+}

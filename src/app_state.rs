@@ -8,7 +8,7 @@ use crate::config::AppFullSettings; // Renamed for clarity, ClientFacingSettings
 use tokio::time::Duration;
 use crate::config::feature_access::FeatureAccess;
 use crate::models::metadata::MetadataStore;
-use crate::models::protected_settings::{ApiKeys, NostrUser};
+use crate::models::protected_settings::{ProtectedSettings, ApiKeys, NostrUser};
 use crate::services::github::{GitHubClient, ContentAPI};
 use crate::services::perplexity_service::PerplexityService;
 use crate::services::speech_service::SpeechService;

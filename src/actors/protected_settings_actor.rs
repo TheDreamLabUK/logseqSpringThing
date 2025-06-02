@@ -1,6 +1,5 @@
 use actix::prelude::*;
-use std::collections::HashMap;
-use log::{info, error};
+use log::info;
 use serde_json::Value;
 
 use crate::models::protected_settings::{ProtectedSettings, NostrUser, ApiKeys};
@@ -32,10 +31,10 @@ pub struct GetApiKeys {
 }
 
 impl Handler<GetApiKeys> for ProtectedSettingsActor {
-    type Result = ApiKeys;
+    type Result = MessageResult<GetApiKeys>;
     
     fn handle(&mut self, msg: GetApiKeys, _ctx: &mut Self::Context) -> Self::Result {
-        self.settings.get_api_keys(&msg.pubkey)
+        MessageResult(self.settings.get_api_keys(&msg.pubkey))
     }
 }
 

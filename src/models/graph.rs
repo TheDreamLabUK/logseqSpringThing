@@ -1,4 +1,4 @@
-use crate::utils::socket_flow_messages::Node;
+use crate::models::node::Node;
 use super::edge::Edge;
 use super::metadata::MetadataStore;
 use serde::{Deserialize, Serialize};

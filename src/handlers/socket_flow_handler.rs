@@ -1,12 +1,9 @@
 use actix::{prelude::*, Actor, Handler, Message};
 use actix_web::{web, Error, HttpRequest, HttpResponse};
 use actix_web_actors::ws;
-use crate::config::AppFullSettings;
 use log::{trace, debug, error, info, warn};
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicUsize, Ordering};
-use tokio::sync::RwLock;
 use std::time::Instant;
 
 use crate::app_state::AppState;
@@ -382,11 +379,11 @@ async fn fetch_nodes(
 
     // Get debug settings from SettingsActor
     use crate::actors::messages::GetSettingByPath;
-    let debug_enabled = match settings_addr.send(GetSettingByPath("system.debug.enabled".to_string())).await {
+    let debug_enabled = match settings_addr.send(GetSettingByPath { path: "system.debug.enabled".to_string() }).await {
         Ok(Ok(value)) => value.as_bool().unwrap_or(false),
         _ => false,
     };
-    let debug_websocket = match settings_addr.send(GetSettingByPath("system.debug.enable_websocket_debug".to_string())).await {
+    let debug_websocket = match settings_addr.send(GetSettingByPath { path: "system.debug.enable_websocket_debug".to_string() }).await {
         Ok(Ok(value)) => value.as_bool().unwrap_or(false),
         _ => false,
     };
@@ -689,9 +686,9 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
                                 let settings_addr = app_state.settings_addr.clone();
                                 
                                 // Get physics settings
-                                if let Ok(Ok(iterations_val)) = settings_addr.send(GetSettingByPath("visualisation.physics.iterations".to_string())).await {
-                                    if let Ok(Ok(spring_val)) = settings_addr.send(GetSettingByPath("visualisation.physics.spring_strength".to_string())).await {
-                                        if let Ok(Ok(repulsion_val)) = settings_addr.send(GetSettingByPath("visualisation.physics.repulsion_strength".to_string())).await {
+                                if let Ok(Ok(iterations_val)) = settings_addr.send(GetSettingByPath { path: "visualisation.physics.iterations".to_string() }).await {
+                                    if let Ok(Ok(spring_val)) = settings_addr.send(GetSettingByPath { path: "visualisation.physics.spring_strength".to_string() }).await {
+                                        if let Ok(Ok(repulsion_val)) = settings_addr.send(GetSettingByPath { path: "visualisation.physics.repulsion_strength".to_string() }).await {
                                             // Send simulation step message to GraphServiceActor
                                             use crate::actors::messages::SimulationStep;
                                             if let Err(e) = app_state.graph_service_addr.send(SimulationStep).await {
@@ -755,11 +752,11 @@ pub async fn socket_flow_handler(
     use crate::actors::messages::GetSettingByPath;
     let settings_addr = app_state_arc.settings_addr.clone();
     
-    let debug_enabled = match settings_addr.send(GetSettingByPath("system.debug.enabled".to_string())).await {
+    let debug_enabled = match settings_addr.send(GetSettingByPath { path: "system.debug.enabled".to_string() }).await {
         Ok(Ok(value)) => value.as_bool().unwrap_or(false),
         _ => false,
     };
-    let debug_websocket = match settings_addr.send(GetSettingByPath("system.debug.enable_websocket_debug".to_string())).await {
+    let debug_websocket = match settings_addr.send(GetSettingByPath { path: "system.debug.enable_websocket_debug".to_string() }).await {
         Ok(Ok(value)) => value.as_bool().unwrap_or(false),
         _ => false,
     };
@@ -778,7 +775,11 @@ pub async fn socket_flow_handler(
     let ws = SocketFlowServer::new(app_state_arc, pre_read_ws_settings.get_ref().clone(), client_manager_addr);
 
     // Start WebSocket with compression enabled (permessage-deflate)
-    match ws::start_with_protocols(ws, &["permessage-deflate"], &req, stream) {
+    // Prefer WsResponseBuilder for setting protocols
+    match ws::WsResponseBuilder::new(ws, &req, stream)
+        .protocols(&["permessage-deflate"])
+        .start()
+    {
         Ok(response) => {
             info!("[WebSocket] Client connected successfully with compression support");
             Ok(response)

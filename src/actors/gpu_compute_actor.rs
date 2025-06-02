@@ -3,7 +3,6 @@ use log::{error, warn, info, trace};
 use std::io::{Error, ErrorKind};
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
-use tokio::time::sleep;
 
 use cudarc::driver::{CudaDevice, CudaFunction, CudaSlice, LaunchConfig};
 use cudarc::nvrtc::Ptx;
@@ -447,15 +446,15 @@ impl Handler<GetNodeData> for GPUComputeActor {
 }
 
 impl Handler<GetGPUStatus> for GPUComputeActor {
-    type Result = GPUStatus;
+    type Result = MessageResult<GetGPUStatus>;
 
     fn handle(&mut self, _msg: GetGPUStatus, _ctx: &mut Self::Context) -> Self::Result {
-        GPUStatus {
+        MessageResult(GPUStatus {
             is_initialized: self.device.is_some(),
             cpu_fallback_active: self.cpu_fallback_active,
             failure_count: self.gpu_failure_count,
             iteration_count: self.iteration_count,
             num_nodes: self.num_nodes,
-        }
+        })
     }
 }

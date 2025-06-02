@@ -1,4 +1,7 @@
 use actix_web::{web, Error as ActixError, HttpResponse};
+use std::sync::Arc;
+use crate::actors::messages::{GetSettings, UpdateMetadata, BuildGraphFromMetadata, GetNodeData as GetGpuNodeData};
+use crate::models::graph::GraphData as ModelsGraphData;
 use serde_json::json;
 use log::{info, debug, error};
 
@@ -20,9 +23,20 @@ pub async fn fetch_and_process_files(state: web::Data<AppState>) -> HttpResponse
         }
     };
     
-    let file_service = FileService::new(state.settings.clone());
+    let settings = match state.settings_addr.send(GetSettings).await {
+        Ok(Ok(s)) => Arc::new(s),
+        _ => {
+            error!("Failed to retrieve settings from SettingsActor");
+            return HttpResponse::InternalServerError().json(json!({
+                "status": "error",
+                "message": "Failed to retrieve application settings"
+            }));
+        }
+    };
     
-    match file_service.fetch_and_process_files(state.content_api.clone(), state.settings.clone(), &mut metadata_store).await {
+    let file_service = FileService::new(settings.clone());
+    
+    match file_service.fetch_and_process_files(state.content_api.clone(), settings.clone(), &mut metadata_store).await {
         Ok(processed_files) => {
             let file_names: Vec<String> = processed_files.iter()
                 .map(|pf| pf.file_name.clone())
@@ -31,14 +45,16 @@ pub async fn fetch_and_process_files(state: web::Data<AppState>) -> HttpResponse
             info!("Successfully processed {} public markdown files", processed_files.len());
 
             {
-                let mut metadata = state.metadata.write().await;
-                for processed_file in &processed_files {
-                    metadata_store.insert(processed_file.file_name.clone(), processed_file.metadata.clone());
-                    debug!("Updated metadata for: {}", processed_file.file_name);
+                // Send UpdateMetadata message to MetadataActor
+                if let Err(e) = state.metadata_addr.send(UpdateMetadata { metadata: metadata_store.clone() }).await {
+                    error!("Failed to send UpdateMetadata message to MetadataActor: {}", e);
+                    // Decide if this is a critical error to return
                 }
-                *metadata = metadata_store.clone();
             }
 
+            // FileService::save_metadata might also need to be an actor message if it implies shared state,
+            // but for now, assuming it's a static utility or local file operation.
+            // If it interacts with shared state, it should be refactored.
             if let Err(e) = FileService::save_metadata(&metadata_store) {
                 error!("Failed to save metadata: {}", e);
                 return HttpResponse::InternalServerError().json(json!({
@@ -47,25 +63,27 @@ pub async fn fetch_and_process_files(state: web::Data<AppState>) -> HttpResponse
                 }));
             }
 
-            match GraphService::build_graph(&state).await {
-                Ok(graph_data) => {
-                    let mut graph = state.graph_service.get_graph_data_mut().await;
-                    let mut node_map = state.graph_service.get_node_map_mut().await;
-                    *graph = graph_data.clone();
-                    
-                    // Update node_map with new graph nodes
-                    node_map.clear();
-                    for node in &graph.nodes {
-                        node_map.insert(node.id.clone(), node.clone());
-                    }
-                    
-                    info!("Graph data structure updated successfully");
+            // Send BuildGraphFromMetadata message to GraphServiceActor
+            match state.graph_service_addr.send(BuildGraphFromMetadata { metadata: metadata_store.clone() }).await {
+                Ok(Ok(())) => {
+                    info!("Graph data structure updated successfully via GraphServiceActor");
 
-                    if let Some(gpu) = &state.gpu_compute {
-                        if let Ok(_nodes) = gpu.read().await.get_node_data() {
-                            debug!("GPU node positions updated successfully");
-                        } else {
-                            error!("Failed to get node positions from GPU");
+                    // If GPU is present, potentially trigger an update or fetch data
+                    if let Some(gpu_addr) = &state.gpu_compute_addr {
+                        // Example: Trigger GPU re-initialization or update if necessary
+                        // This depends on how GPUComputeActor handles graph updates.
+                        // For now, let's assume GraphServiceActor coordinates with GPUComputeActor if needed.
+                        // Or, if we just need to get data for a response:
+                        match gpu_addr.send(GetGpuNodeData).await {
+                            Ok(Ok(_nodes)) => {
+                                debug!("GPU node data fetched successfully after graph update");
+                            }
+                            Ok(Err(e)) => {
+                                error!("Failed to get node data from GPU actor: {}", e);
+                            }
+                            Err(e) => {
+                                error!("Mailbox error getting node data from GPU actor: {}", e);
+                            }
                         }
                     }
 
@@ -121,25 +139,21 @@ pub async fn refresh_graph(state: web::Data<AppState>) -> HttpResponse {
         }
     };
 
-    match GraphService::build_graph_from_metadata(&metadata_store).await {
-        Ok(graph_data) => {
-            let mut graph = state.graph_service.get_graph_data_mut().await;
-            let mut node_map = state.graph_service.get_node_map_mut().await;
-            *graph = graph_data.clone();
-            
-            // Update node_map with new graph nodes
-            node_map.clear();
-            for node in &graph.nodes {
-                node_map.insert(node.id.clone(), node.clone());
-            }
-            
-            info!("Graph data structure refreshed successfully");
+    match state.graph_service_addr.send(BuildGraphFromMetadata { metadata: metadata_store.clone() }).await {
+        Ok(Ok(())) => {
+            info!("Graph data structure refreshed successfully via GraphServiceActor");
 
-            if let Some(gpu) = &state.gpu_compute {
-                if let Ok(_nodes) = gpu.read().await.get_node_data() {
-                    debug!("GPU node positions updated successfully");
-                } else {
-                    error!("Failed to get node positions from GPU");
+            if let Some(gpu_addr) = &state.gpu_compute_addr {
+                 match gpu_addr.send(GetGpuNodeData).await {
+                    Ok(Ok(_nodes)) => {
+                        debug!("GPU node data fetched successfully after graph refresh");
+                    }
+                    Ok(Err(e)) => {
+                        error!("Failed to get node data from GPU actor after refresh: {}", e);
+                    }
+                    Err(e) => {
+                        error!("Mailbox error getting node data from GPU actor after refresh: {}", e);
+                    }
                 }
             }
 
@@ -170,23 +184,21 @@ pub async fn update_graph(state: web::Data<AppState>) -> Result<HttpResponse, Ac
         }
     };
 
-    match GraphService::build_graph_from_metadata(&metadata_store).await {
-        Ok(graph) => {
-            let mut graph_data = state.graph_service.get_graph_data_mut().await;
-            let mut node_map = state.graph_service.get_node_map_mut().await;
-            *graph_data = graph.clone();
-            
-            // Update node_map with new graph nodes
-            node_map.clear();
-            for node in &graph_data.nodes {
-                node_map.insert(node.id.clone(), node.clone());
-            }
-            
-            if let Some(gpu) = &state.gpu_compute {
-                if let Ok(_nodes) = gpu.read().await.get_node_data() {
-                    debug!("GPU node positions updated successfully");
-                } else {
-                    error!("Failed to get node positions from GPU");
+    match state.graph_service_addr.send(BuildGraphFromMetadata { metadata: metadata_store.clone() }).await {
+        Ok(Ok(())) => {
+            info!("Graph data structure updated successfully via GraphServiceActor in update_graph");
+
+            if let Some(gpu_addr) = &state.gpu_compute_addr {
+                match gpu_addr.send(GetGpuNodeData).await {
+                    Ok(Ok(_nodes)) => {
+                        debug!("GPU node data fetched successfully after graph update in update_graph");
+                    }
+                    Ok(Err(e)) => {
+                        error!("Failed to get node data from GPU actor after update in update_graph: {}", e);
+                    }
+                    Err(e) => {
+                        error!("Mailbox error getting node data from GPU actor after update in update_graph: {}", e);
+                    }
                 }
             }
             

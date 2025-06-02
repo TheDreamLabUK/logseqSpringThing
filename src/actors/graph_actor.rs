@@ -4,7 +4,7 @@ use actix::prelude::*;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::Arc;
-use tokio::time::{interval, Duration};
+use tokio::time::Duration;
 use log::{debug, info, warn, error};
 use actix::fut::WrapFuture;
 
@@ -13,8 +13,8 @@ use crate::actors::client_manager_actor::ClientManagerActor;
 use crate::models::node::Node;
 use crate::models::edge::Edge;
 use crate::models::metadata::MetadataStore;
-use crate::services::graph_service::GraphData;
-use crate::utils::socket_flow_messages::BinaryNodeData;
+use crate::models::graph::GraphData;
+use crate::utils::socket_flow_messages::{BinaryNodeData, glam_to_vec3data}; // Added glam_to_vec3data
 use crate::utils::binary_protocol;
 use crate::actors::gpu_compute_actor::GPUComputeActor;
 
@@ -34,10 +34,7 @@ impl GraphServiceActor {
         gpu_compute_addr: Option<Addr<GPUComputeActor>>,
     ) -> Self {
         Self {
-            graph_data: GraphData {
-                nodes: Vec::new(),
-                edges: Vec::new(),
-            },
+            graph_data: GraphData::new(), // Use GraphData::new()
             node_map: HashMap::new(),
             gpu_compute_addr,
             client_manager,
@@ -111,29 +108,62 @@ impl GraphServiceActor {
         self.node_map.clear();
 
         // Build nodes from metadata
-        for (filename, file_metadata) in metadata.files {
-            let node_id = self.next_node_id.fetch_add(1, Ordering::SeqCst);
+        // Assuming metadata is MetadataStore which is HashMap<String, crate::models::metadata::Metadata>
+        for (filename_with_ext, file_meta_data) in metadata { // Iterate directly over MetadataStore
+            let node_id_val = self.next_node_id.fetch_add(1, Ordering::SeqCst);
+            let metadata_id_val = filename_with_ext.trim_end_matches(".md").to_string();
             
-            let node = Node {
-                id: node_id,
-                metadata_id: filename.clone(),
-                label: file_metadata.title.unwrap_or(filename),
-                data: BinaryNodeData {
-                    position: crate::types::vec3::Vec3Data { x: 0.0, y: 0.0, z: 0.0 },
-                    velocity: crate::types::vec3::Vec3Data { x: 0.0, y: 0.0, z: 0.0 },
-                    mass: 1.0,
-                    flags: 0,
-                    padding: [0, 0],
-                },
-                properties: file_metadata.properties.unwrap_or_default(),
-                references: file_metadata.references.unwrap_or_default(),
-            };
+            let mut node = Node::new_with_id(metadata_id_val.clone(), Some(node_id_val));
+            node.label = file_meta_data.file_name.trim_end_matches(".md").to_string();
+            
+            // Set file size, which also calculates mass
+            node.set_file_size(file_meta_data.file_size as u64);
+            node.data.flags = 1; // Active by default
+
+            // Populate node.metadata
+            node.metadata.insert("fileName".to_string(), file_meta_data.file_name.clone());
+            node.metadata.insert("fileSize".to_string(), file_meta_data.file_size.to_string());
+            node.metadata.insert("nodeSize".to_string(), file_meta_data.node_size.to_string());
+            node.metadata.insert("hyperlinkCount".to_string(), file_meta_data.hyperlink_count.to_string());
+            node.metadata.insert("sha1".to_string(), file_meta_data.sha1.clone());
+            node.metadata.insert("lastModified".to_string(), file_meta_data.last_modified.to_rfc3339());
+            if !file_meta_data.perplexity_link.is_empty() {
+                node.metadata.insert("perplexityLink".to_string(), file_meta_data.perplexity_link.clone());
+            }
+            if let Some(last_process) = file_meta_data.last_perplexity_process {
+                node.metadata.insert("lastPerplexityProcess".to_string(), last_process.to_rfc3339());
+            }
+            // Add metadataId for client-side mapping
+            node.metadata.insert("metadataId".to_string(), metadata_id_val);
+
 
             self.add_node(node);
         }
 
-        // TODO: Build edges from references
-        // This would involve parsing the references in each node and creating edges
+        // Build edges from topic counts
+        let mut edge_map: HashMap<(u32, u32), f32> = HashMap::new();
+        for (source_filename_ext, source_meta) in &metadata {
+            let source_metadata_id = source_filename_ext.trim_end_matches(".md");
+            if let Some(source_node) = self.node_map.values().find(|n| n.metadata_id == source_metadata_id) {
+                for (target_filename_ext, count) in &source_meta.topic_counts {
+                    let target_metadata_id = target_filename_ext.trim_end_matches(".md");
+                    if let Some(target_node) = self.node_map.values().find(|n| n.metadata_id == target_metadata_id) {
+                        if source_node.id != target_node.id {
+                            let edge_key = if source_node.id < target_node.id {
+                                (source_node.id, target_node.id)
+                            } else {
+                                (target_node.id, source_node.id)
+                            };
+                            *edge_map.entry(edge_key).or_insert(0.0) += *count as f32;
+                        }
+                    }
+                }
+            }
+        }
+
+        for ((source_id, target_id), weight) in edge_map {
+            self.add_edge(Edge::new(source_id, target_id, weight));
+        }
         
         info!("Built graph from metadata: {} nodes, {} edges",
               self.graph_data.nodes.len(), self.graph_data.edges.len());
@@ -213,12 +243,14 @@ impl GraphServiceActor {
         // Send GPU computation request if GPU compute actor is available
         if let Some(ref gpu_compute_addr) = self.gpu_compute_addr {
             // Update graph data in GPU
-            let graph_data = crate::models::graph::GraphData {
+            let graph_data_for_gpu = crate::models::graph::GraphData { // Renamed to avoid conflict
                 nodes: self.graph_data.nodes.clone(),
                 edges: self.graph_data.edges.clone(),
+                metadata: self.graph_data.metadata.clone(), // Include metadata
+                id_to_metadata: self.graph_data.id_to_metadata.clone(), // Include id_to_metadata
             };
             
-            gpu_compute_addr.do_send(UpdateGPUGraphData { graph: graph_data });
+            gpu_compute_addr.do_send(UpdateGPUGraphData { graph: graph_data_for_gpu });
             
             // Request computation
             let addr = gpu_compute_addr.clone();
@@ -399,8 +431,8 @@ impl Handler<UpdateNodePosition> for GraphServiceActor {
             let original_mass = node.data.mass;
             let original_flags = node.data.flags;
             
-            node.data.position = msg.position;
-            node.data.velocity = msg.velocity;
+            node.data.position = glam_to_vec3data(msg.position); // Convert glam::Vec3 to Vec3Data
+            node.data.velocity = glam_to_vec3data(msg.velocity); // Convert glam::Vec3 to Vec3Data
             
             // Restore mass and flags
             node.data.mass = original_mass;
@@ -417,8 +449,8 @@ impl Handler<UpdateNodePosition> for GraphServiceActor {
                 let original_mass = node.data.mass;
                 let original_flags = node.data.flags;
                 
-                node.data.position = msg.position;
-                node.data.velocity = msg.velocity;
+                node.data.position = glam_to_vec3data(msg.position); // Convert glam::Vec3 to Vec3Data
+                node.data.velocity = glam_to_vec3data(msg.velocity); // Convert glam::Vec3 to Vec3Data
                 
                 // Restore mass and flags
                 node.data.mass = original_mass;

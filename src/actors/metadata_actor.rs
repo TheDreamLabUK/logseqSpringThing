@@ -1,7 +1,7 @@
 //! Metadata Actor to replace Arc<RwLock<MetadataStore>>
 
 use actix::prelude::*;
-use log::{debug, info, warn, error};
+use log::{debug, info};
 
 use crate::actors::messages::*;
 use crate::models::metadata::MetadataStore;
@@ -21,7 +21,7 @@ impl MetadataActor {
 
     pub fn update_metadata(&mut self, new_metadata: MetadataStore) {
         self.metadata = new_metadata;
-        debug!("Metadata updated with {} files", self.metadata.files.len());
+        debug!("Metadata updated with {} files", self.metadata.len()); // Changed .files.len() to .len()
     }
 
     pub fn refresh_metadata(&mut self) -> Result<(), String> {
@@ -39,49 +39,54 @@ impl MetadataActor {
     }
 
     pub fn get_file_count(&self) -> usize {
-        self.metadata.files.len()
+        self.metadata.len() // Changed .files.len() to .len()
     }
 
+    // TODO: Re-implement or remove get_files_by_tag and get_files_by_type
+    // The Metadata struct no longer has a `properties` field.
+    // Tag and type information needs to be stored differently or derived.
+    /*
     pub fn get_files_by_tag(&self, tag: &str) -> Vec<String> {
-        self.metadata.files
+        self.metadata // Changed .files.iter() to .iter()
             .iter()
             .filter_map(|(filename, file_meta)| {
-                if let Some(ref properties) = file_meta.properties {
-                    if let Some(tags) = properties.get("tags") {
-                        if let Some(tag_array) = tags.as_array() {
-                            if tag_array.iter().any(|t| t.as_str() == Some(tag)) {
-                                return Some(filename.clone());
-                            }
-                        }
-                    }
-                }
-                None
+                // if let Some(ref properties) = file_meta.properties { // .properties does not exist
+                //     if let Some(tags) = properties.get("tags") {
+                //         if let Some(tag_array) = tags.as_array() {
+                //             if tag_array.iter().any(|t| t.as_str() == Some(tag)) {
+                //                 return Some(filename.clone());
+                //             }
+                //         }
+                //     }
+                // }
+                None // Placeholder
             })
             .collect()
     }
 
     pub fn get_files_by_type(&self, file_type: &str) -> Vec<String> {
-        self.metadata.files
+        self.metadata // Changed .files.iter() to .iter()
             .iter()
             .filter_map(|(filename, file_meta)| {
-                if let Some(ref properties) = file_meta.properties {
-                    if let Some(type_value) = properties.get("type") {
-                        if type_value.as_str() == Some(file_type) {
-                            return Some(filename.clone());
-                        }
-                    }
-                }
-                None
+                // if let Some(ref properties) = file_meta.properties { // .properties does not exist
+                //     if let Some(type_value) = properties.get("type") {
+                //         if type_value.as_str() == Some(file_type) {
+                //             return Some(filename.clone());
+                //         }
+                //     }
+                // }
+                None // Placeholder
             })
             .collect()
     }
+    */
 }
 
 impl Actor for MetadataActor {
     type Context = Context<Self>;
 
     fn started(&mut self, _ctx: &mut Self::Context) {
-        info!("MetadataActor started with {} files", self.metadata.files.len());
+        info!("MetadataActor started with {} files", self.metadata.len()); // Changed .files.len() to .len()
     }
 
     fn stopped(&mut self, _ctx: &mut Self::Context) {

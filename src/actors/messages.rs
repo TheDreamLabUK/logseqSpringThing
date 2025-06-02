@@ -1,13 +1,14 @@
 //! Message definitions for actor system communication
 
 use actix::prelude::*;
+use glam::Vec3;
 use serde_json::Value;
 use std::collections::HashMap;
 use crate::models::node::Node;
 use crate::models::edge::Edge;
 use crate::models::metadata::MetadataStore;
 use crate::config::AppFullSettings;
-use crate::services::graph_service::GraphData;
+use crate::models::graph::GraphData as ServiceGraphData;
 use crate::utils::socket_flow_messages::BinaryNodeData;
 use crate::models::simulation_params::SimulationParams;
 use crate::models::graph::GraphData as ModelsGraphData;
@@ -65,8 +66,8 @@ pub struct StartSimulation;
 #[rtype(result = "Result<(), String>")]
 pub struct UpdateNodePosition {
     pub node_id: u32,
-    pub position: crate::models::node::Vec3,
-    pub velocity: crate::models::node::Vec3,
+    pub position: Vec3,
+    pub velocity: Vec3,
 }
 
 #[derive(Message)]
@@ -80,7 +81,7 @@ pub struct StopSimulation;
 #[derive(Message)]
 #[rtype(result = "Result<(), String>")]
 pub struct UpdateGraphData {
-    pub graph_data: GraphData,
+    pub graph_data: ServiceGraphData,
 }
 
 // Settings Actor Messages

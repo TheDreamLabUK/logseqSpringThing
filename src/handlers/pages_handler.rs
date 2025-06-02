@@ -1,6 +1,6 @@
-use actix_web::{web, HttpResponse, Result, Error};
+use actix_web::{web, HttpResponse, Result};
 use crate::AppState;
-use crate::actors::messages::GetSettings;
+use crate::actors::messages::{GetSettings, GetMetadata};
 use serde::Serialize;
 use futures::future::join_all;
 use crate::models::metadata::Metadata;
@@ -27,7 +27,10 @@ pub async fn get_pages(app_state: web::Data<AppState>) -> Result<HttpResponse> {
         log::debug!("Starting pages retrieval");
     }
 
-    let metadata = app_state.metadata.read().await;
+    let metadata = app_state.metadata_addr.send(GetMetadata).await
+        .map_err(|e| actix_web::error::ErrorInternalServerError(format!("Metadata actor mailbox error: {}", e)))?
+        .map_err(|e| actix_web::error::ErrorInternalServerError(e))?;
+        
     if debug_enabled {
         log::debug!("Found {} metadata entries to process", metadata.len());
     }

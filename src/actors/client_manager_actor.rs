@@ -5,8 +5,8 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use crate::actors::messages::*;
 use crate::handlers::socket_flow_handler::SocketFlowServer;
-use crate::utils::socket_flow_messages::ClientMessage;
-use log::{debug, warn, error};
+use actix_web_actors::ws::Message as WsMessage;
+use log::{debug, warn};
 
 pub struct ClientManagerActor {
     clients: HashMap<usize, Addr<SocketFlowServer>>,
@@ -44,7 +44,7 @@ impl ClientManagerActor {
         debug!("Broadcasting {} bytes to {} clients", data.len(), self.clients.len());
         
         for (client_id, addr) in &self.clients {
-            addr.do_send(ClientMessage::Binary(data.clone()));
+            addr.do_send(WsMessage::Binary(data.clone()));
         }
     }
 
@@ -56,7 +56,7 @@ impl ClientManagerActor {
         debug!("Broadcasting message to {} clients", self.clients.len());
         
         for (client_id, addr) in &self.clients {
-            addr.do_send(ClientMessage::Text(message.clone()));
+            addr.do_send(WsMessage::Text(message.clone()));
         }
     }
 
