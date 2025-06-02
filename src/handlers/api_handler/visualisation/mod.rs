@@ -1,4 +1,4 @@
-use crate::config::{Settings, SystemSettings, ClientWebSocketSettings, DebugSettings as ConfigDebugSettings, VisualisationSettings, XRSettings, AuthSettings, RagFlowSettings, PerplexitySettings, OpenAISettings, KokoroSettings};
+use crate::config::{Settings, SystemSettings, ClientWebSocketSettings};
 use crate::AppState;
 use crate::actors::messages::{GetSettings, UpdateSettings};
 use actix_web::{error::ErrorInternalServerError, web, Error, HttpResponse, Result};
@@ -490,11 +490,11 @@ pub async fn get_category_settings(
         openai: settings.openai.clone(),
         kokoro: settings.kokoro.clone(),
     };
-
-    let settings_value = serde_json::to_value(&converted_settings)
+ 
+    let _settings_value = serde_json::to_value(&converted_settings)
         .map_err(|e| format!("Failed to serialize settings: {}", e))
         .unwrap_or_default();
-
+ 
     let debug_enabled = settings.system.debug.enabled;
     let log_json = debug_enabled && settings.system.debug.log_full_json;
 

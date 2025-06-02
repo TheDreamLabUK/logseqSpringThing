@@ -2,7 +2,6 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use tokio::sync::RwLock;
 use std::collections::{HashMap, HashSet};
-use actix_web::web;
 use rand::distributions::{Alphanumeric, DistString};
 use rand::Rng;
 use std::io::{Error, ErrorKind};
@@ -18,7 +17,6 @@ use crate::models::graph::GraphData;
 use crate::models::node::Node; // Corrected Node import
 use crate::models::edge::Edge;
 use crate::models::metadata::MetadataStore;
-use crate::app_state::AppState;
 use crate::config::AppFullSettings; // Use AppFullSettings, ClientFacingSettings removed
 use crate::utils::gpu_compute::GPUCompute;
 use crate::models::simulation_params::{SimulationParams, SimulationPhase, SimulationMode};
@@ -309,15 +307,9 @@ impl GraphService {
         // We need to convert our Vec<Node> to this format.
         let positions_to_encode: Vec<(u32, crate::utils::socket_flow_messages::BinaryNodeData)> = nodes.iter().map(|node| (node.id, node.data)).collect();
 
-        match binary_protocol::encode_node_data(&positions_to_encode) {
-            Ok(binary_data) => {
-                // Send BroadcastNodePositions message to ClientManagerActor
-                client_manager_addr.do_send(BroadcastNodePositions { positions: binary_data });
-            }
-            Err(e) => {
-                error!("Failed to encode node positions for broadcast: {}", e);
-            }
-        }
+        let binary_data = binary_protocol::encode_node_data(&positions_to_encode);
+        // Send BroadcastNodePositions message to ClientManagerActor
+        client_manager_addr.do_send(BroadcastNodePositions { positions: binary_data });
     }
 
     /// Shutdown the simulation loop to allow creating a new instance
@@ -632,168 +624,6 @@ impl GraphService {
         Ok(graph)
     }
 
-    pub async fn build_graph(state: &web::Data<AppState>) -> Result<GraphData, Box<dyn std::error::Error + Send + Sync>> {
-        info!("Building graph from app state");
-        // Check if a rebuild is already in progress
-        if GRAPH_REBUILD_IN_PROGRESS.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_err() {
-            warn!("Graph rebuild already in progress, skipping duplicate rebuild");
-            return Err("Graph rebuild already in progress".into());
-        }
-        
-        // Create a guard struct to ensure the flag is reset when this function returns
-        struct RebuildGuard;
-        impl Drop for RebuildGuard {
-            fn drop(&mut self) {
-                GRAPH_REBUILD_IN_PROGRESS.store(false, Ordering::SeqCst);
-            }
-        }
-        // This guard will reset the flag when it goes out of scope
-        let _guard = RebuildGuard;
-        
-        let current_graph = state.graph_service.get_graph_data_mut().await;
-        let mut graph = GraphData::new();
-        let mut node_map = HashMap::new();
-        trace!("Starting graph build process");
-
-        // Copy metadata from current graph
-        graph.metadata = current_graph.metadata.clone();
-        trace!("Copied {} metadata entries from current graph", graph.metadata.len());
-        
-        let mut edge_map = HashMap::new();
-
-        // Create nodes from metadata entries
-        let mut valid_nodes = HashSet::new();
-        for file_name in graph.metadata.keys() {
-            let node_id = file_name.trim_end_matches(".md").to_string();
-            valid_nodes.insert(node_id);
-        }
-        trace!("Created valid_nodes set with {} nodes", valid_nodes.len());
-
-        // Create nodes for all valid node IDs
-        for node_id in &valid_nodes {
-            // Get metadata for this node, including the node_id if available
-            let metadata_entry = graph.metadata.get(&format!("{}.md", node_id));
-            let stored_node_id = metadata_entry.map(|m| m.node_id.clone());
-            
-            // Create node with stored ID or generate a new one if not available
-            let stored_node_id_u32 = stored_node_id.and_then(|s| s.parse::<u32>().ok());
-            let mut node = Node::new_with_id(node_id.clone(), stored_node_id_u32);
-            graph.id_to_metadata.insert(node.id.to_string(), node_id.clone());
-
-            // Get metadata for this node
-            if let Some(metadata) = graph.metadata.get(&format!("{}.md", node_id)) {
-                // Set file size which also calculates mass
-                node.set_file_size(metadata.file_size as u64);  // This will update both file_size and mass
-                
-                // Set the node label to the file name without extension
-                // This will be used as the display name for the node
-                node.label = metadata.file_name.trim_end_matches(".md").to_string();
-                
-                // Set visual properties from metadata
-                node.size = Some(metadata.node_size as f32);
-                
-                // Add metadata fields to node's metadata map
-                // Add all relevant metadata fields to ensure consistency
-                node.metadata.insert("fileName".to_string(), metadata.file_name.clone());
-                
-                // Add name field (without .md extension) for client-side metadata ID mapping
-                if metadata.file_name.ends_with(".md") {
-                    let name = metadata.file_name[..metadata.file_name.len() - 3].to_string();
-                    node.metadata.insert("name".to_string(), name.clone());
-                    node.metadata.insert("metadataId".to_string(), name);
-                } else {
-                    node.metadata.insert("name".to_string(), metadata.file_name.clone());
-                    node.metadata.insert("metadataId".to_string(), metadata.file_name.clone());
-                }
-                
-                node.metadata.insert("fileSize".to_string(), metadata.file_size.to_string());
-                node.metadata.insert("nodeSize".to_string(), metadata.node_size.to_string());
-                node.metadata.insert("hyperlinkCount".to_string(), metadata.hyperlink_count.to_string());
-                node.metadata.insert("sha1".to_string(), metadata.sha1.clone());
-                node.metadata.insert("lastModified".to_string(), metadata.last_modified.to_string());
-                
-                if !metadata.perplexity_link.is_empty() {
-                    node.metadata.insert("perplexityLink".to_string(), metadata.perplexity_link.clone());
-                }
-                
-                if let Some(last_process) = metadata.last_perplexity_process {
-                    node.metadata.insert("lastPerplexityProcess".to_string(), last_process.to_string());
-                }
-                
-                // We don't add topic_counts to metadata as it would create circular references
-                // and is already used to create edges
-                
-                // Ensure flags is set to 1 (default active state)
-                node.data.flags = 1;
-            }
-            
-            let node_clone = node.clone();
-            graph.nodes.push(node_clone);
-            // Store nodes in map by numeric ID for efficient lookups
-            node_map.insert(node.id, node);
-        }
-
-        // Create edges from metadata topic counts
-        for (source_file, metadata) in graph.metadata.iter() {
-            let source_id = source_file.trim_end_matches(".md").to_string();
-            trace!("Processing edges for source file: {}", source_file);
-            // Find the node with this metadata_id to get its numeric ID
-            let source_node = graph.nodes.iter().find(|n| n.metadata_id == source_id);
-            if source_node.is_none() {
-                continue; // Skip if node not found
-            }
-            let source_numeric_id = source_node.unwrap().id;
-            
-            // Process outbound links from this file to other topics
-            for (target_file, count) in &metadata.topic_counts {
-                let target_id = target_file.trim_end_matches(".md").to_string();
-                // Find the node with this metadata_id to get its numeric ID
-                let target_node = graph.nodes.iter().find(|n| n.metadata_id == target_id);
-                trace!("  Processing potential edge: {} -> {} (count: {})", source_id, target_id, count);
-                if target_node.is_none() {
-                    continue; // Skip if node not found
-                }
-                let target_numeric_id = target_node.unwrap().id;
-                trace!("  Found target node: {} (ID: {})", target_id, target_numeric_id);
-
-                // Only create edge if both nodes exist and they're different
-                if source_numeric_id != target_numeric_id {
-                    let edge_key = if source_numeric_id < target_numeric_id {
-                        (source_numeric_id, target_numeric_id)
-                    } else {
-                        (target_numeric_id, source_numeric_id)
-                    };
-
-                    trace!("  Creating/updating edge: {:?} with weight {}", edge_key, count);
-                    // Sum the weights for bi-directional references
-                    edge_map.entry(edge_key)
-                        .and_modify(|w| *w += *count as f32)
-                        .or_insert(*count as f32);
-                }
-            }
-        }
-
-        // Log edge_map contents before transformation
-        trace!("Edge map contains {} unique connections", edge_map.len());
-        for ((source, target), weight) in &edge_map {
-            trace!("Edge map entry: {} -- {} (weight: {})", source, target, weight);
-        }
-
-        // Convert edge map to edges
-        trace!("Converting edge map to {} edges", edge_map.len());
-        graph.edges = edge_map.into_iter()
-            .map(|((source, target), weight)| {
-                Edge::new(source, target, weight)
-            })
-            .collect();
-
-        // Initialize random positions for all nodes
-        Self::initialize_random_positions(&mut graph);
-
-        info!("Built graph with {} nodes and {} edges", graph.nodes.len(), graph.edges.len());
-        trace!("Completed graph build: {} nodes, {} edges", graph.nodes.len(), graph.edges.len());
-        Ok(graph)
-    }
 
     fn initialize_random_positions(graph: &mut GraphData) {
         let mut rng = rand::thread_rng();
@@ -1116,15 +946,32 @@ impl GraphService {
         let start = page * page_size;
         let end = std::cmp::min((page + 1) * page_size, total_nodes);
 
-        let page_nodes: Vec<Node> = graph.nodes
+        let model_page_nodes: Vec<Node> = graph.nodes
             .iter()
             .skip(start)
             .take(end - start)
-            .cloned() 
+            .cloned()
             .collect();
 
+        let page_nodes: Vec<crate::utils::socket_flow_messages::Node> = model_page_nodes.iter().map(|model_node| {
+            crate::utils::socket_flow_messages::Node {
+                id: model_node.id.to_string(), // Convert u32 to String
+                metadata_id: model_node.metadata_id.clone(),
+                label: model_node.label.clone(),
+                data: model_node.data, // BinaryNodeData is the same
+                metadata: model_node.metadata.clone(),
+                file_size: model_node.file_size, // This field is present in socket_flow_messages::Node but marked #[serde(skip)]
+                node_type: model_node.node_type.clone(),
+                size: model_node.size,
+                color: model_node.color.clone(),
+                weight: model_node.weight,
+                group: model_node.group.clone(),
+                user_data: model_node.user_data.clone(),
+            }
+        }).collect();
+
         // Get edges that connect to these nodes
-        let node_ids: HashSet<u32> = page_nodes.iter()
+        let node_ids: HashSet<u32> = model_page_nodes.iter()
             .map(|n| n.id)
             .collect();
 

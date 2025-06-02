@@ -53,6 +53,8 @@ impl GraphServiceActor {
     }
 
     pub fn add_node(&mut self, node: Node) {
+        let node_id = node.id; // Store the ID before moving node
+        
         // Update node_map
         self.node_map.insert(node.id, node.clone());
         
@@ -62,11 +64,11 @@ impl GraphServiceActor {
         } else {
             // Update existing node
             if let Some(existing) = self.graph_data.nodes.iter_mut().find(|n| n.id == node.id) {
-                *existing = node;
+                *existing = node; // Move node here instead of cloning
             }
         }
         
-        debug!("Added/updated node: {}", node.id);
+        debug!("Added/updated node: {}", node_id);
     }
 
     pub fn remove_node(&mut self, node_id: u32) {
@@ -83,17 +85,19 @@ impl GraphServiceActor {
     }
 
     pub fn add_edge(&mut self, edge: Edge) {
+        let edge_id = edge.id.clone(); // Store the ID before moving edge
+        
         // Add to graph data if not already present
         if !self.graph_data.edges.iter().any(|e| e.id == edge.id) {
             self.graph_data.edges.push(edge);
         } else {
             // Update existing edge
             if let Some(existing) = self.graph_data.edges.iter_mut().find(|e| e.id == edge.id) {
-                *existing = edge;
+                *existing = edge; // Move edge here instead of cloning
             }
         }
         
-        debug!("Added/updated edge: {}", edge.id);
+        debug!("Added/updated edge: {}", edge_id);
     }
 
     pub fn remove_edge(&mut self, edge_id: &str) {
@@ -109,7 +113,7 @@ impl GraphServiceActor {
 
         // Build nodes from metadata
         // Assuming metadata is MetadataStore which is HashMap<String, crate::models::metadata::Metadata>
-        for (filename_with_ext, file_meta_data) in metadata { // Iterate directly over MetadataStore
+        for (filename_with_ext, file_meta_data) in &metadata { // Iterate over a reference
             let node_id_val = self.next_node_id.fetch_add(1, Ordering::SeqCst);
             let metadata_id_val = filename_with_ext.trim_end_matches(".md").to_string();
             
@@ -254,6 +258,9 @@ impl GraphServiceActor {
             
             // Request computation
             let addr = gpu_compute_addr.clone();
+            // Collect node IDs beforehand to avoid borrowing `self` inside the async block
+            let node_ids_in_order: Vec<u32> = self.graph_data.nodes.iter().map(|n| n.id).collect();
+
             let future = async move {
                 match addr.send(ComputeForces).await {
                     Ok(Ok(())) => {
@@ -263,10 +270,9 @@ impl GraphServiceActor {
                                 // Convert to position updates
                                 let mut positions = Vec::new();
                                 for (index, data) in node_data.iter().enumerate() {
-                                    // We need to map index back to node ID
-                                    // For now, assume index matches node order in graph
-                                    if let Some(node) = self.graph_data.nodes.get(index) {
-                                        positions.push((node.id, data.clone()));
+                                    // Use the pre-collected node_ids_in_order
+                                    if let Some(node_id) = node_ids_in_order.get(index) {
+                                        positions.push((*node_id, data.clone()));
                                     }
                                 }
                                 positions
@@ -313,8 +319,7 @@ impl GraphServiceActor {
 
     fn encode_node_positions(&self, positions: &[(u32, BinaryNodeData)]) -> Result<Vec<u8>, String> {
         // Now binary_protocol expects (u32, BinaryNodeData) directly
-        binary_protocol::encode_node_data(positions)
-            .map_err(|e| format!("Failed to encode node data: {}", e))
+        Ok(binary_protocol::encode_node_data(positions))
     }
 }
 

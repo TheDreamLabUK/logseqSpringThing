@@ -4,13 +4,12 @@ use serde::{Serialize, Deserialize};
 use log::{info, debug, error, warn};
 use std::collections::HashMap;
 use std::sync::Arc;
-use crate::models::metadata::{Metadata, MetadataStore};
+use crate::models::metadata::Metadata;
 use crate::models::node::Node; // Changed from socket_flow_messages::Node
 use crate::services::file_service::FileService;
 // GraphService direct import is no longer needed as we use actors
 // use crate::services::graph_service::GraphService;
 use crate::actors::messages::{GetGraphData, GetMetadata, GetSettings, BuildGraphFromMetadata};
-use crate::models::graph::GraphData as ModelsGraphData; // For message payload
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -70,94 +69,6 @@ pub async fn get_graph_data(state: web::Data<AppState>) -> impl Responder {
             HttpResponse::InternalServerError().json(serde_json::json!({"error": "Graph service unavailable"}))
         }
     }
-}
-
-pub async fn get_paginated_graph_data(
-    state: web::Data<AppState>,
-    query: web::Query<GraphQuery>,
-) -> impl Responder {
-    info!("Received request for paginated graph data with params: {:?}", query);
-
-    let page = query.page.map(|p| p.saturating_sub(1)).unwrap_or(0);
-    let page_size = query.page_size.unwrap_or(100);
-
-    if page_size == 0 {
-        error!("Invalid page size: {}", page_size);
-        return HttpResponse::BadRequest().json(serde_json::json!({
-            "error": "Page size must be greater than 0"
-        }));
-    }
-
-    let graph_data_result = state.graph_service_addr.send(GetGraphData).await;
-
-    match graph_data_result {
-        Ok(Ok(graph)) => {
-            let total_items = graph.nodes.len();
-            
-            if total_items == 0 {
-                debug!("Graph is empty");
-                return HttpResponse::Ok().json(PaginatedGraphResponse {
-                    nodes: Vec::new(),
-                    edges: Vec::new(),
-                    metadata: HashMap::new(),
-                    total_pages: 0,
-                    current_page: 1,
-                    total_items: 0,
-                    page_size,
-                });
-            }
-
-            let total_pages = (total_items + page_size - 1) / page_size;
-
-            if page >= total_pages {
-                warn!("Requested page {} exceeds total pages {}", page + 1, total_pages);
-                return HttpResponse::BadRequest().json(serde_json::json!({
-                    "error": format!("Page {} exceeds total available pages {}", page + 1, total_pages)
-                }));
-            }
-
-            let start = page * page_size;
-            let end = std::cmp::min(start + page_size, total_items);
-
-            debug!("Calculating slice from {} to {} out of {} total items", start, end, total_items);
-
-            let page_nodes = graph.nodes[start..end].to_vec();
-
-            let node_ids: std::collections::HashSet<_> = page_nodes.iter()
-                .map(|node| node.id) // Assuming node.id is u32
-                .collect();
-
-            let relevant_edges: Vec<_> = graph.edges.iter()
-                .filter(|edge| {
-                    node_ids.contains(&edge.source) || node_ids.contains(&edge.target)
-                })
-                .cloned()
-                .collect();
-
-            debug!("Found {} relevant edges for {} nodes", relevant_edges.len(), page_nodes.len());
-
-            let response = PaginatedGraphResponse {
-                nodes: page_nodes,
-                edges: relevant_edges,
-                metadata: graph.metadata.clone(),
-                total_pages,
-                current_page: page + 1,
-                total_items,
-                page_size,
-            };
-            HttpResponse::Ok().json(response)
-        }
-        Ok(Err(e)) => {
-            error!("Failed to get graph data from actor for pagination: {}", e);
-            HttpResponse::InternalServerError().json(serde_json::json!({"error": "Failed to retrieve graph data"}))
-        }
-        Err(e) => {
-            error!("Mailbox error getting graph data for pagination: {}", e);
-            HttpResponse::InternalServerError().json(serde_json::json!({"error": "Graph service unavailable"}))
-        }
-    };
-
-    HttpResponse::Ok().json(response)
 }
 
 pub async fn get_paginated_graph_data(
@@ -296,14 +207,6 @@ pub async fn refresh_graph(state: web::Data<AppState>) -> impl Responder {
             }))
         }
 // Removed duplicate success block from here
-},
-Err(e) => {
-    error!("Failed to refresh graph: {}", e);
-            HttpResponse::InternalServerError().json(serde_json::json!({
-                "success": false,
-                "error": format!("Failed to refresh graph: {}", e)
-            }))
-        }
     }
 }
 
@@ -323,7 +226,7 @@ pub async fn update_graph(state: web::Data<AppState>) -> impl Responder {
     
     let settings_result = state.settings_addr.send(GetSettings).await;
     let settings = match settings_result {
-        Ok(Ok(s)) => Arc::new(s),
+        Ok(Ok(s)) => Arc::new(tokio::sync::RwLock::new(s)),
         _ => {
             error!("Failed to retrieve settings for FileService in update_graph");
             return HttpResponse::InternalServerError().json(serde_json::json!({
@@ -362,6 +265,13 @@ pub async fn update_graph(state: web::Data<AppState>) -> impl Responder {
                     HttpResponse::Ok().json(serde_json::json!({
                         "success": true,
                         "message": format!("Graph updated with {} new files", processed_files.len())
+                    }))
+                },
+                Ok(Err(e)) => {
+                    error!("GraphServiceActor failed to build graph from metadata: {}", e);
+                    HttpResponse::InternalServerError().json(serde_json::json!({
+                        "success": false,
+                        "error": format!("Failed to build graph: {}", e)
                     }))
                 },
                 Err(e) => {

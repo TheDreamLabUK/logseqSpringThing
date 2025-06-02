@@ -15,7 +15,7 @@ use crate::models::graph::GraphData as ModelsGraphData;
 
 // Graph Service Actor Messages
 #[derive(Message)]
-#[rtype(result = "Result<GraphData, String>")]
+#[rtype(result = "Result<ServiceGraphData, String>")]
 pub struct GetGraphData;
 
 #[derive(Message)]
@@ -151,6 +151,15 @@ pub struct BroadcastMessage {
 #[derive(Message)]
 #[rtype(result = "Result<usize, String>")]
 pub struct GetClientCount;
+
+// Messages for ClientManagerActor to send to individual SocketFlowServer clients
+#[derive(Message)]
+#[rtype(result = "()")]
+pub struct SendToClientBinary(pub Vec<u8>);
+
+#[derive(Message)]
+#[rtype(result = "()")]
+pub struct SendToClientText(pub String);
 
 // GPU Compute Actor Messages
 #[derive(Message)]

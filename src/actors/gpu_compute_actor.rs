@@ -4,7 +4,7 @@ use std::io::{Error, ErrorKind};
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
-use cudarc::driver::{CudaDevice, CudaFunction, CudaSlice, LaunchConfig};
+use cudarc::driver::{CudaDevice, CudaFunction, CudaSlice, LaunchConfig, LaunchAsync};
 use cudarc::nvrtc::Ptx;
 use cudarc::driver::sys::CUdevice_attribute_enum;
 
@@ -205,8 +205,8 @@ impl GPUComputeActor {
 
     fn update_graph_data_internal(&mut self, graph: &GraphData) -> Result<(), Error> {
         let device = self.device.as_ref().ok_or_else(|| Error::new(ErrorKind::Other, "Device not initialized"))?;
-        let mut node_data_slice = self.node_data.as_mut().ok_or_else(|| Error::new(ErrorKind::Other, "Node data not initialized"))?;
-
+        let node_data_slice = self.node_data.as_mut().ok_or_else(|| Error::new(ErrorKind::Other, "Node data not initialized"))?;
+ 
         trace!("Updating graph data for {} nodes", graph.nodes.len());
         
         // Update node indices
@@ -365,19 +365,29 @@ impl Handler<InitializeGPU> for GPUComputeActor {
     type Result = ResponseActFuture<Self, Result<(), String>>;
 
     fn handle(&mut self, msg: InitializeGPU, _ctx: &mut Self::Context) -> Self::Result {
-        let graph = msg.graph;
-        Box::pin(async move {
-            match self.initialize_gpu(&graph).await {
-                Ok(_) => {
-                    info!("GPU initialization successful");
-                    Ok(())
-                },
-                Err(e) => {
-                    error!("GPU initialization failed: {}", e);
-                    Err(e.to_string())
-                }
-            }
-        }.into_actor(self))
+        use actix::fut::{wrap_future, ActorFutureExt};
+        
+        let graph_data = msg.graph; // Capture graph data from the message
+
+        // Directly wrap the future returned by `self.initialize_gpu`
+        // `self.initialize_gpu` is an async method taking `&mut self` and `&GraphData`.
+        // It returns `impl Future<Output = Result<(), std::io::Error>>`.
+        // `wrap_future` makes this future `Send` by running it within the actor's context.
+        Box::pin(
+            wrap_future(self.initialize_gpu(&graph_data))
+                .map(|result, _actor, _ctx| { // `result` is `Result<(), std::io::Error>`
+                    match result {
+                        Ok(_) => {
+                            info!("GPU initialization successful via wrap_future().map()");
+                            Ok(())
+                        }
+                        Err(e) => {
+                            error!("GPU initialization failed via wrap_future().map(): {}", e);
+                            Err(e.to_string()) // Convert std::io::Error to String
+                        }
+                    }
+                })
+        )
     }
 }
 

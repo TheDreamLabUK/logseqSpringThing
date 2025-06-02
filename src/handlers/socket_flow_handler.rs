@@ -74,6 +74,25 @@ impl Handler<BroadcastPositionUpdate> for SocketFlowServer {
 #[rtype(result = "()")]
 pub struct BroadcastPositionUpdate(pub Vec<(u32, BinaryNodeData)>);
 
+// Import the new messages
+use crate::actors::messages::{SendToClientBinary, SendToClientText};
+
+impl Handler<SendToClientBinary> for SocketFlowServer {
+    type Result = ();
+
+    fn handle(&mut self, msg: SendToClientBinary, ctx: &mut Self::Context) {
+        ctx.binary(msg.0);
+    }
+}
+
+impl Handler<SendToClientText> for SocketFlowServer {
+    type Result = ();
+
+    fn handle(&mut self, msg: SendToClientText, ctx: &mut Self::Context) {
+        ctx.text(msg.0);
+    }
+}
+
 pub struct SocketFlowServer {
     app_state: Arc<AppState>,
     client_id: Option<usize>,
@@ -288,13 +307,16 @@ impl Actor for SocketFlowServer {
         let cm_addr = self.client_manager_addr.clone();
         actix::spawn(async move {
             use crate::actors::messages::RegisterClient;
-            match cm_addr.send(RegisterClient(addr_clone)).await {
-                Ok(client_id) => {
+            match cm_addr.send(RegisterClient { addr: addr_clone }).await {
+                Ok(Ok(id)) => {
                     // Send a message back to the actor with its client ID
-                    addr.do_send(SetClientId(client_id));
+                    addr.do_send(SetClientId(id));
+                },
+                Ok(Err(e)) => {
+                    error!("ClientManagerActor failed to register client: {}", e);
                 },
                 Err(e) => {
-                    error!("Failed to register client with ClientManagerActor: {}", e);
+                    error!("Failed to send RegisterClient message to ClientManagerActor: {}", e);
                 }
             }
         });
@@ -343,7 +365,7 @@ impl Actor for SocketFlowServer {
             let cm_addr = self.client_manager_addr.clone();
             actix::spawn(async move {
                 use crate::actors::messages::UnregisterClient;
-                if let Err(e) = cm_addr.send(UnregisterClient(client_id)).await {
+                if let Err(e) = cm_addr.send(UnregisterClient { client_id }).await {
                     error!("Failed to unregister client from ClientManagerActor: {}", e);
                 }
             });
@@ -399,20 +421,16 @@ async fn fetch_nodes(
     
     let mut nodes = Vec::with_capacity(graph_data.nodes.len());
     for node in graph_data.nodes {
-        // Parse node.id directly as u32 since we're now using u32 IDs throughout
-        if let Ok(node_id) = node.id.parse::<u32>() {
-            let node_data = BinaryNodeData {
-                position: node.data.position,
-                velocity: node.data.velocity,
-                mass: node.data.mass,
-                flags: node.data.flags,
-                padding: node.data.padding,
-            };
-            nodes.push((node_id, node_data));
-        } else {
-            warn!("[WebSocket] Failed to parse node ID as u32: '{}', metadata_id: '{}'",
-                node.id, node.metadata_id);
-        }
+        // node.id is already a u32, no need to parse
+        let node_id = node.id;
+        let node_data = BinaryNodeData {
+            position: node.data.position,
+            velocity: node.data.velocity,
+            mass: node.data.mass,
+            flags: node.data.flags,
+            padding: node.data.padding,
+        };
+        nodes.push((node_id, node_data));
     }
     
     if nodes.is_empty() {
@@ -669,8 +687,8 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
                                     use crate::actors::messages::UpdateNodePosition;
                                     if let Err(e) = app_state.graph_service_addr.send(UpdateNodePosition {
                                         node_id: node_id,
-                                        position: node_data.position,
-                                        velocity: node_data.velocity,
+                                        position: node_data.position.into(),
+                                        velocity: node_data.velocity.into(),
                                     }).await {
                                         error!("Failed to update node position in GraphServiceActor: {}", e);
                                     }
@@ -686,9 +704,9 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
                                 let settings_addr = app_state.settings_addr.clone();
                                 
                                 // Get physics settings
-                                if let Ok(Ok(iterations_val)) = settings_addr.send(GetSettingByPath { path: "visualisation.physics.iterations".to_string() }).await {
-                                    if let Ok(Ok(spring_val)) = settings_addr.send(GetSettingByPath { path: "visualisation.physics.spring_strength".to_string() }).await {
-                                        if let Ok(Ok(repulsion_val)) = settings_addr.send(GetSettingByPath { path: "visualisation.physics.repulsion_strength".to_string() }).await {
+                                if let Ok(Ok(_iterations_val)) = settings_addr.send(GetSettingByPath { path: "visualisation.physics.iterations".to_string() }).await {
+                                    if let Ok(Ok(_spring_val)) = settings_addr.send(GetSettingByPath { path: "visualisation.physics.spring_strength".to_string() }).await {
+                                        if let Ok(Ok(_repulsion_val)) = settings_addr.send(GetSettingByPath { path: "visualisation.physics.repulsion_strength".to_string() }).await {
                                             // Send simulation step message to GraphServiceActor
                                             use crate::actors::messages::SimulationStep;
                                             if let Err(e) = app_state.graph_service_addr.send(SimulationStep).await {

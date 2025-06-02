@@ -2,7 +2,7 @@
 
 use actix::prelude::*;
 use serde_json::Value;
-use log::{debug, info, warn};
+use log::{debug, info};
 
 use crate::actors::messages::*;
 use crate::config::AppFullSettings;
@@ -53,23 +53,72 @@ impl SettingsActor {
         let path_parts: Vec<&str> = path.split('.').collect();
         
         // Navigate to the parent object
-        let mut current = &mut settings_value;
-        
-        for part in &path_parts[..path_parts.len() - 1] {
-            match current.get_mut(part) {
-                Some(obj) if obj.is_object() => current = obj,
-                Some(_) => return Err(format!("Path '{}' is not an object", part)),
-                None => {
-                    // Create the path if it doesn't exist
-                    current[part] = Value::Object(serde_json::Map::new());
-                    current = current.get_mut(part).unwrap();
+        let mut current_val_mut_ref = &mut settings_value;
+
+        for part_key_str_ref in &path_parts[..path_parts.len().saturating_sub(1)] {
+            // Ensure current_val_mut_ref points to an object.
+            if !current_val_mut_ref.is_object() {
+                if current_val_mut_ref.is_null() {
+                    // If it's null, we can replace it with an object.
+                    *current_val_mut_ref = Value::Object(serde_json::Map::new());
+                } else {
+                    // Otherwise, it's an existing non-object value in the path, which is an error.
+                    let type_str = match current_val_mut_ref {
+                        Value::Null => "null", // Should have been caught by is_null
+                        Value::Bool(_) => "boolean",
+                        Value::Number(_) => "number",
+                        Value::String(_) => "string",
+                        Value::Array(_) => "array",
+                        Value::Object(_) => "object", // Should not happen here due to !is_object()
+                    };
+                    return Err(format!(
+                        "Path component '{}' is a non-object type ({}) and cannot be traversed.",
+                        *part_key_str_ref, type_str
+                    ));
                 }
             }
+
+            // Now, current_val_mut_ref is definitely a mutable reference to an Object Value.
+            // We get its underlying &mut Map. Unwrap is safe due to the check above.
+            let current_map_mut = current_val_mut_ref.as_object_mut().unwrap();
+
+            // Get or insert the next part. `entry` returns an `Entry`.
+            // `or_insert_with` ensures the value is an object if inserted.
+            current_val_mut_ref = current_map_mut
+                .entry((*part_key_str_ref).to_string())
+                .or_insert_with(|| Value::Object(serde_json::Map::new()));
+            
+            // Ensure this new current_val_mut_ref is also an object for the next iteration.
+            // This handles cases where an existing path component was not an object.
+            if !current_val_mut_ref.is_object() {
+                 return Err(format!(
+                    "Existing path component '{}' was expected to be an object, but it's not.",
+                    *part_key_str_ref
+                ));
+            }
         }
-        
+
         // Set the final value
-        let final_part = path_parts[path_parts.len() - 1];
-        current[final_part] = value;
+        if let Some(final_part_key_str) = path_parts.last() {
+            if let Value::Object(map) = current_val_mut_ref {
+                map.insert((*final_part_key_str).to_string(), value);
+            } else {
+                // This should not happen if the loop maintained the object invariant and path_parts is not empty.
+                // If path_parts was empty (e.g. path=""), current_val_mut_ref would be &mut settings_value.
+                // If settings_value itself is not an object, this is an error.
+                if path_parts.is_empty() || (path_parts.len() == 1 && path_parts[0].is_empty()) {
+                     return Err("Cannot set value: root settings is not an object.".to_string());
+                }
+                return Err(format!(
+                    "Cannot set value: final path component before '{}' is not an object.",
+                    final_part_key_str
+                ));
+            }
+        } else {
+            // path_parts is empty, which implies the original path string was problematic
+            // or resulted in no parts. This case should ideally be handled by path validation earlier.
+            return Err("Path is empty, cannot set value.".to_string());
+        }
         
         // Convert back to AppFullSettings
         self.settings = serde_json::from_value(settings_value)

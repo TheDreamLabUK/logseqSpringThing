@@ -37,7 +37,7 @@ pub struct GPUCompute {
     pub force_kernel: CudaFunction,
     pub node_data: CudaSlice<BinaryNodeData>,
     pub num_nodes: u32,
-    pub node_indices: HashMap<String, usize>,
+    pub node_indices: HashMap<u32, usize>,
     pub simulation_params: SimulationParams,
     pub iteration_count: u32,
 }
@@ -284,7 +284,7 @@ impl GPUCompute {
         info!("Creating GPU compute instance");
         let mut node_indices = HashMap::new();
         for (idx, node) in graph.nodes.iter().enumerate() {
-            node_indices.insert(node.id.clone(), idx);
+            node_indices.insert(node.id, idx);
         }
 
         let mut instance = Self {
@@ -307,7 +307,7 @@ impl GPUCompute {
         trace!("Updating graph data for {} nodes", graph.nodes.len());
         self.node_indices.clear();
         for (idx, node) in graph.nodes.iter().enumerate() {
-            self.node_indices.insert(node.id.clone(), idx);
+            self.node_indices.insert(node.id, idx);
         }
         if graph.nodes.len() as u32 != self.num_nodes {
             info!("Reallocating GPU buffer for {} nodes", graph.nodes.len());
@@ -338,7 +338,7 @@ impl GPUCompute {
                 flags: node.data.flags,
                 padding: node.data.padding,
             });
-            if node.id == "0" || node.id == "1" {
+            if node.id == 0 || node.id == 1 {
                 trace!(
                     "Node {} data prepared for GPU: pos=[{:.3},{:.3},{:.3}], vel=[{:.3},{:.3},{:.3}]",
                     node.id,

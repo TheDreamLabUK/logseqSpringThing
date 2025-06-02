@@ -43,7 +43,7 @@ pub async fn health_check(app_state: web::Data<AppState>) -> Result<HttpResponse
 }
 
 #[get("/physics")]
-pub async fn check_physics_simulation(app_state: web::Data<AppState>) -> Result<HttpResponse> {
+pub async fn check_physics_simulation(_app_state: web::Data<AppState>) -> Result<HttpResponse> {
     let current_time = Utc::now();
     
     // Assuming GraphServiceActor has a message like GetSimulationDiagnostics
