@@ -3,17 +3,19 @@
 ## Intuitive Features Implemented
 
 ### 1. **Smart Control Type Selection**
-The system automatically selects the most appropriate control type based on the setting:
+The system automatically selects the most appropriate control type based on the `controlType` specified in the `UISettingDefinition` (from [`client/src/features/settings/config/settingsUIDefinition.ts`](../../client/src/features/settings/config/settingsUIDefinition.ts)) and the data type of the setting. Key control types rendered by [`SettingControlComponent.tsx`](../../client/src/features/settings/components/SettingControlComponent.tsx) include:
 
-- **Toggle Switch** - For boolean values (on/off settings)
-- **Slider** - For numeric values with defined min/max ranges
-- **Number Input** - For numeric values without ranges
-- **Text Input** - For string values
-- **Password Input** - Automatically applied for sensitive fields (keys, secrets, tokens)
-- **Select Dropdown** - For predefined options
-- **Color Picker** - Visual picker + hex input for color values
-- **Range Slider** - For min/max range pairs
-- **Dual Color Picker** - For gradient start/end colors
+-   **`toggle`**: For boolean values (on/off settings) -> Renders a Switch.
+-   **`slider`**: For numeric values with defined `min`, `max`, and `step` -> Renders a Slider.
+-   **`numberInput`**: For general numeric values -> Renders a Number Input.
+-   **`textInput`**: For string values.
+-   **`passwordInput`**: A variant of `textInput` for sensitive string fields (API keys, secrets), providing masking.
+-   **`select`**: For predefined options (enum-like strings) defined in `options` array in `UISettingDefinition` -> Renders a Select Dropdown.
+-   **`colorPicker`**: For single string color values -> Renders a Color Picker with hex input.
+-   **`rangeSlider`**: For `[number, number]` array values, representing a min/max range -> Renders a specialized Range Slider.
+-   **`dualColorPicker`**: For `[string, string]` array values, representing two colors (e.g., for gradients) -> Renders two Color Pickers.
+-   **`radioGroup`**: For selecting one option from a list (mutually exclusive choices) defined in `options` -> Renders a Radio Group.
+-   **`buttonAction`**: For triggering an action (e.g., reset a section, trigger a backend process) -> Renders a Button. The action is defined by `actionId` in `UISettingDefinition`.
 
 ### 2. **User Experience Enhancements**
 
@@ -78,12 +80,13 @@ The system automatically selects the most appropriate control type based on the 
 
 ## Implementation Details
 
-The controls are implemented in `SettingControlComponent.tsx` with:
-- React hooks for state management
-- Custom debounce hook for input optimization
-- TypeScript for type safety
-- Tailwind CSS for consistent styling
-- Lucide React icons for visual elements
+The controls are implemented in [`SettingControlComponent.tsx`](../../client/src/features/settings/components/SettingControlComponent.tsx) with:
+- React hooks for state management (getting/setting values via `useSettingsStore`).
+- Logic to determine the appropriate UI control based on `UISettingDefinition`.
+- Custom debounce hook for input optimization on text/number inputs.
+- TypeScript for type safety.
+- Tailwind CSS for consistent styling.
+- Lucide React icons for visual elements (e.g., tooltips, password visibility).
 
 All controls follow the same pattern:
 1. Receive value and onChange from parent

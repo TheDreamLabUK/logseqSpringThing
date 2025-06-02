@@ -8,16 +8,16 @@ The LogseqXR graph architecture has been modernized to decouple graph initializa
 
 ### Server-Side Components
 
-- **GraphService**: Continuously maintains the force-directed graph independently of client connections
-- **ClientManager**: Tracks all connected WebSocket clients and handles broadcasting updates
-- **Force-Directed Physics**: Pre-computes node positioning with server-side physics processing
-- **WebSocket Handler**: Manages bi-directional communication for synchronized graph state
+-   **GraphService ([`src/services/graph_service.rs`](../../src/services/graph_service.rs))**: Continuously maintains the force-directed graph (nodes, edges, positions) independently of client connections. It runs the physics simulation.
+-   **ClientManager** (typically part of or used by [`src/handlers/socket_flow_handler.rs`](../../src/handlers/socket_flow_handler.rs)): A static instance that tracks all connected WebSocket clients and handles broadcasting updates received from `GraphService`.
+-   **Force-Directed Physics**: Pre-computes node positioning with server-side physics processing within `GraphService`.
+-   **WebSocket Handler ([`src/handlers/socket_flow_handler.rs`](../../src/handlers/socket_flow_handler.rs))**: Manages WebSocket connections, client registration with `ClientManager`, and message relay.
 
 ### Client-Side Components
 
-- **WebSocketService**: Handles WebSocket communication with the server
-- **NodeManager**: Processes incoming node position updates and sends user interactions back to server
-- **GraphRenderer**: Visualizes the graph with updated node positions
+-   **WebSocketService ([`client/src/services/WebSocketService.ts`](../../client/src/services/WebSocketService.ts))**: Handles WebSocket communication with the server.
+-   **GraphDataManager ([`client/src/features/graph/managers/graphDataManager.ts`](../../client/src/features/graph/managers/graphDataManager.ts))**: Manages client-side graph data, processes incoming node position updates from `WebSocketService`, and can send user interactions (like node drags) back to the server. (This component effectively acts as the "NodeManager" in this context).
+-   **GraphRenderer (Components like [`GraphManager.tsx`](../../client/src/features/graph/components/GraphManager.tsx) and [`GraphCanvas.tsx`](../../client/src/features/graph/components/GraphCanvas.tsx))**: Visualizes the graph using data from `GraphDataManager`, updating node positions as they are received.
 
 ## Key Architectural Improvements
 
@@ -88,9 +88,9 @@ The system includes several optimizations:
 
 The server uses a hybrid approach to physics processing:
 
-1. GPU-accelerated computing when available (CUDA/WebGPU)
-2. CPU fallback for environments without GPU support
-3. Physics parameters tuned for stability and performance
+1.  GPU-accelerated computing when available, primarily via CUDA, managed by [`src/utils/gpu_compute.rs`](../../src/utils/gpu_compute.rs). WebGPU is not the primary target for server-side GPU compute in this context.
+2.  CPU fallback for physics calculations within `GraphService::calculate_layout_cpu` if GPU is not available or disabled.
+3.  Physics parameters (from `AppFullSettings.visualisation.physics` and `SimulationParams`) are tuned for stability and performance.
 
 ### Client Connection Lifecycle
 

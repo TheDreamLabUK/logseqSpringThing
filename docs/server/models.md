@@ -8,23 +8,27 @@ Defines parameters for the physics-based graph layout simulation.
 
 ### Core Structure (from [`src/models/simulation_params.rs`](../../src/models/simulation_params.rs))
 ```rust
+// In src/models/simulation_params.rs
+#[derive(Debug, Clone, Serialize, Deserialize, Copy)]
 pub struct SimulationParams {
     pub iterations: u32,
     pub spring_strength: f32,
-    pub repulsion: f32,
+    pub repulsion_strength: f32, // Note: field name might be repulsion_strength
     pub damping: f32,
     pub max_repulsion_distance: f32,
-    pub viewport_bounds: f32, // May relate to enable_bounds
+    // pub viewport_bounds: f32, // This specific field might not exist; bounds are often implicitly handled or part of PhysicsSettings
     pub mass_scale: f32,
     pub boundary_damping: f32,
-    pub enable_bounds: bool,
+    pub enable_bounds: bool, // This is usually part of PhysicsSettings in AppFullSettings
     pub time_step: f32,
-    // pub phase: SimulationPhase, // Assuming SimulationPhase is an enum
-    // pub mode: SimulationMode,   // Assuming SimulationMode is an enum
-    pub gravity_strength: f32,
-    pub center_attraction_strength: f32,
+    // pub phase: SimulationPhase, // If used, SimulationPhase would be an enum
+    // pub mode: SimulationMode,   // If used, SimulationMode would be an enum
+    pub gravity_strength: f32, // This is usually part of PhysicsSettings in AppFullSettings
+    pub center_attraction_strength: f32, // This is usually part of PhysicsSettings in AppFullSettings
+    // Other fields like collision_radius, max_velocity, repulsion_distance might be here or in PhysicsSettings
 }
 ```
+Note: Some fields like `gravity_strength`, `center_attraction_strength`, and `enable_bounds` are typically part of `PhysicsSettings` within `AppFullSettings`, which then might be used to populate or influence `SimulationParams` used by the `GraphService`.
 
 ### Usage
 -   Configuring the physics engine for graph layout.
@@ -35,39 +39,47 @@ pub struct SimulationParams {
 
 The server defines two main structures for managing UI-related settings:
 
-1.  **`UserSettings`** (from [`src/models/user_settings.rs`](../../src/models/user_settings.rs)): This structure is user-specific and primarily stores a user's `pubkey`, their personalized `UISettings`, and the `last_modified` timestamp. It's used for persisting individual user preferences.
+1.  **`UserSettings`** (from [`src/models/user_settings.rs`](../../src/models/user_settings.rs)): This structure is user-specific and primarily stores a user's `pubkey` and their personalized `UISettings` (which itself contains `visualisation`, `system`, and `xr` settings relevant to the client). It's used for persisting individual user preferences.
 
     ```rust
-    // From src/models/user_settings.rs
+    // In src/models/user_settings.rs
     #[derive(Debug, Clone, Serialize, Deserialize)]
     pub struct UserSettings {
         pub pubkey: String,
-        pub settings: UISettings,
+        pub settings: UISettings, // The actual client-facing settings structure
         pub last_modified: i64, // Unix timestamp
     }
     ```
 
-2.  **`UISettings`** (from [`src/models/ui_settings.rs`](../../src/models/ui_settings.rs)): This structure represents the actual set of UI configurations that are sent to the client. It's derived from the global `AppFullSettings` for public/default views or from a specific user's `UserSettings`.
+2.  **`UISettings`** (from [`src/models/ui_settings.rs`](../../src/models/ui_settings.rs)): This structure represents the actual set of UI configurations that are sent to the client (serialized as camelCase JSON). It's derived from the global `AppFullSettings` for public/default views or from a specific user's `UserSettings`.
 
     ```rust
-    // From src/models/ui_settings.rs
+    // In src/models/ui_settings.rs
     #[derive(Debug, Clone, Serialize, Deserialize, Default)]
     #[serde(rename_all = "camelCase")]
     pub struct UISettings {
-        pub visualisation: VisualisationSettings, // from config/mod.rs
-        pub system: UISystemSettings,
-        pub xr: XRSettings, // from config/mod.rs
+        pub visualisation: VisualisationSettings, // Sourced from AppFullSettings.visualisation
+        pub system: UISystemSettings,             // Contains client-relevant parts of AppFullSettings.system
+        pub xr: XRSettings,                       // Sourced from AppFullSettings.xr
+        // Note: AuthSettings from AppFullSettings are used server-side; client gets tokens/features.
+        // AI service configurations (like API keys) are NOT part of UISettings.
+        // Client interacts with AI services via API endpoints; server uses ProtectedSettings for keys.
     }
 
     #[derive(Debug, Clone, Serialize, Deserialize, Default)]
     #[serde(rename_all = "camelCase")]
     pub struct UISystemSettings {
-        pub websocket: ClientWebSocketSettings, // from config/mod.rs
-        pub debug: DebugSettings, // from config/mod.rs
+        // Contains only the client-relevant parts of ServerSystemConfigFromFile
+        pub websocket: ClientWebSocketSettings, // Derived from ServerFullWebSocketSettings
+        pub debug: DebugSettings,               // Client-safe debug flags
+        // persistSettings and customBackendUrl are client-side settings,
+        // but their server-side counterparts might influence these.
     }
     ```
-    -   `LayoutConfig` and `ThemeConfig` are not present as distinct top-level structures within `UISettings`. Theme-related aspects are typically part of `VisualisationSettings` (e.g., `backgroundColor`, `baseColor`) and layout aspects are managed client-side or implicitly through physics and camera settings.
-    -   AI settings are not directly part of `UISettings`. The client interacts with AI services via dedicated API endpoints, and AI service configurations (like API keys, models) are managed in the server's `AppFullSettings` and `ProtectedSettings`. Refer to [`src/config/mod.rs`](../../src/config/mod.rs) for detailed AI settings structures like `RagFlowSettings`, `PerplexitySettings`, etc.
+    -   **Clarification**: `LayoutConfig` and `ThemeConfig` are not distinct top-level structures within `UISettings`.
+        -   Theme-related aspects (colors, styles) are primarily part of `VisualisationSettings` (e.g., `visualisation.rendering.backgroundColor`, `visualisation.nodes.baseColor`).
+        -   Layout aspects are generally managed client-side or are an emergent property of the physics simulation and camera settings.
+    -   **AI Settings**: AI service configurations (API keys, model choices, endpoints) are **not** part of `UISettings` sent to the client. The client interacts with AI services via dedicated API endpoints. The server manages AI API keys and configurations within `AppFullSettings` (for general AI behavior) and `ProtectedSettings` (for sensitive keys, often user-specific).
 
 ### Persistence
 -   **User-Specific Settings (`UserSettings`)**: Saved to individual YAML files (e.g., `/app/user_settings/<pubkey>.yaml`).
@@ -79,26 +91,41 @@ This structure holds sensitive server-side configurations that are not directly 
 
 ### Core Structure (from [`src/models/protected_settings.rs`](../../src/models/protected_settings.rs))
 ```rust
-#[derive(Debug, Clone, Serialize, Deserialize)]
+// In src/models/protected_settings.rs
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct ProtectedSettings {
-    pub network: NetworkSettings,
-    pub security: SecuritySettings,
-    pub websocket_server: WebSocketServerSettings,
-    pub users: std::collections::HashMap<String, NostrUser>, // Stores Nostr user profiles including their API keys
-    pub default_api_keys: ApiKeys, // Default API keys for unauthenticated access or as fallback
+    // These fields mirror parts of AppFullSettings.system but are managed separately for security/persistence.
+    pub network: ProtectedNetworkConfig, // Contains bind_address, port etc.
+    pub security: ServerSecurityConfig,    // Contains allowed_origins, session_timeout etc. (often reuses SecuritySettings from config/mod.rs)
+    pub websocket_server: ProtectedWebSocketServerConfig, // Contains server-specific WebSocket settings
+
+    // User management and API keys
+    pub users: std::collections::HashMap<String, NostrUser>, // Keyed by Nostr pubkey (hex)
+    pub default_api_keys: ApiKeys, // Default API keys for services if no user-specific key
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct NostrUser {
+    pub pubkey: String, // Hex public key
+    pub npub: Option<String>,
+    pub is_power_user: bool,
+    pub api_keys: Option<ApiKeys>, // User-specific API keys
+    pub user_settings_path: Option<String>, // Path to their persisted UserSettings YAML
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct ApiKeys {
     pub perplexity: Option<String>,
     pub openai: Option<String>,
     pub ragflow: Option<String>,
+    // Potentially other AI service keys
 }
 
-// Other structs like NetworkSettings, SecuritySettings, WebSocketServerSettings, NostrUser
-// are also defined in protected_settings.rs
+// ProtectedNetworkConfig, ServerSecurityConfig (may reuse config::SecuritySettings),
+// and ProtectedWebSocketServerConfig are also defined in this module or imported.
 ```
 
 ### Features
@@ -113,31 +140,41 @@ pub struct ApiKeys {
 The metadata store is responsible for holding information about each processed file (node) in the knowledge graph.
 
 ### Core Structure (from [`src/models/metadata.rs`](../../src/models/metadata.rs))
-The `MetadataStore` is a type alias for `HashMap<String, Metadata>`:
+The `MetadataStore` is a type alias for `HashMap<String, Metadata>`, where the key is typically a unique identifier for the content (e.g., file path or a derived ID).
+
 ```rust
-// From src/models/metadata.rs
-pub type MetadataStore = HashMap<String, Metadata>;
+// In src/models/metadata.rs
+pub type MetadataStore = std::collections::HashMap<String, Metadata>;
 ```
 
-The `Metadata` struct contains details for each file:
+The `Metadata` struct contains details for each processed file/node:
 ```rust
-// From src/models/metadata.rs
+// In src/models/metadata.rs
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct Metadata {
-    pub file_name: String,
-    pub file_size: usize,
-    pub node_size: f64, // Potentially derived from file_size or other metrics
+    pub file_name: String, // Original file name
+    pub file_size: u64,    // File size in bytes (ensure type matches actual usage, e.g., u64)
+    // pub node_size: f64, // This is often a client-side or dynamically calculated value, not stored directly in server metadata
     pub hyperlink_count: usize,
-    pub sha1: String,
-    pub node_id: String, // Unique identifier for the graph node
-    pub last_modified: DateTime<Utc>,
-    pub perplexity_link: String, // Link to Perplexity discussion/page if available
-    pub last_perplexity_process: Option<DateTime<Utc>>, // Timestamp of last Perplexity processing
-    pub topic_counts: HashMap<String, usize>, // Counts of topics/keywords in the file
+    pub sha1: Option<String>, // SHA1 hash of the file content, optional
+    pub node_id: String,      // Unique identifier for the graph node (often derived from file_name or path)
+    pub last_modified: Option<i64>, // Unix timestamp (seconds), optional
+    
+    // AI Service related fields
+    pub perplexity_link: Option<String>, // Link to Perplexity discussion/page if available
+    pub last_perplexity_process_time: Option<i64>, // Timestamp of last Perplexity processing, optional
+    pub topic_counts: Option<std::collections::HashMap<String, usize>>, // Counts of topics/keywords, optional
+
+    // Other potential fields:
+    // pub title: Option<String>,
+    // pub tags: Option<Vec<String>>,
+    // pub content_type: Option<String>, // e.g., "markdown", "pdf"
+    // pub created_at: Option<i64>,
 }
 ```
-The `MetadataStore` does not directly contain fields for `relationships` or `statistics` at its top level; these would be derived or managed by services that consume the `MetadataStore`.
+-   The `MetadataStore` itself is a `HashMap`. Relationships between nodes (edges) are typically stored separately in `GraphData` within `GraphService`. Statistics are usually computed on-the-fly or by dedicated analysis processes rather than being stored directly in `MetadataStore`.
+-   `node_size` as a distinct field in `Metadata` is less common server-side; visual node size is often determined client-side based on `file_size`, `hyperlink_count`, or other metrics from `Metadata`.
 
 ### Operations
 -   The `MetadataStore` (as a `HashMap`) supports standard CRUD operations for `Metadata` entries.

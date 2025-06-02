@@ -6,45 +6,41 @@ The configuration module manages application settings, environment variables, an
 ## Settings Management
 
 ### Core Structure: `AppFullSettings`
-The primary configuration struct is `AppFullSettings`, defined in `src/config/mod.rs`. This struct aggregates all server-side and client-facing settings, organized into logical categories.
+The primary configuration struct is `AppFullSettings`, defined in [`src/config/mod.rs`](../../src/config/mod.rs). This struct aggregates all server-side settings, which are then used to derive client-facing settings (`UISettings`).
 
 ```rust
+// In src/config/mod.rs
 pub struct AppFullSettings {
     pub visualisation: VisualisationSettings,
-    pub system: ServerSystemConfigFromFile,
+    pub system: ServerSystemConfigFromFile, // Contains network, websocket, security, debug
     pub xr: XRSettings,
     pub auth: AuthSettings,
-    pub ragflow: Option<RagFlowSettings>,
-    pub perplexity: Option<PerplexitySettings>,
-    pub openai: Option<OpenAISettings>,
-    pub kokoro: Option<KokoroSettings>,
-    pub whisper: Option<WhisperSettings>,
+    // Optional AI Service Configurations
+    pub ragflow: Option<RAGFlowConfig>, // Note: Name might be RAGFlowConfig or similar
+    pub perplexity: Option<PerplexityConfig>,
+    pub openai: Option<OpenAIConfig>,
+    pub kokoro: Option<KokoroConfig>,
+    // pub whisper: Option<WhisperConfig>, // Whisper settings are NOT part of AppFullSettings
+                                        // STT is usually part of SpeechService or OpenAIConfig
 }
 ```
 
-#### Nested Settings Structures:
--   **`VisualisationSettings`**: Configures 3D graph rendering, physics, animations, labels, bloom, and hologram effects.
-    -   `nodes: NodeSettings`
-    -   `edges: EdgeSettings`
-    -   `physics: PhysicsSettings`
-    -   `rendering: RenderingSettings`
-    -   `animations: AnimationSettings`
-    -   `labels: LabelSettings`
-    -   `bloom: BloomSettings`
-    -   `hologram: HologramSettings`
--   **`ServerSystemConfigFromFile`**: Contains core server system settings.
+#### Main Categories in `AppFullSettings`:
+-   **`visualisation: VisualisationSettings`**: Configures 3D graph rendering, physics, animations, labels, bloom, and hologram effects. Contains nested structs like `NodeSettings`, `EdgeSettings`, `PhysicsSettings`, etc.
+-   **`system: ServerSystemConfigFromFile`**: Contains core server system settings:
     -   `network: NetworkSettings` (e.g., `bind_address`, `port`, `enable_tls`)
-    -   `websocket: ServerFullWebSocketSettings` (e.g., `binary_chunk_size`, `update_rate`, `compression_enabled`)
+    -   `websocket: ServerFullWebSocketSettings` (e.g., `binary_chunk_size`, `update_rate`, `compression_enabled`, `min_update_rate`, `max_update_rate`, `motion_threshold`)
     -   `security: SecuritySettings` (e.g., `allowed_origins`, `session_timeout`)
     -   `debug: DebugSettings` (e.g., `enabled`, `log_level`, `log_full_json`)
-    -   `persist_settings: bool` (whether to save settings changes to disk)
--   **`XRSettings`**: Configures WebXR-specific parameters.
--   **`AuthSettings`**: Configures authentication provider settings.
--   **`RagFlowSettings`**: Configuration for the RAGFlow AI service.
--   **`PerplexitySettings`**: Configuration for the Perplexity AI service.
--   **`OpenAISettings`**: Configuration for OpenAI services (e.g., TTS).
--   **`KokoroSettings`**: Configuration for the Kokoro AI service (if integrated).
--   **`WhisperSettings`**: Configuration for the Whisper Speech-to-Text service.
+-   **`xr: XRSettings`**: Configures WebXR-specific parameters.
+-   **`auth: AuthSettings`**: Configures authentication provider settings (e.g., Nostr challenge settings).
+-   **Optional AI Services**:
+    -   `ragflow: Option<RAGFlowConfig>`
+    -   `perplexity: Option<PerplexityConfig>`
+    -   `openai: Option<OpenAIConfig>` (may include API keys for various OpenAI services like TTS, STT/Whisper)
+    -   `kokoro: Option<KokoroConfig>`
+
+Note: `whisper` is not a top-level configuration in `AppFullSettings`. Whisper STT functionality, if used via OpenAI, would typically have its API key configured within `OpenAIConfig`. If a different Whisper provider is used, its config might be part of `SpeechService` or another specific AI config block.
 
 ### Environment Loading
 Settings are loaded from a YAML file (defaulting to `/app/settings.yaml`) and can be overridden by environment variables. The `config` crate is used for this hierarchical loading.
@@ -71,7 +67,7 @@ impl AppFullSettings {
 
 ## Feature Access and Permissions
 
-Instead of a separate `FeatureFlags` struct, feature access is managed by the `FeatureAccess` struct in `src/config/feature_access.rs`. This struct determines which features are available to different user types (unauthenticated, regular authenticated, power users).
+Feature access is managed by the `FeatureAccess` struct, typically defined in [`src/config/feature_access.rs`](../../src/config/feature_access.rs). This struct is initialized based on `AuthSettings` (e.g., list of power user pubkeys) from `AppFullSettings`.
 
 ```rust
 pub struct FeatureAccess {
@@ -89,7 +85,7 @@ impl FeatureAccess {
 
 ## Security Settings
 
-Security-related configurations are part of the `SecuritySettings` struct nested within `ServerSystemConfigFromFile`.
+Security-related configurations are defined in the `SecuritySettings` struct, which is nested within `ServerSystemConfigFromFile` (i.e., `app_full_settings.system.security`).
 
 ```rust
 pub struct SecuritySettings {
@@ -120,12 +116,5 @@ Settings are validated during deserialization by the `config` crate. Custom vali
 The current implementation does not support hot reloading of configuration. Changes to `settings.yaml` or environment variables require a server restart to take effect.
 
 ### Saving Settings
-`AppFullSettings` implements a `save()` method to persist the current settings state back to the `settings.yaml` file. This is used when power users modify global settings via the UI.
-
-```rust
-impl AppFullSettings {
-    pub fn save(&self) -> Result<(), String> {
-        // ... serialization to YAML and file write logic
-    }
-}
-```
+`AppFullSettings` implements a `save(&self, path: &Path) -> Result<(), ConfigError>` method (or similar signature) to persist the current settings state back to the specified YAML file (typically `settings.yaml`). This serialization is done using `serde_yaml` and handles converting the Rust struct (usually in snake_case or as defined by `serde` attributes) to YAML format. This method is invoked when power users modify global settings that need to be persisted.
+The `AppFullSettings` struct itself derives `Serialize` and `Deserialize` from `serde` for this purpose.

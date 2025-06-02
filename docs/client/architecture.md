@@ -10,81 +10,122 @@ The client is built as a modern TypeScript application that follows a component-
 graph TB
     subgraph Client Architecture
         AppInitializer[App Initializer]
-        UI[User Interface Layer]
-        State[State Management (Zustand)]
-        API[API Layer]
+
+        subgraph UILayer [User Interface Layer]
+            TwoPaneLayout[TwoPaneLayout.tsx]
+            GraphViewportUI[GraphViewport.tsx]
+            RightPaneControlPanel[RightPaneControlPanel.tsx]
+            SettingsPanelRedesign[SettingsPanelRedesign.tsx]
+            ConversationPane[ConversationPane.tsx]
+            NarrativeGoldminePanel[NarrativeGoldminePanel.tsx]
+        end
+
+        subgraph StateManagement [State Management]
+            SettingsStore[useSettingsStore (Zustand)]
+            GraphDataManager[GraphDataManager]
+        end
+        
+        subgraph APILayer [API Layer]
+            NostrAuthService[nostrAuthService.ts]
+            APIService[api.ts]
+        end
+
         Rendering[Rendering Engine (R3F/Three.js)]
-        WebSocket[WebSocket Client]
-        XR[XR Module]
+        WebSocketClient[WebSocketClient (WebSocketService.ts)]
+        XRModule[XR Module]
         
-        AppInitializer --> UI
-        AppInitializer --> State
-        AppInitializer --> API
+        AppInitializer --> TwoPaneLayout
+        AppInitializer --> SettingsStore
+        AppInitializer --> GraphDataManager
+        AppInitializer --> NostrAuthService
+        AppInitializer --> APIService
         AppInitializer --> Rendering
-        AppInitializer --> WebSocket
-        AppInitializer --> XR
+        AppInitializer --> WebSocketClient
+        AppInitializer --> XRModule
+
+        TwoPaneLayout --> GraphViewportUI
+        TwoPaneLayout --> RightPaneControlPanel
+        RightPaneControlPanel --> SettingsPanelRedesign
+        RightPaneControlPanel --> ConversationPane
+        RightPaneControlPanel --> NarrativeGoldminePanel
         
-        UI --> State
-        State --> Rendering
-        State --> API
-        API --> WebSocket
-        XR --> Rendering
-        XR --> State
-        WebSocket --> State
+        SettingsPanelRedesign --> SettingsStore
+        ConversationPane --> APIService
+        NarrativeGoldminePanel --> APIService
+
+        SettingsStore --> Rendering
+        GraphDataManager --> Rendering
+        SettingsStore --> APIService
+        GraphDataManager --> WebSocketClient
+        
+        NostrAuthService --> APIService
+        APIService --> WebSocketClient
+
+        XRModule --> Rendering
+        XRModule --> SettingsStore
+        WebSocketClient --> GraphDataManager
     end
     
-    subgraph Server Interface
-        REST[REST API]
-        WS[WebSocket Server]
-        Auth[Authentication]
+    subgraph ServerInterface [Server Interface]
+        RESTAPI[REST API]
+        WebSocketServer[WebSocket Server]
+        AuthHandler[Authentication Handler]
         
-        API --> REST
-        WebSocket --> WS
-        API --> Auth
-        WebSocket --> Auth
+        APIService --> RESTAPI
+        WebSocketClient --> WebSocketServer
+        NostrAuthService --> AuthHandler
+        APIService --> AuthHandler
     end
 ```
 
 ## Key Components
 
 ### User Interface Layer
-The UI layer consists of modular components for controlling the application, configuring settings, and interacting with the 3D visualisation. The main settings UI is `client/src/features/settings/components/panels/SettingsPanelRedesign.tsx`, which is hosted within `client/src/app/components/RightPaneControlPanel.tsx`. Key components are `TwoPaneLayout.tsx`, `RightPaneControlPanel.tsx`, `SettingsPanelRedesign.tsx`, `SettingsSection.tsx`, and `SettingControlComponent.tsx`.
+The UI layer is built with React and TypeScript.
+- [`TwoPaneLayout.tsx`](../../client/src/app/TwoPaneLayout.tsx) serves as the primary layout, dividing the screen into a main visualisation area and a control panel area.
+- [`RightPaneControlPanel.tsx`](../../client/src/app/components/RightPaneControlPanel.tsx) hosts various control panels, including:
+    - [`SettingsPanelRedesign.tsx`](../../client/src/features/settings/components/panels/SettingsPanelRedesign.tsx) for application settings. This panel utilizes [`SettingsSection.tsx`](../../client/src/features/settings/components/SettingsSection.tsx) and [`SettingControlComponent.tsx`](../../client/src/features/settings/components/SettingControlComponent.tsx) for rendering individual settings.
+    - [`ConversationPane.tsx`](../../client/src/app/components/ConversationPane.tsx) for AI chat interactions.
+    - [`NarrativeGoldminePanel.tsx`](../../client/src/app/components/NarrativeGoldminePanel.tsx) for exploring narrative elements.
+- [`GraphViewport.tsx`](../../client/src/features/graph/components/GraphViewport.tsx) is responsible for the main 3D graph visualisation area.
 
 ### State Management
 State management is primarily handled by **Zustand**, a lightweight and flexible state management solution. The main state stores are:
-- `useSettingsStore` (`client/src/store/settingsStore.ts`) - Manages application settings with validation and persistence.
-- `GraphDataManager` (`client/src/features/graph/managers/graphDataManager.ts`) - Manages the graph data structure (nodes, edges, metadata) and handles real-time updates from the WebSocket.
+- `useSettingsStore` ([`client/src/store/settingsStore.ts`](../../client/src/store/settingsStore.ts)) - Manages application settings with validation and persistence.
+- `GraphDataManager` ([`client/src/features/graph/managers/graphDataManager.ts`](../../client/src/features/graph/managers/graphDataManager.ts)) - Manages the graph data structure (nodes, edges, metadata) and handles real-time updates from the WebSocket.
 State changes are propagated through Zustand's subscription mechanism, allowing components to react efficiently to specific state slices.
 
 ### API Layer
-The API layer handles communication with the server through REST endpoints, providing abstracted access to server functionality:
-- Authentication and authorization (`client/src/features/auth/services/nostrAuthService.ts`)
-- Graph data retrieval and updates (`client/src/services/api.ts`)
-- File and settings management (`client/src/services/api.ts`)
+The API layer handles communication with the server through REST endpoints and manages authentication:
+- Authentication and authorization: [`nostrAuthService.ts`](../../client/src/services/nostrAuthService.ts) handles Nostr-based authentication.
+- General API communication: [`api.ts`](../../client/src/services/api.ts) provides functions for interacting with other REST endpoints (graph data, files, settings).
 
 ### Rendering Engine
 The rendering engine is built on **React Three Fiber (`@react-three/fiber`)** and **Three.js**, providing high-performance visualisation of graph data. Key components include:
-- `GraphCanvas.tsx`: The main R3F canvas where the 3D scene is rendered.
-- `GraphManager.tsx`: Manages the rendering of nodes and edges, handling their positions and visual properties.
-- `GraphViewport.tsx`: Manages the camera and scene controls.
+- [`GraphCanvas.tsx`](../../client/src/features/graph/components/GraphCanvas.tsx): The main R3F canvas where the 3D scene is rendered.
+- [`GraphManager.tsx`](../../client/src/features/graph/components/GraphManager.tsx): Manages the rendering of nodes and edges, handling their positions and visual properties.
+- [`GraphViewport.tsx`](../../client/src/features/graph/components/GraphViewport.tsx): Manages the camera, scene controls, and post-processing effects.
 - Node and edge rendering, often utilizing instancing for performance.
-- Text rendering with SDF fonts (`TextRenderer.tsx`).
-- Metadata visualisation (`MetadataVisualizer.tsx`).
-- Camera controls and scene management (`CameraController.tsx`).
+- Text rendering with SDF fonts ([`TextRenderer.tsx`](../../client/src/features/visualisation/renderers/TextRenderer.tsx)).
+- Custom shaders like [`HologramMaterial.tsx`](../../client/src/features/visualisation/renderers/materials/HologramMaterial.tsx) for unique visual effects.
+- Metadata visualisation ([`MetadataVisualizer.tsx`](../../client/src/features/visualisation/components/MetadataVisualizer.tsx)).
+- Camera controls and scene management ([`CameraController.tsx`](../../client/src/features/visualisation/components/CameraController.tsx)).
 
 ### WebSocket Client
-The WebSocket client (`client/src/services/WebSocketService.ts`) provides real-time communication with the server for:
+The WebSocket client ([`client/src/services/WebSocketService.ts`](../../client/src/services/WebSocketService.ts)) provides real-time communication with the server for:
 - Live position updates using a custom binary protocol.
 - Graph data synchronization.
-- Control messages and event notifications (e.g., `connection_established`, `loading`, `settings_update`).
+- Control messages and event notifications (e.g., `connection_established`, `loading`).
 
 ### XR Module
-The XR module (`client/src/features/xr/`) integrates WebXR capabilities for VR/AR experiences:
-- Hand tracking and interaction (`HandInteractionSystem.tsx`).
-- XR session management (`xrSessionManager.ts`).
+The XR module, located under [`client/src/features/xr/`](../../client/src/features/xr/), integrates WebXR capabilities for VR/AR experiences:
+- Key Components:
+    - [`XRController.tsx`](../../client/src/features/xr/components/XRController.tsx): Manages the overall XR state and setup.
+    - [`HandInteractionSystem.tsx`](../../client/src/features/xr/systems/HandInteractionSystem.tsx): Handles hand tracking and interactions.
+    - [`xrSessionManager.ts`](../../client/src/features/xr/managers/xrSessionManager.ts): Manages WebXR sessions.
+    - [`xrInitializer.ts`](../../client/src/features/xr/managers/xrInitializer.ts): Handles the initial setup for XR.
 - Spatial UI elements.
 - XR-specific rendering optimizations.
-- Initialisation logic (`xrInitializer.ts`).
 
 ## High-Level Data Flow
 
@@ -137,8 +178,11 @@ flowchart TB
 1. **Component-Based Architecture** - Leveraging React's component model for modular and reusable UI elements.
 2. **State Management with Zustand** - Centralized and reactive state management for application settings and graph data.
 3. **Composition over Inheritance** - Building complex behaviors by combining simpler components and hooks.
-4. **Service Layer** - Abstracting API calls and WebSocket communication into dedicated service modules (`api.ts`, `WebSocketService.ts`).
-5. **React Context API** - Used for dependency injection and sharing global state (e.g., `ApplicationModeContext.tsx`, `WindowSizeContext.tsx`, `control-panel-context.tsx`).
+4. **Service Layer** - Abstracting API calls and WebSocket communication into dedicated service modules ([`api.ts`](../../client/src/services/api.ts), [`WebSocketService.ts`](../../client/src/services/WebSocketService.ts), [`nostrAuthService.ts`](../../client/src/services/nostrAuthService.ts)).
+5. **React Context API** - Used for dependency injection and sharing global state that doesn't fit well into Zustand or is more localized. Examples include:
+    - [`ApplicationModeContext.tsx`](../../client/src/contexts/ApplicationModeContext.tsx)
+    - [`WindowSizeContext.tsx`](../../client/src/contexts/WindowSizeContext.tsx)
+    - [`control-panel-context.tsx`](../../client/src/features/settings/components/control-panel-context.tsx)
 
 ## Cross-Cutting Concerns
 

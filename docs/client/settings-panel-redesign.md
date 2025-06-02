@@ -75,15 +75,15 @@ SettingsPanelRedesign
    - Advanced options tucked away but discoverable
 
 ### File Structure
-- `client/src/features/settings/components/panels/SettingsPanelRedesign.tsx` - Main redesigned component
-- `client/src/app/components/RightPaneControlPanel.tsx` - Updated to use new design
+- [`client/src/features/settings/components/panels/SettingsPanelRedesign.tsx`](../../client/src/features/settings/components/panels/SettingsPanelRedesign.tsx) - Main redesigned component.
+- [`client/src/app/components/RightPaneControlPanel.tsx`](../../client/src/app/components/RightPaneControlPanel.tsx) - Hosts the `SettingsPanelRedesign` and other control panels.
 
 ## Migration Notes
 
-The new design maintains compatibility with existing:
-- Settings store (`useSettingsStore`)
-- Setting definitions (`settingsUIDefinition`)
-- Control components (`SettingControlComponent`)
+The new design maintains compatibility with existing core settings logic:
+- Settings store ([`client/src/store/settingsStore.ts`](../../client/src/store/settingsStore.ts))
+- Setting definitions ([`client/src/features/settings/config/settingsUIDefinition.ts`](../../client/src/features/settings/config/settingsUIDefinition.ts))
+- Individual control components ([`client/src/features/settings/components/SettingControlComponent.tsx`](../../client/src/features/settings/components/SettingControlComponent.tsx))
 
 No changes needed to backend or data flow - this is purely a UI/UX improvement.
 

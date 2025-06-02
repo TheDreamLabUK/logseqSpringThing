@@ -5,7 +5,7 @@ The WebSocket implementation in LogseqXR provides real-time graph updates using 
 
 ## Connection
 
-Connect to: `wss://your-domain/wss`
+Connect to: `wss://your-domain/wss` (Note: The actual path is `/wss` as handled by `src/handlers/socket_flow_handler.rs`)
 
 ### Connection Flow
 1. Client connects to WebSocket endpoint (`/wss`)
@@ -59,10 +59,13 @@ Authentication for WebSocket connections in LogseqXR is primarily handled during
 
 Position updates are transmitted as binary messages in both directions:
 
-- Each node update is 26 bytes
-- Format: [Node ID (2 bytes)][Position (12 bytes)][Velocity (12 bytes)]
-- Position and Velocity are three consecutive float32 values (x,y,z)
-- Messages are compressed with zlib if size > 1KB
+- Each node update is 26 bytes.
+- Format: Node ID (u16, 2 bytes), Position (3x f32, 12 bytes), Velocity (3x f32, 12 bytes).
+- Position and Velocity are three consecutive `f32` values (x, y, z).
+- Server-side `BinaryNodeData` (defined in `src/utils/socket_flow_messages.rs`) includes additional fields like `mass`, `flags`, and `padding` for physics simulation, but these are **not** part of the 26-byte wire format sent to the client.
+- The client-side `BinaryNodeData` (defined in `client/src/types/binaryProtocol.ts`) correctly reflects the 26-byte wire format: `nodeId`, `position`, `velocity`.
+- Server-side compression: Messages are compressed with zlib if their size exceeds the `compression_threshold` (configurable in `settings.yaml` under `system.websocket.compression_threshold`, default is 512 bytes).
+- Client-side decompression is handled by `client/src/utils/binaryUtils.ts::decompressZlib`.
 
 #### Server → Client Updates
 
@@ -94,52 +97,46 @@ The bidirectional synchronization protocol ensures consistent graph state:
 5. Late-joining clients receive the complete current graph state
 
 
+## Control Messages (JSON) - Revisited
+
+The `socket_flow_handler.rs` primarily handles the following JSON messages:
+
+**Server -> Client:**
+- `{"type": "connection_established", "timestamp": <timestamp>}`
+- `{"type": "updatesStarted", "timestamp": <timestamp>}`
+- `{"type": "loading", "message": "Calculating initial layout..."}`
+- `{"type": "pong"}` (in response to client's ping)
+
+**Client -> Server:**
+- `{"type": "ping"}`
+- `{"type": "requestInitialData"}`: This message implicitly starts the binary update stream if the server is ready.
+- `{"type": "subscribe_position_updates", "binary": true, "interval": <number>}`: While not a distinct message type in the server's `Message` enum (`src/utils/socket_flow_messages.rs`), the `requestInitialData` handler in `socket_flow_handler.rs` effectively processes the intent of starting binary updates. The client (`client/src/services/WebSocketService.ts`) sends this to configure the binary stream.
+- `{"type": "enableRandomization", "enabled": <boolean>}`: This message is acknowledged by the server, but server-side randomization has been removed. The client is responsible for any randomization effects.
+
 ## Optimization Features
 
-- Zlib compression for messages >1KB
-- Fixed-size format for efficient parsing
-- No message headers to minimize overhead (for binary messages)
-- Consistent use of THREE.Vector3 throughout (client-side)
+- Zlib compression for binary messages larger than `compression_threshold` (default 512 bytes, configurable).
+- Fixed-size binary format (26 bytes per node update) for efficient parsing.
+- Minimal overhead for binary messages (no explicit headers per node update within a batch).
+- Consistent use of `THREE.Vector3` for positions and velocities on the client-side.
 
 ## Error Handling
 
-### Error Message Format
-
-#### 1. Connection Error
-```json
-{
-  "type": "error",
-  "code": "connection_error",
-  "message": "Connection failed"
-}
-```
-
-#### 2. Authentication Error
-```json
-{
-  "type": "error",
-  "code": "auth_error",
-  "message": "Invalid token"
-}
-```
-
-#### 3. Position Update Error
-```json
-{
-  "type": "error",
-  "code": "position_update_error",
-  "message": "Invalid node position data"
-}
-```
-
-### Error Handling Features
-- Connection failures trigger automatic reconnection
-- Invalid messages are logged and skipped
-- Server-side validation prevents corrupt data transmission
+The `socket_flow_handler.rs` does not explicitly send these structured JSON error messages.
+- Errors encountered during WebSocket communication (e.g., deserialization issues, unexpected message types) are typically logged on the server-side.
+- The WebSocket connection might be closed by the server if unrecoverable errors occur.
+- Clients should implement their own timeout and error detection logic for the WebSocket connection itself (e.g., detecting a closed connection).
 
 ## Rate Limiting
 
-- Server-side throttling applies for high-frequency position updates.
+This section refers to the server's dynamic management of binary position update frequency and client-side handling, rather than strict message rate limiting (e.g., X messages per second).
+
+- **Server-Side Update Rate:** The server dynamically adjusts the rate of binary position updates based on graph activity and physics simulation stability. This is controlled by settings in `settings.yaml` under `system.websocket`:
+    - `min_update_rate`: Minimum updates per second when the graph is stable.
+    - `max_update_rate`: Maximum updates per second during high activity.
+    - `motion_threshold`: Sensitivity to node movement for determining activity.
+- **Client-Side Throttling:** The client (`client/src/features/graph/managers/graphDataManager.ts`) implements a `lastBinaryUpdateTime` check to avoid processing updates too rapidly if they arrive faster than the client can render, effectively throttling the application of received binary messages.
+- **Debug Logging:** `socket_flow_handler.rs` includes a `DEBUG_LOG_SAMPLE_RATE` to control how frequently detailed debug logs about message handling are produced, which is a diagnostic aid rather than a rate limit.
 
 ## Diagnostics
 

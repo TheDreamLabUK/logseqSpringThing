@@ -13,35 +13,34 @@ The client uses WebSocket connections for real-time communication with the serve
 ## Architecture
 
 ```mermaid
-flowchart TB
-    subgraph Client
-        WebSocketService[WebSocket Service]
-        GraphDataManager[Graph Data Manager]
-        VisualisationManager[Visualisation Manager]
-        BinaryProtocol[Binary Protocol Handler]
+graph TB
+    subgraph ClientSide [Client]
+        App[Application UI/Logic] --> GDM[GraphDataManager]
+        App --> WSS[WebSocketService]
+        WSS --> GDM
+        GDM --> RenderingEngine[Rendering Engine (GraphManager etc.)]
     end
     
-    subgraph Server
-        WSServer[WebSocket Server]
-        Physics[Physics Engine]
-        DataSync[Data Sync]
+    subgraph ServerSide [Server]
+        ServerWSS[WebSocket Server Handler (socket_flow_handler.rs)]
+        ClientMgr[ClientManager]
+        GraphSvc[GraphService (Physics Engine)]
+        
+        ServerWSS <--> ClientMgr
+        GraphSvc --> ClientMgr
     end
     
-    WebSocketService <--> WSServer
-    WebSocketService --> BinaryProtocol
-    BinaryProtocol --> GraphDataManager
-    GraphDataManager --> VisualisationManager
-    Physics --> WSServer
-    DataSync --> WSServer
+    WSS <--> ServerWSS
 ```
 
 ## WebSocket Service
 
-The WebSocket service (`client/websocket/websocketService.ts`) is implemented as a singleton that manages:
-- Connection establishment and maintenance
-- Message handling
-- Binary protocol processing
-- Error handling and recovery
+The WebSocket service ([`client/src/services/WebSocketService.ts`](../../client/src/services/WebSocketService.ts)) is implemented as a singleton that manages:
+- WebSocket connection establishment and maintenance (including reconnection logic).
+- Sending and receiving JSON and binary messages.
+- Handling binary protocol specifics (like potential decompression if not handled by `binaryUtils.ts` directly upon receipt).
+- Exposing connection status and readiness (see `websocket-readiness.md`).
+- Error handling for the connection itself.
 
 ### Key Features
 
@@ -56,17 +55,16 @@ The binary protocol is used for efficient transmission of node position updates.
 
 ### Message Format
 
-Position updates use a binary format where each node's data is packed as follows:
+The primary binary message format is for node position and velocity updates.
 
-```
-| Field    | Type        | Size (bytes) | Description           |
-|----------|-------------|--------------|------------------------|
-| Node ID  | uint16      | 2           | Unique node identifier |
-| Position | float32[3]  | 12          | X, Y, Z coordinates    |
-| Velocity | float32[3]  | 12          | VX, VY, VZ components |
-```
-
-Total bytes per node: 26 bytes
+-   **Format per node:**
+    -   Node ID: `uint16` (2 bytes)
+    -   Position (X, Y, Z): 3 x `float32` (12 bytes)
+    -   Velocity (VX, VY, VZ): 3 x `float32` (12 bytes)
+-   **Total per node: 26 bytes.**
+-   A single binary WebSocket message can contain data for multiple nodes, packed consecutively.
+-   **Important Clarification:** The server-side `BinaryNodeData` struct (in `src/utils/socket_flow_messages.rs`) includes additional fields like `mass`, `flags`, and `padding`. These are used for the server's internal physics simulation but are **not** part of the 26-byte wire format sent to the client. The client-side `BinaryNodeData` type in [`client/src/types/binaryProtocol.ts`](../../client/src/types/binaryProtocol.ts) correctly reflects the 26-byte structure (nodeId, position, velocity).
+-   Server-side compression (zlib) is applied if the total binary message size exceeds `system.websocket.compressionThreshold` (default 512 bytes). Client-side decompression is handled by [`client/src/utils/binaryUtils.ts`](../../client/src/utils/binaryUtils.ts).
 
 ### Processing Flow
 
@@ -88,15 +86,23 @@ sequenceDiagram
 
 The WebSocket service handles several types of messages:
 
-1. **Binary Position Updates**
-   - Format: ArrayBuffer
-   - Handler: `onBinaryMessage`
-   - Used for real-time node position updates
+1.  **Binary Position Updates (Server -> Client)**
+    -   Format: `ArrayBuffer` (potentially zlib compressed).
+    -   Handler: `onBinaryMessage` callback provided to `WebSocketService`.
+    -   Content: Packed `BinaryNodeData` (nodeId, position, velocity) for multiple nodes.
+    -   Usage: Real-time node position and velocity updates from the server's physics simulation.
 
-2. **Connection Status**
-   - Format: JSON
-   - Handler: `onConnectionStatusChange`
-   - Used for connection state management
+2.  **JSON Control Messages (Bidirectional)**
+    -   Format: JSON objects.
+    -   Handler: `onMessage` callback provided to `WebSocketService`.
+    -   Examples:
+        -   Server -> Client: `{"type": "connection_established"}`, `{"type": "updatesStarted"}`, `{"type": "loading"}`.
+        -   Client -> Server: `{"type": "requestInitialData"}`, `{"type": "ping"}`, `{"type": "subscribe_position_updates", "binary": true, "interval": ...}`. (The `subscribe_position_updates` is effectively handled by `requestInitialData` logic on the server).
+
+3.  **Connection Status Changes**
+    -   Not a message type per se, but an event emitted by `WebSocketService`.
+    -   Handler: `onConnectionStatusChange` callback.
+    -   Provides status like `{ connected: boolean; error?: any }`.
 
 ## Error Handling
 
@@ -120,13 +126,21 @@ stateDiagram-v2
 WebSocket behavior can be configured through settings:
 
 ```typescript
-interface WebSocketSettings {
-    reconnectAttempts: number;    // Maximum reconnection attempts (e.g., from system.websocket.reconnectAttempts)
-    reconnectDelay: number;       // Base delay between retries in ms (e.g., from system.websocket.reconnectDelay)
-    // binaryChunkSize, compressionEnabled, compressionThreshold, updateRate are also relevant
-    // but their direct mapping to the store might be via other system.websocket.* paths or defaults.
+// Relevant settings are found under 'system.websocket' in
+// client/src/features/settings/config/settings.ts (ClientWebSocketSettings)
+// and correspond to server-side settings in src/config/mod.rs (ServerFullWebSocketSettings).
+
+interface ClientWebSocketSettings { // From settings.ts
+    updateRate: number; // Target FPS for client-side rendering of updates
+    reconnectAttempts: number;
+    reconnectDelay: number; // ms
+    compressionEnabled: boolean; // Client expects server to compress if true
+    compressionThreshold: number; // Matches server setting
+    // binaryChunkSize is not a direct client setting, more server-side or implicit.
+    // minUpdateRate, maxUpdateRate, motionThreshold, motionDamping are server-side physics/update rate controls.
 }
 ```
+The client's `WebSocketService` uses `reconnectAttempts` and `reconnectDelay`. The `compressionEnabled` and `compressionThreshold` inform the client whether to expect compressed messages and how to handle them (though decompression logic is in `binaryUtils.ts`). The `updateRate` in client settings typically influences how often the client *requests* or *processes* updates, distinct from the server's actual send rate.
 
 ## Performance Considerations
 
@@ -148,26 +162,48 @@ interface WebSocketSettings {
 ## Usage Example
 
 ```typescript
-// Initialize WebSocket service
-const ws = WebSocketService.getInstance();
+// Initialization and usage typically happens within AppInitializer.tsx or similar.
+// graphDataManager is an instance of GraphDataManager.
 
-// Subscribe to binary updates
-ws.onBinaryMessage((data) => {
-    if (data instanceof ArrayBuffer) {
-        graphDataManager.updateNodePositions(new Float32Array(data));
+const wsService = WebSocketService.getInstance();
+
+// Setup handlers
+wsService.onConnectionStatusChange((status) => {
+    logger.info(`WebSocket connection status: ${status.connected ? 'Connected' : 'Disconnected'}`);
+    if (status.connected && wsService.isReady()) { // Check full readiness
+        // This might trigger graphDataManager to request initial data or enable binary updates
+        // if it hasn't already due to the adapter pattern.
+        graphDataManager.setBinaryUpdatesEnabled(true); // Or similar logic
+    } else if (!status.connected) {
+        graphDataManager.setBinaryUpdatesEnabled(false);
     }
 });
 
-// Handle connection status
-ws.onConnectionStatusChange((connected) => {
-    if (connected) {
-        graphDataManager.setBinaryUpdatesEnabled(true);
-    }
+wsService.onMessage((jsonData) => {
+    logger.debug('WebSocket JSON message received:', jsonData);
+    // Handle JSON messages (e.g., connection_established, loading)
+    // This might also be handled by graphDataManager via the adapter.
 });
 
-// Connect to server
-await ws.connect();
+wsService.onBinaryMessage((arrayBuffer) => {
+    // Pass the raw ArrayBuffer to graphDataManager, which will handle decompression
+    // (if needed, via binaryUtils) and parsing.
+    graphDataManager.updateNodePositions(arrayBuffer);
+});
+
+// Attempt to connect
+wsService.connect().catch(error => {
+    logger.error('Failed to connect WebSocket initial attempt:', error);
+});
+
+// Later, graphDataManager, through its adapter, will use wsService.isReady()
+// and wsService.sendRawBinaryData() or wsService.sendMessage().
+// For example, when graphDataManager decides to enable binary updates:
+// if (wsService.isReady()) {
+//   wsService.sendMessage({ type: 'subscribe_position_updates', binary: true, interval: 33 });
+// }
 ```
+The `graphDataManager.updateNodePositions` method expects an `ArrayBuffer` which it will then process (potentially decompressing and then parsing into individual node updates). The call `graphDataManager.setBinaryUpdatesEnabled(true)` is a conceptual representation; the actual mechanism might involve `graphDataManager` sending a specific message via the WebSocket adapter to the server to start the flow of binary updates, or simply setting an internal flag to start processing them if they arrive.
 
 ## Related Documentation
 

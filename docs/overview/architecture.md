@@ -7,133 +7,163 @@ LogseqXR is built on a robust and scalable architecture that combines a Rust-bas
 The following diagram illustrates the core components of the LogseqXR system and their interactions:
 
 ```mermaid
-graph TB
-    subgraph Frontend
-        UI[User Interface Layer]
-        VR[WebXR Controller]
-        WS[WebSocket Client]
-        GPU[GPU Compute Layer]
-        ThreeJS[Three.js Renderer]
-        ChatUI[Chat Interface]
-        GraphUI[Graph Interface]
-        ControlPanel[Modular Control Panel]
-        VRControls[VR Control System]
-        WSService[WebSocket Service]
-        DataManager[Graph Data Manager]
-        SpaceMouse[SpaceMouse Controller]
-        NostrAuth[Nostr Authentication]
-        SettingsStore[Settings Store]
+graph TD
+    subgraph ClientApp [Frontend (TypeScript, React, R3F)]
+        AppInitializer[AppInitializer.tsx] --> UIMain[TwoPaneLayout.tsx]
+        UIMain --> GraphViewport[GraphViewport.tsx]
+        UIMain --> RightPane[RightPaneControlPanel.tsx]
+        RightPane --> SettingsPanel[SettingsPanelRedesign.tsx]
+        RightPane --> ConversationPane[ConversationPane.tsx]
+        RightPane --> NarrativeGoldmine[NarrativeGoldminePanel.tsx]
+        
+        SettingsPanel --> SettingsStore[settingsStore.ts (Zustand)]
+        GraphViewport --> RenderingEngine[Rendering Engine (GraphCanvas, GraphManager)]
+        
+        DataManager[GraphDataManager.ts] <--> RenderingEngine
+        DataManager <--> WebSocketClient[WebSocketService.ts]
+        DataManager <--> APIService[api.ts]
+        
+        NostrAuthClient[nostrAuthService.ts] <--> APIService
+        NostrAuthClient <--> UIMain % For Auth UI sections
+        
+        XRModule[XRController.tsx] <--> RenderingEngine
+        XRModule <--> SettingsStore
     end
 
-    subgraph Backend
-        PhysicsEngine[Continuous Physics Engine]
-        Server[Actix Web Server]
-        FileH[File Handler]
-        GraphH[Graph Handler]
-        WSH[WebSocket Handler]
-        PerplexityH[Perplexity Handler]
-        RagFlowH[RagFlow Handler]
-        VisualisationH[Visualisation Handler]
-        NostrH[Nostr Handler]
-        FileS[File Service]
-        GraphS[Graph Service]
-        GPUS[GPU Compute Service]
-        PerplexityS[Perplexity Service]
-        RagFlowS[RagFlow Service]
-        SpeechS[Speech Service]
-        NostrS[Nostr Service]
-        ClientManager[Client Manager]
-        GPUCompute[GPU Compute]
-        Compression[Compression Utils]
-        AudioProc[Audio Processor]
-        Node[Node Model]
-        Edge[Edge Model]
-        Graph[Graph Model]
-        Metadata[Metadata Model]
-        Position[Position Update Model]
-        SimParams[Simulation Parameters]
+    subgraph ServerApp [Backend (Rust, Actix)]
+        ActixServer[Actix Web Server]
+        
+        subgraph Handlers [API & WebSocket Handlers]
+            direction LR
+            SettingsHandler[settings_handler.rs]
+            NostrAuthHandler[nostr_handler.rs]
+            GraphAPIHandler[api_handler/graph/mod.rs]
+            FilesAPIHandler[api_handler/files/mod.rs]
+            RAGFlowAPIHandler[ragflow_handler.rs]
+            SocketFlowHandler[socket_flow_handler.rs]
+            SpeechSocketHandler[speech_socket_handler.rs]
+            HealthHandler[health_handler.rs]
+        end
+
+        subgraph Services [Core Services]
+            direction LR
+            GraphService[GraphService (Physics)]
+            FileService[FileService]
+            NostrService[NostrService]
+            SpeechService[SpeechService]
+            RAGFlowService[RAGFlowService]
+            PerplexityService[PerplexityService]
+        end
+        
+        subgraph CoreState [Shared State & Utils]
+            direction LR
+            AppState[AppState (settings, metadata_store)]
+            ProtectedSettings[ProtectedSettings (API keys, user profiles)]
+            MetadataStore[MetadataStore (HashMap)]
+            ClientManager[ClientManager (Static, for WebSockets)]
+            GPUComputeUtil[GPUCompute (Optional)]
+        end
+
+        ActixServer --> SettingsHandler
+        ActixServer --> NostrAuthHandler
+        ActixServer --> GraphAPIHandler
+        ActixServer --> FilesAPIHandler
+        ActixServer --> RAGFlowAPIHandler
+        ActixServer --> SocketFlowHandler
+        ActixServer --> SpeechSocketHandler
+        ActixServer --> HealthHandler
+
+        SettingsHandler --> AppState
+        NostrAuthHandler --> NostrService
+        NostrAuthHandler --> ProtectedSettings
+        GraphAPIHandler --> GraphService
+        GraphAPIHandler --> FileService % For refresh/update triggers
+        FilesAPIHandler --> FileService
+        RAGFlowAPIHandler --> RAGFlowService
+        
+        SocketFlowHandler --> ClientManager
+        SpeechSocketHandler --> SpeechService
+
+        GraphService --> ClientManager % Broadcasts updates
+        GraphService --> MetadataStore % Reads metadata
+        GraphService --> GPUComputeUtil % Uses GPU for physics
+        GraphService --> AppState % Accesses simulation settings
+
+        FileService --> MetadataStore % Updates metadata
+        FileService --> AppState % Accesses GitHub config if needed
+
+        NostrService --> ProtectedSettings % Manages users and their API keys
+        SpeechService --> AppState % Accesses AI service configs (OpenAI, Kokoro)
+        RAGFlowService --> AppState % Accesses RAGFlow config
+        PerplexityService --> AppState % Accesses Perplexity config
     end
 
-    subgraph External
-        GitHub[GitHub API]
-        Perplexity[Perplexity AI]
-        RagFlow[RagFlow API]
-        OpenAI[OpenAI API]
-        Nostr[Nostr API]
+    subgraph ExternalServices [External Services]
+        GitHubAPI[GitHub API]
+        NostrRelays[Nostr Relays]
+        OpenAI_API[OpenAI API (TTS, STT/Whisper)]
+        PerplexityAI_API[Perplexity AI API]
+        RAGFlow_API[RAGFlow API]
+        KokoroAPI[Kokoro API (TTS)]
     end
 
-    UI --> ChatUI
-    UI --> GraphUI
-    UI --> ControlPanel
-    UI --> VRControls
-    UI --> NostrAuth
+    %% Client to Backend Communication
+    WebSocketClient <--> SocketFlowHandler
+    APIService <--> ActixServer % Represents REST API calls to various handlers
 
-    VR --> ThreeJS
-    WS --> WSService
-    WSService --> Server
-
-    Server --> FileH
-    Server --> GraphH
-    Server --> WSH
-    Server --> PerplexityH
-    Server --> RagFlowH
-    Server --> VisualisationH
-    Server --> NostrH
-
-    FileH --> FileS
-    GraphH --> GraphS
-    WSH --> ClientManager
-    PerplexityH --> PerplexityS
-    RagFlowH --> RagFlowS
-    NostrH --> NostrS
-    
-    GraphS --> PhysicsEngine --> ClientManager
-
-    FileS --> GitHub
-    PerplexityS --> Perplexity
-    RagFlowS --> RagFlow
-    SpeechS --> OpenAI
-    NostrS --> Nostr
+    %% Backend to External Services
+    FileService --> GitHubAPI
+    NostrService --> NostrRelays
+    SpeechService --> OpenAI_API
+    SpeechService --> KokoroAPI
+    PerplexityService --> PerplexityAI_API
+    RAGFlowService --> RAGFlow_API
 ```
 
 ## Component Breakdown
 
-### Frontend Components
+### Frontend Components (Client - TypeScript, React, R3F)
 
-- **UI (User Interface Layer)**: Handles user interactions, displays information, and manages UI elements.
-- **VR (WebXR Controller)**: Manages WebXR sessions, input, and rendering for VR/AR devices.
-- **WS (WebSocket Client)**: Establishes and maintains a WebSocket connection with the backend server.
-- **GPU (GPU Compute Layer)**: Performs GPU-accelerated computations using CUDA.
-- **ThreeJS (Three.js Renderer)**: Renders the 3D graph visualisation using WebGL.
-- **ChatUI**: Handles the chat interface for interacting with the AI.
-- **GraphUI**: Manages the graph visualisation, including nodes, edges, and layout.
-- **ControlPanel**: Modular control panel with dockable sections, Nostr authentication, and real-time settings management.
-- **VRControls**: Handles VR-specific controls and interactions.
-- **WSService**: Manages the WebSocket connection and message handling.
-- **DataManager**: Manages the graph data structure and updates.
-- **SpaceMouse**: Handles input from Spacemouse devices.
-- **NostrAuth**: Manages Nostr-based authentication and user sessions.
-- **SettingsStore**: Centralized settings management with persistence and validation.
+-   **AppInitializer ([`AppInitializer.tsx`](../../client/src/app/AppInitializer.tsx))**: Initializes core services, settings, and authentication.
+-   **UI Layout ([`TwoPaneLayout.tsx`](../../client/src/app/TwoPaneLayout.tsx), [`RightPaneControlPanel.tsx`](../../client/src/app/components/RightPaneControlPanel.tsx))**: Manages the main application layout.
+-   **Settings UI ([`SettingsPanelRedesign.tsx`](../../client/src/features/settings/components/panels/SettingsPanelRedesign.tsx))**: Provides the interface for user settings.
+-   **Conversation UI ([`ConversationPane.tsx`](../../client/src/app/components/ConversationPane.tsx))**: Interface for AI chat.
+-   **Narrative UI ([`NarrativeGoldminePanel.tsx`](../../client/src/app/components/NarrativeGoldminePanel.tsx))**: Interface for narrative exploration.
+-   **Rendering Engine ([`GraphCanvas.tsx`](../../client/src/features/graph/components/GraphCanvas.tsx), [`GraphManager.tsx`](../../client/src/features/graph/components/GraphManager.tsx), [`GraphViewport.tsx`](../../client/src/features/graph/components/GraphViewport.tsx))**: Handles 3D graph visualization using React Three Fiber.
+-   **State Management**:
+    -   [`settingsStore.ts`](../../client/src/store/settingsStore.ts) (Zustand): Manages application settings.
+    -   [`GraphDataManager.ts`](../../client/src/features/graph/managers/graphDataManager.ts): Manages graph data, updates, and interaction with WebSocketService.
+-   **Communication**:
+    -   [`WebSocketService.ts`](../../client/src/services/WebSocketService.ts): Handles real-time communication with the backend via WebSockets.
+    -   [`api.ts`](../../client/src/services/api.ts): Handles REST API calls to the backend.
+-   **Authentication ([`nostrAuthService.ts`](../../client/src/services/nostrAuthService.ts))**: Manages Nostr-based client-side authentication logic. (Often referred to as NostrAuthClient in diagrams).
+-   **XR Module ([`XRController.tsx`](../../client/src/features/xr/components/XRController.tsx) and other components in `client/src/features/xr/`)**: Manages WebXR integration for VR/AR experiences.
 
-### Backend Components
+### Backend Components (Server - Rust, Actix)
 
-- **Server (Actix Web Server)**: The core backend server built with the Actix web framework.
-- **FileH (File Handler)**: Handles file-related operations, such as fetching and processing Markdown files.
-- **GraphH (Graph Handler)**: Manages graph data and operations, such as building and updating the graph.
-- **WSH (WebSocket Handler)**: Handles WebSocket connections and messages.
-- **PerplexityH (Perplexity Handler)**: Interfaces with the Perplexity AI service.
-- **RagFlowH (RagFlow Handler)**: Interfaces with the RAGFlow service.
-- **VisualisationH (Visualisation Handler)**: Handles visualisation-related requests.
-- **ClientManager**: Manages all connected WebSocket clients and broadcasts updates.
-- **NostrH (Nostr Handler)**: Manages Nostr authentication and user sessions.
-- **PhysicsEngine**: Continuously calculates force-directed layout independent of client connections.
-- **FileS (File Service)**: Provides file-related services.
-- **GraphS (Graph Service)**: Provides graph-related services.
-- **GPUS (GPU Compute Service)**: Manages GPU-accelerated computations.
-- **PerplexityS (Perplexity Service)**: Provides an interface to the Perplexity AI service.
-- **RagFlowS (RagFlow Service)**: Provides an interface to the RAGFlow service.
-- **SpeechS (Speech Service)**: Manages text-to-speech functionality.
-- **NostrS (Nostr Service)**: Provides Nostr-related services and user management.
+-   **Actix Web Server**: The core HTTP server framework.
+-   **Request Handlers**:
+    -   [`SocketFlowHandler`](../../src/handlers/socket_flow_handler.rs): Manages WebSocket connections for graph updates.
+    -   [`SpeechSocketHandler`](../../src/handlers/speech_socket_handler.rs): Manages WebSocket connections for speech services.
+    -   [`NostrAuthHandler`](../../src/handlers/nostr_handler.rs): Handles Nostr authentication requests.
+    -   [`SettingsHandler`](../../src/handlers/settings_handler.rs): Manages API requests for user settings.
+    -   [`GraphAPIHandler`](../../src/handlers/api_handler/graph/mod.rs): Handles API requests for graph data.
+    -   [`FilesAPIHandler`](../../src/handlers/api_handler/files/mod.rs): Handles API requests for file operations.
+    -   [`RAGFlowAPIHandler`](../../src/handlers/ragflow_handler.rs): Handles API requests for RAGFlow.
+    -   [`HealthHandler`](../../src/handlers/health_handler.rs): Provides health check endpoints.
+-   **Core Services**:
+    -   [`GraphService`](../../src/services/graph_service.rs): Manages graph data, physics simulation (CPU/GPU), and broadcasts updates. Contains the **PhysicsEngine** logic.
+    -   [`FileService`](../../src/services/file_service.rs): Handles file fetching (local, GitHub), processing, and metadata management.
+    -   [`NostrService`](../../src/services/nostr_service.rs): Manages Nostr authentication logic, user profiles, and session tokens.
+    -   [`SpeechService`](../../src/services/speech_service.rs): Orchestrates STT and TTS functionalities, interacting with external AI providers.
+    -   [`RAGFlowService`](../../src/services/ragflow_service.rs): Interacts with the RAGFlow API.
+    -   [`PerplexityService`](../../src/services/perplexity_service.rs): Interacts with the Perplexity AI API.
+-   **Shared State & Utilities**:
+    -   [`AppState`](../../src/app_state.rs): Holds shared application state like settings and references to some services.
+    -   [`ProtectedSettings`](../../src/models/protected_settings.rs): Manages sensitive configurations like API keys and user data, stored separately.
+    -   [`MetadataStore`](../../src/models/metadata.rs): In-memory store for file/node metadata, managed by `FileService` and read by `GraphService`.
+    -   [`ClientManager`](../../src/handlers/socket_flow_handler.rs): (Often part of `socket_flow_handler` or a static utility) Manages active WebSocket clients for broadcasting.
+    -   [`GPUCompute`](../../src/utils/gpu_compute.rs): Optional utility for CUDA-accelerated physics calculations.
 
 ### External Services
 

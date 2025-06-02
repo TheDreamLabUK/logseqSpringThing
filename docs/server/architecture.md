@@ -9,26 +9,38 @@ The app state module manages the application's shared state and provides thread-
 The `AppState` struct holds references to all major services and shared data. It is designed for thread-safe access using `Arc<RwLock<T>>` for mutable shared state.
 
 ```rust
+// Defined in src/app_state.rs
 pub struct AppState {
-    pub settings: Arc<RwLock<AppFullSettings>>,
-    pub protected_settings: Arc<RwLock<ProtectedSettings>>,
-    pub metadata: Arc<RwLock<MetadataStore>>,
-    pub graph_service: GraphService,
-    pub github_client: Arc<GitHubClient>,
-    pub content_api: Arc<ContentAPI>,
-    pub gpu_compute: Option<Arc<RwLock<GPUCompute>>>,
+    pub settings: Arc<RwLock<AppFullSettings>>, // Manages overall application settings
+    pub protected_settings: Arc<RwLock<ProtectedSettings>>, // Manages sensitive settings like API keys
+    pub metadata_store: Arc<RwLock<MetadataStore>>, // Stores metadata for files/nodes
+    
+    // Services - these are typically initialized and held by AppState
+    // Note: GraphService might not be directly in AppState if it's managed by ClientManager or similar static constructs
+    // For services like Perplexity, RAGFlow, Speech, GitHub, ContentAPI, NostrService, GPUCompute:
+    // They are often Arc-wrapped if shared, or directly owned if not.
+    // The exact structure depends on their initialization and sharing needs.
+    // Example:
+    pub github_service: Option<Arc<GitHubService>>, // Assuming a dedicated GitHub service
+    pub file_service: Arc<FileService>, // Handles file operations, uses ContentAPI internally
     pub perplexity_service: Option<Arc<PerplexityService>>,
     pub ragflow_service: Option<Arc<RAGFlowService>>,
-    pub speech_service: Option<Arc<SpeechService>>,
-    pub nostr_service: Option<web::Data<NostrService>>,
-    pub feature_access: web::Data<FeatureAccess>,
-    pub ragflow_session_id: String,
-    pub active_connections: Arc<AtomicUsize>,
+    pub speech_service: Option<Arc<SpeechService>>, // Manages STT/TTS
+    pub nostr_service: Arc<NostrService>, // Manages Nostr auth and user profiles
+    pub gpu_compute: Option<Arc<RwLock<GPUCompute>>>, // For GPU-accelerated physics
+
+    // Feature access control
+    pub feature_access: Arc<FeatureAccess>,
+
+    // Other state
+    // pub active_connections: Arc<AtomicUsize>, // Example for tracking WebSocket connections
+    // pub ragflow_default_session_id: String, // Example if a default session is maintained
 }
 ```
 
 **ClientManager Usage:**
-The `ClientManager` (from [`socket_flow_handler.rs`](../../src/handlers/socket_flow_handler.rs)) is a shared static instance, initialized lazily using `once_cell::sync::Lazy`. It is accessed within `AppState` methods or by services via `AppState::ensure_client_manager()`. This method returns a clone of the `Arc<ClientManager>`.
+The `ClientManager` (defined in `src/handlers/socket_flow_handler.rs` or a similar central place for WebSocket client management) is typically a **static `Lazy` instance** (e.g., `APP_CLIENT_MANAGER`). It is **not directly a field** within `AppState` itself but is accessed globally by services that need to interact with connected WebSocket clients, such as `GraphService` or `SpeechService` (for broadcasting). `AppState` might provide a helper method like `ensure_client_manager()` or services might access the static instance directly.
+The `GraphService` itself is also often a complex entity, potentially started as a separate task/actor and interacting with the `APP_CLIENT_MANAGER` to send updates.
 
 ```rust
 // In app_state.rs
@@ -101,11 +113,11 @@ Services and handlers access `AppState` fields using `read().await` for shared a
 
 ## Service Integration
 
-### Graph Service
-Manages the in-memory graph data, physics simulation, and layout calculations. Interacts with `ClientManager` for broadcasting updates.
+### Graph Service ([`src/services/graph_service.rs`](../../src/services/graph_service.rs))
+Manages the in-memory graph data (`GraphData`), runs the physics simulation (CPU or GPU via `GPUCompute`), calculates layout, and broadcasts updates to connected clients via the static `APP_CLIENT_MANAGER`. It's typically started as a long-running task.
 
-### Content API (File Service)
-Handles reading and writing of files, primarily for markdown content and user settings. May interact with `GitHubClient`.
+### File Service ([`src/services/file_service.rs`](../../src/services/file_service.rs))
+This service, often referred to as `FileService` in the codebase, handles reading/writing local files, fetching content (e.g., from GitHub via `GitHubService` or a direct `GitHubClient`), and managing the `MetadataStore`. It effectively *is* the `ContentAPI` for local data.
 
 ### AI Services
 Provides interfaces for interacting with various AI models (Perplexity, RAGFlow, OpenAI TTS via `SpeechService`).
@@ -192,44 +204,37 @@ The service layer provides high-level operations and business logic, abstracting
 
 ### Service Communication Sequence Diagram - Speech Service
 
-The sequence diagram for speech services needs correction. Speech is handled via its own WebSocket endpoint (`/speech`), not through the main `SocketFlowHandler` for graph updates.
+The client connects to the `/speech` WebSocket endpoint, handled by [`speech_socket_handler.rs`](../../src/handlers/speech_socket_handler.rs). The `SpeechService` processes audio, interacts with STT (e.g., OpenAI Whisper via an internal module or direct API call if not a separate "WhisperSttService" struct) and TTS providers (e.g., Kokoro, OpenAI), and can optionally query `RAGFlowService`. Audio responses are broadcast back to the client via the `speech_socket_handler` using a Tokio broadcast channel managed by `SpeechService`.
 
 ```mermaid
 sequenceDiagram
-    participant Client
-    participant SpeechSocketHandler as "/speech WebSocket"
-    participant SpeechService
-    participant STTProvider as "STT Provider (e.g., OpenAI)"
-    participant RAGFlowService
-    participant TTSProvider as "TTS Provider (e.g., OpenAI)"
+    participant ClientApp as "Client Application"
+    participant SpeechWSHandler as "Speech WebSocket Handler (/speech)"
+    participant SpeechSvc as "SpeechService"
+    participant STTProvider as "STT Provider (e.g., OpenAI Whisper)"
+    participant RAGFlowSvc as "RAGFlowService (Optional)"
+    participant TTSProvider as "TTS Provider (e.g., Kokoro/OpenAI)"
 
-    Client->>SpeechSocketHandler: Connect to /speech
-    SpeechSocketHandler-->>Client: Connection Established
+    ClientApp->>SpeechWSHandler: WebSocket Connect to /speech
+    SpeechWSHandler-->>ClientApp: Connection Established
 
-    Client->>SpeechSocketHandler: Send Audio Stream (Chunks)
-    SpeechSocketHandler->>SpeechService: Forward Audio Chunks
+    ClientApp->>SpeechWSHandler: Send Audio Stream (e.g., for STT)
+    SpeechWSHandler->>SpeechSvc: Forward Audio Data / Command
 
-    SpeechService->>STTProvider: Process Audio for STT
-    STTProvider-->>SpeechService: Transcription Result
+    SpeechSvc->>STTProvider: Process Audio for STT
+    STTProvider-->>SpeechSvc: Transcription Result (Text)
 
-    opt Transcription successful & RAGFlow configured
-        SpeechService->>RAGFlowService: Send Transcription for Query
-        RAGFlowService-->>SpeechService: RAGFlow Response (Text)
-        
-        opt RAGFlow response & TTS configured
-            SpeechService->>TTSProvider: Convert RAGFlow Text to Speech
-            TTSProvider-->>SpeechService: TTS Audio Data (Stream/Buffer)
-            SpeechService->>SpeechSocketHandler: Send TTS Audio to Client
-            SpeechSocketHandler-->>Client: TTS Audio Stream/Data
-        end
-    else
-        opt Transcription successful (no RAGFlow or direct TTS)
-             SpeechService->>TTSProvider: Convert Original Transcription to Speech (if configured)
-             TTSProvider-->>SpeechService: TTS Audio Data
-             SpeechService->>SpeechSocketHandler: Send TTS Audio to Client
-             SpeechSocketHandler-->>Client: TTS Audio Stream/Data
-        end
+    alt If RAGFlow interaction is triggered
+        SpeechSvc->>RAGFlowSvc: Send Transcription as Query
+        RAGFlowSvc-->>SpeechSvc: RAGFlow Response (Text)
+        SpeechSvc->>TTSProvider: Convert RAGFlow Text to Speech
+    else Else (Direct TTS of transcription or other command)
+        SpeechSvc->>TTSProvider: Convert Original Transcription/Text to Speech
     end
+
+    TTSProvider-->>SpeechSvc: TTS Audio Data (Stream/Buffer)
+    SpeechSvc->>SpeechWSHandler: Broadcast TTS Audio Data (via tokio::sync::broadcast)
+    SpeechWSHandler-->>ClientApp: Stream TTS Audio Data
 ```
 
 ## Next Steps

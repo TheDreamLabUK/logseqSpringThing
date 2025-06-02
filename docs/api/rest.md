@@ -7,7 +7,7 @@ The REST API provides endpoints for graph data management, content operations, a
 ```
 http://localhost:4000/api
 ```
-(or deployment-dependent, e.g., `https://api.webxr.dev/v1`)
+Default is http://localhost:4000/api when running locally via Docker with Nginx. The actual backend runs on port 3001 (or as configured in settings.yaml/env) and is proxied by Nginx. For production, it's typically https://www.visionflow.info/api (or your configured domain).
 
 ## Authentication
 
@@ -21,34 +21,34 @@ POST /api/auth/nostr
 **Request Body:**
 ```json
 {
-  "event": {
-    "id": "event_id",
-    "pubkey": "your_public_key",
-    "created_at": 1678886400,
-    "kind": 22242,
-    "tags": [
-      ["challenge", "random_challenge_string"],
-      ["relay", "wss://relay.damus.io"]
-    ],
-    "content": "Login to LogseqXR",
-    "sig": "event_signature"
-  }
+  "id": "event_id_hex_string",
+  "pubkey": "user_hex_pubkey",
+  "created_at": 1678886400, // Unix timestamp (seconds)
+  "kind": 22242,
+  "tags": [
+    ["relay", "wss://some.relay.com"],
+    ["challenge", "a_random_challenge_string"]
+  ],
+  "content": "LogseqXR Authentication",
+  "sig": "event_signature_hex_string"
 }
 ```
+Refers to `src/services/nostr_service.rs::AuthEvent`.
 
 **Response:**
 ```json
 {
   "user": {
-    "pubkey": "user_public_key",
-    "npub": "user_npub",
-    "is_power_user": boolean,
-    "features": ["feature1", "feature2"]
+    "pubkey": "user_hex_pubkey",
+    "npub": "user_npub_string", // Optional
+    "isPowerUser": true // boolean
   },
-  "token": "session_token",
-  "expires_at": 1234567890
+  "token": "session_token_string",
+  "expiresAt": 1234567890, // Unix timestamp (seconds)
+  "features": ["feature1", "feature2"] // List of enabled features for the user
 }
 ```
+Matches `AuthResponse` from `src/handlers/nostr_handler.rs`.
 
 #### Verify Token
 ```http
@@ -58,15 +58,39 @@ POST /api/auth/nostr/verify
 **Request Body:**
 ```json
 {
-  "pubkey": "your_public_key",
-  "token": "your_token"
+  "pubkey": "user_hex_pubkey",
+  "token": "session_token_string"
 }
 ```
+Matches `ValidateRequest` from `src/handlers/nostr_handler.rs`.
+
+**Response Body:**
+```json
+{
+  "valid": true, // boolean
+  "user": { // Optional
+    "pubkey": "user_hex_pubkey",
+    "npub": "user_npub_string",
+    "isPowerUser": false
+  },
+  "features": ["feature1"] // List of enabled features if valid
+}
+```
+Matches `VerifyResponse` from `src/handlers/nostr_handler.rs`.
 
 #### Logout
 ```http
 DELETE /api/auth/nostr
 ```
+
+**Request Body:**
+```json
+{
+  "pubkey": "user_hex_pubkey",
+  "token": "session_token_string"
+}
+```
+Matches `ValidateRequest` from `src/handlers/nostr_handler.rs`.
 
 ## Graph API
 
@@ -75,12 +99,18 @@ DELETE /api/auth/nostr
 GET /api/graph/data
 ```
 
-Returns complete graph structure:
+Returns `GraphResponse` from `src/handlers/api_handler/graph/mod.rs`:
 ```json
 {
-  "nodes": [...],
-  "edges": [...],
-  "metadata": {...}
+  "nodes": [
+    // Array of crate::utils::socket_flow_messages::Node
+  ],
+  "edges": [
+    // Array of crate::models::edge::Edge
+  ],
+  "metadata": {
+    // HashMap<String, crate::models::metadata::Metadata>
+  }
 }
 ```
 
@@ -90,10 +120,10 @@ GET /api/graph/data/paginated
 ```
 
 **Query Parameters:**
-- `page`: Page number (default: 1)
-- `page_size`: Items per page (default: 100)
-- `sort`: Sort field
-- `filter`: Filter expression
+- `page`: Page number (integer, default: 1)
+- `pageSize`: Items per page (integer, default: 100, camelCase)
+- `sort`: Sort field (string, optional)
+- `filter`: Filter expression (string, optional)
 
 **Response:**
 ```json
@@ -112,12 +142,13 @@ GET /api/graph/data/paginated
 POST /api/graph/update
 ```
 
-This endpoint triggers a rebuild of the graph from the current metadata. It does not accept a request body for direct node/edge updates. Client-side node position updates are handled via the WebSocket API.
+This endpoint triggers a full re-fetch of files from the source (e.g., GitHub) by `FileService`, updates the `MetadataStore`, and then rebuilds the entire graph structure in `GraphService`. It does not accept client-side graph data for partial updates.
 
 ### Refresh Graph
 ```http
 POST /api/graph/refresh
 ```
+This endpoint rebuilds the graph structure in `GraphService` using the currently existing `MetadataStore` on the server. It does not re-fetch files.
 
 ## Files API
 
@@ -146,7 +177,9 @@ GET /api/files/get_content/{filename}
 POST /api/files/upload
 ```
 
-This endpoint is currently not implemented in the server. File content is primarily managed via GitHub integration or direct file system access on the server.
+The endpoint `/api/files/upload` is not defined in `src/handlers/api_handler/files/mod.rs`. This section should be removed or marked as "Not Implemented / Deprecated".
+(Marking as Not Implemented for now)
+**This endpoint is not implemented.**
 
 ## Settings API
 
@@ -155,21 +188,26 @@ This endpoint is currently not implemented in the server. File content is primar
 GET /api/user-settings
 ```
 
-Returns global/default UI settings. This endpoint does not require authentication.
+Returns `UISettings` (camelCase) as defined in `src/models/ui_settings.rs`, derived from the server's `AppFullSettings`. This endpoint does not require authentication.
 
 ### Get User-Specific Settings
 ```http
 GET /api/user-settings/sync
 ```
 
-Requires authentication. Returns user-specific UI settings. For power users, this endpoint returns and allows modification of the global UI settings.
+Requires authentication.
+**GET Response:** Returns `UISettings`. For power users, these are global settings. For regular users, these are their persisted settings.
+**POST Request Body:** `ClientSettingsPayload` from `src/models/client_settings_payload.rs` (camelCase).
+**POST Response:** The updated `UISettings`.
 
 ### Get Visualisation Settings by Category
 ```http
 GET /api/visualisation/settings/{category}
 ```
 
-Returns specific visualisation settings by category. The `{category}` can be a dot-separated path for nested visualisation settings (e.g., `nodes`, `edges.color`, `physics.gravity`).
+The handler `get_visualisation_settings` (mapped to `/api/visualisation/get_settings/{category}` in `src/handlers/api_handler/visualisation/mod.rs`) actually returns the entire `AppFullSettings` struct, not just a category. The path parameter `{category}` is not used by this specific handler.
+The handler `get_category_settings` (mapped to `/api/visualisation/settings/{category}`) does return a specific category.
+The documentation path `/api/visualisation/settings/{category}` matches `get_category_settings`. This endpoint returns a specific category as a JSON object.
 
 ### Update API Keys
 ```http
@@ -179,11 +217,22 @@ POST /api/auth/nostr/api-keys
 **Request Body:**
 ```json
 {
-  "perplexity": "api_key",
-  "openai": "api_key",
-  "ragflow": "api_key"
+  "perplexity": "optional_api_key_string",
+  "openai": "optional_api_key_string",
+  "ragflow": "optional_api_key_string"
 }
 ```
+Matches `ApiKeysRequest` from `src/handlers/nostr_handler.rs`.
+
+**Response:**
+```json
+{
+  "pubkey": "user_hex_pubkey",
+  "npub": "user_npub_string", // Optional
+  "isPowerUser": true // boolean
+}
+```
+Returns `UserResponseDTO`.
 
 ## AI Services
 
@@ -196,18 +245,20 @@ POST /api/ragflow/chat
 ```json
 {
   "question": "Your question here",
-  "sessionId": "optional-previous-conversation-id",
-  "stream": false
+  "sessionId": "optional-previous-session-id-string",
+  "stream": false // Optional boolean
 }
 ```
+Matches `RagflowChatRequest` from `src/models/ragflow_chat.rs`.
 
 **Response:**
 ```json
 {
   "answer": "The response from RAGFlow AI",
-  "conversation_id": "conversation-id-for-follow-up-queries"
+  "sessionId": "session-id-string"
 }
 ```
+Matches `RagflowChatResponse` from `src/models/ragflow_chat.rs`.
 
 
 ## System Status
@@ -227,28 +278,35 @@ GET /api/health
 }
 ```
 
-## Error Responses
-
-All endpoints may return the following error responses:
-
-### Standard Error Format
-```json
-{
-  "error": {
-    "code": "string",
-    "message": "string",
-    "details": {}
-  }
-}
+### Physics Simulation Status
+```http
+GET /api/health/physics
 ```
 
-### Common Error Codes
-- `400`: Bad Request - Invalid parameters or request
-- `401`: Unauthorized - Invalid or missing authentication token
-- `403`: Forbidden - Valid token but insufficient permissions
-- `404`: Not Found - Resource not found
-- `429`: Too Many Requests - Rate limit exceeded
-- `500`: Internal Server Error - Server-side error
+**Response:**
+```json
+{
+  "status": "string (e.g., 'running', 'idle', 'error')",
+  "details": "string (e.g., 'Simulation is active with X nodes' or error message)",
+  "timestamp": 1234567890 // Unix timestamp
+}
+```
+Returns `PhysicsSimulationStatus` from `src/handlers/health_handler.rs`.
+
+
+## Error Responses
+
+Error responses are often simple JSON like `{"error": "message string"}` or `{"status": "error", "message": "message string"}`.
+The structured format `{"error": {"code": ..., "message": ..., "details": ...}}` is not consistently used across all handlers.
+
+### Common HTTP Status Codes for Errors
+- `400 Bad Request`: Invalid parameters or request payload.
+- `401 Unauthorized`: Invalid or missing authentication token.
+- `403 Forbidden`: Valid token but insufficient permissions for the requested operation.
+- `404 Not Found`: The requested resource or endpoint does not exist.
+- `422 Unprocessable Entity`: The request was well-formed but could not be processed (e.g., semantic errors in Nostr event).
+- `500 Internal Server Error`: A generic error occurred on the server.
+- `503 Service Unavailable`: The server is temporarily unable to handle the request (e.g., during maintenance or if a dependent service is down).
 
 ## Related Documentation
 - [WebSocket API](./websocket.md)

@@ -17,17 +17,17 @@ This library is fundamental to the XR integration. It provides:
 -   `<Controllers />`, `<Hands />`: Components for rendering and interacting with VR controllers and tracked hands.
 -   Hooks like `useXR()`, `useController()`, `useHand()`: For accessing XR session state, controller input, and hand tracking data.
 
-### `XRController.tsx` (`client/src/features/xr/components/XRController.tsx`)
+### `XRController.tsx` ([`client/src/features/xr/components/XRController.tsx`](../../client/src/features/xr/components/XRController.tsx))
 
 This component acts as the central orchestrator for the XR experience.
 
 **Responsibilities:**
 -   Wraps the main 3D scene with the `<XR />` component from `@react-three/xr`.
 -   Manages the conditional rendering of XR-specific UI and interaction elements.
--   Integrates other XR components like `XRScene.tsx` and `HandInteractionSystem.tsx`.
--   Handles XR session initialization and teardown logic via `xrInitializer.ts` and `xrSessionManager.ts`.
+-   Integrates other XR components like [`XRScene.tsx`](../../client/src/features/xr/components/XRScene.tsx) and [`HandInteractionSystem.tsx`](../../client/src/features/xr/systems/HandInteractionSystem.tsx).
+-   Handles XR session initialization and teardown logic via [`xrInitializer.ts`](../../client/src/features/xr/managers/xrInitializer.ts) and [`xrSessionManager.ts`](../../client/src/features/xr/managers/xrSessionManager.ts).
 
-### `XRScene.tsx` (`client/src/features/xr/components/XRScene.tsx`)
+### `XRScene.tsx` ([`client/src/features/xr/components/XRScene.tsx`](../../client/src/features/xr/components/XRScene.tsx))
 
 This component contains the 3D content that will be rendered in XR. It often reuses or adapts components from the main 2D desktop visualization.
 
@@ -36,7 +36,7 @@ This component contains the 3D content that will be rendered in XR. It often reu
 -   May include XR-specific UI elements (e.g., floating menus, gaze cursors).
 -   Adapts lighting and camera setup for optimal viewing in VR/AR.
 
-### `XRVisualisationConnector.tsx` (`client/src/features/xr/components/XRVisualisationConnector.tsx`)
+### `XRVisualisationConnector.tsx` ([`client/src/features/xr/components/XRVisualisationConnector.tsx`](../../client/src/features/xr/components/XRVisualisationConnector.tsx))
 
 This component acts as a bridge, connecting the core graph visualization logic (e.g., `GraphManager.tsx`) to the XR environment.
 
@@ -45,7 +45,7 @@ This component acts as a bridge, connecting the core graph visualization logic (
 -   May transform or adapt data for XR-specific presentation.
 -   Ensures that interactions in XR mode correctly affect the underlying graph data.
 
-### `HandInteractionSystem.tsx` (`client/src/features/xr/systems/HandInteractionSystem.tsx`)
+### `HandInteractionSystem.tsx` ([`client/src/features/xr/systems/HandInteractionSystem.tsx`](../../client/src/features/xr/systems/HandInteractionSystem.tsx))
 
 Manages interactions using tracked hands in WebXR.
 
@@ -55,7 +55,7 @@ Manages interactions using tracked hands in WebXR.
 -   Provides visual feedback for hand tracking (e.g., rendering hand models or pointers).
 -   Translates hand movements and gestures into actions within the application (e.g., selecting nodes, navigating menus).
 
-### `xrInitializer.ts` (`client/src/features/xr/managers/xrInitializer.ts`)
+### `xrInitializer.ts` ([`client/src/features/xr/managers/xrInitializer.ts`](../../client/src/features/xr/managers/xrInitializer.ts))
 
 Contains logic for initializing the WebXR session.
 
@@ -64,7 +64,7 @@ Contains logic for initializing the WebXR session.
 -   Requests an XR session (e.g., `immersive-vr` or `immersive-ar`).
 -   Handles session feature requests (e.g., hand tracking, plane detection).
 
-### `xrSessionManager.ts` (`client/src/features/xr/managers/xrSessionManager.ts`)
+### `xrSessionManager.ts` ([`client/src/features/xr/managers/xrSessionManager.ts`](../../client/src/features/xr/managers/xrSessionManager.ts))
 
 Manages the lifecycle of an active WebXR session.
 
@@ -73,7 +73,7 @@ Manages the lifecycle of an active WebXR session.
 -   Provides access to the current `XRSession` object.
 -   Coordinates updates based on session state.
 
-### `SafeXRProvider.tsx` (`client/src/features/xr/providers/SafeXRProvider.tsx`) and `XRContextWrapper.tsx` (`client/src/features/xr/providers/XRContextWrapper.tsx`)
+### `SafeXRProvider.tsx` ([`client/src/features/xr/providers/SafeXRProvider.tsx`](../../client/src/features/xr/providers/SafeXRProvider.tsx)) and `XRContextWrapper.tsx` ([`client/src/features/xr/providers/XRContextWrapper.tsx`](../../client/src/features/xr/providers/XRContextWrapper.tsx))
 
 These components provide a React Context for sharing XR-related state and utilities throughout the XR part of the application.
 
@@ -91,15 +91,15 @@ Interactions in XR are typically handled through:
 
 ## Settings Affecting XR Mode
 
-Several settings from the application's `SettingsStore` can influence the XR experience. These are typically found under the `xr` key in the [`Settings`](../../client/src/features/settings/config/settings.ts) interface.
+Several settings from the application's `SettingsStore` can influence the XR experience. These are found under the `xr` key in the [`Settings`](../../client/src/features/settings/config/settings.ts) interface, defined in [`client/src/features/settings/config/settings.ts`](../../client/src/features/settings/config/settings.ts).
 
--   **`xr.enabled`**: A global toggle for enabling/disabling XR mode.
--   **`xr.clientSideEnableXR`**: A client-specific toggle, useful if the server has XR enabled but the client device doesn't support it well.
--   **`xr.mode`**: Specifies the desired XR mode (e.g., `'immersive-vr'`, `'immersive-ar'`).
+-   **`xr.enabled`**: A global toggle for enabling/disabling XR mode (often a server-side setting that the client respects).
+-   **`xr.clientSideEnableXR`**: A key client-side toggle that allows the user to enable/disable attempting to enter XR mode, independent of the server's `xr.enabled` setting. This is useful for client devices that may not support XR well.
+-   **`xr.mode`**: Specifies the desired XR mode (e.g., `'inline'`, `'immersive-vr'`, `'immersive-ar'`).
 -   **`xr.quality`**: Adjusts rendering quality for performance in XR.
--   **`xr.enableHandTracking`**: Toggles the use of hand tracking.
+-   **`xr.enableHandTracking`**: Toggles the use of hand tracking (Note: the setting name is `enableHandTracking`, not `handTracking`).
 -   **`xr.handMeshEnabled`**, **`xr.handMeshColor`**: Controls the visual representation of tracked hands.
--   **Locomotion settings** (e.g., `locomotionMethod`, `movementSpeed`): Configure how users move within the virtual environment.
--   **AR-specific settings** (e.g., `enablePlaneDetection`, `passthroughOpacity`): For augmented reality experiences.
+-   **Locomotion settings** (e.g., `xr.locomotionMethod`, `xr.movementSpeed`): Configure how users move within the virtual environment.
+-   **AR-specific settings** (e.g., `xr.enablePlaneDetection`, `xr.passthroughOpacity`): For augmented reality experiences.
 
 These settings are typically accessed within XR components via the `useSettingsStore` hook and applied to configure the `@react-three/xr` components or custom interaction logic.

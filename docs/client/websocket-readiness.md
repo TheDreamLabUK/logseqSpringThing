@@ -34,54 +34,89 @@ stateDiagram-v2
 
 ### WebSocketService Readiness Tracking
 
-The WebSocketService now includes:
+The [`WebSocketService.ts`](../../client/src/services/WebSocketService.ts) now includes:
 
-- `isReadyFlag`: Boolean tracking if "connection_established" message has been received
-- `isReady()`: Method that checks both connection state and readiness flag
-- Readiness reset on reconnection or close events
+-   `isConnected`: A boolean flag indicating if the WebSocket's `readyState` is `OPEN`.
+-   `isServerReady`: A boolean flag set to `true` when the server sends a `connection_established` message (or a similar indicator like `updatesStarted`).
+-   `isReady()`: A method that returns `true` only if both `isConnected` and `isServerReady` are true.
+-   Logic to reset `isServerReady` to `false` on disconnection or error events.
 
 ```typescript
+// In client/src/services/WebSocketService.ts (conceptual)
+private isConnected: boolean = false;
+private isServerReady: boolean = false;
+
+// ... onopen sets isConnected = true ...
+// ... onmessage checks for "connection_established" or "updatesStarted" to set isServerReady = true ...
+// ... onclose / onerror sets both to false ...
+
 public isReady(): boolean {
-    return this.connectionState === ConnectionState.CONNECTED && this.isReadyFlag;
+    return this.isConnected && this.isServerReady;
 }
 ```
 
 ### GraphDataManager Enhancements
 
-The GraphDataManager now:
+The [`GraphDataManager.ts`](../../client/src/features/graph/managers/graphDataManager.ts) now:
 
-1. Checks for WebSocket readiness before enabling binary updates
-2. Uses an enhanced retry mechanism that verifies both connection and readiness
-3. Includes an improved interface for WebSocketService integration
+1.  Uses the `setWebSocketService` method to receive an adapter/instance of `WebSocketService`.
+2.  Checks the `isReady()` method of the provided WebSocket service adapter before attempting to send data or enabling features that depend on a live connection (like `enableBinaryUpdates`).
+3.  The `enableBinaryUpdates` method in `graphDataManager.ts` contains logic to attempt enabling updates and may include retries or checks based on the WebSocket service's readiness.
 
 ```typescript
-// Check if WebSocket service is configured AND ready before sending update
-const isDefaultService = this.wsService.send.toString().includes('WebSocket service not configured');
-const isReady = typeof this.wsService.isReady === 'function' && this.wsService.isReady();
+// In client/src/features/graph/managers/graphDataManager.ts (conceptual)
+private wsServiceAdapter: WebSocketServiceAdapter | null = null;
 
-if (!isDefaultService && isReady) {
-    // Service is configured and ready, send initial update
-    this.updatePositions(new Float32Array());
-    debugState.setBinaryProtocolStatus('active');
+public setWebSocketService(adapter: WebSocketServiceAdapter): void {
+    this.wsServiceAdapter = adapter;
+    // Potentially try to enable binary updates if ready
+    this.enableBinaryUpdates();
+}
+
+public enableBinaryUpdates(force: boolean = false): void {
+    if (this.wsServiceAdapter?.isReady()) {
+        // Send a message to server to start binary updates if needed
+        // Or set a flag to start processing incoming binary updates
+        logger.info('Binary updates enabled as WebSocket is ready.');
+        // this.wsServiceAdapter.sendMessage({ type: 'subscribe_position_updates', binary: true, interval: ... });
+        this.binaryUpdatesEnabled = true;
+    } else {
+        logger.warn('Cannot enable binary updates: WebSocket not ready.');
+        // Implement retry logic if desired, e.g., after a delay or on next readiness change
+    }
 }
 ```
 
 ### Adapter Pattern for Service Integration
 
-An adapter pattern is used to connect GraphVisualisation with GraphDataManager's WebSocket requirements:
+An adapter pattern is used, typically during application initialization (e.g., in [`AppInitializer.tsx`](../../client/src/app/AppInitializer.tsx)), to provide the `GraphDataManager` with a way to interact with the `WebSocketService`.
 
 ```typescript
-// Configure GraphDataManager with WebSocket service (adapter pattern)
-if (this.websocketService) {
+// In client/src/app/AppInitializer.tsx (conceptual)
+// Assuming websocketService is an instance of WebSocketService
+// Assuming graphDataManager is an instance of GraphDataManager
+
+if (websocketService && graphDataManager) {
     const wsAdapter = {
-        send: (data: ArrayBuffer) => {
-            this.websocketService?.sendRawBinaryData(data);
+        sendRawBinaryData: (data: ArrayBuffer) => {
+            websocketService.sendRawBinaryData(data);
         },
-        isReady: () => this.websocketService?.isReady() || false
+        sendMessage: (message: object) => { // For JSON messages
+            websocketService.sendMessage(message);
+        },
+        isReady: () => websocketService.isReady(),
+        // Expose other necessary WebSocketService methods to GraphDataManager
+        onBinaryMessage: (callback: (data: ArrayBuffer) => void) => {
+            return websocketService.onBinaryMessage(callback);
+        },
+        onMessage: (callback: (data: any) => void) => { // For JSON messages
+            return websocketService.onMessage(callback);
+        }
     };
     graphDataManager.setWebSocketService(wsAdapter);
 }
 ```
+This adapter ensures that `GraphDataManager` can use the `WebSocketService` without being tightly coupled to its specific implementation details, focusing only on the necessary interface for sending/receiving data and checking readiness.
 
 ## Benefits of Improved Implementation
 

@@ -8,227 +8,261 @@ The client is organized into a modular component architecture with clear separat
 
 ```mermaid
 flowchart TB
-    subgraph Core
-        API[API Service]
-        SettingsStore[Settings Store]
-        Logger[Logger]
-        Utils[Utilities]
-        NostrAuthService[Nostr Auth Service]
+    subgraph CoreServices [Core Services & Stores]
+        APIService[api.ts]
+        SettingsStore[settingsStore.ts (Zustand)]
+        NostrAuthSvc[nostrAuthService.ts]
+        Logger[logger.ts]
+        Utils[utils/*]
+    end
+
+    subgraph AppInit [Application Initialization]
+        AppInitializer[AppInitializer.tsx]
+        Main[main.tsx]
+    end
+
+    subgraph MainUILayout [Main UI Layout & Panels]
+        TwoPaneLayout[TwoPaneLayout.tsx]
+        RightPaneCtrlPanel[RightPaneControlPanel.tsx]
+        ConversationPane[ConversationPane.tsx]
+        NarrativeGoldminePanel[NarrativeGoldminePanel.tsx]
+    end
+
+    subgraph SettingsUI [Settings UI Components]
+        SettingsPanelRedesign[SettingsPanelRedesign.tsx]
+        TabsUI[Tabs.tsx (generic UI)]
+        SettingsSection[SettingsSection.tsx]
+        SettingControlComp[SettingControlComponent.tsx]
     end
     
-    subgraph Rendering
-        GraphCanvas[Graph Canvas (R3F)]
-        GraphManager[Graph Manager]
-        GraphViewport[Graph Viewport]
-        TextRenderer[Text Renderer]
-        MetadataVisualizer[Metadata Visualizer]
-        HologramManager[Hologram Manager]
-        CameraController[Camera Controller]
+    subgraph AuthUI [Authentication UI]
+        AuthUIHandler[AuthUIHandler.tsx]
+        NostrAuthSection[NostrAuthSection.tsx]
+    end
+
+    subgraph RenderingEngine [Rendering Engine (R3F/Three.js)]
+        GraphCanvas[GraphCanvas.tsx]
+        GraphManager[GraphManager.tsx]
+        GraphViewport[GraphViewport.tsx]
+        CameraController[CameraController.tsx]
+        TextRenderer[TextRenderer.tsx]
+        MetadataVisualizer[MetadataVisualizer.tsx]
+        HologramManager[HologramManager.tsx]
+    end
+
+    subgraph Network [Network & Data Management]
+        WebSocketSvc[WebSocketService.ts]
+        GraphDataMgr[GraphDataManager.ts]
+    end
+
+    subgraph XRModule [XR Module]
+        XRController[XRController.tsx]
+        XRScene[XRScene.tsx]
+        XRVisualisationConnector[XRVisualisationConnector.tsx]
+        HandInteractionSystem[HandInteractionSystem.tsx]
+        XRInitializer[xrInitializer.ts]
+        XRSessionManager[xrSessionManager.ts]
     end
     
-    subgraph UI
-        AppInitializer[App Initializer]
-        TwoPaneLayout[Two Pane Layout]
-        RightPaneControlPanel[Right Pane Control Panel]
-        SettingsPanelRedesign[Settings Panel Redesign]
-        TabsUI[Tabs UI]
-        SettingsSection[Settings Section]
-        SettingControlComponent[Setting Control Component]
-        AuthUIHandler[Auth UI Handler]
-        NostrAuthSection[Nostr Auth Section]
-        MarkdownRenderer[Markdown Renderer]
-        ConversationPane[Conversation Pane]
-        NarrativeGoldminePanel[Narrative Goldmine Panel]
+    subgraph GenericUI [Generic UI Components]
+        MarkdownRenderer[MarkdownRenderer.tsx]
+        Button[Button.tsx]
+        Input[Input.tsx]
+        %% Add other generic UI components as needed
     end
-    
-    subgraph XR
-        XRController[XR Controller]
-        XRScene[XR Scene]
-        XRVisualisationConnector[XR Visualisation Connector]
-        HandInteractionSystem[Hand Interaction System]
-        XRInitializer[XR Initializer]
-        XRSessionManager[XR Session Manager]
-        SafeXRProvider[Safe XR Provider]
-    end
-    
-    subgraph Data & Network
-        WebSocketService[WebSocket Service]
-        GraphDataManager[Graph Data Manager]
-    end
-    
+
+    %% Initialization Flow
+    Main --> AppInitializer
+    AppInitializer --> SettingsStore
+    AppInitializer --> NostrAuthSvc
+    AppInitializer --> WebSocketSvc
+    AppInitializer --> GraphDataMgr
     AppInitializer --> TwoPaneLayout
     AppInitializer --> AuthUIHandler
-    TwoPaneLayout --> GraphViewport
-    TwoPaneLayout --> RightPaneControlPanel
+    AppInitializer --> XRController
+
+    %% UI Structure
+    TwoPaneLayout --> GraphViewport %% For displaying the graph
+    TwoPaneLayout --> RightPaneCtrlPanel
     TwoPaneLayout --> ConversationPane
     TwoPaneLayout --> NarrativeGoldminePanel
 
-    RightPaneControlPanel --> NostrAuthSection
-    RightPaneControlPanel --> SettingsPanelRedesign
-    SettingsPanelRedesign --> TabsUI
-    SettingsPanelRedesign --> SettingsSection
-    SettingsSection --> SettingControlComponent
-    RightPaneControlPanel --> MarkdownRenderer
+    RightPaneCtrlPanel --> NostrAuthSection
+    RightPaneCtrlPanel --> SettingsPanelRedesign
     
-    AppInitializer --> GraphCanvas
+    SettingsPanelRedesign --> TabsUI
+    TabsUI --> SettingsSection %% SettingsPanelRedesign renders SettingsSections directly or via Tabs
+    SettingsSection --> SettingControlComp
+
+    %% Data Flow & Dependencies
+    SettingsStore --> SettingControlComp
+    SettingsStore --> GraphManager %% Settings affect rendering
+    SettingsStore --> HologramManager
+    SettingsStore --> TextRenderer
+
+    AuthUIHandler --> NostrAuthSvc
+    NostrAuthSvc --> APIService
+
+    ConversationPane --> APIService
+    NarrativeGoldminePanel --> APIService
+
+    WebSocketSvc --> GraphDataMgr
+    GraphDataMgr --> GraphManager
+    GraphDataMgr --> APIService %% For fetching initial data via REST
+
+    %% Rendering Dependencies
     GraphCanvas --> GraphManager
     GraphCanvas --> GraphViewport
+    GraphCanvas --> CameraController
     GraphManager --> TextRenderer
     GraphManager --> MetadataVisualizer
     GraphManager --> HologramManager
-    GraphCanvas --> CameraController
     
-    AppInitializer --> WebSocketService
-    AppInitializer --> GraphDataManager
-    WebSocketService --> GraphDataManager
-    GraphDataManager --> GraphManager
-    
-    AppInitializer --> XRController
+    %% XR Dependencies
     XRController --> XRScene
-    XRScene --> XRVisualisationConnector
-    XRVisualisationConnector --> HandInteractionSystem
     XRController --> XRInitializer
     XRController --> XRSessionManager
-    XRController --> SafeXRProvider
-    HandInteractionSystem --> GraphManager
-    
-    SettingsStore --> SettingsSection
-    SettingsStore --> SettingControlComponent
-    API --> GraphDataManager
-    API --> SettingsStore
-    API --> NostrAuthService
-    
-    Logger -.-> API
-    Logger -.-> WebSocketService
+    XRScene --> XRVisualisationConnector
+    XRVisualisationConnector --> GraphManager %% XR needs to interact with graph elements
+    XRVisualisationConnector --> HandInteractionSystem
+    HandInteractionSystem --> GraphManager %% Hand interactions can modify graph
+
+    %% Cross-cutting
+    Logger -.-> APIService
+    Logger -.-> WebSocketSvc
     Logger -.-> GraphManager
     Logger -.-> XRController
-    
-    Utils -.-> API
     Utils -.-> SettingsStore
-    Utils -.-> GraphDataManager
+    Utils -.-> GraphDataMgr
 ```
 
 ## Core Components
 
-### API Service (`client/src/services/api.ts`)
+### API Service ([`client/src/services/api.ts`](../../client/src/services/api.ts))
 Provides a centralized interface for communicating with the server REST API.
 
 **Responsibilities:**
-- Build API URLs for different endpoints
-- Handle authentication headers
-- Provide helper functions for API requests
+- Build API URLs for different endpoints.
+- Handle authentication headers (often in conjunction with `nostrAuthService.ts`).
+- Provide helper functions for API requests (e.g., fetching graph data, user settings, interacting with AI services).
 
 **Key Dependencies:**
-- Constants for API endpoints
-- Types for request/response formats
+- `nostrAuthService.ts` for obtaining auth tokens.
+- Type definitions for request/response payloads.
 
 ### State Management
 Manages application state and provides reactive updates using Zustand.
 
 **Key Components:**
-- `SettingsStore` (`client/src/store/settingsStore.ts`) - Manages application settings.
-- `GraphDataManager` (`client/src/features/graph/managers/graphDataManager.ts`) - Manages graph data state and updates.
+- `SettingsStore` ([`client/src/store/settingsStore.ts`](../../client/src/store/settingsStore.ts)) - Manages application settings.
+- `GraphDataManager` ([`client/src/features/graph/managers/graphDataManager.ts`](../../client/src/features/graph/managers/graphDataManager.ts)) - Manages graph data state and updates.
 
 **Responsibilities:**
 - Store and validate application settings.
-- Track graph data and node positions.
+- Track graph data (nodes, edges) and their positions.
 - Propagate state changes to subscribers via Zustand's subscription mechanism.
 
-### Event Emitter
-The codebase does not use a dedicated `eventEmitter.ts` file. Instead, communication patterns include:
-- Direct prop passing in React components.
-- Zustand store subscriptions for state changes.
-- React Context for sharing data and functions across the component tree.
-- WebSocket messages for server-client communication.
+### Core Components - Event Emitter
+A dedicated global `eventEmitter.ts` is **not** used in this project. Communication and event handling are achieved through:
+- **Zustand Store Subscriptions**: Components subscribe to `settingsStore` or `graphDataManager` (if it exposes an observable/subscription pattern) for reactive updates to specific state slices.
+- **React Context API**: Contexts like `ApplicationModeContext`, `WindowSizeContext`, and `control-panel-context` are used to share state and functions down the component tree.
+- **Direct Prop Passing**: Standard React mechanism for parent-child component communication.
+- **WebSocket Messages**: `WebSocketService` handles messages from the server, which are then typically processed by `GraphDataManager` or other relevant services/stores to update application state. Callbacks registered with `WebSocketService` (e.g., `onMessage`, `onBinaryMessage`) act as event handlers for server-sent events.
 
-### Logger (`client/src/utils/logger.ts`)
+### Logger ([`client/src/utils/logger.ts`](../../client/src/utils/logger.ts))
 Provides centralized logging with different levels.
 
 **Responsibilities:**
-- Log messages with appropriate severity
-- Add metadata to log messages
-- Control log output based on debug settings
+- Log messages with appropriate severity (debug, info, warn, error).
+- Add metadata to log messages (timestamps, component source).
+- Control log output based on environment or debug settings.
 
 ## Rendering Components
 
-### Graph Canvas (`client/src/features/graph/components/GraphCanvas.tsx`)
+### Graph Canvas ([`client/src/features/graph/components/GraphCanvas.tsx`](../../client/src/features/graph/components/GraphCanvas.tsx))
 The main entry point for the React Three Fiber (R3F) scene. It sets up the WebGL renderer, camera, and basic scene elements.
 
-### Graph Manager (`client/src/features/graph/components/GraphManager.tsx`)
-Manages the rendering of nodes and edges within the 3D scene. It handles instanced meshes for performance and orchestrates updates based on graph data.
+### Graph Manager ([`client/src/features/graph/components/GraphManager.tsx`](../../client/src/features/graph/components/GraphManager.tsx))
+Manages the rendering of nodes and edges within the 3D scene. It handles instanced meshes for performance and orchestrates updates based on graph data from `GraphDataManager`. This component effectively serves as the "Node Manager" and "Edge Manager".
 
-### Graph Viewport (`client/src/features/graph/components/GraphViewport.tsx`)
-Manages the camera and post-processing effects for the 3D scene.
+### Graph Viewport ([`client/src/features/graph/components/GraphViewport.tsx`](../../client/src/features/graph/components/GraphViewport.tsx))
+Manages the camera, lighting, and post-processing effects for the 3D scene.
 
-### Text Renderer (`client/src/features/visualisation/renderers/TextRenderer.tsx`)
-Renders text labels in 3D space using SDF fonts.
+### Text Renderer ([`client/src/features/visualisation/renderers/TextRenderer.tsx`](../../client/src/features/visualisation/renderers/TextRenderer.tsx))
+Renders text labels in 3D space using SDF fonts, typically associated with nodes.
 
-### Metadata Visualizer (`client/src/features/visualisation/components/MetadataVisualizer.tsx`)
-Displays metadata associated with nodes in the 3D scene.
+### Metadata Visualizer ([`client/src/features/visualisation/components/MetadataVisualizer.tsx`](../../client/src/features/visualisation/components/MetadataVisualizer.tsx))
+Displays metadata associated with nodes in the 3D scene, potentially as interactive elements.
 
-### Hologram Manager (`client/src/features/visualisation/renderers/HologramManager.tsx`)
-Manages the rendering of holographic effects for nodes.
+### Hologram Manager ([`client/src/features/visualisation/renderers/HologramManager.tsx`](../../client/src/features/visualisation/renderers/HologramManager.tsx))
+Manages the rendering of holographic effects for nodes, using custom shaders like `HologramMaterial.tsx`.
 
-### Camera Controller (`client/src/features/visualisation/components/CameraController.tsx`)
-Handles camera controls and interactions within the 3D scene.
+### Camera Controller ([`client/src/features/visualisation/components/CameraController.tsx`](../../client/src/features/visualisation/components/CameraController.tsx))
+Handles camera controls (orbit, pan, zoom) and interactions within the 3D scene.
 
 ### Edge Manager
-Edge rendering logic is primarily integrated within `GraphManager.tsx`, which handles the creation and updating of edge geometries and materials.
+Edge rendering logic is primarily integrated within [`GraphManager.tsx`](../../client/src/features/graph/components/GraphManager.tsx), which handles the creation, updating, and styling of edge geometries and materials based on data from `GraphDataManager`.
 
 ## Network Components
 
-### WebSocket Service (`client/src/services/WebSocketService.ts`)
-Manages WebSocket connection and communication with the server.
+### WebSocket Service ([`client/src/services/WebSocketService.ts`](../../client/src/services/WebSocketService.ts))
+Manages WebSocket connection, message serialization/deserialization (including binary protocol), and communication with the server.
 
-### Graph Data Manager (`client/src/features/graph/managers/graphDataManager.ts`)
-Manages graph data loading, updates, and state.
+### Graph Data Manager ([`client/src/features/graph/managers/graphDataManager.ts`](../../client/src/features/graph/managers/graphDataManager.ts))
+Manages graph data loading (initial fetch via REST, subsequent updates via WebSocket), state, and provides an interface for other components to access and interact with graph data.
 
 ## XR Components
 
-### XR Controller (`client/src/features/xr/components/XRController.tsx`)
+### XR Controller ([`client/src/features/xr/components/XRController.tsx`](../../client/src/features/xr/components/XRController.tsx))
 The main component for managing WebXR sessions and interactions.
 
-### XR Scene (`client/src/features/xr/components/XRScene.tsx`)
+### XR Scene ([`client/src/features/xr/components/XRScene.tsx`](../../client/src/features/xr/components/XRScene.tsx))
 A wrapper component for the R3F scene when in XR mode.
 
-### XR Visualisation Connector (`client/src/features/xr/components/XRVisualisationConnector.tsx`)
-Connects the main 3D visualisation components to the XR environment.
+### XR Visualisation Connector ([`client/src/features/xr/components/XRVisualisationConnector.tsx`](../../client/src/features/xr/components/XRVisualisationConnector.tsx))
+Connects the main 3D visualisation components (like `GraphManager`) to the XR environment, adapting interactions and rendering for XR.
 
-### Hand Interaction System (`client/src/features/xr/systems/HandInteractionSystem.tsx`)
-Handles WebXR hand tracking and interactions, including gesture recognition.
+### Hand Interaction System ([`client/src/features/xr/systems/HandInteractionSystem.tsx`](../../client/src/features/xr/systems/HandInteractionSystem.tsx))
+Handles WebXR hand tracking and interactions, including gesture recognition and mapping them to application actions.
 
-### XR Initializer (`client/src/features/xr/managers/xrInitializer.ts`)
-Initializes WebXR capabilities and sessions.
+### XR Initializer ([`client/src/features/xr/managers/xrInitializer.ts`](../../client/src/features/xr/managers/xrInitializer.ts))
+Initializes WebXR capabilities and sessions, checking for browser support.
 
-### XR Session Manager (`client/src/features/xr/managers/xrSessionManager.ts`)
-Manages WebXR sessions and their lifecycle.
+### XR Session Manager ([`client/src/features/xr/managers/xrSessionManager.ts`](../../client/src/features/xr/managers/xrSessionManager.ts))
+Manages WebXR sessions and their lifecycle (start, end, events).
 
-### Safe XR Provider (`client/src/features/xr/providers/SafeXRProvider.tsx`)
-Provides a safe context for WebXR hooks and components, handling browser compatibility.
+### Safe XR Provider ([`client/src/features/xr/providers/SafeXRProvider.tsx`](../../client/src/features/xr/providers/SafeXRProvider.tsx))
+Provides a safe context for WebXR hooks and components, handling browser compatibility checks.
 
 ## UI Components
 
-### Right Pane Control Panel (`client/src/app/components/RightPaneControlPanel.tsx`)
-Manages the content displayed in the right pane of the main application layout, including settings and feature tabs.
+### Right Pane Control Panel ([`client/src/app/components/RightPaneControlPanel.tsx`](../../client/src/app/components/RightPaneControlPanel.tsx))
+Manages the content displayed in the right pane of the main application layout, including settings, authentication, and feature panels.
 
-### Settings Panel Redesign (`client/src/features/settings/components/panels/SettingsPanelRedesign.tsx`)
-Provides the tabbed interface for organizing different categories of settings and tools within the right pane, utilizing `client/src/ui/Tabs.tsx`.
+### Settings Panel Redesign ([`client/src/features/settings/components/panels/SettingsPanelRedesign.tsx`](../../client/src/features/settings/components/panels/SettingsPanelRedesign.tsx))
+Provides the tabbed interface for organizing different categories of settings (Visualisation, System, AI, XR) within the right pane, utilizing [`client/src/ui/Tabs.tsx`](../../client/src/ui/Tabs.tsx).
 
-### Settings Sections (`client/src/features/settings/components/SettingsSection.tsx`)
-Used within panels to group related settings. Supports collapsible sections and detaching into draggable, floating windows.
+### Settings Sections ([`client/src/features/settings/components/SettingsSection.tsx`](../../client/src/features/settings/components/SettingsSection.tsx))
+Used within panels (like `SettingsPanelRedesign`) to group related settings. Supports collapsible sections.
 
-### Setting Control Component (`client/src/features/settings/components/SettingControlComponent.tsx`)
-Renders individual UI controls (sliders, toggles, inputs) for each setting, including dynamic tooltips using `Tooltip.tsx`.
+### Setting Control Component ([`client/src/features/settings/components/SettingControlComponent.tsx`](../../client/src/features/settings/components/SettingControlComponent.tsx))
+Renders individual UI controls (sliders, toggles, inputs, color pickers, etc.) for each setting based on its definition in `settingsUIDefinition.ts`.
 
-### Auth UI Handler (`client/src/features/auth/components/AuthUIHandler.tsx`)
-Manages the authentication user interface and logic, primarily for Nostr authentication.
+### Auth UI Handler ([`client/src/features/auth/components/AuthUIHandler.tsx`](../../client/src/features/auth/components/AuthUIHandler.tsx))
+Manages the authentication user interface and logic, primarily for Nostr authentication, often hosting `NostrAuthSection.tsx`.
 
-### Markdown Renderer (`client/src/ui/markdown/MarkdownRenderer.tsx`)
-Renders Markdown content within the application.
+### Markdown Renderer ([`client/src/ui/markdown/MarkdownRenderer.tsx`](../../client/src/ui/markdown/MarkdownRenderer.tsx))
+Renders Markdown content within the application, used for displaying detailed information or help texts.
+
+### Conversation Pane ([`client/src/app/components/ConversationPane.tsx`](../../client/src/app/components/ConversationPane.tsx))
+Provides the UI for interacting with AI chat services (e.g., RAGFlow).
+
+### Narrative Goldmine Panel ([`client/src/app/components/NarrativeGoldminePanel.tsx`](../../client/src/app/components/NarrativeGoldminePanel.tsx))
+A panel dedicated to features for exploring and analyzing narrative elements within the graph data.
 
 ## Component Initialization Sequence
 
-The application initialization flow is orchestrated by `client/src/app/AppInitializer.tsx` and `client/src/app/main.tsx`.
+The application initialization flow is orchestrated by [`client/src/app/main.tsx`](../../client/src/app/main.tsx) which renders [`client/src/app/AppInitializer.tsx`](../../client/src/app/AppInitializer.tsx).
 
 ```mermaid
 sequenceDiagram
@@ -268,42 +302,54 @@ The application uses several communication patterns:
 Key interface contracts between components:
 
 ### Node Manager Interface
-The concept of a `NodeManagerInterface` is primarily embodied by the `GraphManager.tsx` component, which handles the rendering and interaction logic for nodes. Its methods align with the responsibilities described.
+The concept of a `NodeManagerInterface` is primarily embodied by the [`GraphManager.tsx`](../../client/src/features/graph/components/GraphManager.tsx) component. It is responsible for taking data from `GraphDataManager` and rendering/managing the visual representation of nodes (and edges) in the R3F scene.
 
 ### WebSocket Service Interface
 ```typescript
 interface WebSocketServiceInterface {
-  connect(): Promise<void>;
-  sendMessage(message: any): void;
-  onBinaryMessage(callback: (data: ArrayBuffer) => void): () => void;
-  onConnectionStatusChange(handler: (status: boolean) => void): () => void;
-  isReady(): boolean;
-  dispose(): void;
+  connect(url?: string): Promise<void>;
+  sendMessage(message: object): void; // For JSON messages
+  sendRawBinaryData(data: ArrayBuffer): void; // For binary messages
+  onMessage(callback: (data: any) => void): () => void; // For JSON messages
+  onBinaryMessage(callback: (data: ArrayBuffer) => void): () => void; // For binary messages
+  onConnectionStatusChange(handler: (status: { connected: boolean; error?: any }) => void): () => void;
+  isReady(): boolean; // Checks if connected and server is ready
+  close(): void;
+  setCustomBackendUrl(url: string): void; // Allows overriding the default WebSocket URL
 }
 ```
+Corresponds to methods in [`client/src/services/WebSocketService.ts`](../../client/src/services/WebSocketService.ts).
 
 ### Graph Data Manager Interface
 ```typescript
 interface GraphDataManagerInterface {
   fetchInitialData(): Promise<void>;
-  updateGraphData(data: any): void;
-  updateNodePositions(positions: Float32Array): void;
-  sendNodePositions(): void;
-  getGraphData(): GraphData;
-  getNode(id: string): Node | undefined;
-  subscribe(listener: (data: GraphData) => void): () => void;
-  subscribeToPositionUpdates(listener: (positions: Float32Array) => void): () => void;
-  clear(): void;
+  setGraphData(nodes: Node[], edges: Edge[], metadata?: Record<string, any>): void;
+  updateNodePositions(data: ArrayBuffer | { nodeId: number; position: { x: number; y: number; z: number }; velocity?: { x: number; y: number; z: number }}[]): void;
+  // sendNodePositions(): void; // This might be handled internally or via a different mechanism
+  getGraphData(): { nodes: Node[]; edges: Edge[]; metadata: Record<string, any> };
+  getNodeById(id: string): Node | undefined;
+  onGraphDataChange(listener: (graphData: { nodes: Node[]; edges: Edge[] }) => void): () => void; // Subscription for overall graph data changes
+  onPositionUpdate(listener: (updates: { nodeId: number; position: { x: number; y: number; z: number }}[] ) => void): () => void; // Subscription for position updates
+  setWebSocketService(wsService: WebSocketServiceInterface): void;
+  setBinaryUpdatesEnabled(enabled: boolean): void;
+  ensureNodeHasValidPosition(nodeId: string): void;
+  // Other methods like addNode, removeNode, addEdge, removeEdge might exist
 }
 ```
+Corresponds to methods and properties in [`client/src/features/graph/managers/graphDataManager.ts`](../../client/src/features/graph/managers/graphDataManager.ts).
 
 ## Dependency Injection
 
 The application primarily uses React's built-in mechanisms for dependency injection:
 
-1.  **React Context API**: For providing global services and state (e.g., `ApplicationModeContext`, `ControlPanelContext`).
-2.  **Prop Drilling**: For passing dependencies down the component tree where appropriate.
-3.  **Zustand Store**: Components directly import and use the Zustand store, which acts as a global injectable state.
+1.  **Zustand Store**: Components directly import and use Zustand stores (`settingsStore`, potentially others) which act as global, injectable state containers. This is the primary method for managing shared application state.
+2.  **React Context API**: Used for more localized state sharing or providing specific functionalities down a component subtree. Examples:
+    - [`ApplicationModeContext`](../../client/src/contexts/ApplicationModeContext.tsx)
+    - [`WindowSizeContext`](../../client/src/contexts/WindowSizeContext.tsx)
+    - [`control-panel-context`](../../client/src/features/settings/components/control-panel-context.tsx) (for managing control panel specific state like detached panels).
+3.  **Prop Drilling**: Standard React prop passing is used for direct parent-to-child dependency provision, especially for UI components.
+4.  **Service Instantiation/Import**: Services like `WebSocketService.getInstance()`, `nostrAuthService`, and `apiService` are often singletons or directly imported modules, making them available globally or within specific parts of the application.
 
 ## Related Documentation
 

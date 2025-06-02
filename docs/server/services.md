@@ -5,171 +5,168 @@ The services layer provides core business logic, external integrations, and data
 
 ## GitHub Service
 
-### Client Configuration
+### GitHub Service Configuration ([`src/services/github/config.rs`](../../src/services/github/config.rs))
+The `GitHubConfig` struct (renamed from `GitHubServiceConfig` in the plan for clarity, assuming it's the primary config for GitHub interactions) defines parameters for connecting to the GitHub API.
+
 ```rust
-pub struct GitHubServiceConfig {
-    pub base_url: String,
-    pub timeout_seconds: u64,
-    pub max_retries: u32,
-    pub token: Option<String>,
+// In src/services/github/config.rs
+pub struct GitHubConfig {
+    pub owner: String,
+    pub repo: String,
+    pub branch: Option<String>, // Or default branch if None
+    pub personal_access_token: Option<String>, // GitHub PAT
+    pub app_id: Option<u64>, // For GitHub App authentication
+    pub private_key_path: Option<String>, // Path to private key for GitHub App
+    pub base_path: Option<String>, // Subdirectory within the repo to scan
+    pub user_agent: String,
+    // Potentially other fields like timeout, retries
 }
 ```
+This configuration is typically part of `AppFullSettings.auth.github_config` or a similar path. The actual `GitHubService` or `GitHubClient` would use this config.
 
-### Content API
-```rust
-// ContentAPI has been integrated into GitHubService and FileService.
-
-### File Service (`src/services/file_service.rs`)
-The `FileService` is responsible for interactions with the file system, particularly for managing Markdown files and their metadata.
+### File Service ([`src/services/file_service.rs`](../../src/services/file_service.rs))
+The `FileService` is responsible for interactions with the local file system and orchestrating content fetching (which might involve a `GitHubService` or `GitHubClient` using `ContentAPI` traits). It manages Markdown files and their metadata.
 
 ```rust
-// From src/services/file_service.rs
+// In src/services/file_service.rs
 pub struct FileService {
-    _settings: Arc<RwLock<AppFullSettings>>,
-    node_id_counter: AtomicU32,
+    // settings: Arc<RwLock<AppFullSettings>>, // To access paths, etc.
+    // github_service: Option<Arc<GitHubService>>, // If GitHub is a source
+    // metadata_store: Arc<RwLock<MetadataStore>>, // To update metadata
+    // node_id_counter: AtomicU32, // For generating unique node IDs if needed
 }
 
 impl FileService {
-    pub fn new(_settings: Arc<RwLock<AppFullSettings>>) -> Self;
-    fn get_next_node_id(&self) -> u32;
-    fn update_node_ids(&self, processed_files: &mut Vec<ProcessedFile>);
-    pub async fn process_file_upload(&self, payload: web::Bytes) -> Result<GraphData, std::io::Error>;
-    pub async fn list_files(&self) -> Result<Vec<String>, std::io::Error>;
-    pub async fn load_file(&self, filename: &str) -> Result<GraphData, std::io::Error>;
-    pub fn load_or_create_metadata() -> Result<MetadataStore, String>;
-    // fn calculate_node_size(file_size: usize) -> f64; // private
-    // fn extract_references(content: &str, valid_nodes: &[String]) -> Vec<String>; // private
-    // fn convert_references_to_topic_counts(references: Vec<String>) -> HashMap<String, usize>; // private
-    pub async fn initialize_local_storage(settings: Arc<RwLock<AppFullSettings>>) -> Result<(), Box<dyn std::error::Error + Send + Sync>>;
-    // fn update_topic_counts(metadata_store: &mut MetadataStore) -> Result<(), std::io::Error>; // private
-    // fn has_valid_local_setup() -> bool; // private
-    // fn ensure_directories() -> Result<(), std::io::Error>; // private
-    pub fn save_metadata(metadata: &MetadataStore) -> Result<(), std::io::Error>;
-    // fn calculate_sha1(content: &str) -> String; // private
-    // fn count_hyperlinks(content: &str) -> usize; // private
-    pub async fn fetch_and_process_files(
-        &self,
-        content_api: Arc<ContentAPI>,
-        _settings: Arc<RwLock<AppFullSettings>>,
-        metadata_store: &mut MetadataStore,
-    ) -> Result<Vec<ProcessedFile>, Box<dyn std::error::Error + Send + Sync>>;
+    // pub fn new(settings: Arc<RwLock<AppFullSettings>>, metadata_store: Arc<RwLock<MetadataStore>>, github_service: Option<Arc<GitHubService>>) -> Self;
+    
+    // Manages local file operations (reading, writing, listing).
+    // pub async fn process_local_files(&self) -> Result<Vec<ProcessedFile>, FileServiceError>;
+    
+    // Fetches files from configured sources (local, GitHub via ContentAPI).
+    // pub async fn fetch_and_process_all_content(&self) -> Result<Vec<ProcessedFile>, FileServiceError>;
+    
+    // Creates/updates metadata in the MetadataStore based on processed files.
+    // pub async fn update_metadata_store(&self, processed_files: Vec<ProcessedFile>) -> Result<(), FileServiceError>;
+    
+    // Saves the MetadataStore to disk.
+    // pub fn save_metadata_store(&self) -> Result<(), FileServiceError>;
+    
+    // Loads the MetadataStore from disk.
+    // pub fn load_metadata_store(&self) -> Result<MetadataStore, FileServiceError>;
+
+    // Handles file uploads if that feature is routed to FileService.
+    // pub async fn handle_file_upload(&self, payload: web::Bytes) -> Result<GraphData, FileServiceError>;
+    
+    // Initializes local storage directories if needed.
+    // pub async fn initialize_storage(&self) -> Result<(), FileServiceError>;
 }
 ```
-- Manages file system operations, including reading, writing, and listing files.
-- Handles metadata creation, loading, and saving.
-- Processes file uploads and integrates with `ContentAPI` (which might use `GitHubClient`) for fetching files.
-- Assigns unique node IDs.
+- Manages local file system operations.
+- Interacts with a `ContentAPI` implementor (like `GitHubService` or a local file system accessor) to fetch raw content.
+- Processes files to extract information and update the `MetadataStore`.
+- Handles metadata persistence (loading/saving).
 
-### Graph Service (`src/services/graph_service.rs`)
+### Graph Service ([`src/services/graph_service.rs`](../../src/services/graph_service.rs))
 The `GraphService` is central to managing the graph's structure, layout, and real-time updates.
 
 ```rust
-// From src/services/graph_service.rs
+// In src/services/graph_service.rs
 pub struct GraphService {
-    graph_data: Arc<RwLock<GraphData>>,
-    shutdown_complete: Arc<AtomicBool>,
-    node_map: Arc<RwLock<HashMap<String, Node>>>, // Node is from crate::utils::socket_flow_messages::Node
-    gpu_compute: Option<Arc<RwLock<GPUCompute>>>,
-    node_positions_cache: Arc<RwLock<Option<(Vec<Node>, Instant)>>>,
-    last_update: Arc<RwLock<Instant>>,
-    _pending_updates: Arc<RwLock<HashMap<String, (Node, Instant)>>>, // Marked as Dead Code in source
-    cache_enabled: bool,
-    simulation_id: String,
-    _is_initialized: Arc<AtomicBool>, // Marked as Dead Code in source
-    shutdown_requested: Arc<AtomicBool>,
+    // graph_data: Arc<RwLock<GraphData>>, // Holds the current nodes and edges
+    // node_map: Arc<RwLock<HashMap<String, crate::utils::socket_flow_messages::Node>>>, // For quick node lookup by ID
+    // gpu_compute: Option<Arc<RwLock<GPUCompute>>>, // Optional GPU acceleration
+    // settings: Arc<RwLock<AppFullSettings>>, // To access simulation parameters
+    // client_manager: Arc<ClientManager>, // To broadcast updates (passed during construction or accessed statically)
+    // shutdown_signal: Arc<AtomicBool>, // For graceful shutdown
+    // ... other fields for caching, simulation state, etc.
 }
 
 impl GraphService {
-    pub async fn new(
-        settings: Arc<RwLock<AppFullSettings>>, // Consumes AppFullSettings
-        gpu_compute: Option<Arc<RwLock<GPUCompute>>>,
-        client_manager_for_loop: Arc<ClientManager>
-    ) -> Self;
+    // pub async fn new(settings: Arc<RwLock<AppFullSettings>>, gpu_compute: Option<Arc<RwLock<GPUCompute>>>, client_manager: Arc<ClientManager>) -> Self;
+    
+    // Builds the graph from the MetadataStore.
+    // pub async fn build_graph_from_metadata(&self, metadata_store: &MetadataStore) -> Result<(), GraphServiceError>;
+    
+    // Starts the continuous physics simulation and broadcast loop.
+    // pub fn start_simulation_loop(&self);
+    
+    // Calculates a layout iteration (CPU or GPU).
+    // async fn calculate_layout_iteration(&self);
+    
+    // Provides access to graph data (full, paginated, specific nodes/edges).
+    // pub async fn get_graph_data(&self) -> GraphData;
+    // pub async fn get_paginated_graph_data(&self, page: usize, page_size: usize) -> PaginatedGraphResponse;
+    
+    // Handles requests to update or refresh the graph.
+    // pub async fn trigger_graph_rebuild(&self, file_service: Arc<FileService>) -> Result<(), GraphServiceError>; // Re-fetches and re-processes
+    // pub async fn trigger_graph_refresh(&self) -> Result<(), GraphServiceError>; // Rebuilds from existing metadata
 
-    pub async fn shutdown(&self);
-    pub async fn get_simulation_diagnostics(&self) -> String;
-    // async fn test_gpu_at_startup(gpu_compute: Option<Arc<RwLock<GPUCompute>>>); // private
-    pub async fn wait_for_metadata_file() -> bool;
-    pub async fn build_graph_from_metadata(metadata: &MetadataStore) -> Result<GraphData, Box<dyn std::error::Error + Send + Sync>>;
-    pub async fn build_graph(state: &web::Data<AppState>) -> Result<GraphData, Box<dyn std::error::Error + Send + Sync>>;
-    // fn initialize_random_positions(graph: &mut GraphData); // private
-    pub async fn calculate_layout_with_retry(...); // public wrapper
-    pub async fn calculate_layout(...); // public but usually called by retry wrapper
-    pub fn calculate_layout_cpu(...); // public, CPU fallback
-    pub async fn get_paginated_graph_data(...);
-    pub async fn clear_position_cache(&self);
-    pub async fn get_node_positions(&self) -> Vec<Node>;
-    pub async fn get_graph_data_mut(&self) -> tokio::sync::RwLockWriteGuard<'_, GraphData>;
-    // pub async fn get_node_map_mut(...); // public
-    pub async fn get_gpu_compute(&self) -> Option<Arc<RwLock<GPUCompute>>>;
-    pub async fn update_node_positions(...);
-    // pub fn update_positions(&mut self) -> Pin<Box<dyn Future<Output = Result<(), Error>> + '_>>; // public
-    pub async fn initialize_gpu(&mut self, graph_data: &GraphData) -> Result<(), Error>;
-    // pub fn diagnose_gpu_status(...); // public
-    pub fn start_broadcast_loop(&self, client_manager: Arc<ClientManager>);
+    // pub async fn shutdown(&self);
 }
 ```
 - Manages the in-memory `GraphData` (nodes, edges).
-- Handles physics simulation, either via `GPUCompute` or a CPU fallback.
-- Builds the graph from `MetadataStore`.
-- Provides methods for accessing graph data (paginated, node positions).
-- Manages a cache for node positions.
-- Broadcasts updates to clients via `ClientManager`.
-- Note: `settings` and `metadata_manager` are not direct fields; `GraphService` receives `settings` during construction and interacts with `MetadataStore` (often via `AppState`) to build the graph.
+- Handles physics simulation, either via `GPUCompute` or a CPU fallback, using parameters from `AppFullSettings.visualisation.physics` and `SimulationParams`.
+- Builds the graph from `MetadataStore` (provided by `FileService` or `AppState`).
+- Provides methods for accessing graph data.
+- Broadcasts updates to clients via the static `APP_CLIENT_MANAGER`.
+- The `settings` field is not directly on `GraphService` in the plan, but it needs access to `AppFullSettings` (likely passed during construction or via `AppState`) for simulation parameters.
 
 ## AI Services
 
 The application architecture includes several distinct AI-related services, rather than a single monolithic `AIService`. These are typically held as optional fields within `AppState`.
 
-### Perplexity Service (`src/services/perplexity_service.rs`)
+### Perplexity Service ([`src/services/perplexity_service.rs`](../../src/services/perplexity_service.rs))
 Integrates with the Perplexity AI API.
 ```rust
-// From src/services/perplexity_service.rs
+// In src/services/perplexity_service.rs
 pub struct PerplexityService {
-    // Fields like api_key, client, model, etc.
+    // client: reqwest::Client,
+    // api_key: String,
+    // config: PerplexityConfig, // From AppFullSettings.perplexity
 }
 impl PerplexityService {
-    // pub fn new(config: PerplexityConfig) -> Self;
-    // pub async fn chat_completion(&self, messages: Vec<ChatMessage>) -> Result<ChatResponse, PerplexityError>;
+    // pub fn new(config: PerplexityConfig, client: reqwest::Client) -> Self;
+    // pub async fn query(&self, request: QueryRequest) -> Result<PerplexityResponse, PerplexityError>;
 }
 ```
 
-### RAGFlow Service (`src/services/ragflow_service.rs`)
-Integrates with a RAGFlow instance.
+### RAGFlow Service ([`src/services/ragflow_service.rs`](../../src/services/ragflow_service.rs))
+Integrates with a RAGFlow instance. Configuration (API key, base URL) is typically loaded from environment variables or `AppFullSettings.ragflow`.
 ```rust
-// From src/services/ragflow_service.rs
+// In src/services/ragflow_service.rs
 pub struct RAGFlowService {
-    // Fields like api_key, client, api_base_url, etc.
+    // client: reqwest::Client,
+    // api_key: String,
+    // api_base_url: String,
+    // config: RAGFlowConfig, // From AppFullSettings.ragflow
 }
 impl RAGFlowService {
-    // pub fn new(config: RAGFlowConfig) -> Self;
+    // pub fn new(config: RAGFlowConfig, client: reqwest::Client) -> Self;
     // pub async fn chat(&self, request: RagflowChatRequest) -> Result<RagflowChatResponse, RagFlowError>;
 }
 ```
 
-### Speech Service (`src/services/speech_service.rs`)
-Orchestrates Speech-to-Text (STT) and Text-to-Speech (TTS) functionalities. It may interact with other AI services (like OpenAI for STT/TTS).
-
+### Speech Service ([`src/services/speech_service.rs`](../../src/services/speech_service.rs))
+Orchestrates Speech-to-Text (STT) and Text-to-Speech (TTS) functionalities. It interacts with configured STT/TTS providers (e.g., OpenAI, Kokoro).
 ```rust
-// From src/services/speech_service.rs
+// In src/services/speech_service.rs
 pub struct SpeechService {
-    pub sender: mpsc::Sender<SpeechCommand>, // For sending commands to its internal processing loop
-    pub settings: Arc<RwLock<SpeechSettings>>, // Specific settings for speech services
-    pub tts_provider: Arc<dyn TTSProvider + Send + Sync>, // TTS provider (e.g., OpenAI, Kokoro)
-    pub audio_tx: mpsc::Sender<Vec<u8>>, // For sending processed audio (e.g., TTS output)
-    pub http_client: Client, // reqwest client
+    // settings: Arc<RwLock<AppFullSettings>>, // To access OpenAIConfig, KokoroConfig etc.
+    // http_client: reqwest::Client,
+    // audio_broadcast_tx: tokio::sync::broadcast::Sender<Vec<u8>>, // For broadcasting TTS audio to speech_socket_handler
+    // command_tx: tokio::sync::mpsc::Sender<SpeechCommand>, // For internal command processing
 }
 impl SpeechService {
-    // pub fn new(...) -> Self;
-    // pub async fn process_command(&self, command: SpeechCommand);
-    // pub async fn handle_text_to_speech(...);
-    // pub async fn handle_speech_to_text(...);
+    // pub fn new(settings: Arc<RwLock<AppFullSettings>>, client: reqwest::Client, audio_tx: tokio::sync::broadcast::Sender<Vec<u8>>) -> Self;
+    // pub fn start_processing_loop(&self); // Handles commands from command_tx
+    // pub async fn process_stt_request(&self, audio_data: Vec<u8>) -> Result<String, SpeechError>;
+    // pub async fn process_tts_request(&self, text: String, options: TTSSpeechOptions) -> Result<(), SpeechError>; // Sends audio via audio_broadcast_tx
 }
 ```
-- Manages audio streaming, STT processing (potentially via an external provider like OpenAI, not WhisperSttService directly as a separate struct in AppState), and TTS generation.
-
-### Whisper STT Service
-The `WhisperSttService` struct, as previously documented, is **not present** as a distinct service managed directly by `AppState`. STT functionality is likely handled within `SpeechService`, which might use OpenAI's Whisper API or another STT provider. The old documentation mentioning a separate `WhisperSttService` in `AppState` is outdated.
+- Manages audio streaming via its dedicated WebSocket handler (`speech_socket_handler.rs`).
+- Performs STT using configured providers (e.g., OpenAI Whisper, if its API key is in `AppFullSettings.openai`).
+- Performs TTS using configured providers (e.g., OpenAI TTS, Kokoro TTS).
+- **Clarification**: `WhisperSttService` is not a separate struct in `AppState`. STT functionality, including Whisper if used, is integrated within `SpeechService` or called directly using an OpenAI client configured with keys from `AppFullSettings.openai`.
 
 ## Error Handling & State Management
 - Each service typically defines its own error types (e.g., `GraphServiceError`, `FileServiceError`).

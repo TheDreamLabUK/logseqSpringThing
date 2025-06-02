@@ -19,42 +19,36 @@ The effectiveness of the visualization hinges on how data attributes are mapped 
 ### Node Visuals
 
 -   **Size:**
-    -   `visualisation.nodes.nodeSize` in [`settings.ts`](../../client/src/features/settings/config/settings.ts) provides a base size.
-    -   This base size can be modulated by data attributes. For example, node size could represent:
-        -   The word count or file size of a document.
-        -   The number of connections (degree centrality).
-        -   The importance score derived from an algorithm (e.g., PageRank).
+    -   Controlled by `visualisation.nodes.nodeSize` in [`settings.ts`](../../client/src/features/settings/config/settings.ts) for a base size.
+    -   This can be modulated by data attributes (e.g., file size, connection count).
 -   **Color:**
-    -   `visualisation.nodes.baseColor` provides a default color.
-    -   Color can be used to categorize nodes, for instance:
-        -   By file type (e.g., Markdown, PDF, image).
-        -   By tags or keywords present in the metadata.
-        -   By recency or modification date.
+    -   Default color from `visualisation.nodes.baseColor` in [`settings.ts`](../../client/src/features/settings/config/settings.ts).
+    -   Can be dynamically set based on metadata (e.g., file type, tags).
 -   **Shape / Form:**
-    -   While often spheres for simplicity and performance (especially with instancing), nodes can take different shapes to represent different types of entities.
-    -   The `enableMetadataShape` setting in `NodeSettings` hints at the possibility of altering node geometry based on metadata.
+    -   Typically spheres for performance, but can be varied.
+    -   `enableMetadataShape` in `NodeSettings` (from `settings.ts`) suggests potential for metadata-driven geometry.
 -   **Holograms:**
-    -   The `enableHologram` setting and `HologramSettings` in [`settings.ts`](../../client/src/features/settings/config/settings.ts) allow for a distinct visual style for certain nodes, potentially to highlight them or indicate a special status (e.g., recently accessed, important).
-    -   The [`HologramManager.tsx`](../../client/src/features/visualisation/renderers/HologramManager.tsx) and [`HologramMaterial.tsx`](../../client/src/features/visualisation/renderers/materials/HologramMaterial.tsx) are responsible for this effect.
+    -   Enabled by `visualisation.nodes.enableHologram` and configured via `visualisation.hologram` (which is `HologramSettings`) in [`settings.ts`](../../client/src/features/settings/config/settings.ts).
+    -   Rendered by [`HologramManager.tsx`](../../client/src/features/visualisation/renderers/HologramManager.tsx) using shaders like [`HologramMaterial.tsx`](../../client/src/features/visualisation/renderers/materials/HologramMaterial.tsx).
 
 ### Edge Visuals
 
 -   **Thickness/Width:**
-    -   `visualisation.edges.baseWidth` and `widthRange` can be used.
-    -   Edge thickness can represent the strength or frequency of a connection.
+    -   Controlled by settings like `visualisation.edges.baseWidth` in [`settings.ts`](../../client/src/features/settings/config/settings.ts).
+    -   Can represent link strength.
 -   **Color:**
-    -   `visualisation.edges.color` provides a default.
-    -   Can indicate the type of link (e.g., direct hyperlink vs. implicit relationship).
-    -   Can use a gradient (`useGradient`, `gradientColors`) for aesthetic purposes or to show directionality.
+    -   Default from `visualisation.edges.color` in [`settings.ts`](../../client/src/features/settings/config/settings.ts).
+    -   Can indicate link type or use gradients (e.g., `visualisation.edges.useGradient`, `visualisation.edges.gradientColors`).
 -   **Style:**
-    -   Arrows (`enableArrows`, `arrowSize`) can indicate directionality.
-    -   Flow effects (`enableFlowEffect`, `flowSpeed`, `flowIntensity`) can visualize activity or information flow along connections.
+    -   Arrows for directionality (e.g., `visualisation.edges.enableArrows`).
+    -   Flow effects for activity (e.g., `visualisation.edges.enableFlowEffect`).
+    -   All relevant settings are within `visualisation.edges` in [`settings.ts`](../../client/src/features/settings/config/settings.ts).
 
 ### Text Labels
 
--   `LabelSettings` in [`settings.ts`](../../client/src/features/settings/config/settings.ts) control the appearance of text.
--   Node labels typically display the title or filename.
--   Edge labels (if enabled) could show the type of relationship.
+-   Appearance controlled by `visualisation.labels` (which is `LabelSettings`) in [`settings.ts`](../../client/src/features/settings/config/settings.ts).
+-   Node labels typically display titles or filenames.
+-   Edge labels can show relationship types.
 
 ## Interactive Visualization
 
@@ -67,7 +61,7 @@ The visualization is not static; users can interact with it:
 
 ## Metadata Visualization
 
-### `MetadataVisualizer.tsx` (`client/src/features/visualisation/components/MetadataVisualizer.tsx`)
+### `MetadataVisualizer.tsx` ([`client/src/features/visualisation/components/MetadataVisualizer.tsx`](../../client/src/features/visualisation/components/MetadataVisualizer.tsx))
 
 This component is responsible for displaying additional information or visual cues based on the metadata associated with nodes.
 
