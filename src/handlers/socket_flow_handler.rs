@@ -2,9 +2,7 @@ use actix::{prelude::*, Actor, Handler, Message};
 use actix_web::{web, Error, HttpRequest, HttpResponse};
 use actix_web_actors::ws;
 use crate::config::AppFullSettings;
-use flate2::{write::ZlibEncoder, Compression};
 use log::{trace, debug, error, info, warn};
-use std::io::Write;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -19,20 +17,13 @@ use crate::utils::socket_flow_messages::{BinaryNodeData, PingMessage, PongMessag
 // Constants for throttling debug logs
 const DEBUG_LOG_SAMPLE_RATE: usize = 10; // Only log 1 in 10 updates
 
-// Constants for data optimization
-const COMPRESSION_LEVEL: Compression = Compression::best(); // Use best compression
 // Default values for deadbands if not provided in settings
-const DEFAULT_POSITION_DEADBAND: f32 = 0.01; // 1cm deadband 
+const DEFAULT_POSITION_DEADBAND: f32 = 0.01; // 1cm deadband
 const DEFAULT_VELOCITY_DEADBAND: f32 = 0.005; // 5mm/s deadband
 // Default values for dynamic update rate
-// const DEFAULT_MIN_UPDATE_RATE: u32 = 5;   // Min 5 updates per second when stable // Dead Code
 const BATCH_UPDATE_WINDOW_MS: u64 = 200;  // Check motion every 200ms
-// const DEFAULT_MAX_UPDATE_RATE: u32 = 60;  // Max 60 updates per second when active // Dead Code
-// const DEFAULT_MOTION_THRESHOLD: f32 = 0.05;  // 5% of nodes need to be moving // Dead Code
-// const DEFAULT_MOTION_DAMPING: f32 = 0.9;  // Smooth transitions in rate // Dead Code
 
-// Maximum value for u16 node IDs
-const MAX_U16_VALUE: u32 = 65535;
+// Note: Now using u32 node IDs throughout the system
 
 /// Struct to hold pre-read WebSocket settings to avoid blocking in async context
 #[derive(Clone, Debug)]
@@ -41,79 +32,11 @@ pub struct PreReadSocketSettings {
     pub max_update_rate: u32,
     pub motion_threshold: f32,
     pub motion_damping: f32,
-    pub compression_enabled: bool,
-    pub compression_threshold: usize,
     pub heartbeat_interval_ms: u64, // Added for heartbeat
     pub heartbeat_timeout_ms: u64,  // Added for heartbeat
 }
 
-/// ClientManager keeps track of all connected WebSocket clients
-/// and provides methods for broadcasting data to all clients
-#[derive(Debug)]
-pub struct ClientManager {
-    /// Map of client IDs to associated actor addresses
-    clients: RwLock<HashMap<usize, actix::Addr<SocketFlowServer>>>,
-    /// Counter for generating unique client IDs
-    next_id: AtomicUsize,
-}
-
-impl ClientManager {
-    /// Create a new ClientManager
-    pub fn new() -> Self {
-        Self {
-            clients: RwLock::new(HashMap::new()),
-            next_id: AtomicUsize::new(1),
-        }
-    }
-
-    /// Register a new client with the manager
-    pub async fn register(&self, addr: actix::Addr<SocketFlowServer>) -> usize {
-        let id = self.next_id.fetch_add(1, Ordering::SeqCst);
-        let mut clients = self.clients.write().await;
-        clients.insert(id, addr);
-        info!("[ClientManager] Registered new client: {} (total: {})", id, clients.len());
-        id
-    }
-
-    /// Unregister a client from the manager
-    pub async fn unregister(&self, id: usize) {
-        let mut clients = self.clients.write().await;
-        clients.remove(&id);
-        info!("[ClientManager] Unregistered client: {} (remaining: {})", id, clients.len());
-    }
-
-    /// Broadcast node positions to all connected clients
-    pub async fn broadcast_node_positions(&self, nodes: Vec<crate::utils::socket_flow_messages::Node>) {
-        if nodes.is_empty() {
-            return;
-        }
-
-        let clients = self.clients.read().await;
-        if clients.is_empty() {
-            return;
-        }
-
-        // Convert nodes to binary format
-        let binary_data = nodes.into_iter()
-            .filter_map(|node| {
-                // Parse node ID as u16 for binary protocol
-                node.id.parse::<u16>().ok().map(|id| (id, BinaryNodeData {
-                    position: node.data.position,
-                    velocity: node.data.velocity,
-                    mass: node.data.mass,
-                    flags: node.data.flags,
-                    padding: node.data.padding,
-                }))
-            })
-            .collect::<Vec<_>>();
-
-        // Send the update to all clients
-        for (id, addr) in clients.iter() {
-            addr.do_send(BroadcastPositionUpdate(binary_data.clone()));
-            trace!("[ClientManager] Sent position update to client {}", id);
-        }
-    }
-}
+// Old ClientManager struct removed - now using ClientManagerActor
 
 // Message to set client ID after registration
 #[derive(Message)]
@@ -139,11 +62,8 @@ impl Handler<BroadcastPositionUpdate> for SocketFlowServer {
             // Encode the binary message
             let binary_data = binary_protocol::encode_node_data(&msg.0);
             
-            // Apply compression if needed
-            let compressed_data = self.maybe_compress(binary_data);
-            
-            // Send to client
-            ctx.binary(compressed_data);
+            // Send to client directly (permessage-deflate handles compression)
+            ctx.binary(binary_data);
             
             // Debug logging - limit to avoid spamming logs
             if self.should_log_update() {
@@ -155,12 +75,12 @@ impl Handler<BroadcastPositionUpdate> for SocketFlowServer {
 /// Message type for broadcasting position updates to clients
 #[derive(Message, Clone)]
 #[rtype(result = "()")]
-pub struct BroadcastPositionUpdate(pub Vec<(u16, BinaryNodeData)>);
+pub struct BroadcastPositionUpdate(pub Vec<(u32, BinaryNodeData)>);
 
 pub struct SocketFlowServer {
     app_state: Arc<AppState>,
     client_id: Option<usize>,
-    client_manager: Option<Arc<ClientManager>>,
+    client_manager_addr: actix::Addr<crate::actors::client_manager_actor::ClientManagerActor>,
     last_ping: Option<u64>,
     update_counter: usize, // Counter for throttling debug logs
     last_activity: std::time::Instant, // Track last activity time
@@ -186,8 +106,6 @@ pub struct SocketFlowServer {
     max_update_rate: u32,
     motion_threshold: f32,
     motion_damping: f32,
-    compression_enabled: bool,
-    compression_threshold: usize,
     heartbeat_interval_ms: u64,
     heartbeat_timeout_ms: u64,
     nodes_in_motion: usize,    // Counter for nodes currently in motion
@@ -196,13 +114,11 @@ pub struct SocketFlowServer {
 }
 
 impl SocketFlowServer {
-    pub fn new(app_state: Arc<AppState>, pre_read_settings: PreReadSocketSettings, client_manager: Option<Arc<ClientManager>>) -> Self {
+    pub fn new(app_state: Arc<AppState>, pre_read_settings: PreReadSocketSettings, client_manager_addr: actix::Addr<crate::actors::client_manager_actor::ClientManagerActor>) -> Self {
         let min_update_rate = pre_read_settings.min_update_rate;
         let max_update_rate = pre_read_settings.max_update_rate;
         let motion_threshold = pre_read_settings.motion_threshold;
         let motion_damping = pre_read_settings.motion_damping;
-        let compression_enabled = pre_read_settings.compression_enabled;
-        let compression_threshold = pre_read_settings.compression_threshold;
         let heartbeat_interval_ms = pre_read_settings.heartbeat_interval_ms;
         let heartbeat_timeout_ms = pre_read_settings.heartbeat_timeout_ms;
 
@@ -216,7 +132,7 @@ impl SocketFlowServer {
         Self {
             app_state,
             client_id: None,
-            client_manager,
+            client_manager_addr,
             last_ping: None,
             update_counter: 0,
             last_activity: std::time::Instant::now(),
@@ -237,8 +153,6 @@ impl SocketFlowServer {
             max_update_rate,
             motion_threshold,
             motion_damping,
-            compression_enabled,
-            compression_threshold,
             heartbeat_interval_ms,
             heartbeat_timeout_ms,
             nodes_in_motion: 0,
@@ -255,24 +169,6 @@ impl SocketFlowServer {
         }
     }
     
-    // maybe_compress needs access to compression settings
-    fn maybe_compress(&mut self, data: Vec<u8>) -> Vec<u8> {
-        let enabled = self.compression_enabled;
-        let threshold = self.compression_threshold;
-
-        if enabled && data.len() > threshold {
-            let mut encoder = ZlibEncoder::new(Vec::new(), COMPRESSION_LEVEL);
-            if encoder.write_all(&data).is_ok() {
-                if let Ok(compressed) = encoder.finish() {
-                    if compressed.len() < data.len() {
-                        // Compression logging logic...
-                        return compressed;
-                    }
-                }
-            }
-        }
-        data // Return original data if not compressed
-    }
     
     // Helper method to determine if we should log this update (for throttling)
     fn should_log_update(&mut self) -> bool {
@@ -387,19 +283,24 @@ impl Actor for SocketFlowServer {
     type Context = ws::WebsocketContext<Self>;
 
     fn started(&mut self, ctx: &mut Self::Context) {
-        // Register this client with the client manager
-        if let Some(client_manager) = &self.client_manager {
-            let addr = ctx.address();
-            let addr_clone = addr.clone();
-            
-            // Use actix's runtime to avoid blocking in the actor's started method
-            let cm_clone = client_manager.clone();
-            actix::spawn(async move {
-                let client_id = cm_clone.register(addr_clone).await;
-                // Send a message back to the actor with its client ID
-                addr.do_send(SetClientId(client_id));
-            });
-        }
+        // Register this client with the client manager actor
+        let addr = ctx.address();
+        let addr_clone = addr.clone();
+        
+        // Use actix's runtime to avoid blocking in the actor's started method
+        let cm_addr = self.client_manager_addr.clone();
+        actix::spawn(async move {
+            use crate::actors::messages::RegisterClient;
+            match cm_addr.send(RegisterClient(addr_clone)).await {
+                Ok(client_id) => {
+                    // Send a message back to the actor with its client ID
+                    addr.do_send(SetClientId(client_id));
+                },
+                Err(e) => {
+                    error!("Failed to register client with ClientManagerActor: {}", e);
+                }
+            }
+        });
     
         info!("[WebSocket] New client connected");
         self.last_activity = std::time::Instant::now();
@@ -442,59 +343,67 @@ impl Actor for SocketFlowServer {
     fn stopped(&mut self, _ctx: &mut Self::Context) {
         // Unregister this client when it disconnects
         if let Some(client_id) = self.client_id {
-            if let Some(client_manager) = &self.client_manager {
-                let client_manager_clone = client_manager.clone();
-                actix::spawn(async move {
-                    client_manager_clone.unregister(client_id).await;
-                });
-            }
+            let cm_addr = self.client_manager_addr.clone();
+            actix::spawn(async move {
+                use crate::actors::messages::UnregisterClient;
+                if let Err(e) = cm_addr.send(UnregisterClient(client_id)).await {
+                    error!("Failed to unregister client from ClientManagerActor: {}", e);
+                }
+            });
             info!("[WebSocket] Client {} disconnected", client_id);
         }
     }
 }
 
 // Helper function to fetch nodes without borrowing from the actor
-// Update signature to accept AppFullSettings
+// Update signature to work with actor system
 async fn fetch_nodes(
     app_state: Arc<AppState>,
-    settings_arc: Arc<RwLock<AppFullSettings>> // Renamed for clarity
-) -> Option<(Vec<(u16, BinaryNodeData)>, bool)> {
-    // Fetch raw nodes asynchronously
-    let raw_nodes = app_state.graph_service.get_node_positions().await;
+    settings_addr: actix::Addr<crate::actors::settings_actor::SettingsActor>
+) -> Option<(Vec<(u32, BinaryNodeData)>, bool)> {
+    // Fetch raw nodes asynchronously from GraphServiceActor
+    use crate::actors::messages::GetGraphData;
+    let graph_data = match app_state.graph_service_addr.send(GetGraphData).await {
+        Ok(Ok(data)) => data,
+        Ok(Err(e)) => {
+            error!("[WebSocket] Failed to get graph data: {}", e);
+            return None;
+        },
+        Err(e) => {
+            error!("[WebSocket] Failed to send message to GraphServiceActor: {}", e);
+            return None;
+        }
+    };
     
-    if raw_nodes.is_empty() {
+    if graph_data.nodes.is_empty() {
         debug!("[WebSocket] No nodes to send! Empty graph data.");
         return None;
     }
 
-    // Acquire the read lock asynchronously
-    let settings_read = settings_arc.read().await; // <--- USE ASYNC READ LOCK
-    let detailed_debug = settings_read.system.debug.enabled &&
-                         settings_read.system.debug.enable_websocket_debug;
-    drop(settings_read); // Release the lock as soon as it's no longer needed
+    // Get debug settings from SettingsActor
+    use crate::actors::messages::GetSettingByPath;
+    let debug_enabled = match settings_addr.send(GetSettingByPath("system.debug.enabled".to_string())).await {
+        Ok(Ok(value)) => value.as_bool().unwrap_or(false),
+        _ => false,
+    };
+    let debug_websocket = match settings_addr.send(GetSettingByPath("system.debug.enable_websocket_debug".to_string())).await {
+        Ok(Ok(value)) => value.as_bool().unwrap_or(false),
+        _ => false,
+    };
+    let detailed_debug = debug_enabled && debug_websocket;
 
     if detailed_debug {
-        debug!("Raw nodes count: {}, showing first 5 nodes IDs:", raw_nodes.len());
-        for (i, node) in raw_nodes.iter().take(5).enumerate() {
-            debug!("  Node {}: id={} (numeric), metadata_id={} (filename)", 
+        debug!("Raw nodes count: {}, showing first 5 nodes IDs:", graph_data.nodes.len());
+        for (i, node) in graph_data.nodes.iter().take(5).enumerate() {
+            debug!("  Node {}: id={} (numeric), metadata_id={} (filename)",
                 i, node.id, node.metadata_id);
         }
     }
     
-    let mut nodes = Vec::with_capacity(raw_nodes.len());
-    for node in raw_nodes {
-        // First try to parse as u16
-        let node_id_result = match node.id.parse::<u16>() {
-            Ok(id) => Ok(id),
-            Err(_) => {
-                // If parsing as u16 fails, try parsing as u32 and check if it's within u16 range
-                match node.id.parse::<u32>() {
-                    Ok(id) if id <= MAX_U16_VALUE => Ok(id as u16),
-                    _ => Err(())
-                }
-            }
-        };
-        if let Ok(node_id) = node_id_result {
+    let mut nodes = Vec::with_capacity(graph_data.nodes.len());
+    for node in graph_data.nodes {
+        // Parse node.id directly as u32 since we're now using u32 IDs throughout
+        if let Ok(node_id) = node.id.parse::<u32>() {
             let node_data = BinaryNodeData {
                 position: node.data.position,
                 velocity: node.data.velocity,
@@ -504,14 +413,8 @@ async fn fetch_nodes(
             };
             nodes.push((node_id, node_data));
         } else {
-            // Log more detailed information about the node ID
-            if let Ok(id) = node.id.parse::<u32>() {
-                warn!("[WebSocket] Node ID too large for u16: '{}' ({}), metadata_id: '{}'", 
-                    node.id, id, node.metadata_id);
-            } else {
-                warn!("[WebSocket] Failed to parse node ID as u16: '{}', metadata_id: '{}'", 
-                    node.id, node.metadata_id);
-            }
+            warn!("[WebSocket] Failed to parse node ID as u32: '{}', metadata_id: '{}'",
+                node.id, node.metadata_id);
         }
     }
     
@@ -533,9 +436,7 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
             }
             Ok(ws::Message::Pong(_)) => {
                 // Logging every pong creates too much noise, only log in detailed debug mode
-                if self.app_state.settings.try_read().map(|s| s.system.debug.enable_websocket_debug).unwrap_or(false) {
-                    debug!("[WebSocket] Received pong");
-                }
+                // Note: We'll skip the debug check here to avoid blocking the actor
                 self.last_activity = std::time::Instant::now();
             }
             Ok(ws::Message::Text(text)) => {
@@ -561,14 +462,14 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
                                 // Use a smaller initial interval to start updates quickly
                                 let initial_interval = std::time::Duration::from_millis(10);
                                 let app_state = self.app_state.clone();
-                                let settings_clone = self.app_state.settings.clone();
+                                let settings_addr = self.app_state.settings_addr.clone();
                                 
                                 // First check if we should log this update
                                 let should_log = self.should_log_update();
                                 
                                 ctx.run_later(initial_interval, move |_act, ctx| {
                                     // Wrap the async function in an actor future
-                                    let fut = fetch_nodes(app_state.clone(), settings_clone.clone());
+                                    let fut = fetch_nodes(app_state.clone(), settings_addr.clone());
                                     let fut = actix::fut::wrap_future::<_, Self>(fut);
                                     
                                     ctx.spawn(fut.map(move |result, act, ctx| {
@@ -644,11 +545,11 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
 
                                             // Only send data if we have nodes to update
                                             if !filtered_nodes.is_empty() {
-                                                let final_data = act.maybe_compress(binary_data);
+                                                // Send binary data directly (permessage-deflate handles compression)
                                                 
                                                 // Update performance metrics
-                                                act.last_transfer_size = final_data.len();
-                                                act.total_bytes_sent += final_data.len();
+                                                act.last_transfer_size = binary_data.len();
+                                                act.total_bytes_sent += binary_data.len();
                                                 act.update_count += 1;
                                                 act.nodes_sent_count += filtered_nodes.len();
                                                 let now = Instant::now();
@@ -660,11 +561,11 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
                                                 
                                                 // Use a simple recursive approach to restart the cycle
                                                 let _app_state = act.app_state.clone();
-                    let _settings_clone = act.app_state.settings.clone();
-                                                ctx.run_later(next_interval, move |act, ctx| {
-                                                    // Recursively call the handler to restart the cycle
-                                                    <SocketFlowServer as StreamHandler<Result<ws::Message, ws::ProtocolError>>>::handle(act, Ok(ws::Message::Text("{\"type\":\"requestPositionUpdates\"}".to_string().into())), ctx);
-                                                });
+                                                let _settings_addr = act.app_state.settings_addr.clone();
+                                                                ctx.run_later(next_interval, move |act, ctx| {
+                                                                    // Recursively call the handler to restart the cycle
+                                                                    <SocketFlowServer as StreamHandler<Result<ws::Message, ws::ProtocolError>>>::handle(act, Ok(ws::Message::Text("{\"type\":\"requestPositionUpdates\"}".to_string().into())), ctx);
+                                                                });
                                                 
                                                 // Log performance metrics periodically
                                                 if detailed_debug && should_log {
@@ -673,10 +574,10 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
                                                     } else { 0 };
                                                     
                                                     debug!("[WebSocket] Transfer: {} bytes, {} nodes, {:?} since last, avg {} bytes/update",
-                                                        final_data.len(), filtered_nodes.len(), elapsed, avg_bytes_per_update);
+                                                        binary_data.len(), filtered_nodes.len(), elapsed, avg_bytes_per_update);
                                                 }
                                                 
-                                                ctx.binary(final_data);
+                                                ctx.binary(binary_data);
                                             } else if detailed_debug && should_log {
                                                 // Log keepalive
                                                 debug!("[WebSocket] Sending keepalive (no position changes)");
@@ -731,12 +632,12 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
                 info!("Received binary message, length: {}", data.len());
                 self.last_activity = std::time::Instant::now();
                 
-                // Enhanced logging for binary messages (26 bytes per node now)
-                if data.len() % 26 != 0 {
+                // Enhanced logging for binary messages (28 bytes per node now with u32 IDs)
+                if data.len() % 28 != 0 {
                     warn!(
-                        "Binary message size mismatch: {} bytes (not a multiple of 26, remainder: {})",
+                        "Binary message size mismatch: {} bytes (not a multiple of 28, remainder: {})",
                         data.len(),
-                        data.len() % 26
+                        data.len() % 28
                     );
                 }
                 
@@ -753,9 +654,6 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
 
                             let fut = async move {
                                 for (node_id, node_data) in &nodes_vec {
-                                    // Convert node_id to string for lookup
-                                    let _node_id_str = node_id.to_string();
-                                    
                                     // Debug logging for node ID tracking
                                     if *node_id < 5 {
                                         debug!(
@@ -765,86 +663,44 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
                                     }
                                 }
 
-                                let mut graph = app_state.graph_service.get_graph_data_mut().await;
-                                let mut node_map = app_state.graph_service.get_node_map_mut().await;
-
+                                // Update node positions using actor messages
                                 for (node_id, node_data) in nodes_vec {
-                                    let node_id_str = node_id.to_string();
+                                    debug!("Updated position for node ID {} to [{:.3}, {:.3}, {:.3}]",
+                                         node_id, node_data.position.x, node_data.position.y, node_data.position.z);
                                     
-                                    if let Some(node) = node_map.get_mut(&node_id_str) {
-                                        // Node exists with this numeric ID
-                                        // Explicitly preserve existing mass and flags
-                                        let original_mass = node.data.mass;
-                                        let original_flags = node.data.flags;
-                                        
-                                        node.data.position = node_data.position;
-                                        node.data.velocity = node_data.velocity;
-                                        // Explicitly restore mass and flags after updating position/velocity
-                                        debug!("Updated position for node ID {} to [{:.3}, {:.3}, {:.3}]", 
-                                             node_id_str, node_data.position.x, node_data.position.y, node_data.position.z);
-                                        node.data.mass = original_mass;
-                                        node.data.flags = original_flags; // Restore flags needed for GPU code
-                                    // Mass, flags, and padding are not overwritten as they're only 
-                                    // present on the server side and not transmitted over the wire
-                                    } else {
-                                        debug!("Received update for unknown node ID: {}", node_id_str);
+                                    // Send update message to GraphServiceActor (now uses u32 directly)
+                                    use crate::actors::messages::UpdateNodePosition;
+                                    if let Err(e) = app_state.graph_service_addr.send(UpdateNodePosition {
+                                        node_id: node_id,
+                                        position: node_data.position,
+                                        velocity: node_data.velocity,
+                                    }).await {
+                                        error!("Failed to update node position in GraphServiceActor: {}", e);
                                     }
                                 }
                                 
-                                // Add more detailed debug information for mass maintenance
-                                debug!("Updated node positions from binary data (preserving server-side properties)");
+                                info!("Updated node positions from binary data (preserving server-side properties)");
 
-                                // Update graph nodes with new positions/velocities from the map, preserving other properties
-                                for node in &mut graph.nodes {
-                                    if let Some(updated_node) = node_map.get(&node.id) {
-                                        // Explicitly preserve mass and flags before updating
-                                        let original_mass = node.data.mass;
-                                        let original_flags = node.data.flags;
-                                        node.data.position = updated_node.data.position;
-                                        node.data.velocity = updated_node.data.velocity;
-                                        node.data.mass = original_mass; // Restore mass after updating
-                                        node.data.flags = original_flags; // Restore flags after updating
-                                    }
-                                }
-
-                                // Trigger force calculation after updating node positions
+                                // Trigger layout recalculation
                                 info!("Preparing to recalculate layout after client-side node position update");
                                 
-                                // Get the GPU compute from GraphService
-                                let gpu_compute = app_state.graph_service.get_gpu_compute().await;
+                                // Get physics settings from SettingsActor and trigger simulation
+                                use crate::actors::messages::GetSettingByPath;
+                                let settings_addr = app_state.settings_addr.clone();
                                 
-                                if let Some(gpu_compute) = &gpu_compute {
-                                    // Read settings outside the GraphService lock to avoid deadlocks
-                                    let settings = app_state.settings.read().await;
-                                    let physics_settings = settings.visualisation.physics.clone();
-                                    drop(settings); // Release the read lock
-                                    
-                                    let params = crate::models::simulation_params::SimulationParams {
-                                        iterations: physics_settings.iterations,
-                                        spring_strength: physics_settings.spring_strength,
-                                        repulsion: physics_settings.repulsion_strength,
-                                        damping: physics_settings.damping,
-                                        max_repulsion_distance: physics_settings.repulsion_distance,
-                                        viewport_bounds: physics_settings.bounds_size,
-                                        mass_scale: physics_settings.mass_scale,
-                                        boundary_damping: physics_settings.boundary_damping,
-                                        enable_bounds: physics_settings.enable_bounds,
-                                        time_step: 0.016, // Fixed time step
-                                        phase: crate::models::simulation_params::SimulationPhase::Dynamic,
-                                        mode: crate::models::simulation_params::SimulationMode::Remote,
-                                    };
-                                    info!("Recalculating layout with params: spring_strength={:.3}, repulsion={:.3}, damping={:.3}", 
-                                        params.spring_strength, params.repulsion, params.damping);
-                                    
-                                    if let Err(e) = crate::services::graph_service::GraphService::calculate_layout(gpu_compute, &mut graph, &mut node_map, &params).await {
-                                        error!("Error calculating layout after node position update: {}", e);
+                                // Get physics settings
+                                if let Ok(Ok(iterations_val)) = settings_addr.send(GetSettingByPath("visualisation.physics.iterations".to_string())).await {
+                                    if let Ok(Ok(spring_val)) = settings_addr.send(GetSettingByPath("visualisation.physics.spring_strength".to_string())).await {
+                                        if let Ok(Ok(repulsion_val)) = settings_addr.send(GetSettingByPath("visualisation.physics.repulsion_strength".to_string())).await {
+                                            // Send simulation step message to GraphServiceActor
+                                            use crate::actors::messages::SimulationStep;
+                                            if let Err(e) = app_state.graph_service_addr.send(SimulationStep).await {
+                                                error!("Failed to trigger simulation step: {}", e);
+                                            } else {
+                                                info!("Successfully triggered layout recalculation");
+                                            }
+                                        }
                                     }
-                                    else { 
-                                        info!("Successfully recalculated layout after node position update");
-                                    }
-                                }
-                                else {
-                                    warn!("GPU compute not available, cannot recalculate layout after node position update");
                                 }
                             };
 
@@ -891,16 +747,23 @@ pub async fn socket_flow_handler(
     pre_read_ws_settings: web::Data<PreReadSocketSettings>, // New data
 ) -> Result<HttpResponse, Error> {
     let app_state_arc = app_state_data.into_inner(); // Get the Arc<AppState>
-    // Ensure ClientManager exists in app_state or create it if not present
-    let client_manager = app_state_arc.ensure_client_manager().await;
     
-    // Access debug settings through app_state (still needs async read for this one-off check)
-    // Or, include debug.enable_websocket_debug in PreReadSocketSettings if frequently used here.
-    // For now, keeping the async read here for just this debug flag.
-    let should_debug = {
-        let settings_read = app_state_arc.settings.read().await;
-        settings_read.system.debug.enabled && settings_read.system.debug.enable_websocket_debug
+    // Get ClientManagerActor address from AppState
+    let client_manager_addr = app_state_arc.client_manager_addr.clone();
+    
+    // Get debug settings from SettingsActor
+    use crate::actors::messages::GetSettingByPath;
+    let settings_addr = app_state_arc.settings_addr.clone();
+    
+    let debug_enabled = match settings_addr.send(GetSettingByPath("system.debug.enabled".to_string())).await {
+        Ok(Ok(value)) => value.as_bool().unwrap_or(false),
+        _ => false,
     };
+    let debug_websocket = match settings_addr.send(GetSettingByPath("system.debug.enable_websocket_debug".to_string())).await {
+        Ok(Ok(value)) => value.as_bool().unwrap_or(false),
+        _ => false,
+    };
+    let should_debug = debug_enabled && debug_websocket;
 
     if should_debug {
         debug!("WebSocket connection attempt from {:?}", req.peer_addr());
@@ -911,12 +774,13 @@ pub async fn socket_flow_handler(
         return Ok(HttpResponse::BadRequest().body("WebSocket upgrade required"));
     }
     
-    // Pass the pre-read settings to SocketFlowServer::new
-    let ws = SocketFlowServer::new(app_state_arc, pre_read_ws_settings.get_ref().clone(), Some(client_manager));
+    // Pass the ClientManagerActor address to SocketFlowServer::new
+    let ws = SocketFlowServer::new(app_state_arc, pre_read_ws_settings.get_ref().clone(), client_manager_addr);
 
-    match ws::start(ws, &req, stream) {
+    // Start WebSocket with compression enabled (permessage-deflate)
+    match ws::start_with_protocols(ws, &["permessage-deflate"], &req, stream) {
         Ok(response) => {
-            info!("[WebSocket] Client connected successfully");
+            info!("[WebSocket] Client connected successfully with compression support");
             Ok(response)
         }
         Err(e) => {

@@ -2,6 +2,7 @@ use crate::app_state::AppState;
 use crate::models::{UISettings, UserSettings};
 use crate::config::AppFullSettings; // Removed ClientFacingSettings alias
 use crate::models::client_settings_payload::*; // Import all DTOs
+use crate::actors::messages::{GetSettings, UpdateSettings};
 // use crate::handlers::socket_flow_handler::ClientManager;
 use actix_web::{web, Error, HttpResponse, HttpRequest};
 use chrono::Utc;
@@ -101,8 +102,22 @@ pub fn config(cfg: &mut web::ServiceConfig) {
 // --- GET Endpoints ---
 
 pub async fn get_public_settings(state: web::Data<AppState>) -> Result<HttpResponse, Error> {
-    let settings_guard = state.settings.read().await;
-    let ui_settings = convert_to_ui_settings(&*settings_guard);
+    let settings = match state.settings_addr.send(GetSettings).await {
+        Ok(Ok(settings)) => settings,
+        Ok(Err(e)) => {
+            error!("Failed to get settings: {}", e);
+            return Ok(HttpResponse::InternalServerError().json(json!({
+                "error": "Failed to get settings"
+            })));
+        }
+        Err(e) => {
+            error!("Settings actor mailbox error: {}", e);
+            return Ok(HttpResponse::InternalServerError().json(json!({
+                "error": "Settings service unavailable"
+            })));
+        }
+    };
+    let ui_settings = convert_to_ui_settings(&settings);
     Ok(HttpResponse::Ok().json(&ui_settings))
 }
 
@@ -130,8 +145,22 @@ async fn get_user_settings(
     let result;
 
     if is_power_user {
-        let settings_guard = state.settings.read().await;
-        let ui_settings = convert_to_ui_settings(&*settings_guard);
+        let settings = match state.settings_addr.send(GetSettings).await {
+            Ok(Ok(settings)) => settings,
+            Ok(Err(e)) => {
+                error!("Failed to get settings for power user {}: {}", pubkey, e);
+                return Ok(HttpResponse::InternalServerError().json(json!({
+                    "error": "Failed to get settings"
+                })));
+            }
+            Err(e) => {
+                error!("Settings actor mailbox error for power user {}: {}", pubkey, e);
+                return Ok(HttpResponse::InternalServerError().json(json!({
+                    "error": "Settings service unavailable"
+                })));
+            }
+        };
+        let ui_settings = convert_to_ui_settings(&settings);
         debug!("Returning global UI settings for power user {}", pubkey);
         result = Ok(HttpResponse::Ok().json(ui_settings));
     } else {
@@ -178,13 +207,27 @@ async fn update_user_settings(
     let is_power_user = feature_access.is_power_user(&pubkey);
 
     if is_power_user {
-        let mut settings_guard = state.settings.write().await; // AppFullSettings
+        let mut settings = match state.settings_addr.send(GetSettings).await {
+            Ok(Ok(settings)) => settings,
+            Ok(Err(e)) => {
+                error!("Failed to get settings for power user {}: {}", pubkey, e);
+                return Ok(HttpResponse::InternalServerError().json(json!({
+                    "error": "Failed to get settings"
+                })));
+            }
+            Err(e) => {
+                error!("Settings actor mailbox error for power user {}: {}", pubkey, e);
+                return Ok(HttpResponse::InternalServerError().json(json!({
+                    "error": "Settings service unavailable"
+                })));
+            }
+        };
 
         // --- Merge from ClientSettingsPayload DTO into AppFullSettings ---
         // Macros are now defined at module level
 
         if let Some(vis_dto) = client_payload.visualisation {
-            let target_vis = &mut settings_guard.visualisation;
+            let target_vis = &mut settings.visualisation;
             if let Some(nodes_dto) = vis_dto.nodes {
                 merge_clone_option!(target_vis.nodes.base_color, nodes_dto.base_color);
                 merge_copy_option!(target_vis.nodes.metalness, nodes_dto.metalness);
@@ -290,7 +333,7 @@ async fn update_user_settings(
         }
 
         if let Some(xr_dto) = client_payload.xr {
-            let target_xr = &mut settings_guard.xr;
+            let target_xr = &mut settings.xr;
             merge_clone_option!(target_xr.mode, xr_dto.mode);
             merge_copy_option!(target_xr.room_scale, xr_dto.room_scale);
             merge_clone_option!(target_xr.space_type, xr_dto.space_type);
@@ -343,14 +386,14 @@ async fn update_user_settings(
         }
 
         if let Some(auth_dto) = client_payload.auth {
-            let target_auth = &mut settings_guard.auth;
+            let target_auth = &mut settings.auth;
             merge_copy_option!(target_auth.enabled, auth_dto.enabled);
             merge_clone_option!(target_auth.provider, auth_dto.provider);
             merge_copy_option!(target_auth.required, auth_dto.required);
         }
 
         if let Some(sys_dto) = client_payload.system {
-            let target_sys_config = &mut settings_guard.system; // ServerSystemConfigFromFile
+            let target_sys_config = &mut settings.system; // ServerSystemConfigFromFile
             if let Some(ws_dto) = sys_dto.websocket {
                 let target_ws = &mut target_sys_config.websocket; // ServerFullWebSocketSettings
                 merge_copy_option!(target_ws.reconnect_attempts, ws_dto.reconnect_attempts);
@@ -374,33 +417,41 @@ async fn update_user_settings(
         }
         
         // AI settings merge (all are Option<Struct> on AppFullSettings)
-        if client_payload.ragflow.is_some() { settings_guard.ragflow = client_payload.ragflow.map(|dto| crate::config::RagFlowSettings {
+        if client_payload.ragflow.is_some() { settings.ragflow = client_payload.ragflow.map(|dto| crate::config::RagFlowSettings {
             api_key: dto.api_key, agent_id: dto.agent_id, api_base_url: dto.api_base_url,
             timeout: dto.timeout, max_retries: dto.max_retries, chat_id: dto.chat_id,
         })};
-        if client_payload.perplexity.is_some() { settings_guard.perplexity = client_payload.perplexity.map(|dto| crate::config::PerplexitySettings {
+        if client_payload.perplexity.is_some() { settings.perplexity = client_payload.perplexity.map(|dto| crate::config::PerplexitySettings {
             api_key: dto.api_key, model: dto.model, api_url: dto.api_url, max_tokens: dto.max_tokens,
             temperature: dto.temperature, top_p: dto.top_p, presence_penalty: dto.presence_penalty,
             frequency_penalty: dto.frequency_penalty, timeout: dto.timeout, rate_limit: dto.rate_limit,
         })};
-        if client_payload.openai.is_some() { settings_guard.openai = client_payload.openai.map(|dto| crate::config::OpenAISettings {
+        if client_payload.openai.is_some() { settings.openai = client_payload.openai.map(|dto| crate::config::OpenAISettings {
             api_key: dto.api_key, base_url: dto.base_url, timeout: dto.timeout, rate_limit: dto.rate_limit,
         })};
-        if client_payload.kokoro.is_some() { settings_guard.kokoro = client_payload.kokoro.map(|dto| crate::config::KokoroSettings {
+        if client_payload.kokoro.is_some() { settings.kokoro = client_payload.kokoro.map(|dto| crate::config::KokoroSettings {
             api_url: dto.api_url, default_voice: dto.default_voice, default_format: dto.default_format,
             default_speed: dto.default_speed, timeout: dto.timeout, stream: dto.stream,
             return_timestamps: dto.return_timestamps, sample_rate: dto.sample_rate,
         })};
         // --- End Merge ---
 
-        if let Err(e) = settings_guard.save() {
-            error!("Failed to save global AppFullSettings after update from {}: {}", pubkey, e);
-            return Ok(HttpResponse::InternalServerError().body(format!("Failed to save settings: {}", e)));
+        // Update settings via actor
+        match state.settings_addr.send(UpdateSettings { settings: settings.clone() }).await {
+            Ok(Ok(())) => {
+                info!("Power user {} updated global settings", pubkey);
+                let updated_ui_settings = convert_to_ui_settings(&settings);
+                Ok(HttpResponse::Ok().json(updated_ui_settings))
+            }
+            Ok(Err(e)) => {
+                error!("Failed to update settings for power user {}: {}", pubkey, e);
+                Ok(HttpResponse::InternalServerError().body(format!("Failed to save settings: {}", e)))
+            }
+            Err(e) => {
+                error!("Settings actor mailbox error for power user {}: {}", pubkey, e);
+                Ok(HttpResponse::InternalServerError().body("Settings service unavailable"))
+            }
         }
-
-        info!("Power user {} updated global settings", pubkey);
-        let updated_ui_settings = convert_to_ui_settings(&*settings_guard);
-        Ok(HttpResponse::Ok().json(updated_ui_settings))
 
     } else { // Regular user - updates their UserSettings file (which stores UISettings)
         let mut user_settings = UserSettings::load(&pubkey).unwrap_or_else(|| {
@@ -637,13 +688,27 @@ async fn update_settings( // This is the deprecated endpoint
     }
 
     // Perform the same careful merge as in update_user_settings
-    let mut settings_guard = state.settings.write().await; // Locks AppFullSettings
+    let mut settings = match state.settings_addr.send(GetSettings).await {
+        Ok(Ok(settings)) => settings,
+        Ok(Err(e)) => {
+            error!("Failed to get settings for deprecated update: {}", e);
+            return Ok(HttpResponse::InternalServerError().json(json!({
+                "error": "Failed to get settings"
+            })));
+        }
+        Err(e) => {
+            error!("Settings actor mailbox error for deprecated update: {}", e);
+            return Ok(HttpResponse::InternalServerError().json(json!({
+                "error": "Settings service unavailable"
+            })));
+        }
+    };
 
     // --- Merge from ClientSettingsPayload DTO into AppFullSettings ---
     // Macros are defined at module level
 
     if let Some(vis_dto) = client_payload.visualisation {
-        let target_vis = &mut settings_guard.visualisation;
+        let target_vis = &mut settings.visualisation;
         if let Some(nodes_dto) = vis_dto.nodes {
             merge_clone_option!(target_vis.nodes.base_color, nodes_dto.base_color);
             merge_copy_option!(target_vis.nodes.metalness, nodes_dto.metalness);
@@ -744,7 +809,7 @@ async fn update_settings( // This is the deprecated endpoint
     }
 
     if let Some(xr_dto) = client_payload.xr {
-        let target_xr = &mut settings_guard.xr;
+        let target_xr = &mut settings.xr;
         merge_clone_option!(target_xr.mode, xr_dto.mode);
         merge_copy_option!(target_xr.room_scale, xr_dto.room_scale);
         merge_clone_option!(target_xr.space_type, xr_dto.space_type);
@@ -796,14 +861,14 @@ async fn update_settings( // This is the deprecated endpoint
     }
 
 if let Some(auth_dto) = client_payload.auth {
-        let target_auth = &mut settings_guard.auth;
+    let target_auth = &mut settings.auth;
         merge_copy_option!(target_auth.enabled, auth_dto.enabled);
         merge_clone_option!(target_auth.provider, auth_dto.provider);
         merge_copy_option!(target_auth.required, auth_dto.required);
     }
 
     if let Some(sys_dto) = client_payload.system {
-        let target_sys_config = &mut settings_guard.system; // ServerSystemConfigFromFile
+        let target_sys_config = &mut settings.system; // ServerSystemConfigFromFile
         if let Some(ws_dto) = sys_dto.websocket {
             let target_ws = &mut target_sys_config.websocket; // ServerFullWebSocketSettings
             merge_copy_option!(target_ws.reconnect_attempts, ws_dto.reconnect_attempts);
@@ -825,39 +890,60 @@ if let Some(auth_dto) = client_payload.auth {
     }
     
     // AI settings merge (all are Option<Struct> on AppFullSettings)
-    if client_payload.ragflow.is_some() { settings_guard.ragflow = client_payload.ragflow.map(|dto| crate::config::RagFlowSettings {
+    if client_payload.ragflow.is_some() { settings.ragflow = client_payload.ragflow.map(|dto| crate::config::RagFlowSettings {
         api_key: dto.api_key, agent_id: dto.agent_id, api_base_url: dto.api_base_url,
         timeout: dto.timeout, max_retries: dto.max_retries, chat_id: dto.chat_id,
     })};
-    if client_payload.perplexity.is_some() { settings_guard.perplexity = client_payload.perplexity.map(|dto| crate::config::PerplexitySettings {
+    if client_payload.perplexity.is_some() { settings.perplexity = client_payload.perplexity.map(|dto| crate::config::PerplexitySettings {
         api_key: dto.api_key, model: dto.model, api_url: dto.api_url, max_tokens: dto.max_tokens,
         temperature: dto.temperature, top_p: dto.top_p, presence_penalty: dto.presence_penalty,
         frequency_penalty: dto.frequency_penalty, timeout: dto.timeout, rate_limit: dto.rate_limit,
     })};
-    if client_payload.openai.is_some() { settings_guard.openai = client_payload.openai.map(|dto| crate::config::OpenAISettings {
+    if client_payload.openai.is_some() { settings.openai = client_payload.openai.map(|dto| crate::config::OpenAISettings {
         api_key: dto.api_key, base_url: dto.base_url, timeout: dto.timeout, rate_limit: dto.rate_limit,
     })};
-    if client_payload.kokoro.is_some() { settings_guard.kokoro = client_payload.kokoro.map(|dto| crate::config::KokoroSettings {
+    if client_payload.kokoro.is_some() { settings.kokoro = client_payload.kokoro.map(|dto| crate::config::KokoroSettings {
         api_url: dto.api_url, default_voice: dto.default_voice, default_format: dto.default_format,
         default_speed: dto.default_speed, timeout: dto.timeout, stream: dto.stream,
         return_timestamps: dto.return_timestamps, sample_rate: dto.sample_rate,
     })};
     // --- End Merge ---
 
-    if let Err(e) = settings_guard.save() {
-        error!("Failed to save global AppFullSettings after update from {}: {}", pubkey, e);
-        return Ok(HttpResponse::InternalServerError().body(format!("Failed to save settings: {}", e)));
+    // Update settings via actor
+    match state.settings_addr.send(UpdateSettings { settings: settings.clone() }).await {
+        Ok(Ok(())) => {
+            info!("Power user {} updated global settings via deprecated /user-settings endpoint", pubkey);
+            let updated_ui_settings = convert_to_ui_settings(&settings);
+            Ok(HttpResponse::Ok().json(updated_ui_settings))
+        }
+        Ok(Err(e)) => {
+            error!("Failed to update settings in deprecated update: {}", e);
+            Ok(HttpResponse::InternalServerError().body(format!("Failed to save settings: {}", e)))
+        }
+        Err(e) => {
+            error!("Settings actor mailbox error in deprecated update: {}", e);
+            Ok(HttpResponse::InternalServerError().body("Settings service unavailable"))
+        }
     }
-
-    info!("Power user {} updated global settings via /user-settings endpoint", pubkey);
-    let updated_ui_settings = convert_to_ui_settings(&*settings_guard);
-    // Consider broadcasting here too if this endpoint remains active
-    Ok(HttpResponse::Ok().json(updated_ui_settings))
 }
 
 // --- GET Graph Specific Settings ---
 
 pub async fn get_graph_settings(app_state: web::Data<AppState>) -> Result<HttpResponse, Error> {
-    let settings_guard = app_state.settings.read().await; // Reads AppFullSettings
-    Ok(HttpResponse::Ok().json(&settings_guard.visualisation))
+    let settings = match app_state.settings_addr.send(GetSettings).await {
+        Ok(Ok(settings)) => settings,
+        Ok(Err(e)) => {
+            error!("Failed to get settings for graph settings: {}", e);
+            return Ok(HttpResponse::InternalServerError().json(json!({
+                "error": "Failed to get settings"
+            })));
+        }
+        Err(e) => {
+            error!("Settings actor mailbox error for graph settings: {}", e);
+            return Ok(HttpResponse::InternalServerError().json(json!({
+                "error": "Settings service unavailable"
+            })));
+        }
+    };
+    Ok(HttpResponse::Ok().json(&settings.visualisation))
 }

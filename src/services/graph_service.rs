@@ -60,11 +60,11 @@ const GPU_RETRY_DELAY_MS: u64 = 500; // 500ms delay between retries
 pub struct GraphService {
     graph_data: Arc<RwLock<GraphData>>,
     shutdown_complete: Arc<AtomicBool>,
-    node_map: Arc<RwLock<HashMap<String, Node>>>,
+    node_map: Arc<RwLock<HashMap<u32, Node>>>,
     gpu_compute: Option<Arc<RwLock<GPUCompute>>>,
     node_positions_cache: Arc<RwLock<Option<(Vec<Node>, Instant)>>>,
     last_update: Arc<RwLock<Instant>>,
-    _pending_updates: Arc<RwLock<HashMap<String, (Node, Instant)>>>, // Dead Code
+    _pending_updates: Arc<RwLock<HashMap<u32, (Node, Instant)>>>, // Dead Code
     cache_enabled: bool,
     simulation_id: String,
     // client_manager: Option<Arc<ClientManager>>, // Removed: ClientManager will be passed to methods needing it
@@ -499,8 +499,9 @@ impl GraphService {
             let stored_node_id = metadata_entry.map(|m| m.node_id.clone());
             
             // Create node with stored ID or generate a new one if not available
-            let mut node = Node::new_with_id(node_id.clone(), stored_node_id);
-            graph.id_to_metadata.insert(node.id.clone(), node_id.clone());
+            let stored_node_id_u32 = stored_node_id.and_then(|s| s.parse::<u32>().ok());
+            let mut node = Node::new_with_id(node_id.clone(), stored_node_id_u32);
+            graph.id_to_metadata.insert(node.id.to_string(), node_id.clone());
 
             // Get metadata for this node
             if let Some(metadata) = metadata.get(&format!("{}.md", node_id)) {
@@ -552,7 +553,7 @@ impl GraphService {
             let node_clone = node.clone();
             graph.nodes.push(node_clone);
             // Store nodes in map by numeric ID for efficient lookups
-            node_map.insert(node.id.clone(), node);
+            node_map.insert(node.id, node);
         }
 
         // Store metadata in graph
@@ -567,7 +568,7 @@ impl GraphService {
             if source_node.is_none() {
                 continue; // Skip if node not found
             }
-            let source_numeric_id = source_node.unwrap().id.clone();
+            let source_numeric_id = source_node.unwrap().id;
             
             trace!("Processing edges for source: {} (ID: {})", source_id, source_numeric_id);
             for (target_file, count) in &metadata.topic_counts {
@@ -577,16 +578,16 @@ impl GraphService {
                 if target_node.is_none() {
                     continue; // Skip if node not found
                 }
-                let target_numeric_id = target_node.unwrap().id.clone();
+                let target_numeric_id = target_node.unwrap().id;
 
                 trace!("  Edge: {} -> {} (weight: {})", source_numeric_id, target_numeric_id, count);
 
                 // Only create edge if both nodes exist and they're different
                 if source_numeric_id != target_numeric_id {
                     let edge_key = if source_numeric_id < target_numeric_id {
-                        (source_numeric_id.clone(), target_numeric_id.clone())
+                        (source_numeric_id, target_numeric_id)
                     } else {
-                        (target_numeric_id.clone(), source_numeric_id.clone())
+                        (target_numeric_id, source_numeric_id)
                     };
 
                     edge_map.entry(edge_key)
@@ -661,8 +662,9 @@ impl GraphService {
             let stored_node_id = metadata_entry.map(|m| m.node_id.clone());
             
             // Create node with stored ID or generate a new one if not available
-            let mut node = Node::new_with_id(node_id.clone(), stored_node_id);
-            graph.id_to_metadata.insert(node.id.clone(), node_id.clone());
+            let stored_node_id_u32 = stored_node_id.and_then(|s| s.parse::<u32>().ok());
+            let mut node = Node::new_with_id(node_id.clone(), stored_node_id_u32);
+            graph.id_to_metadata.insert(node.id.to_string(), node_id.clone());
 
             // Get metadata for this node
             if let Some(metadata) = graph.metadata.get(&format!("{}.md", node_id)) {
@@ -714,7 +716,7 @@ impl GraphService {
             let node_clone = node.clone();
             graph.nodes.push(node_clone);
             // Store nodes in map by numeric ID for efficient lookups
-            node_map.insert(node.id.clone(), node);
+            node_map.insert(node.id, node);
         }
 
         // Create edges from metadata topic counts
@@ -726,7 +728,7 @@ impl GraphService {
             if source_node.is_none() {
                 continue; // Skip if node not found
             }
-            let source_numeric_id = source_node.unwrap().id.clone();
+            let source_numeric_id = source_node.unwrap().id;
             
             // Process outbound links from this file to other topics
             for (target_file, count) in &metadata.topic_counts {
@@ -737,15 +739,15 @@ impl GraphService {
                 if target_node.is_none() {
                     continue; // Skip if node not found
                 }
-                let target_numeric_id = target_node.unwrap().id.clone();
+                let target_numeric_id = target_node.unwrap().id;
                 trace!("  Found target node: {} (ID: {})", target_id, target_numeric_id);
 
                 // Only create edge if both nodes exist and they're different
                 if source_numeric_id != target_numeric_id {
                     let edge_key = if source_numeric_id < target_numeric_id {
-                        (source_numeric_id.clone(), target_numeric_id.clone())
+                        (source_numeric_id, target_numeric_id)
                     } else {
-                        (target_numeric_id.clone(), source_numeric_id.clone())
+                        (target_numeric_id, source_numeric_id)
                     };
 
                     trace!("  Creating/updating edge: {:?} with weight {}", edge_key, count);
@@ -788,7 +790,7 @@ impl GraphService {
         // Log the initialization process
         info!("Initializing random positions for {} nodes with radius {}", 
              node_count, initial_radius);
-        info!("First 5 node numeric IDs: {}", graph.nodes.iter().take(5).map(|n| n.id.clone()).collect::<Vec<_>>().join(", "));
+        info!("First 5 node numeric IDs: {}", graph.nodes.iter().take(5).map(|n| n.id.to_string()).collect::<Vec<_>>().join(", "));
         info!("First 5 node metadata IDs: {}", graph.nodes.iter().take(5).map(|n| n.metadata_id.clone()).collect::<Vec<_>>().join(", "));
         
         // Use Fibonacci sphere distribution for more uniform initial positions
@@ -827,7 +829,7 @@ impl GraphService {
     pub async fn calculate_layout_with_retry(
         gpu_compute: &Arc<RwLock<GPUCompute>>,
         graph: &mut GraphData,
-        node_map: &mut HashMap<String, Node>, 
+        node_map: &mut HashMap<u32, Node>,
         params: &SimulationParams,
     ) -> std::io::Result<()> {
         trace!("[calculate_layout_with_retry] Starting GPU calculation with retry mechanism");
@@ -877,7 +879,7 @@ impl GraphService {
     pub async fn calculate_layout(
         gpu_compute: &Arc<RwLock<GPUCompute>>,
         graph: &mut GraphData,
-        node_map: &mut HashMap<String, Node>, 
+        node_map: &mut HashMap<u32, Node>,
         params: &SimulationParams,
     ) -> std::io::Result<()> {
         {
@@ -968,7 +970,7 @@ impl GraphService {
     /// CPU fallback implementation of force-directed graph layout
     pub fn calculate_layout_cpu(
         graph: &mut GraphData,
-        node_map: &mut HashMap<String, Node>,
+        node_map: &mut HashMap<u32, Node>,
         params: &SimulationParams,
     ) -> std::io::Result<()> {
         let nodes_len = graph.nodes.len();
@@ -1108,8 +1110,8 @@ impl GraphService {
             .collect();
 
         // Get edges that connect to these nodes
-        let node_ids: HashSet<String> = page_nodes.iter()
-            .map(|n| n.id.clone())
+        let node_ids: HashSet<u32> = page_nodes.iter()
+            .map(|n| n.id)
             .collect();
 
         let edges: Vec<Edge> = graph.edges
@@ -1185,7 +1187,7 @@ impl GraphService {
         self.graph_data.write().await
     }
 
-    pub async fn get_node_map_mut(&self) -> tokio::sync::RwLockWriteGuard<'_, HashMap<String, Node>> {
+    pub async fn get_node_map_mut(&self) -> tokio::sync::RwLockWriteGuard<'_, HashMap<u32, Node>> {
         self.node_map.write().await
     }
     
@@ -1194,7 +1196,7 @@ impl GraphService {
         self.gpu_compute.clone()
     }
  
-    pub async fn update_node_positions(&self, updates: Vec<(u16, Node)>, client_manager: Arc<ClientManager>) -> Result<(), Error> {
+    pub async fn update_node_positions(&self, updates: Vec<(u32, Node)>, client_manager: Arc<ClientManager>) -> Result<(), Error> {
         let mut graph = self.graph_data.write().await;
         let mut node_map = self.node_map.write().await;
         
@@ -1203,9 +1205,7 @@ impl GraphService {
         let mut _skipped_count = 0;
         
         // Process updates in batches
-        for (node_id_u16, update_node) in updates {
-            let node_id = node_id_u16.to_string(); 
-
+        for (node_id_u32, update_node) in updates {
             // Skip if this is a redundant update based on rate limiting
             if self.should_rate_limit().await {
                 _skipped_count += 1;
@@ -1213,7 +1213,7 @@ impl GraphService {
             }
             
             // Apply update with conflict resolution if node exists
-            if let Some(existing_node) = node_map.get_mut(&node_id) {
+            if let Some(existing_node) = node_map.get_mut(&node_id_u32) {
                 // Create a new node with updated position/velocity but preserving other data
                 let mut resolved_node = update_node.clone();
                 
@@ -1349,7 +1349,7 @@ pub async fn initialize_gpu(&mut self, graph_data: &GraphData) -> Result<(), Err
             node_size: 1.5,
             hyperlink_count: 5,
             sha1: "abc123".to_string(),
-            node_id: "1".to_string(),
+            node_id: "1".to_string(), // This will be parsed to u32 during node creation
             last_modified: Utc::now(),
             perplexity_link: "https://example.com".to_string(),
             last_perplexity_process: Some(Utc::now()),

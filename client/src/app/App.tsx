@@ -4,7 +4,7 @@ import { ThemeProvider } from '../ui/ThemeProvider'
 import { ApplicationModeProvider } from '../contexts/ApplicationModeContext'
 import { Toaster } from '../ui/Toaster'
 // import { TooltipProvider } from '../ui/Tooltip'
-import SafeXRProvider from '../features/xr/providers/SafeXRProvider'
+import XRCoreProvider from '../features/xr/providers/XRCoreProvider'
 // Removed GraphCanvas, ViewportContainer, MainLayout, DockingZone, ViewportControls, PanelProvider, Panel, SystemPanel, WindowSizeProvider
 import { useSettingsStore } from '../store/settingsStore'
 import { createLogger, createErrorMetadata } from '../utils/logger'
@@ -92,13 +92,13 @@ function App() {
       <ErrorBoundary>
         <ApplicationModeProvider>
           {/* Removed PanelProvider */}
-          <SafeXRProvider>
+          <XRCoreProvider>
             {/* Render TwoPaneLayout only after settings are initialized */}
             {initialized ? <TwoPaneLayout /> : <div>Loading application...</div>}
             <AppInitializer onInitialized={handleInitialized} />
             {/* Toaster remains at the top level */}
             <Toaster />
-          </SafeXRProvider>
+          </XRCoreProvider>
         </ApplicationModeProvider>
       </ErrorBoundary>
     </ThemeProvider>

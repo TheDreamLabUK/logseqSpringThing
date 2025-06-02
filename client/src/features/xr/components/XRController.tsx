@@ -1,69 +1,72 @@
 import React, { useState, useCallback } from 'react'
-import { useSafeXR, withSafeXR } from '../hooks/useSafeXRHooks'
+import { useXRCore } from '../providers/XRCoreProvider'
 import HandInteractionSystem, { GestureRecognitionResult } from '../systems/HandInteractionSystem'
-import { debugState } from '../../../utils/debugState'
 import { useSettingsStore } from '../../../store/settingsStore'
 import { createLogger } from '../../../utils/logger'
 
 const logger = createLogger('XRController')
 
 /**
- * XRControllerInner component handles WebXR functionality through react-three/xr.
- * XRController component manages WebXR functionality through react-three/xr.
- * This version is simplified to avoid integration conflicts.
+ * XRController component manages Quest 3 AR functionality and hand tracking.
+ * Uses the enhanced XRCoreProvider for robust session management.
  */
 const XRController: React.FC = () => {
-  const { isPresenting, controllers } = useSafeXR()
+  const { isSessionActive, sessionType, controllers } = useXRCore()
   const settings = useSettingsStore(state => state.settings)
   const [handsVisible, setHandsVisible] = useState(false)
-  const [handTrackingEnabled, setHandTrackingEnabled] = useState(settings?.xr?.handTracking !== false) // Use correct property name from settings.ts
+  const [handTrackingEnabled, setHandTrackingEnabled] = useState(settings?.xr?.enableHandTracking !== false)
   
-  // Log session state changes
+  // Log session state changes (Quest 3 AR focused)
   React.useEffect(() => {
-    if (debugState.isEnabled()) {
-      if (isPresenting) {
-        logger.info('XR session is now active')
+    if (settings?.system?.debug?.enabled) {
+      if (isSessionActive && sessionType === 'immersive-ar') {
+        logger.info('Quest 3 AR session is now active')
+      } else if (isSessionActive) {
+        logger.info('XR session active but not Quest 3 AR mode')
       } else {
         logger.info('XR session is not active')
       }
     }
-  }, [isPresenting])
+  }, [isSessionActive, sessionType, settings?.system?.debug?.enabled])
 
   // Log controller information
   React.useEffect(() => {
-    if (isPresenting && controllers && controllers.length > 0 && debugState.isEnabled()) {
-      logger.info(`XR controllers active: ${controllers.length}`)
+    if (isSessionActive && controllers && controllers.length > 0 && settings?.system?.debug?.enabled) {
+      logger.info(`Quest 3 controllers active: ${controllers.length}`)
       controllers.forEach((controller, index) => {
-        logger.info(`Controller ${index}: ${controller.inputSource.handedness}`)
+        logger.info(`Controller ${index}: Three.js XRTargetRaySpace object`)
       })
     }
-  }, [controllers, isPresenting])
+  }, [controllers, isSessionActive, settings?.system?.debug?.enabled])
 
-  // Handle gesture recognition
+  // Handle gesture recognition (Quest 3 optimized)
   const handleGestureRecognized = useCallback((gesture: GestureRecognitionResult) => {
-    if (debugState.isEnabled()) {
-      logger.info(`Gesture recognized: ${gesture.gesture} (${gesture.confidence.toFixed(2)}) with ${gesture.hand} hand`)
+    if (settings?.system?.debug?.enabled) {
+      logger.info(`Quest 3 gesture recognized: ${gesture.gesture} (${gesture.confidence.toFixed(2)}) with ${gesture.hand} hand`)
     }
-  }, [])
+  }, [settings?.system?.debug?.enabled])
 
   // Handle hand visibility changes
   const handleHandsVisible = useCallback((visible: boolean) => {
     setHandsVisible(visible)
     
-    if (debugState.isEnabled()) {
-      logger.info(`Hands visible: ${visible}`)
+    if (settings?.system?.debug?.enabled) {
+      logger.info(`Quest 3 hands visible: ${visible}`)
     }
-  }, [])
+  }, [settings?.system?.debug?.enabled])
   
-  // Only render if enabled in settings
+  // Only render if XR enabled and preferably in Quest 3 AR mode
   if (settings?.xr?.enabled === false) {
     return null
   }
   
+  // Prioritize Quest 3 AR mode
+  const isQuest3AR = isSessionActive && sessionType === 'immersive-ar'
+  
   return (
-    <group name="xr-controller-root">
-      <HandInteractionSystem 
-        enabled={handTrackingEnabled}
+    <group name="quest3-ar-controller-root">
+      <HandInteractionSystem
+        enabled={handTrackingEnabled && (isQuest3AR || isSessionActive)}
         onGestureRecognized={handleGestureRecognized}
         onHandsVisible={handleHandsVisible}
       />
@@ -71,6 +74,4 @@ const XRController: React.FC = () => {
   )
 }
 
-// Wrap with XR context safety check to prevent outside-XR-context errors
-const SafeXRController = withSafeXR(XRController, 'XRController');
-export default SafeXRController
+export default XRController

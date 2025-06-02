@@ -353,9 +353,12 @@ const GraphManager: React.FC<GraphManagerProps> = ({ onNodeDragStateChange }) =>
       setNodesAreAtOrigin(allAtOrigin)
     }
 
-    // Initial data load
-    const initialData = graphDataManager.getGraphData()
-    handleGraphDataChange(initialData)
+    // Initial data load (now async)
+    graphDataManager.getGraphData().then(initialData => {
+      handleGraphDataChange(initialData)
+    }).catch(error => {
+      logger.error('Error getting initial graph data:', createErrorMetadata(error));
+    })
 
     // Subscribe to updates
     const unsubscribeData = graphDataManager.onGraphDataChange(handleGraphDataChange)

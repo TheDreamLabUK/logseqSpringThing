@@ -1,5 +1,6 @@
 use crate::config::Settings;
 use crate::AppState;
+use crate::actors::messages::{GetSettings, UpdateSettings};
 use actix_web::{web, HttpResponse};
 use log::{debug, error, info};
 use serde::{Deserialize, Serialize};
@@ -7,8 +8,6 @@ use serde_json::Value;
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
-use std::sync::Arc;
-use tokio::sync::RwLock;
 
 // Internal helper function to convert camelCase or kebab-case to snake_case
 // This replaces the dependency on case_conversion.rs
@@ -257,7 +256,7 @@ fn get_category_settings_value(settings: &Settings, category: &str) -> Result<Va
 }
 
 pub async fn get_setting(
-    settings: web::Data<Arc<RwLock<Settings>>>,
+    app_state: web::Data<AppState>,
     path: web::Path<(String, String)>,
 ) -> HttpResponse {
     let (category, setting) = path.into_inner();
@@ -266,14 +265,50 @@ pub async fn get_setting(
         category, setting
     );
 
-    let settings_guard = match settings.read().await {
-        guard => {
-            debug!("Successfully acquired settings read lock");
-            guard
+    let settings = match app_state.settings_addr.send(GetSettings).await {
+        Ok(Ok(settings)) => settings,
+        Ok(Err(e)) => {
+            error!("Failed to get settings: {}", e);
+            return HttpResponse::InternalServerError().json(SettingResponse {
+                category,
+                setting,
+                value: Value::Null,
+                success: false,
+                error: Some("Failed to get settings".to_string()),
+            });
+        }
+        Err(e) => {
+            error!("Settings actor mailbox error: {}", e);
+            return HttpResponse::InternalServerError().json(SettingResponse {
+                category,
+                setting,
+                value: Value::Null,
+                success: false,
+                error: Some("Settings service unavailable".to_string()),
+            });
         }
     };
 
-    match get_setting_value(&*settings_guard, &category, &setting) {
+    // Convert AppFullSettings to Settings for compatibility with existing helper functions
+    let converted_settings = Settings {
+        debug_mode: settings.system.debug.enabled,
+        debug: crate::config::DebugSettings {
+            enable_websocket_debug: settings.system.debug.enable_websocket_debug,
+            enable_data_debug: settings.system.debug.enable_data_debug,
+            log_binary_headers: settings.system.debug.log_binary_headers,
+            log_full_json: settings.system.debug.log_full_json,
+        },
+        visualisation: settings.visualisation.clone(),
+        system: settings.system.clone(),
+        xr: settings.xr.clone(),
+        github: settings.github.clone(),
+        ragflow: settings.ragflow.clone(),
+        perplexity: settings.perplexity.clone(),
+        openai: settings.openai.clone(),
+        ..Default::default()
+    };
+
+    match get_setting_value(&converted_settings, &category, &setting) {
         Ok(value) => {
             debug!("Successfully retrieved setting value: {:?}", value);
             HttpResponse::Ok().json(SettingResponse {
@@ -298,7 +333,7 @@ pub async fn get_setting(
 }
 
 pub async fn update_setting(
-    settings: web::Data<Arc<RwLock<Settings>>>,
+    app_state: web::Data<AppState>,
     path: web::Path<(String, String)>,
     value: web::Json<Value>,
 ) -> HttpResponse {
@@ -308,32 +343,98 @@ pub async fn update_setting(
         category, setting
     );
 
-    let mut settings_guard = match settings.write().await {
-        guard => {
-            debug!("Successfully acquired settings write lock");
-            guard
-        }
-    };
-
-    match update_setting_value(&mut *settings_guard, &category, &setting, &value) {
-        Ok(_) => {
-            if let Err(e) = save_settings_to_file(&*settings_guard) {
-                error!("Failed to save settings to file: {}", e);
-                return HttpResponse::InternalServerError().json(SettingResponse {
-                    category,
-                    setting,
-                    value: value.into_inner(),
-                    success: false,
-                    error: Some("Failed to persist settings".to_string()),
-                });
-            }
-            HttpResponse::Ok().json(SettingResponse {
+    // Get current settings
+    let mut settings = match app_state.settings_addr.send(GetSettings).await {
+        Ok(Ok(settings)) => settings,
+        Ok(Err(e)) => {
+            error!("Failed to get settings for update: {}", e);
+            return HttpResponse::InternalServerError().json(SettingResponse {
                 category,
                 setting,
                 value: value.into_inner(),
-                success: true,
-                error: None,
-            })
+                success: false,
+                error: Some("Failed to get settings".to_string()),
+            });
+        }
+        Err(e) => {
+            error!("Settings actor mailbox error for update: {}", e);
+            return HttpResponse::InternalServerError().json(SettingResponse {
+                category,
+                setting,
+                value: value.into_inner(),
+                success: false,
+                error: Some("Settings service unavailable".to_string()),
+            });
+        }
+    };
+
+    // Convert AppFullSettings to Settings for compatibility with existing helper functions
+    let mut converted_settings = Settings {
+        debug_mode: settings.system.debug.enabled,
+        debug: crate::config::DebugSettings {
+            enable_websocket_debug: settings.system.debug.enable_websocket_debug,
+            enable_data_debug: settings.system.debug.enable_data_debug,
+            log_binary_headers: settings.system.debug.log_binary_headers,
+            log_full_json: settings.system.debug.log_full_json,
+        },
+        visualisation: settings.visualisation.clone(),
+        system: settings.system.clone(),
+        xr: settings.xr.clone(),
+        github: settings.github.clone(),
+        ragflow: settings.ragflow.clone(),
+        perplexity: settings.perplexity.clone(),
+        openai: settings.openai.clone(),
+        ..Default::default()
+    };
+
+    match update_setting_value(&mut converted_settings, &category, &setting, &value) {
+        Ok(_) => {
+            // Convert back to AppFullSettings and update
+            settings.system.debug.enabled = converted_settings.debug_mode;
+            settings.system.debug.enable_websocket_debug = converted_settings.debug.enable_websocket_debug;
+            settings.system.debug.enable_data_debug = converted_settings.debug.enable_data_debug;
+            settings.system.debug.log_binary_headers = converted_settings.debug.log_binary_headers;
+            settings.system.debug.log_full_json = converted_settings.debug.log_full_json;
+            settings.visualisation = converted_settings.visualisation;
+            settings.system = converted_settings.system;
+            settings.xr = converted_settings.xr;
+            settings.github = converted_settings.github;
+            settings.ragflow = converted_settings.ragflow;
+            settings.perplexity = converted_settings.perplexity;
+            settings.openai = converted_settings.openai;
+
+            // Update settings via actor
+            match app_state.settings_addr.send(UpdateSettings { settings }).await {
+                Ok(Ok(())) => {
+                    HttpResponse::Ok().json(SettingResponse {
+                        category,
+                        setting,
+                        value: value.into_inner(),
+                        success: true,
+                        error: None,
+                    })
+                }
+                Ok(Err(e)) => {
+                    error!("Failed to update settings: {}", e);
+                    HttpResponse::InternalServerError().json(SettingResponse {
+                        category,
+                        setting,
+                        value: value.into_inner(),
+                        success: false,
+                        error: Some("Failed to update settings".to_string()),
+                    })
+                }
+                Err(e) => {
+                    error!("Settings actor mailbox error during update: {}", e);
+                    HttpResponse::InternalServerError().json(SettingResponse {
+                        category,
+                        setting,
+                        value: value.into_inner(),
+                        success: false,
+                        error: Some("Settings service unavailable".to_string()),
+                    })
+                }
+            }
         }
         Err(e) => {
             error!("Failed to update setting value: {}", e);
@@ -349,15 +450,57 @@ pub async fn update_setting(
 }
 
 pub async fn get_category_settings(
-    settings: web::Data<Arc<RwLock<Settings>>>,
+    app_state: web::Data<AppState>,
     path: web::Path<String>,
 ) -> HttpResponse {
-    let settings_read = settings.read().await;
-    let debug_enabled = settings_read.system.debug.enabled;
-    let log_json = debug_enabled && settings_read.system.debug.log_full_json;
+    let settings = match app_state.settings_addr.send(GetSettings).await {
+        Ok(Ok(settings)) => settings,
+        Ok(Err(e)) => {
+            error!("Failed to get settings for category: {}", e);
+            let category = path.into_inner();
+            return HttpResponse::InternalServerError().json(CategorySettingsResponse {
+                category,
+                settings: HashMap::new(),
+                success: false,
+                error: Some("Failed to get settings".to_string()),
+            });
+        }
+        Err(e) => {
+            error!("Settings actor mailbox error for category: {}", e);
+            let category = path.into_inner();
+            return HttpResponse::InternalServerError().json(CategorySettingsResponse {
+                category,
+                settings: HashMap::new(),
+                success: false,
+                error: Some("Settings service unavailable".to_string()),
+            });
+        }
+    };
+
+    // Convert AppFullSettings to Settings for compatibility with existing helper functions
+    let converted_settings = Settings {
+        debug_mode: settings.system.debug.enabled,
+        debug: crate::config::DebugSettings {
+            enable_websocket_debug: settings.system.debug.enable_websocket_debug,
+            enable_data_debug: settings.system.debug.enable_data_debug,
+            log_binary_headers: settings.system.debug.log_binary_headers,
+            log_full_json: settings.system.debug.log_full_json,
+        },
+        visualisation: settings.visualisation.clone(),
+        system: settings.system.clone(),
+        xr: settings.xr.clone(),
+        github: settings.github.clone(),
+        ragflow: settings.ragflow.clone(),
+        perplexity: settings.perplexity.clone(),
+        openai: settings.openai.clone(),
+        ..Default::default()
+    };
+
+    let debug_enabled = settings.system.debug.enabled;
+    let log_json = debug_enabled && settings.system.debug.log_full_json;
 
     let category = path.into_inner();
-    match get_category_settings_value(&settings_read, &category) {
+    match get_category_settings_value(&converted_settings, &category) {
         Ok(value) => {
             if log_json {
                 debug!(
@@ -466,6 +609,20 @@ pub async fn get_visualisation_settings(
         debug!("Checking UI container status for debugging");
     }
 
-    let settings = app_state.settings.read().await;
-    Ok(HttpResponse::Ok().json(&*settings))
+    let settings = match app_state.settings_addr.send(GetSettings).await {
+        Ok(Ok(settings)) => settings,
+        Ok(Err(e)) => {
+            error!("Failed to get settings for visualisation: {}", e);
+            return Ok(HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": "Failed to get settings"
+            })));
+        }
+        Err(e) => {
+            error!("Settings actor mailbox error for visualisation: {}", e);
+            return Ok(HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": "Settings service unavailable"
+            })));
+        }
+    };
+    Ok(HttpResponse::Ok().json(&settings))
 }

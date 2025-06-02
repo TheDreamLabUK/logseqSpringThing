@@ -1,5 +1,6 @@
-use actix_web::{web, HttpResponse, Result};
+use actix_web::{web, HttpResponse, Result, Error};
 use crate::AppState;
+use crate::actors::messages::GetSettings;
 use serde::Serialize;
 use futures::future::join_all;
 use crate::models::metadata::Metadata;
@@ -17,9 +18,10 @@ pub struct PageInfo {
 }
 
 pub async fn get_pages(app_state: web::Data<AppState>) -> Result<HttpResponse> {
-    let settings = app_state.settings.read().await;
+    let settings = app_state.settings_addr.send(GetSettings).await
+        .map_err(|e| actix_web::error::ErrorInternalServerError(format!("Settings actor mailbox error: {}", e)))?
+        .map_err(|e| actix_web::error::ErrorInternalServerError(e))?;
     let debug_enabled = settings.system.debug.enabled;
-    drop(settings);
 
     if debug_enabled {
         log::debug!("Starting pages retrieval");

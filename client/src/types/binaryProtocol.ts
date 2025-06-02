@@ -18,15 +18,15 @@ export interface BinaryNodeData {
 
 /**
  * Node binary format:
- * - Node ID: 2 bytes (uint16)
+ * - Node ID: 4 bytes (uint32)
  * - Position: 12 bytes (3 float32 values)
  * - Velocity: 12 bytes (3 float32 values)
- * Total: 26 bytes per node
+ * Total: 28 bytes per node
  */
-export const BINARY_NODE_SIZE = 26;
+export const BINARY_NODE_SIZE = 28;
 export const BINARY_NODE_ID_OFFSET = 0;
-export const BINARY_POSITION_OFFSET = 2;
-export const BINARY_VELOCITY_OFFSET = 14;
+export const BINARY_POSITION_OFFSET = 4;
+export const BINARY_VELOCITY_OFFSET = 16;
 
 /**
  * Parse binary data buffer into an array of BinaryNodeData objects
@@ -70,8 +70,8 @@ export function parseBinaryNodeData(buffer: ArrayBuffer): BinaryNodeData[] {
         break;
       }
       
-      // Read node ID (uint16, 2 bytes)
-      const nodeId = view.getUint16(offset + BINARY_NODE_ID_OFFSET, true);
+      // Read node ID (uint32, 4 bytes)
+      const nodeId = view.getUint32(offset + BINARY_NODE_ID_OFFSET, true);
       
       // Read position (3 float32 values, 12 bytes)
       const position: Vec3 = {
@@ -120,8 +120,8 @@ export function createBinaryNodeData(nodes: BinaryNodeData[]): ArrayBuffer {
   nodes.forEach((node, i) => {
     const offset = i * BINARY_NODE_SIZE;
     
-    // Write node ID (uint16, 2 bytes)
-    view.setUint16(offset + BINARY_NODE_ID_OFFSET, node.nodeId, true);
+    // Write node ID (uint32, 4 bytes)
+    view.setUint32(offset + BINARY_NODE_ID_OFFSET, node.nodeId, true);
     
     // Write position (3 float32 values, 12 bytes)
     view.setFloat32(offset + BINARY_POSITION_OFFSET, node.position.x, true);

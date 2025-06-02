@@ -27,9 +27,9 @@ const SystemPanel: React.FC<SystemPanelProps> = ({ settingsDef }) => {
   // Removed old systemSettings retrieval and updateSetting/toggleSetting functions
 
   useEffect(() => {
-    const updateApiStatus = () => {
+    const updateApiStatus = async () => {
       try {
-        const currentData = graphDataManager.getGraphData();
+        const currentData = await graphDataManager.getGraphData();
         setApiStatus({
           isConnected: true,
           lastFetchTime: new Date().toLocaleTimeString(),
@@ -133,7 +133,11 @@ const SystemPanel: React.FC<SystemPanelProps> = ({ settingsDef }) => {
           <div className="mt-3 flex justify-end">
             <button
               className="px-3 py-1.5 text-xs bg-secondary text-secondary-foreground rounded-md hover:bg-secondary/80 transition-colors"
-              onClick={() => graphDataManager.fetchInitialData()}
+              onClick={() => {
+                graphDataManager.fetchInitialData().catch(error => {
+                  logger.error('Failed to refresh graph data:', error);
+                });
+              }}
             >
               Refresh Data
             </button>

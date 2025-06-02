@@ -1,5 +1,6 @@
 use actix_web::{web, HttpResponse, Responder};
 use crate::AppState;
+use crate::actors::messages::GetSettings;
 use serde::{Serialize, Deserialize};
 use log::{info, debug, error, warn};
 use std::collections::HashMap;
@@ -48,7 +49,21 @@ pub async fn get_graph_data(state: web::Data<AppState>) -> impl Responder {
         let mut node_map = state.graph_service.get_node_map_mut().await;
         
         // Get physics settings
-        let settings = state.settings.read().await;
+        let settings = match state.settings_addr.send(GetSettings).await {
+            Ok(Ok(settings)) => settings,
+            Ok(Err(e)) => {
+                error!("Failed to get settings: {}", e);
+                return HttpResponse::InternalServerError().json(serde_json::json!({
+                    "error": "Failed to get settings"
+                }));
+            }
+            Err(e) => {
+                error!("Settings actor mailbox error: {}", e);
+                return HttpResponse::InternalServerError().json(serde_json::json!({
+                    "error": "Settings service unavailable"
+                }));
+            }
+        };
         let physics_settings = settings.visualisation.physics.clone();
         
         // Create simulation parameters
@@ -128,7 +143,21 @@ pub async fn get_paginated_graph_data(
             let mut node_map = state.graph_service.get_node_map_mut().await;
             
             // Get physics settings
-            let settings = state.settings.read().await;
+            let settings = match state.settings_addr.send(GetSettings).await {
+                Ok(Ok(settings)) => settings,
+                Ok(Err(e)) => {
+                    error!("Failed to get settings: {}", e);
+                    return HttpResponse::InternalServerError().json(serde_json::json!({
+                        "error": "Failed to get settings"
+                    }));
+                }
+                Err(e) => {
+                    error!("Settings actor mailbox error: {}", e);
+                    return HttpResponse::InternalServerError().json(serde_json::json!({
+                        "error": "Settings service unavailable"
+                    }));
+                }
+            };
             let physics_settings = settings.visualisation.physics.clone();
             
             // Create simulation parameters
@@ -207,8 +236,8 @@ pub async fn get_paginated_graph_data(
     let page_nodes = graph.nodes[start..end].to_vec();
 
     // Get edges where either source or target is in the current page
-    let node_ids: std::collections::HashSet<_> = page_nodes.iter()
-        .map(|node| node.id.clone())
+    let node_ids: std::collections::HashSet<u32> = page_nodes.iter()
+        .map(|node| node.id)
         .collect();
 
     let relevant_edges: Vec<_> = graph.edges.iter()
@@ -269,7 +298,7 @@ pub async fn refresh_graph(state: web::Data<AppState>) -> impl Responder {
             // Update node_map with new graph nodes
             node_map.clear();
             for node in &graph.nodes {
-                node_map.insert(node.id.clone(), node.clone());
+                node_map.insert(node.id, node.clone());
             }
             
             info!("Graph refreshed successfully with {} nodes and {} edges", 
@@ -357,7 +386,7 @@ pub async fn update_graph(state: web::Data<AppState>) -> impl Responder {
                     // Update node_map with new graph nodes
                     node_map.clear();
                     for node in &graph.nodes {
-                        node_map.insert(node.id.clone(), node.clone());
+                        node_map.insert(node.id, node.clone());
                     }
                     
                     debug!("Graph updated successfully");

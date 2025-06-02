@@ -11,7 +11,7 @@ static NEXT_NODE_ID: AtomicU32 = AtomicU32::new(1);  // Start from 1 (0 could be
 #[serde(rename_all = "camelCase")]
 pub struct Node {
     // Core data
-    pub id: String,
+    pub id: u32,
     pub metadata_id: String,  // Store the original filename for lookup
     pub label: String,
     pub data: BinaryNodeData,
@@ -43,16 +43,16 @@ impl Node {
         Self::new_with_id(metadata_id, None)
     }
 
-    pub fn new_with_id(metadata_id: String, provided_id: Option<String>) -> Self {
+    pub fn new_with_id(metadata_id: String, provided_id: Option<u32>) -> Self {
         // Always generate a new ID on the server side
-        // Use provided ID only if it's a valid numeric string (from a previous session)
+        // Use provided ID only if it's valid (non-zero)
         let id = match provided_id {
-            Some(id) if !id.is_empty() && id != "0" && id.parse::<u32>().is_ok() => {
-                // Use the provided ID only if it's a valid numeric ID
+            Some(id) if id != 0 => {
+                // Use the provided ID only if it's a valid non-zero ID
                 id
             },
             _ => {
-                NEXT_NODE_ID.fetch_add(1, Ordering::SeqCst).to_string()
+                NEXT_NODE_ID.fetch_add(1, Ordering::SeqCst)
             }
         };
         
@@ -168,10 +168,8 @@ mod tests {
         assert_eq!(node1.metadata_id, "test-file-1.md");
         assert_eq!(node2.metadata_id, "test-file-2.md");
         
-        // Verify IDs are consecutive numbers (as strings)
-        let id1: u32 = node1.id.parse().unwrap();
-        let id2: u32 = node2.id.parse().unwrap();
-        assert_eq!(id1 + 1, id2);
+        // Verify IDs are consecutive numbers
+        assert_eq!(node1.id + 1, node2.id);
         
         // Verify final counter value
         let end_value = NEXT_NODE_ID.load(Ordering::SeqCst);
@@ -190,8 +188,8 @@ mod tests {
             .with_weight(2.0)
             .with_group("group1".to_string());
 
-        // ID should be a numeric string now, not "test"
-        assert!(node.id.parse::<u32>().is_ok(), "ID should be numeric, got: {}", node.id);
+        // ID should be a numeric u32 now, not "test"
+        assert!(node.id > 0, "ID should be positive, got: {}", node.id);
         assert_eq!(node.metadata_id, "test");
         assert_eq!(node.label, "Test Node");
         assert_eq!(node.data.position.x, 1.0);

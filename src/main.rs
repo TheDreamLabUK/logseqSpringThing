@@ -16,7 +16,6 @@ use webxr::{
         github::{GitHubClient, ContentAPI, GitHubConfig},
         ragflow_service::RAGFlowService, // ADDED IMPORT
     },
-    utils::gpu_compute::GPUCompute,
     services::speech_service::SpeechService,
 };
 
@@ -56,24 +55,8 @@ async fn main() -> std::io::Result<()> {
         }
     };
 
-    // --- BEGIN GPU TEST BEFORE LOGGING ---
-    println!("[PRE-LOGGING CHECK] Starting GPU detection test before logging is initialized");
-    tokio::time::sleep(Duration::from_millis(1000)).await;
-    
-    match webxr::utils::gpu_compute::GPUCompute::test_gpu().await {
-        Ok(_) => println!("[PRE-LOGGING CHECK] GPU test successful."),
-        Err(e) => {
-            eprintln!("[PRE-LOGGING CHECK] GPU test failed: {}", e);
-            eprintln!("[PRE-LOGGING CHECK] Will retry once with additional delay");
-            tokio::time::sleep(Duration::from_millis(2000)).await;
-            
-            match webxr::utils::gpu_compute::GPUCompute::test_gpu().await {
-                Ok(_) => println!("[PRE-LOGGING CHECK] GPU test successful on retry!"),
-                Err(e) => eprintln!("[PRE-LOGGING CHECK] GPU test failed on retry: {}", e),
-            }
-        }
-    }
-    // --- END GPU TEST BEFORE LOGGING ---
+    // GPU compute is now handled by the GPUComputeActor
+    info!("GPU compute will be initialized by GPUComputeActor when needed");
 
 
     // Initialize logging with settings-based configuration
@@ -140,15 +123,19 @@ async fn main() -> std::io::Result<()> {
     }
     
     // Initialize app state asynchronously
-    // AppState::new now correctly receives Arc<RwLock<AppFullSettings>>
+    // AppState::new now receives AppFullSettings directly (not Arc<RwLock<>>)
+    let settings_value = {
+        let settings_read = settings.read().await;
+        settings_read.clone()
+    };
+    
     let mut app_state = match AppState::new(
-            settings.clone(),
+            settings_value,
             github_client.clone(),
             content_api.clone(),
             None, // Perplexity placeholder
             ragflow_service_option, // Pass the initialized RAGFlow service
             speech_service,
-            None, // GPU Compute placeholder
             "default_session".to_string() // RAGFlow session ID placeholder
         ).await {
             Ok(state) => state,
@@ -176,88 +163,66 @@ async fn main() -> std::io::Result<()> {
 
     info!("Loaded {} items from metadata store", metadata_store.len());
 
-    // Update metadata in app state
-    {
-        let mut app_metadata = app_state.metadata.write().await;
-        *app_metadata = metadata_store.clone();
-        info!("Loaded metadata into app state");
+    // Update metadata in app state using actor
+    use webxr::actors::messages::UpdateMetadata;
+    if let Err(e) = app_state.metadata_addr.send(UpdateMetadata(metadata_store.clone())).await {
+        error!("Failed to update metadata in actor: {}", e);
+        return Err(std::io::Error::new(std::io::ErrorKind::Other, format!("Failed to update metadata in actor: {}", e)));
     }
+    info!("Loaded metadata into app state actor");
 
     // Build initial graph from metadata and initialize GPU compute
     info!("Building initial graph from existing metadata for physics simulation");
     
-    let client_manager = app_state.ensure_client_manager().await;
-    
     match GraphService::build_graph_from_metadata(&metadata_store).await {
-        Ok(graph_data) => {            
-            if app_state.gpu_compute.is_none() {
-                info!("No GPU compute instance found, initializing one now");
-                match GPUCompute::new(&graph_data).await {
-                    Ok(gpu_instance) => {
-                        info!("GPU compute initialized successfully");
-                        app_state.gpu_compute = Some(gpu_instance);
-                        
-                        info!("Shutting down existing graph service before reinitializing with GPU");
-                        let shutdown_start = std::time::Instant::now();
-                        
-                        match tokio::time::timeout(Duration::from_secs(5), app_state.graph_service.shutdown()).await {
-                            Ok(_) => info!("Graph service shutdown completed successfully in {:?}", shutdown_start.elapsed()),
-                            Err(_) => {
-                                warn!("Graph service shutdown timed out after 5 seconds");
-                                warn!("Proceeding with reinitialization anyway - old simulation loop will self-terminate");
-                            }
-                        }
-                        
-                        tokio::time::sleep(Duration::from_millis(100)).await;
-                        
-                        info!("Reinitializing graph service with GPU compute");
-                        // GraphService::new receives Arc<RwLock<AppFullSettings>>
-                        app_state.graph_service = GraphService::new(
-                            settings.clone(),
-                            app_state.gpu_compute.clone(),
-                            client_manager.clone() // Pass client manager
-                        ).await;
-                        
-                        info!("Graph service successfully reinitialized with GPU compute");
-                    },
-                    Err(e) => {
-                        warn!("Failed to initialize GPU compute: {}. Continuing with CPU fallback.", e);
-                        
-                        let shutdown_start = std::time::Instant::now();
-                        match tokio::time::timeout(Duration::from_secs(5), app_state.graph_service.shutdown()).await {
-                            Ok(_) => info!("Graph service shutdown completed successfully in {:?}", shutdown_start.elapsed()),
-                            Err(_) => {
-                                warn!("Graph service shutdown timed out after 5 seconds");
-                                warn!("Proceeding with reinitialization anyway - old simulation loop will self-terminate");
-                            }
-                        }
-                        
-                        // Reinitialize graph service with None as GPU compute
-                        app_state.graph_service = GraphService::new(
-                            settings.clone(),
-                            None,
-                            client_manager.clone() // Pass client manager
-                        ).await;
-                        
-                        info!("Graph service initialized with CPU fallback");
-                    }
+        Ok(graph_data) => {
+            // Update graph data in the GraphServiceActor
+            use webxr::actors::messages::{UpdateGraphData, InitializeGPU};
+            use webxr::models::graph::GraphData as ModelsGraphData;
+            
+            // Send graph data to GraphServiceActor
+            if let Err(e) = app_state.graph_service_addr.send(UpdateGraphData {
+                graph_data: graph_data.clone(),
+            }).await {
+                error!("Failed to update graph data in actor: {}", e);
+                return Err(std::io::Error::new(std::io::ErrorKind::Other, format!("Failed to update graph data in actor: {}", e)));
+            }
+
+            // Convert GraphService::GraphData to models::graph::GraphData for GPU initialization
+            let models_graph_data = ModelsGraphData {
+                nodes: graph_data.nodes.iter().map(|n| webxr::models::node::Node {
+                    id: n.id,
+                    label: n.label.clone(),
+                    content: n.content.clone(),
+                    node_type: n.node_type.clone(),
+                    metadata: n.metadata.clone(),
+                    position: n.position.clone(),
+                }).collect(),
+                edges: graph_data.edges.iter().map(|e| webxr::models::edge::Edge {
+                    id: e.id,
+                    source: e.source,
+                    target: e.target,
+                    edge_type: e.edge_type.clone(),
+                    weight: e.weight,
+                    metadata: e.metadata.clone(),
+                }).collect(),
+            };
+
+            // Initialize GPU compute through GPUComputeActor
+            if let Some(gpu_compute_addr) = &app_state.gpu_compute_addr {
+                info!("Sending InitializeGPU message to GPUComputeActor");
+                if let Err(e) = gpu_compute_addr.send(InitializeGPU {
+                    graph: models_graph_data,
+                }).await {
+                    warn!("Failed to initialize GPU compute: {}. Continuing with CPU fallback.", e);
+                } else {
+                    info!("GPU compute initialization request sent successfully");
                 }
+            } else {
+                warn!("GPUComputeActor address not available, continuing with CPU fallback");
             }
 
-            // Update graph data after GPU is initialized (or CPU fallback)
-            let mut graph = app_state.graph_service.get_graph_data_mut().await;
-            let mut node_map = app_state.graph_service.get_node_map_mut().await;
-            *graph = graph_data;
-            
-            node_map.clear();
-            for node in &graph.nodes {
-                node_map.insert(node.id.clone(), node.clone());
-            }
-            
-            drop(graph);
-            drop(node_map);
-
-            info!("Built initial graph from metadata");
+            info!("Built initial graph from metadata and updated GraphServiceActor");
             
         },
         Err(e) => {
@@ -270,8 +235,13 @@ async fn main() -> std::io::Result<()> {
     tokio::time::sleep(Duration::from_millis(500)).await;
     info!("Initial delay complete. Starting HTTP server...");
     
-    app_state.graph_service.start_broadcast_loop(client_manager.clone());
-    info!("Position broadcast loop started");
+    // Start simulation in GraphServiceActor
+    use webxr::actors::messages::StartSimulation;
+    if let Err(e) = app_state.graph_service_addr.send(StartSimulation).await {
+        error!("Failed to start simulation in GraphServiceActor: {}", e);
+        return Err(std::io::Error::new(std::io::ErrorKind::Other, format!("Failed to start simulation: {}", e)));
+    }
+    info!("Simulation started in GraphServiceActor");
  
     // Create web::Data after all initialization is complete
     let app_state_data = web::Data::new(app_state);
@@ -291,8 +261,6 @@ async fn main() -> std::io::Result<()> {
             max_update_rate: s.system.websocket.max_update_rate,
             motion_threshold: s.system.websocket.motion_threshold,
             motion_damping: s.system.websocket.motion_damping,
-            compression_enabled: s.system.websocket.compression_enabled,
-            compression_threshold: s.system.websocket.compression_threshold,
             heartbeat_interval_ms: s.system.websocket.heartbeat_interval, // Assuming these exist
             heartbeat_timeout_ms: s.system.websocket.heartbeat_timeout,   // Assuming these exist
         }
@@ -319,6 +287,11 @@ async fn main() -> std::io::Result<()> {
             .app_data(web::Data::new(content_api.clone()))
             .app_data(app_state_data.clone()) // Add the complete AppState
             .app_data(pre_read_ws_settings_data.clone()) // Add pre-read WebSocket settings
+            // Register actor addresses for handler access
+            .app_data(web::Data::new(app_state_data.graph_service_addr.clone()))
+            .app_data(web::Data::new(app_state_data.settings_addr.clone()))
+            .app_data(web::Data::new(app_state_data.metadata_addr.clone()))
+            .app_data(web::Data::new(app_state_data.client_manager_addr.clone()))
             .app_data(app_state_data.nostr_service.clone().unwrap_or_else(|| web::Data::new(NostrService::default()))) // Provide default if None
             .app_data(app_state_data.feature_access.clone())
             .route("/wss", web::get().to(socket_flow_handler)) // Changed from /ws to /wss

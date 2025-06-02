@@ -487,6 +487,10 @@ export class XRSessionManager {
     return this.controllerGrips;
   }
   
+  public getRenderer(): THREE.WebGLRenderer | null {
+    return this.renderer;
+  }
+  
   public updateSettings(settings: Settings): void {
     this.settings = settings;
     
@@ -499,48 +503,130 @@ export class XRSessionManager {
   }
   
   public dispose(): void {
-    // Remove controllers from scene
-    this.controllers.forEach(controller => {
-      controller.removeFromParent();
-      // Remove all event listeners
-      controller.removeEventListener('selectstart', () => {});
-      controller.removeEventListener('selectend', () => {});
-      controller.removeEventListener('squeezestart', () => {});
-      controller.removeEventListener('squeezeend', () => {});
-    });
-    
-    // Remove controller grips from scene
-    this.controllerGrips.forEach(grip => {
-      grip.removeFromParent();
-    });
-    
-    // Remove VR button
-    if (this.vrButton && this.vrButton.parentNode) {
-      this.vrButton.parentNode.removeChild(this.vrButton);
-    }
-    
-    // Clear arrays
-    this.controllers = [];
-    this.controllerGrips = [];
-    this.selectStartHandlers = [];
-    this.selectEndHandlers = [];
-    this.squeezeStartHandlers = [];
-    this.squeezeEndHandlers = [];
-    this.gestureRecognizedHandlers = [];
-    this.handsVisibilityChangedHandlers = [];
-    this.handTrackingStateHandlers = [];
-    
-    // Clear factory
-    this.controllerModelFactory = null;
-    
-    // Remove references
-    this.renderer = null;
-    this.camera = null;
-    this.scene = null;
-    this.vrButton = null;
-    
-    if (debugState.isEnabled()) {
-      logger.info('XR session manager disposed');
+    try {
+      // End active session first
+      if (this.sessionActive && this.renderer?.xr.isPresenting) {
+        const session = this.renderer.xr.getSession();
+        if (session) {
+          session.end().catch(error => {
+            logger.error('Error ending XR session during disposal:', error);
+          });
+        }
+      }
+
+      // Remove controllers from scene and clear event listeners
+      this.controllers.forEach((controller, index) => {
+        try {
+          // Remove from scene
+          if (controller.parent) {
+            controller.removeFromParent();
+          }
+          
+          // Clear controller-specific data
+          if (controller.userData) {
+            controller.userData.selectPressed = false;
+            controller.userData.squeezePressed = false;
+          }
+          
+          // Remove visual indicators (lines, etc.)
+          const line = controller.getObjectByName('controller-line');
+          if (line) {
+            controller.remove(line);
+            // Properly dispose of geometry and material if it's a Line object
+            if (line instanceof THREE.Line) {
+              if (line.geometry) line.geometry.dispose();
+              if (line.material) {
+                if (Array.isArray(line.material)) {
+                  line.material.forEach(mat => mat.dispose());
+                } else {
+                  line.material.dispose();
+                }
+              }
+            }
+          }
+        } catch (error) {
+          logger.error(`Error disposing controller ${index}:`, error);
+        }
+      });
+      
+      // Remove controller grips and their models
+      this.controllerGrips.forEach((grip, index) => {
+        try {
+          if (grip.parent) {
+            grip.removeFromParent();
+          }
+          
+          // Dispose of controller models created by XRControllerModelFactory
+          grip.traverse((child) => {
+            if (child instanceof THREE.Mesh) {
+              if (child.geometry) child.geometry.dispose();
+              if (child.material) {
+                if (Array.isArray(child.material)) {
+                  child.material.forEach(mat => mat.dispose());
+                } else {
+                  child.material.dispose();
+                }
+              }
+            }
+          });
+        } catch (error) {
+          logger.error(`Error disposing controller grip ${index}:`, error);
+        }
+      });
+      
+      // Remove VR button safely
+      if (this.vrButton) {
+        try {
+          if (this.vrButton.parentNode) {
+            this.vrButton.parentNode.removeChild(this.vrButton);
+          }
+        } catch (error) {
+          logger.error('Error removing VR button:', error);
+        }
+      }
+      
+      // Clear all event listeners and handler arrays
+      this.selectStartHandlers.length = 0;
+      this.selectEndHandlers.length = 0;
+      this.squeezeStartHandlers.length = 0;
+      this.squeezeEndHandlers.length = 0;
+      this.gestureRecognizedHandlers.length = 0;
+      this.handsVisibilityChangedHandlers.length = 0;
+      this.handTrackingStateHandlers.length = 0;
+      
+      // Clear arrays
+      this.controllers.length = 0;
+      this.controllerGrips.length = 0;
+      
+      // Clear factory reference
+      this.controllerModelFactory = null;
+      
+      // Clear renderer XR session listeners if renderer exists
+      if (this.renderer?.xr) {
+        try {
+          // Note: We can't remove specific listeners without references,
+          // but setting to null will prevent new events from being processed
+          this.renderer.xr.enabled = false;
+        } catch (error) {
+          logger.error('Error disabling XR on renderer:', error);
+        }
+      }
+      
+      // Clear object references
+      this.renderer = null;
+      this.camera = null;
+      this.scene = null;
+      this.vrButton = null;
+      this.settings = null;
+      
+      // Reset state flags
+      this.sessionActive = false;
+      
+      if (debugState.isEnabled()) {
+        logger.info('XR session manager disposed with complete resource cleanup');
+      }
+    } catch (error) {
+      logger.error('Error during XR session manager disposal:', error);
     }
   }
 }

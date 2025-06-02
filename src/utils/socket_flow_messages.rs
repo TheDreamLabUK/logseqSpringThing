@@ -11,22 +11,32 @@ static NEXT_NODE_ID: AtomicU32 = AtomicU32::new(1);  // Start from 1 (0 could be
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Pod, Zeroable, Serialize, Deserialize)]
-/// Binary node data structure for efficient transmission and GPU processing
-/// 
-/// Wire format (26 bytes per node):
+/// Binary node data structure for server-side processing and GPU computation
+///
+/// **Server format (28 bytes):**
 /// - position: Vec3Data (12 bytes)
 /// - velocity: Vec3Data (12 bytes)
-/// - id: u16 (2 bytes)
+/// - mass: u8 (1 byte) - Server-side only, not transmitted over wire
+/// - flags: u8 (1 byte) - Server-side only, not transmitted over wire
+/// - padding: [u8; 2] (2 bytes) - Server-side only, not transmitted over wire
 ///
-/// Note: mass, flags, and padding are server-side only and not transmitted over the wire
-/// to optimize bandwidth. They are still available for GPU processing and physics calculations.
+/// **Wire format (26 bytes) is handled separately by `WireNodeDataItem` in `binary_protocol.rs`:**
+/// - id: u16 (2 bytes)
+/// - position: Vec3Data (12 bytes)
+/// - velocity: Vec3Data (12 bytes)
+///
+/// The wire and server formats are distinct to optimize bandwidth while preserving
+/// server-side physics properties (mass, flags) that are not needed on the client.
 pub struct BinaryNodeData {
     pub position: Vec3Data,
     pub velocity: Vec3Data,
-    pub mass: u8,      // Server-side only, not transmitted
-    pub flags: u8,     // Server-side only, not transmitted
-    pub padding: [u8; 2], // Server-side only, not transmitted
+    pub mass: u8,      // Server-side only, not transmitted over wire
+    pub flags: u8,     // Server-side only, not transmitted over wire
+    pub padding: [u8; 2], // Server-side only, not transmitted over wire
 }
+
+// Compile-time assertion to ensure server format is exactly 28 bytes
+static_assertions::const_assert_eq!(std::mem::size_of::<BinaryNodeData>(), 28);
 
 // Implement DeviceRepr for BinaryNodeData
 unsafe impl DeviceRepr for BinaryNodeData {}

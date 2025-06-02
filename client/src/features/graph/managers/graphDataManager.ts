@@ -2,40 +2,20 @@ import { createLogger, createErrorMetadata } from '../../../utils/logger';
 import { debugState } from '../../../utils/debugState';
 import { WebSocketAdapter } from '../../../services/WebSocketService';
 import { BinaryNodeData, parseBinaryNodeData, createBinaryNodeData, Vec3, BINARY_NODE_SIZE } from '../../../types/binaryProtocol';
+import { graphWorkerProxy } from './graphWorkerProxy';
+import type { GraphData, Node, Edge } from './graphWorkerProxy';
+import { startTransition } from 'react';
 
 const logger = createLogger('GraphDataManager');
 
-export interface Node {
-  id: string;
-  label: string;
-  position: {
-    x: number;
-    y: number;
-    z: number;
-  };
-  metadata?: Record<string, any>;
-}
-
-export interface Edge {
-  id: string;
-  source: string;
-  target: string;
-  label?: string;
-  weight?: number;
-  metadata?: Record<string, any>;
-}
-
-export interface GraphData {
-  nodes: Node[];
-  edges: Edge[];
-}
+// Re-export types from worker proxy for compatibility
+export type { Node, Edge, GraphData } from './graphWorkerProxy';
 
 type GraphDataChangeListener = (data: GraphData) => void;
 type PositionUpdateListener = (positions: Float32Array) => void;
 
 class GraphDataManager {
   private static instance: GraphDataManager;
-  private data: GraphData = { nodes: [], edges: [] };
   private binaryUpdatesEnabled: boolean = false;
   public webSocketService: WebSocketAdapter | null = null;
   private graphDataListeners: GraphDataChangeListener[] = [];
@@ -44,9 +24,56 @@ class GraphDataManager {
   private retryTimeout: number | null = null;
   public nodeIdMap: Map<string, number> = new Map();
   private reverseNodeIdMap: Map<number, string> = new Map();
+  private workerInitialized: boolean = false;
 
   private constructor() {
-    // Private constructor for singleton
+    // Worker proxy initializes automatically, just wait for it to be ready
+    this.waitForWorker();
+  }
+
+  private async waitForWorker(): Promise<void> {
+    try {
+      // Poll until worker is ready
+      while (!graphWorkerProxy.isReady()) {
+        await new Promise(resolve => setTimeout(resolve, 10));
+      }
+      this.workerInitialized = true;
+      
+      // Connect to worker proxy listeners
+      this.setupWorkerListeners();
+      
+      if (debugState.isEnabled()) {
+        logger.info('Graph worker proxy is ready');
+      }
+    } catch (error) {
+      logger.error('Failed to wait for graph worker proxy:', createErrorMetadata(error));
+    }
+  }
+
+  private setupWorkerListeners(): void {
+    // Forward graph data changes from worker to our listeners
+    graphWorkerProxy.onGraphDataChange((data) => {
+      this.graphDataListeners.forEach(listener => {
+        try {
+          startTransition(() => {
+            listener(data);
+          });
+        } catch (error) {
+          logger.error('Error in forwarded graph data listener:', createErrorMetadata(error));
+        }
+      });
+    });
+
+    // Forward position updates from worker to our listeners
+    graphWorkerProxy.onPositionUpdate((positions) => {
+      this.positionUpdateListeners.forEach(listener => {
+        try {
+          listener(positions);
+        } catch (error) {
+          logger.error('Error in forwarded position update listener:', createErrorMetadata(error));
+        }
+      });
+    });
   }
 
   public static getInstance(): GraphDataManager {
@@ -109,17 +136,18 @@ class GraphDataManager {
           }
         }
         
-        this.setGraphData(validatedData);
+        await this.setGraphData(validatedData);
         
+        const currentData = await graphWorkerProxy.getGraphData();
         if (debugState.isEnabled()) {
-          logger.info(`Loaded initial graph data: ${this.data.nodes.length} nodes, ${this.data.edges.length} edges`);
+          logger.info(`Loaded initial graph data: ${currentData.nodes.length} nodes, ${currentData.edges.length} edges`);
           logger.debug('Node ID mappings created:', {
             numericIds: Array.from(this.nodeIdMap.entries()).slice(0, 5),
             totalMappings: this.nodeIdMap.size
           });
         }
         
-        return this.data;
+        return currentData;
       } catch (parseError) {
         throw new Error(`Failed to parse graph data: ${parseError}`);
       }
@@ -130,15 +158,16 @@ class GraphDataManager {
   }
 
   // Set graph data and notify listeners
-  public setGraphData(data: GraphData): void {
+  public async setGraphData(data: GraphData): Promise<void> {
     if (debugState.isEnabled()) {
       logger.info(`Setting graph data: ${data.nodes.length} nodes, ${data.edges.length} edges`);
     }
 
     // Ensure all nodes have valid positions before setting the data
+    let validatedData = data;
     if (data && data.nodes) {
       const validatedNodes = data.nodes.map(node => this.ensureNodeHasValidPosition(node));
-      this.data = {
+      validatedData = {
         ...data,
         nodes: validatedNodes
       };
@@ -148,19 +177,19 @@ class GraphDataManager {
       }
     } else {
       // Initialize with empty arrays if data is invalid
-      this.data = { nodes: [], edges: data?.edges || [] };
+      validatedData = { nodes: [], edges: data?.edges || [] };
       logger.warn('Initialized with empty graph data');
     }
     
-    // Reset ID maps
+    // Reset ID maps and rebuild them
     this.nodeIdMap.clear();
     this.reverseNodeIdMap.clear();
     
-    // Create mappings between string IDs and numeric IDs
-    this.data.nodes.forEach((node, index) => {
+    // Create mappings between string IDs and numeric IDs (now u32 instead of u16)
+    validatedData.nodes.forEach((node, index) => {
       const numericId = parseInt(node.id, 10);
-      if (!isNaN(numericId)) {
-        // If the ID can be parsed as a number, use it directly
+      if (!isNaN(numericId) && numericId >= 0 && numericId <= 0xFFFFFFFF) {
+        // If the ID can be parsed as a u32 number, use it directly
         this.nodeIdMap.set(node.id, numericId);
         this.reverseNodeIdMap.set(numericId, node.id);
       } else {
@@ -172,57 +201,18 @@ class GraphDataManager {
       }
     });
     
-    // Set up nodes and validate their positions
-    this.setupNodesAndMapping();
-    
-    // Notify listeners
-    this.notifyGraphDataListeners();
+    // Delegate to worker
+    await graphWorkerProxy.setGraphData(validatedData);
     
     if (debugState.isDataDebugEnabled()) {
-      logger.debug(`Graph data updated: ${data.nodes.length} nodes, ${data.edges.length} edges`);
+      logger.debug(`Graph data updated: ${validatedData.nodes.length} nodes, ${validatedData.edges.length} edges`);
     }
   }
 
-  // Setup node IDs and validate positions
-  private setupNodesAndMapping(): void {
-    if (!this.data.nodes || !this.data.nodes.length) {
-      return;
-    }
-    
-    // Process each node to ensure valid positions and create ID mappings
-    this.data.nodes.forEach((node, index) => {
-      if (!node) {
-        logger.warn(`Null or undefined node found at index ${index}, skipping`);
-        return;
-      }
-      
-      // Skip nodes without valid IDs
-      if (!node.id) {
-        logger.warn(`Node at index ${index} has no ID, skipping`);
-        return;
-      }
-      
-      // Ensure node has a valid position
-      if (!node.position) {
-        node.position = { x: 0, y: 0, z: 0 };
-      }
-      
-      // Ensure all position values are numbers
-      node.position.x = typeof node.position.x === 'number' ? node.position.x : 0;
-      node.position.y = typeof node.position.y === 'number' ? node.position.y : 0;
-      node.position.z = typeof node.position.z === 'number' ? node.position.z : 0;
-
-      // Use the numeric ID from the map
-      const numericId = this.nodeIdMap.get(node.id) || index + 1;
-      
-      if (debugState.isDataDebugEnabled() && index < 5) {
-        // Log a sample of node data for debugging (just the first few nodes)
-        logger.debug(`Node ${node.id} (numeric ID: ${numericId}) at position [${node.position.x.toFixed(2)}, ${node.position.y.toFixed(2)}, ${node.position.z.toFixed(2)}]`);
-      }
-    });
-    
+  // Setup node IDs (simplified since data is now in worker)
+  private validateNodeMappings(nodes: Node[]): void {
     if (debugState.isDataDebugEnabled()) {
-      logger.debug(`Prepared ${this.data.nodes.length} nodes with ID mapping`);
+      logger.debug(`Validated ${nodes.length} nodes with ID mapping`);
     }
   }
 
@@ -262,99 +252,76 @@ class GraphDataManager {
   public setBinaryUpdatesEnabled(enabled: boolean): void {
     this.binaryUpdatesEnabled = enabled;
     
-    if (enabled) {
-      this.setupNodesAndMapping();
-    }
-    
     if (debugState.isEnabled()) {
       logger.info(`Binary updates ${enabled ? 'enabled' : 'disabled'}`);
     }
   }
 
   // Get the current graph data
-  public getGraphData(): GraphData {
-    return this.data;
+  public async getGraphData(): Promise<GraphData> {
+    return await graphWorkerProxy.getGraphData();
   }
 
   // Add a node to the graph
-  public addNode(node: Node): void {
-    // Check if node with this ID already exists
-    const existingIndex = this.data.nodes.findIndex(n => n.id === node.id);
-    
-    if (existingIndex >= 0) {
-      // Update existing node
-      this.data.nodes[existingIndex] = {
-        ...this.data.nodes[existingIndex],
-        ...node
-      };
+  public async addNode(node: Node): Promise<void> {
+    // Update node mappings
+    const numericId = parseInt(node.id, 10);
+    if (!isNaN(numericId)) {
+      this.nodeIdMap.set(node.id, numericId);
+      this.reverseNodeIdMap.set(numericId, node.id);
     } else {
-      // Add new node
-      this.data.nodes.push(node);
-      
-      // Update node mappings
-      const numericId = parseInt(node.id, 10);
-      if (!isNaN(numericId)) {
-        this.nodeIdMap.set(node.id, numericId);
-        this.reverseNodeIdMap.set(numericId, node.id);
-      } else {
-        const mappedId = this.data.nodes.length;
-        this.nodeIdMap.set(node.id, mappedId);
-        this.reverseNodeIdMap.set(mappedId, node.id);
-      }
+      // For non-numeric IDs, we'll get the current length from worker
+      const currentData = await graphWorkerProxy.getGraphData();
+      const mappedId = currentData.nodes.length + 1;
+      this.nodeIdMap.set(node.id, mappedId);
+      this.reverseNodeIdMap.set(mappedId, node.id);
     }
     
-    this.notifyGraphDataListeners();
+    await graphWorkerProxy.updateNode(node);
   }
 
-  // Add an edge to the graph
-  public addEdge(edge: Edge): void {
-    // Check if edge with this ID already exists
-    const existingIndex = this.data.edges.findIndex(e => e.id === edge.id);
+  // Add an edge to the graph (for backward compatibility - edges go through worker)
+  public async addEdge(edge: Edge): Promise<void> {
+    // Worker doesn't have addEdge method, so we get current data, add edge, and set it back
+    const currentData = await graphWorkerProxy.getGraphData();
+    const existingIndex = currentData.edges.findIndex(e => e.id === edge.id);
     
     if (existingIndex >= 0) {
-      // Update existing edge
-      this.data.edges[existingIndex] = {
-        ...this.data.edges[existingIndex],
+      currentData.edges[existingIndex] = {
+        ...currentData.edges[existingIndex],
         ...edge
       };
     } else {
-      // Add new edge
-      this.data.edges.push(edge);
+      currentData.edges.push(edge);
     }
     
-    this.notifyGraphDataListeners();
+    await graphWorkerProxy.setGraphData(currentData);
   }
 
   // Remove a node from the graph
-  public removeNode(nodeId: string): void {
+  public async removeNode(nodeId: string): Promise<void> {
     // Get numeric ID before removing the node
     const numericId = this.nodeIdMap.get(nodeId);
     
-    // Remove node
-    this.data.nodes = this.data.nodes.filter(node => node.id !== nodeId);
-    
-    // Remove all edges connected to this node
-    this.data.edges = this.data.edges.filter(
-      edge => edge.source !== nodeId && edge.target !== nodeId
-    );
+    await graphWorkerProxy.removeNode(nodeId);
     
     // Remove from ID maps
     if (numericId !== undefined) {
       this.nodeIdMap.delete(nodeId);
       this.reverseNodeIdMap.delete(numericId);
     }
-    
-    this.notifyGraphDataListeners();
   }
 
   // Remove an edge from the graph
-  public removeEdge(edgeId: string): void {
-    this.data.edges = this.data.edges.filter(edge => edge.id !== edgeId);
-    this.notifyGraphDataListeners();
+  public async removeEdge(edgeId: string): Promise<void> {
+    // Worker doesn't have removeEdge method, so we get current data, remove edge, and set it back
+    const currentData = await graphWorkerProxy.getGraphData();
+    currentData.edges = currentData.edges.filter(edge => edge.id !== edgeId);
+    await graphWorkerProxy.setGraphData(currentData);
   }
 
   // Update node positions from binary data
-  public updateNodePositions(positionData: ArrayBuffer): void {
+  public async updateNodePositions(positionData: ArrayBuffer): Promise<void> {
     if (!positionData || positionData.byteLength === 0) {
       return;
     }
@@ -381,75 +348,11 @@ class GraphDataManager {
         }
       }
       
-      // Parse binary data using our standardized binary protocol parser
-      const nodeUpdates = parseBinaryNodeData(positionData);
-      
-      if (nodeUpdates.length === 0) {
-        logger.warn(`No valid node updates parsed from ${positionData.byteLength} bytes of binary data`);
-        return;
-      }
+      // Delegate to worker proxy for processing
+      await graphWorkerProxy.processBinaryData(positionData);
       
       if (debugState.isDataDebugEnabled()) {
-        logger.debug(`Processing ${nodeUpdates.length} node updates from binary data`);
-      }
-
-      // Create Float32Array for position updates (4 values per node: id, x, y, z)
-      // This format is expected by the GraphManager component
-      const positionArray = new Float32Array(nodeUpdates.length * 4);
-      let updatedNodesCount = 0;
-      let nodesWereUpdated = false;
-      
-      // Process each node update
-      nodeUpdates.forEach((nodeUpdate, index) => {
-        const { nodeId, position, velocity } = nodeUpdate;
-        
-        // Convert numeric ID back to string ID using the reverse map
-        const stringNodeId = this.reverseNodeIdMap.get(nodeId);
-        
-        if (stringNodeId) {
-          // Find and update the node
-          const nodeIndex = this.data.nodes.findIndex(node => node.id === stringNodeId);
-          if (nodeIndex >= 0) {
-            const oldNode = this.data.nodes[nodeIndex];
-            // Create a new node object for the update
-            this.data.nodes[nodeIndex] = {
-              ...oldNode,
-              position: { ...position }, // Ensure new object for position
-              metadata: {
-                ...oldNode.metadata,
-                velocity: { ...velocity } // Ensure new object for velocity
-              }
-            };
-            nodesWereUpdated = true;
-            updatedNodesCount++;
-          } else if (debugState.isDataDebugEnabled()) {
-            logger.debug(`Node with ID ${stringNodeId} (numeric: ${nodeId}) not found in data`);
-          }
-        } else if (debugState.isDataDebugEnabled()) {
-          logger.debug(`No string ID mapping found for numeric ID ${nodeId}`);
-        }
-        
-        // Update the position array for rendering (4 values per node: id, x, y, z)
-        const arrayOffset = index * 4;
-        positionArray[arrayOffset] = nodeId;
-        positionArray[arrayOffset + 1] = position.x;
-        positionArray[arrayOffset + 2] = position.y;
-        positionArray[arrayOffset + 3] = position.z;
-      });
-
-      // Notify position update listeners with the Float32Array
-      this.notifyPositionUpdateListeners(positionArray);
-
-      if (nodesWereUpdated) {
-        // Crucial: Create a new array reference for this.data.nodes
-        // so that React components subscribing to graphData will detect a change.
-        this.data.nodes = [...this.data.nodes];
-        // Also notify graph data listeners so components using graphData state get updated positions
-        this.notifyGraphDataListeners();
-      }
-
-      if (debugState.isDataDebugEnabled()) {
-        logger.debug(`Updated positions for ${updatedNodesCount} out of ${nodeUpdates.length} nodes (${this.data.nodes.length} total nodes in graph). Graph data listeners ${nodesWereUpdated ? 'notified' : 'not notified'}.`);
+        logger.debug(`Processed binary data through worker`);
       }
     } catch (error) {
       logger.error('Error processing binary position data:', createErrorMetadata(error));
@@ -475,35 +378,38 @@ class GraphDataManager {
   }
 
   // Send node positions to the server via WebSocket
-  public sendNodePositions(): void {
+  public async sendNodePositions(): Promise<void> {
     if (!this.binaryUpdatesEnabled || !this.webSocketService) {
       return;
     }
 
     try {
+      // Get current graph data from worker
+      const currentData = await graphWorkerProxy.getGraphData();
+      
       // Create binary node data array in the format expected by the server
-      const binaryNodes: BinaryNodeData[] = this.data.nodes
+      const binaryNodes: BinaryNodeData[] = currentData.nodes
         .filter(node => node && node.id) // Filter out invalid nodes
         .map(node => {
           // Ensure node has a valid position
-          this.ensureNodeHasValidPosition(node);
+          const validatedNode = this.ensureNodeHasValidPosition(node);
           
           // Get numeric ID from map or create a new one
-          const numericId = this.nodeIdMap.get(node.id) || 0;
+          const numericId = this.nodeIdMap.get(validatedNode.id) || 0;
           if (numericId === 0) {
-            logger.warn(`No numeric ID found for node ${node.id}, skipping`);
+            logger.warn(`No numeric ID found for node ${validatedNode.id}, skipping`);
             return null;
           }
           
           // Get velocity from metadata or default to zero
-          const velocity: Vec3 = (node.metadata?.velocity as Vec3) || { x: 0, y: 0, z: 0 };
+          const velocity: Vec3 = (validatedNode.metadata?.velocity as Vec3) || { x: 0, y: 0, z: 0 };
           
           return {
             nodeId: numericId,
             position: {
-              x: node.position.x || 0,
-              y: node.position.y || 0,
-              z: node.position.z || 0
+              x: validatedNode.position.x || 0,
+              y: validatedNode.position.y || 0,
+              z: validatedNode.position.z || 0
             },
             velocity
           };
@@ -528,8 +434,12 @@ class GraphDataManager {
   public onGraphDataChange(listener: GraphDataChangeListener): () => void {
     this.graphDataListeners.push(listener);
     
-    // Call immediately with current data
-    listener(this.data);
+    // Call immediately with current data from worker
+    graphWorkerProxy.getGraphData().then(data => {
+      listener(data);
+    }).catch(error => {
+      logger.error('Error getting initial graph data for listener:', createErrorMetadata(error));
+    });
     
     // Return unsubscribe function
     return () => {
@@ -548,14 +458,19 @@ class GraphDataManager {
   }
 
   // Notify all graph data listeners
-  private notifyGraphDataListeners(): void {
-    this.graphDataListeners.forEach(listener => {
-      try {
-        listener(this.data);
-      } catch (error) {
-        logger.error('Error in graph data listener:', createErrorMetadata(error));
-      }
-    });
+  private async notifyGraphDataListeners(): Promise<void> {
+    try {
+      const currentData = await graphWorkerProxy.getGraphData();
+      this.graphDataListeners.forEach(listener => {
+        try {
+          listener(currentData);
+        } catch (error) {
+          logger.error('Error in graph data listener:', createErrorMetadata(error));
+        }
+      });
+    } catch (error) {
+      logger.error('Error getting graph data for listeners:', createErrorMetadata(error));
+    }
   }
 
   // Notify all position update listeners

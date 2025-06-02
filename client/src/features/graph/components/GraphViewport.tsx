@@ -53,7 +53,7 @@ const GraphViewport: React.FC = () => {
         logger.debug('Fetching initial graph data...');
         await graphDataManager.fetchInitialData();
         logger.debug('Graph data fetched.');
-        const data = graphDataManager.getGraphData();
+        const data = await graphDataManager.getGraphData();
 
         if (!data || !data.nodes || data.nodes.length === 0) {
           logger.warn('No graph data or empty nodes received.');

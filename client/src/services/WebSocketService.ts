@@ -1,7 +1,7 @@
 import { createLogger, createErrorMetadata } from '../utils/logger';
 import { debugState } from '../utils/debugState';
-import { maybeDecompress, isZlibCompressed } from '../utils/binaryUtils';
 import { useSettingsStore } from '../store/settingsStore'; // Keep alias here for now, fix later if needed
+import { graphDataManager } from '../features/graph/managers/graphDataManager';
 
 const logger = createLogger('WebSocketService');
 
@@ -249,20 +249,18 @@ class WebSocketService {
     }
   }
 
-  // Make the function async to handle potential promise from decompression
+  // Make the function async to handle graphDataManager processing
   private async processBinaryData(data: ArrayBuffer): Promise<void> {
     try {
-      // Check if data needs decompression
-      if (isZlibCompressed(data)) {
-        if (debugState.isDataDebugEnabled()) {
-          logger.debug('Decompressing binary data');
-        }
-        // Await the result of decompression if it's a promise
-        data = await maybeDecompress(data);
-      }
-
       if (debugState.isDataDebugEnabled()) {
         logger.debug(`Processing binary data: ${data.byteLength} bytes`);
+      }
+
+      // Pass binary data to graphDataManager for processing in the worker
+      try {
+        await graphDataManager.updateNodePositions(data);
+      } catch (error) {
+        logger.error('Error processing binary data in graphDataManager:', createErrorMetadata(error));
       }
 
       // Notify binary message handlers

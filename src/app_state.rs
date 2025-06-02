@@ -1,30 +1,28 @@
 use std::sync::{Arc, atomic::{AtomicUsize, Ordering}};
-use tokio::sync::RwLock;
+use actix::prelude::*;
 use actix_web::web;
 use log::info;
 
-use crate::handlers::socket_flow_handler::ClientManager;
+use crate::actors::{GraphServiceActor, SettingsActor, MetadataActor, ClientManagerActor, GPUComputeActor, ProtectedSettingsActor};
 use crate::config::AppFullSettings; // Renamed for clarity, ClientFacingSettings removed
 use tokio::time::Duration;
 use crate::config::feature_access::FeatureAccess;
 use crate::models::metadata::MetadataStore;
-use crate::models::protected_settings::{ProtectedSettings, ApiKeys, NostrUser};
-use crate::services::graph_service::GraphService;
+use crate::models::protected_settings::{ApiKeys, NostrUser};
 use crate::services::github::{GitHubClient, ContentAPI};
 use crate::services::perplexity_service::PerplexityService;
 use crate::services::speech_service::SpeechService;
 use crate::services::ragflow_service::RAGFlowService;
 use crate::services::nostr_service::NostrService;
-use crate::utils::gpu_compute::GPUCompute;
-use once_cell::sync::Lazy;
 
 #[derive(Clone)]
 pub struct AppState {
-    pub graph_service: GraphService,
-    pub gpu_compute: Option<Arc<RwLock<GPUCompute>>>,
-    pub settings: Arc<RwLock<AppFullSettings>>, // Changed to AppFullSettings
-    pub protected_settings: Arc<RwLock<ProtectedSettings>>,
-    pub metadata: Arc<RwLock<MetadataStore>>,
+    pub graph_service_addr: Addr<GraphServiceActor>,
+    pub gpu_compute_addr: Option<Addr<GPUComputeActor>>, // Changed to actor address
+    pub settings_addr: Addr<SettingsActor>,
+    pub protected_settings_addr: Addr<ProtectedSettingsActor>,
+    pub metadata_addr: Addr<MetadataActor>,
+    pub client_manager_addr: Addr<ClientManagerActor>,
     pub github_client: Arc<GitHubClient>,
     pub content_api: Arc<ContentAPI>,
     pub perplexity_service: Option<Arc<PerplexityService>>,
@@ -34,37 +32,52 @@ pub struct AppState {
     pub feature_access: web::Data<FeatureAccess>,
     pub ragflow_session_id: String,
     pub active_connections: Arc<AtomicUsize>,
-    // pub client_manager: Option<Arc<ClientManager>>, // Removed, use ensure_client_manager
 }
-
-static APP_CLIENT_MANAGER: Lazy<Arc<ClientManager>> =
-    Lazy::new(|| Arc::new(ClientManager::new()));
 
 impl AppState {
     pub async fn new(
-        settings: Arc<RwLock<AppFullSettings>>, // Changed to AppFullSettings
+        settings: AppFullSettings,
         github_client: Arc<GitHubClient>,
         content_api: Arc<ContentAPI>,
         perplexity_service: Option<Arc<PerplexityService>>,
         ragflow_service: Option<Arc<RAGFlowService>>,
         speech_service: Option<Arc<SpeechService>>,
-        gpu_compute: Option<Arc<RwLock<GPUCompute>>>,
         ragflow_session_id: String,
     ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
-        info!("[AppState::new] Initializing GraphService");
+        info!("[AppState::new] Initializing actor system");
         tokio::time::sleep(Duration::from_millis(50)).await;
         
-        // GraphService::new might need adjustment if it expects client-facing Settings
-        // For now, passing AppFullSettings. This will likely require GraphService changes.
-        let graph_service = GraphService::new(settings.clone(), gpu_compute.clone(), APP_CLIENT_MANAGER.clone()).await;
-        info!("[AppState::new] GraphService initialization complete");
+        // Start actors
+        info!("[AppState::new] Starting ClientManagerActor");
+        let client_manager_addr = ClientManagerActor::new().start();
+        
+        info!("[AppState::new] Starting SettingsActor");
+        let settings_addr = SettingsActor::new(settings).start();
+        
+        info!("[AppState::new] Starting MetadataActor");
+        let metadata_addr = MetadataActor::new(MetadataStore::new()).start();
+        
+        info!("[AppState::new] Starting GPUComputeActor");
+        let gpu_compute_addr = Some(GPUComputeActor::new().start());
+        
+        info!("[AppState::new] Starting GraphServiceActor");
+        let graph_service_addr = GraphServiceActor::new(
+            client_manager_addr.clone(),
+            gpu_compute_addr.clone()
+        ).start();
+        
+        info!("[AppState::new] Starting ProtectedSettingsActor");
+        let protected_settings_addr = ProtectedSettingsActor::new(ProtectedSettings::default()).start();
+        
+        info!("[AppState::new] Actor system initialization complete");
         
         Ok(Self {
-            graph_service,
-            gpu_compute,
-            settings, // Storing AppFullSettings
-            protected_settings: Arc::new(RwLock::new(ProtectedSettings::default())),
-            metadata: Arc::new(RwLock::new(MetadataStore::new())),
+            graph_service_addr,
+            gpu_compute_addr,
+            settings_addr,
+            protected_settings_addr,
+            metadata_addr,
+            client_manager_addr,
             github_client,
             content_api,
             perplexity_service,
@@ -74,7 +87,6 @@ impl AppState {
             feature_access: web::Data::new(FeatureAccess::from_env()),
             ragflow_session_id,
             active_connections: Arc::new(AtomicUsize::new(0)),
-            // client_manager: Some(APP_CLIENT_MANAGER.clone()), // Removed
         })
     }
 
@@ -87,8 +99,10 @@ impl AppState {
     }
 
     pub async fn get_api_keys(&self, pubkey: &str) -> ApiKeys {
-        let protected_settings = self.protected_settings.read().await;
-        protected_settings.get_api_keys(pubkey)
+        use crate::actors::protected_settings_actor::GetApiKeys;
+        self.protected_settings_addr.send(GetApiKeys {
+            pubkey: pubkey.to_string(),
+        }).await.unwrap_or_else(|_| ApiKeys::default())
     }
 
     pub async fn get_nostr_user(&self, pubkey: &str) -> Option<NostrUser> {
@@ -137,7 +151,19 @@ impl AppState {
         self.feature_access.get_available_features(pubkey)
     }
     
-    pub async fn ensure_client_manager(&self) -> Arc<ClientManager> {
-        APP_CLIENT_MANAGER.clone()
+    pub fn get_client_manager_addr(&self) -> &Addr<ClientManagerActor> {
+        &self.client_manager_addr
+    }
+
+    pub fn get_graph_service_addr(&self) -> &Addr<GraphServiceActor> {
+        &self.graph_service_addr
+    }
+
+    pub fn get_settings_addr(&self) -> &Addr<SettingsActor> {
+        &self.settings_addr
+    }
+
+    pub fn get_metadata_addr(&self) -> &Addr<MetadataActor> {
+        &self.metadata_addr
     }
 }

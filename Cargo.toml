@@ -7,7 +7,7 @@ authors = ["Your Name <your.email@example.com>"]
 
 [dependencies]
 # Web framework and WebSocket
-actix-web = { version = "=4.5.1", features = ["compress-gzip", "macros"] }
+actix-web = { version = "=4.5.1", features = ["compress-gzip", "compress-zstd", "macros"] }
 actix-cors = "=0.7.0"
 actix-files = "=0.6.5"
 actix = "=0.13.1"
@@ -55,6 +55,7 @@ nostr-sdk = "0.26"
 # Utilities
 uuid = { version = "1.12", features = ["v4", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }
+static_assertions = "1.1"
 base64 = "0.22"
 rand = "0.8"
 regex = "1.11"

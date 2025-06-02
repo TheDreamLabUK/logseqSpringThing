@@ -84,7 +84,7 @@ const AppInitializer: React.FC<AppInitializerProps> = ({ onInitialized }) => {
           } catch (fetchError) {
             logger.error('Failed to fetch initial graph data:', createErrorMetadata(fetchError));
             // Initialize with empty data as fallback
-            graphDataManager.setGraphData({ nodes: [], edges: [] });
+            await graphDataManager.setGraphData({ nodes: [], edges: [] });
           }
 
           if (debugState.isEnabled()) {
@@ -119,10 +119,13 @@ const AppInitializer: React.FC<AppInitializerProps> = ({ onInitialized }) => {
             }
 
             // Process binary position update through graph data manager
-            graphDataManager.updateNodePositions(data);
-            if (debugState.isDataDebugEnabled()) {
-              logger.debug(`Processed binary position update: ${data.byteLength} bytes`);
-            }
+            graphDataManager.updateNodePositions(data).then(() => {
+              if (debugState.isDataDebugEnabled()) {
+                logger.debug(`Processed binary position update: ${data.byteLength} bytes`);
+              }
+            }).catch(error => {
+              logger.error('Failed to process binary position update via worker:', createErrorMetadata(error));
+            });
           } catch (error) {
             logger.error('Failed to process binary position update:', createErrorMetadata(error));
 

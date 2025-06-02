@@ -305,8 +305,7 @@ async fn get_api_keys(
     state: web::Data<AppState>,
     pubkey: web::Path<String>,
 ) -> Result<HttpResponse, Error> {
-    let protected_settings = state.protected_settings.read().await;
-    let api_keys = protected_settings.get_api_keys(&pubkey);
+    let api_keys = state.get_api_keys(&pubkey).await;
     
     Ok(HttpResponse::Ok().json(api_keys))
 }
