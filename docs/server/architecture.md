@@ -12,11 +12,11 @@ The `AppState` struct holds references to all major services and shared data. It
 pub struct AppState {
     pub settings: Arc<RwLock<AppFullSettings>>,
     pub protected_settings: Arc<RwLock<ProtectedSettings>>,
-    pub metadata_manager: Arc<RwLock<MetadataStore>>, // Renamed from metadata
+    pub metadata: Arc<RwLock<MetadataStore>>,
     pub graph_service: GraphService,
-    pub github_service: Arc<GitHubClient>, // Renamed from github_client
-    pub file_service: Arc<ContentAPI>, // Renamed from content_api, now handles file content
-    pub gpu_compute_service: Option<Arc<RwLock<GPUCompute>>>, // Renamed from gpu_compute
+    pub github_client: Arc<GitHubClient>,
+    pub content_api: Arc<ContentAPI>,
+    pub gpu_compute: Option<Arc<RwLock<GPUCompute>>>,
     pub perplexity_service: Option<Arc<PerplexityService>>,
     pub ragflow_service: Option<Arc<RAGFlowService>>,
     pub speech_service: Option<Arc<SpeechService>>,
@@ -24,6 +24,21 @@ pub struct AppState {
     pub feature_access: web::Data<FeatureAccess>,
     pub ragflow_session_id: String,
     pub active_connections: Arc<AtomicUsize>,
+}
+```
+
+**ClientManager Usage:**
+The `ClientManager` (from [`socket_flow_handler.rs`](../../src/handlers/socket_flow_handler.rs)) is a shared static instance, initialized lazily using `once_cell::sync::Lazy`. It is accessed within `AppState` methods or by services via `AppState::ensure_client_manager()`. This method returns a clone of the `Arc<ClientManager>`.
+
+```rust
+// In app_state.rs
+static APP_CLIENT_MANAGER: Lazy<Arc<ClientManager>> =
+    Lazy::new(|| Arc::new(ClientManager::new()));
+
+impl AppState {
+    pub async fn ensure_client_manager(&self) -> Arc<ClientManager> {
+        APP_CLIENT_MANAGER.clone()
+    }
 }
 ```
 
@@ -36,12 +51,12 @@ The `AppState::new` constructor is responsible for setting up all services and l
 impl AppState {
     pub async fn new(
         settings: Arc<RwLock<AppFullSettings>>,
-        github_service: Arc<GitHubClient>,
-        file_service: Arc<ContentAPI>,
+        github_client: Arc<GitHubClient>,
+        content_api: Arc<ContentAPI>,
         perplexity_service: Option<Arc<PerplexityService>>,
         ragflow_service: Option<Arc<RAGFlowService>>,
         speech_service: Option<Arc<SpeechService>>,
-        gpu_compute_service: Option<Arc<RwLock<GPUCompute>>>,
+        gpu_compute: Option<Arc<RwLock<GPUCompute>>>,
         ragflow_session_id: String,
     ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>>
 }
@@ -49,13 +64,13 @@ impl AppState {
 
 ### Service Setup
 -   **Settings Loading**: `AppFullSettings` are loaded from `settings.yaml` and environment variables.
--   **GitHub Service**: Initialized for repository content access.
--   **File Service**: Initialized for local file system operations.
--   **Metadata Manager**: Loaded or created, responsible for managing file metadata and relationships.
--   **Graph Service**: Built from initial metadata, responsible for graph data and physics simulation.
--   **GPU Compute Service**: Optional, initialized if CUDA is available for accelerated physics calculations.
+-   **GitHub Client**: Initialized for repository content access.
+-   **Content API**: Initialized for local file system operations and content fetching.
+-   **Metadata Store**: Loaded or created, responsible for managing file metadata and relationships.
+-   **Graph Service**: Built from initial metadata, responsible for graph data and physics simulation. It uses the shared `APP_CLIENT_MANAGER`.
+-   **GPU Compute**: Optional, initialized if CUDA is available for accelerated physics calculations.
 -   **AI Services**: Perplexity, RAGFlow, and Speech services are optionally initialized based on configuration.
--   **Nostr Service**: Initialized for authentication and user management.
+-   **Nostr Service**: Initialized for authentication and user management (can be set later).
 -   **Feature Access**: Configured to manage user permissions and feature flags.
 
 ## State Management
@@ -64,7 +79,7 @@ impl AppState {
 `AppState` and its contained mutable data are wrapped in `Arc<RwLock<T>>` to ensure safe concurrent access across multiple threads and asynchronous tasks.
 
 ```rust
-pub type SafeAppState = Arc<AppState>;
+pub type SafeAppState = Arc<AppState>; // This type alias might not be explicitly defined but represents Arc<AppState>
 pub type SafeSettings = Arc<RwLock<AppFullSettings>>;
 pub type SafeProtectedSettings = Arc<RwLock<ProtectedSettings>>;
 pub type SafeMetadataStore = Arc<RwLock<MetadataStore>>;
@@ -74,86 +89,49 @@ pub type SafeMetadataStore = Arc<RwLock<MetadataStore>>;
 Services and handlers access `AppState` fields using `read().await` for shared access and `write().await` for exclusive mutable access.
 
 ```rust
-impl AppState {
-    pub async fn get_metadata_store(&self) -> RwLockReadGuard<MetadataStore>
-    pub async fn update_metadata_store(&self, updates: MetadataUpdates)
-    pub async fn get_settings(&self) -> RwLockReadGuard<AppFullSettings>
-    pub async fn update_settings(&self, updates: AppFullSettings)
-}
+// Example access patterns (actual methods might differ)
+// async fn example_read_settings(app_state: &AppState) -> AppFullSettings {
+//     app_state.settings.read().await.clone()
+// }
+// async fn example_write_metadata(app_state: &AppState, new_metadata: MetadataStore) {
+//     let mut metadata_guard = app_state.metadata.write().await;
+//     *metadata_guard = new_metadata;
+// }
 ```
 
 ## Service Integration
 
 ### Graph Service
-Manages the in-memory graph data, physics simulation, and layout calculations.
-```rust
-impl AppState {
-    pub async fn update_graph_data(&self, data: GraphData)
-    pub async fn get_graph_data(&self) -> GraphData
-    pub async fn calculate_graph_layout(&self, params: &SimulationParams)
-}
-```
+Manages the in-memory graph data, physics simulation, and layout calculations. Interacts with `ClientManager` for broadcasting updates.
 
-### File Service
-Handles reading and writing of files, primarily for markdown content and user settings.
-```rust
-impl AppState {
-    pub async fn read_file(&self, path: &str) -> Result<String>
-    pub async fn write_file(&self, path: &str, content: &str)
-}
-```
+### Content API (File Service)
+Handles reading and writing of files, primarily for markdown content and user settings. May interact with `GitHubClient`.
 
 ### AI Services
-Provides interfaces for interacting with various AI models (Perplexity, RAGFlow, OpenAI TTS).
-```rust
-impl AppState {
-    pub async fn chat_with_perplexity(&self, query: &str) -> Result<String>
-    pub async fn chat_with_ragflow(&self, query: &str) -> Result<String>
-    pub async fn text_to_speech(&self, text: &str) -> Result<Vec<u8>>
-}
-```
+Provides interfaces for interacting with various AI models (Perplexity, RAGFlow, OpenAI TTS via `SpeechService`).
 
 ## Error Handling
 
 ### State Errors
 Custom error types are defined for various initialization and runtime issues.
 ```rust
-pub enum StateError {
-    Initialization(String),
-    ServiceUnavailable(String),
-    InvalidState(String),
-    // ... other specific errors
-}
+// Example (actual error types might be in specific service modules)
+// pub enum AppStateError {
+//     Initialization(String),
+//     ServiceUnavailable(String),
+// }
 ```
 
 ### Recovery
-Mechanisms for graceful degradation or recovery from non-fatal errors.
-```rust
-impl AppState {
-    pub async fn recover_from_error(&self, error: StateError)
-    pub async fn validate_state(&self) -> Result<(), StateError>
-}
-```
+Mechanisms for graceful degradation or recovery from non-fatal errors are typically handled within individual services.
 
 ## Implementation Details
 
 ### Cleanup
-The `Drop` trait is implemented for `AppState` to ensure proper resource cleanup upon application shutdown.
-```rust
-impl Drop for AppState {
-    fn drop(&mut self) {
-        // Cleanup resources like GPU memory, file handles, etc.
-    }
-}
-```
+The `Drop` trait is not explicitly implemented for `AppState` in the provided code, but `Arc` handles reference counting for automatic cleanup of shared resources when they are no longer in use. Individual services might implement `Drop` if they manage unmanaged resources.
 
 ### State Validation
-Settings and other critical state components are validated against predefined schemas or rules to ensure data integrity.
-```rust
-impl AppState {
-    pub fn validate(&self) -> Result<(), ValidationError>
-}
-```
+Settings and other critical state components are validated during loading (e.g., `AppFullSettings::load`) or on modification to ensure data integrity.
 
 ## Graph System
 
@@ -164,42 +142,41 @@ The graph system manages the core data structures and algorithms for the knowled
 ```mermaid
 flowchart TB
     subgraph Input
-        MarkdownFiles[Markdown Files]
-        UserUpdates[User Updates]
-        GitHubContent[GitHub Content]
+        MarkdownFiles[Markdown Files via Content API]
+        UserUpdates[User Updates via API/WebSocket]
+        GitHubContent[GitHub Content via GitHubClient & ContentAPI]
     end
 
     subgraph Processing
-        FileService[File Service]
-        MetadataManager[Metadata Manager]
+        ContentAPI[Content API (File Service)]
+        MetadataStore[Metadata Store]
         GraphService[Graph Service]
-        GPUComputeService[GPU Compute Service]
+        GPUCompute[GPU Compute]
     end
 
     subgraph Output
-        GraphData[Graph Data (In-Memory)]
-        ClientUpdates[Client Updates (WebSocket)]
-        PersistedMetadata[Persisted Metadata]
+        GraphData[Graph Data (In-Memory in GraphService)]
+        ClientUpdates[Client Updates (via ClientManager & WebSocket)]
+        PersistedMetadata[Persisted Metadata (via MetadataStore)]
     end
 
-    MarkdownFiles --> FileService
-    GitHubContent --> FileService
-    FileService --> MetadataManager
-    UserUpdates --> MetadataManager
-    MetadataManager --> GraphService
-    GraphService --> GPUComputeService
-    GPUComputeService --> GraphService
-    GraphService --> GraphData
-    GraphData --> ClientUpdates
-    MetadataManager --> PersistedMetadata
+    MarkdownFiles --> ContentAPI
+    GitHubContent --> ContentAPI
+    ContentAPI --> MetadataStore
+    UserUpdates --> MetadataStore
+    MetadataStore --> GraphService
+    GraphService --> GPUCompute
+    GPUCompute --> GraphService
+    GraphService --> ClientUpdates
+    MetadataStore --> PersistedMetadata
 ```
 
 ### Optimization Strategies
 
-1.  **Caching**: In-memory caching of graph structure, computed layout positions, and frequently accessed metadata.
-2.  **Batch Processing**: Grouped node updates and batched layout calculations for efficiency.
-3.  **Incremental Updates**: Partial graph updates and delta-based synchronization to minimize data transfer.
-4.  **GPU Acceleration**: Offloading computationally intensive physics simulations to the GPU using CUDA.
+1.  **Caching**: In-memory caching of graph structure, computed layout positions, and frequently accessed metadata within `GraphService` and `MetadataStore`.
+2.  **Batch Processing**: Grouped node updates and batched layout calculations for efficiency in `GraphService`.
+3.  **Incremental Updates**: Partial graph updates and delta-based synchronization to minimize data transfer via WebSockets.
+4.  **GPU Acceleration**: Offloading computationally intensive physics simulations to the GPU using CUDA, managed by `GPUCompute`.
 
 ## Service Layer
 
@@ -207,72 +184,52 @@ The service layer provides high-level operations and business logic, abstracting
 
 ### Core Services
 
-1.  **Graph Service**: Manages graph construction, layout calculations, and data validation.
-2.  **File Service**: Handles content management, file system operations, and integration with external sources like GitHub.
+1.  **Graph Service**: Manages graph construction, layout calculations, data validation, and broadcasting updates via `ClientManager`.
+2.  **Content API (File Service)**: Handles content management, file system operations, and integration with external sources like GitHub.
 3.  **Nostr Service**: Manages Nostr authentication, user sessions, and API key storage.
-4.  **AI Service**: Provides a unified interface for various AI capabilities (chat, TTS, RAG).
-5.  **GPU Compute Service**: Manages GPU resources and executes CUDA kernels for physics simulation.
+4.  **AI Services (Perplexity, RAGFlow, Speech)**: Provide interfaces for various AI capabilities. `SpeechService` handles TTS and STT, potentially interacting with other AI services.
+5.  **GPU Compute**: Manages GPU resources and executes CUDA kernels for physics simulation.
 
-### Service Communication
+### Service Communication Sequence Diagram - Speech Service
+
+The sequence diagram for speech services needs correction. Speech is handled via its own WebSocket endpoint (`/speech`), not through the main `SocketFlowHandler` for graph updates.
 
 ```mermaid
 sequenceDiagram
     participant Client
-    participant SocketFlowHandler
-    participant GraphService
-    participant GPUComputeService
-    participant FileService
-    participant AIService
-    participant NostrService
-    participant GitHubService
-    
-    Client->>SocketFlowHandler: Connect
-    SocketFlowHandler->>GraphService: Request Initial Data
-    GraphService->>GPUComputeService: Calculate Layout
-    GPUComputeService-->>GraphService: Layout Complete
-    GraphService-->>SocketFlowHandler: Send Graph Data
-    SocketFlowHandler-->>Client: Binary Update
+    participant SpeechSocketHandler as "/speech WebSocket"
+    participant SpeechService
+    participant STTProvider as "STT Provider (e.g., OpenAI)"
+    participant RAGFlowService
+    participant TTSProvider as "TTS Provider (e.g., OpenAI)"
 
-    loop Real-time Updates
-        Client->>SocketFlowHandler: Position Update
-        SocketFlowHandler->>GraphService: Process Update
-        GraphService->>GPUComputeService: Recalculate
-        GPUComputeService-->>GraphService: New Positions
-        GraphService-->>SocketFlowHandler: Broadcast Update
-        SocketFlowHandler-->>Client: Binary Update
+    Client->>SpeechSocketHandler: Connect to /speech
+    SpeechSocketHandler-->>Client: Connection Established
+
+    Client->>SpeechSocketHandler: Send Audio Stream (Chunks)
+    SpeechSocketHandler->>SpeechService: Forward Audio Chunks
+
+    SpeechService->>STTProvider: Process Audio for STT
+    STTProvider-->>SpeechService: Transcription Result
+
+    opt Transcription successful & RAGFlow configured
+        SpeechService->>RAGFlowService: Send Transcription for Query
+        RAGFlowService-->>SpeechService: RAGFlow Response (Text)
+        
+        opt RAGFlow response & TTS configured
+            SpeechService->>TTSProvider: Convert RAGFlow Text to Speech
+            TTSProvider-->>SpeechService: TTS Audio Data (Stream/Buffer)
+            SpeechService->>SpeechSocketHandler: Send TTS Audio to Client
+            SpeechSocketHandler-->>Client: TTS Audio Stream/Data
+        end
+    else
+        opt Transcription successful (no RAGFlow or direct TTS)
+             SpeechService->>TTSProvider: Convert Original Transcription to Speech (if configured)
+             TTSProvider-->>SpeechService: TTS Audio Data
+             SpeechService->>SpeechSocketHandler: Send TTS Audio to Client
+             SpeechSocketHandler-->>Client: TTS Audio Stream/Data
+        end
     end
-
-    Client->>AIService: RAGFlow Query
-    AIService-->>Client: RAGFlow Response
-
-    Client->>AIService: TTS Request
-    AIService-->>Client: TTS Audio Stream
-
-    Client->>SocketFlowHandler: Start Audio Stream
-    SocketFlowHandler->>SpeechService: Start Audio Stream Command
-    loop Audio Chunks
-        Client->>SocketFlowHandler: Audio Chunk
-        SocketFlowHandler->>SpeechService: Process Audio Chunk Command
-    end
-    Client->>SocketFlowHandler: End Audio Stream
-    SocketFlowHandler->>SpeechService: End Audio Stream Command
-    SpeechService->>WhisperSttService: Transcribe Audio
-    WhisperSttService-->>SpeechService: Transcription Result
-    SpeechService->>AIService: Send Transcription to RAGFlow
-    AIService-->>SpeechService: RAGFlow Response
-    SpeechService->>AIService: TTS Request (from RAGFlow Response)
-    AIService-->>SpeechService: TTS Audio Stream
-    SpeechService-->>SocketFlowHandler: Send TTS Audio
-    SocketFlowHandler-->>Client: TTS Audio Stream
-
-
-    Client->>NostrService: Authenticate
-    NostrService-->>Client: Auth Token
-
-    Client->>FileService: Read File
-    FileService->>GitHubService: Fetch from GitHub (if configured)
-    GitHubService-->>FileService: File Content
-    FileService-->>Client: File Content
 ```
 
 ## Next Steps

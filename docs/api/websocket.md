@@ -93,19 +93,6 @@ The bidirectional synchronization protocol ensures consistent graph state:
 4. All clients receive the same set of position updates
 5. Late-joining clients receive the complete current graph state
 
-### Settings Synchronization
-
-```json
-{
-  "type": "settings_update",
-  "category": "visualisation",
-  "settings": {
-    "edges": {
-      "scaleFactor": 2.0
-    }
-  }
-}
-```
 
 ## Optimization Features
 
@@ -152,8 +139,6 @@ The bidirectional synchronization protocol ensures consistent graph state:
 
 ## Rate Limiting
 
-- 60 JSON messages per minute per connection. Note: This rate limit is conceptual or may be enforced at a higher network layer (e.g., Nginx proxy) and is not explicitly implemented within the Rust WebSocket handler (`socket_flow_handler.rs`).
-- Binary position updates don't count towards the rate limit.
 - Server-side throttling applies for high-frequency position updates.
 
 ## Diagnostics
@@ -168,15 +153,3 @@ The bidirectional synchronization protocol ensures consistent graph state:
 2. Binary Protocol Issues
    - Message Size: Verify 26 bytes per node
    - Data Integrity: Validate Vector3 data
-
-### Diagnostic Tools
-
-```typescript
-// Run comprehensive diagnostics
-WebSocketDiagnostics.runDiagnostics();
-
-// Test API connectivity
-WebSocketDiagnostics.testApiConnectivity();
-
-// Validate vector data
-WebSocketDiagnostics.validateVectorData();

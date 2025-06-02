@@ -48,7 +48,7 @@ graph TB
 ## Key Components
 
 ### User Interface Layer
-The UI layer consists of modular components for controlling the application, configuring settings, and interacting with the 3D visualisation. It includes the Modular Control Panel, settings interfaces, and visualisation controls. Key components are `TwoPaneLayout.tsx`, `RightPaneControlPanel.tsx`, `ControlPanel.tsx`, `SettingsSection.tsx`, and `SettingControlComponent.tsx`.
+The UI layer consists of modular components for controlling the application, configuring settings, and interacting with the 3D visualisation. The main settings UI is `client/src/features/settings/components/panels/SettingsPanelRedesign.tsx`, which is hosted within `client/src/app/components/RightPaneControlPanel.tsx`. Key components are `TwoPaneLayout.tsx`, `RightPaneControlPanel.tsx`, `SettingsPanelRedesign.tsx`, `SettingsSection.tsx`, and `SettingControlComponent.tsx`.
 
 ### State Management
 State management is primarily handled by **Zustand**, a lightweight and flexible state management solution. The main state stores are:

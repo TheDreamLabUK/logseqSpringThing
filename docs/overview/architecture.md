@@ -20,7 +20,6 @@ graph TB
         VRControls[VR Control System]
         WSService[WebSocket Service]
         DataManager[Graph Data Manager]
-        LayoutEngine[Layout Engine]
         SpaceMouse[SpaceMouse Controller]
         NostrAuth[Nostr Authentication]
         SettingsStore[Settings Store]
@@ -43,7 +42,6 @@ graph TB
         RagFlowS[RagFlow Service]
         SpeechS[Speech Service]
         NostrS[Nostr Service]
-        WSManager[WebSocket Manager]
         ClientManager[Client Manager]
         GPUCompute[GPU Compute]
         Compression[Compression Utils]
@@ -85,7 +83,6 @@ graph TB
     FileH --> FileS
     GraphH --> GraphS
     WSH --> ClientManager
-    ClientManager --> WSManager
     PerplexityH --> PerplexityS
     RagFlowH --> RagFlowS
     NostrH --> NostrS
@@ -114,7 +111,6 @@ graph TB
 - **VRControls**: Handles VR-specific controls and interactions.
 - **WSService**: Manages the WebSocket connection and message handling.
 - **DataManager**: Manages the graph data structure and updates.
-- **LayoutEngine**: Computes the force-directed layout of the graph.
 - **SpaceMouse**: Handles input from Spacemouse devices.
 - **NostrAuth**: Manages Nostr-based authentication and user sessions.
 - **SettingsStore**: Centralized settings management with persistence and validation.
@@ -138,7 +134,6 @@ graph TB
 - **RagFlowS (RagFlow Service)**: Provides an interface to the RAGFlow service.
 - **SpeechS (Speech Service)**: Manages text-to-speech functionality.
 - **NostrS (Nostr Service)**: Provides Nostr-related services and user management.
-- **WSManager (WebSocket Manager)**: Manages WebSocket connections and message routing.
 
 ### External Services
 

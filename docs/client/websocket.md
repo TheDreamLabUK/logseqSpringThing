@@ -98,23 +98,9 @@ The WebSocket service handles several types of messages:
    - Handler: `onConnectionStatusChange`
    - Used for connection state management
 
-3. **Graph Updates**
-   - Format: JSON
-   - Handler: `onGraphUpdate`
-   - Used for graph structure changes
-
 ## Error Handling
 
-The WebSocket service implements robust error handling:
-
-```typescript
-enum WebSocketErrorType {
-    CONNECTION_ERROR = 'CONNECTION_ERROR',
-    CONNECTION_LOST = 'CONNECTION_LOST',
-    TIMEOUT = 'TIMEOUT',
-    BINARY_FORMAT_ERROR = 'BINARY_FORMAT_ERROR',
-}
-```
+The WebSocket service implements robust error handling, primarily by logging errors and attempting reconnection.
 
 ### Recovery Strategy
 
@@ -135,12 +121,10 @@ WebSocket behavior can be configured through settings:
 
 ```typescript
 interface WebSocketSettings {
-    reconnectAttempts: number;    // Maximum reconnection attempts
-    reconnectDelay: number;       // Base delay between retries (ms)
-    binaryChunkSize: number;      // Size of binary message chunks
-    compressionEnabled: boolean;  // Enable/disable compression
-    compressionThreshold: number; // Minimum size for compression
-    updateRate: number;          // Update rate in Hz
+    reconnectAttempts: number;    // Maximum reconnection attempts (e.g., from system.websocket.reconnectAttempts)
+    reconnectDelay: number;       // Base delay between retries in ms (e.g., from system.websocket.reconnectDelay)
+    // binaryChunkSize, compressionEnabled, compressionThreshold, updateRate are also relevant
+    // but their direct mapping to the store might be via other system.websocket.* paths or defaults.
 }
 ```
 
