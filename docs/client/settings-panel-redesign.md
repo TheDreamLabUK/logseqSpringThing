@@ -77,7 +77,6 @@ SettingsPanelRedesign
 ### File Structure
 - `client/src/features/settings/components/panels/SettingsPanelRedesign.tsx` - Main redesigned component
 - `client/src/app/components/RightPaneControlPanel.tsx` - Updated to use new design
-- `client/src/features/settings/test-redesign.html` - Visual preview of the design
 
 ## Migration Notes
 

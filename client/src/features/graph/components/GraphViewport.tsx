@@ -18,6 +18,7 @@ const GraphViewport: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [graphCenter, setGraphCenter] = useState<[number, number, number]>([0, 0, 0]);
   const [graphSize, setGraphSize] = useState(50); // Default size
+  const [isNodeDragging, setIsNodeDragging] = useState(false); // <--- Add this state
 
   // Settings for camera and visuals
   const settings = useSettingsStore(state => state.settings);
@@ -145,10 +146,12 @@ const GraphViewport: React.FC = () => {
           minDistance={1}
           maxDistance={far / 2} // Max distance related to camera far plane
           target={graphCenter}
+          enabled={!isNodeDragging} // <--- Control OrbitControls here
         />
         
         <Suspense fallback={null}>
-          <GraphManager />
+          {/* Pass setIsNodeDragging to GraphManager */}
+          <GraphManager onNodeDragStateChange={setIsNodeDragging} />
           {/* HologramVisualisation could be added here if it's part of the core graph view */}
           {/* <HologramVisualisation standalone={false} position={[0, 0, 0]} size={20} /> */}
         </Suspense>

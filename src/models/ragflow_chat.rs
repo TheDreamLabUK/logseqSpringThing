@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 pub struct RagflowChatRequest {
     pub question: String,
     pub session_id: Option<String>, // Client might send existing session ID
+    pub stream: Option<bool>,       // Add stream parameter, optional
     // Add any other RAGFlow specific params client might send
 }
 

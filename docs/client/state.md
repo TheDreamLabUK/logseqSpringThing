@@ -48,10 +48,10 @@ flowchart TB
 The Settings Store manages application settings with validation, persistence, and observation.
 
 **Key Features:**
-- Schema-based validation of settings
 - Persistence to local storage and server
 - Observable changes through Zustand's subscription mechanism
 - Default values for all settings
+- Uses `immer` middleware for immutable updates
 
 **Implementation Pattern (Zustand):**
 The `settingsStore` is a Zustand store, which provides a simplified API for state management.
@@ -62,38 +62,56 @@ import { immer } from 'zustand/middleware/immer';
 import { Settings } from '../features/settings/config/settings';
 import { defaultSettings } from '../features/settings/config/defaultSettings';
 import { settingsConfig } from '../features/settings/config/settingsConfig';
-import { validateSettings } from '../features/settings/utils/settingsValidation';
 import { deepMerge } from '../../utils/deepMerge';
 import { logger } from '../../utils/logger';
 
 interface SettingsState {
   settings: Settings;
-  setSetting: (path: string, value: any) => void;
+  set: <T>(path: SettingsPath, value: T) => void;
+  updateSettings: (updater: (draft: Settings) => void) => void;
   // ... other actions
 }
 
 export const useSettingsStore = create<SettingsState>()(
-  immer(
-    persist(
-      (set, get) => ({
-        settings: defaultSettings,
-        setSetting: (path, value) => {
-          set((state) => {
-            // Logic to update nested state immutably
-            // Validation and persistence handled by middleware or internal logic
-          });
-        },
-        // ... other actions like initialize, reset
-      }),
-      {
-        name: 'logseq-xr-settings',
-        getStorage: () => localStorage,
-        // ... other persist options
-      }
-    )
+  persist(
+    (set, get) => ({
+      settings: defaultSettings,
+      set: (path, value) => {
+        set(produce(state => {
+          // Logic to update nested state immutably
+          // This is handled by Immer's produce function
+          let current: any = state.settings;
+          const pathParts = path.split('.');
+          for (let i = 0; i < pathParts.length - 1; i++) {
+            const part = pathParts[i];
+            if (current[part] === undefined || current[part] === null) {
+              current[part] = {};
+            }
+            current = current[part];
+          }
+          current[pathParts[pathParts.length - 1]] = value;
+        }));
+        // ... notification and server sync logic
+      },
+      updateSettings: (updater) => {
+        set(produce(state => {
+          updater(state.settings);
+        }));
+        // ... notification and server sync logic
+      },
+      // ... other actions like initialize, reset, get, subscribe, unsubscribe
+    }),
+    {
+      name: 'logseq-xr-settings',
+      storage: createJSONStorage(() => localStorage),
+      // ... other persist options
+    }
   )
 );
 ```
+
+**Settings Validation:**
+While `client/src/features/settings/types/settingsSchema.ts` defines a Zod schema for settings, explicit runtime validation using this schema is not directly performed within the `set` or `updateSettings` methods of `settingsStore.ts`. Instead, the store relies on the type safety provided by TypeScript and the assumption that settings updates originate from UI components that respect the defined types. Any validation errors would typically be caught at the point of input or during API serialization on the server.
 
 ### Graph Data Manager (`client/src/features/graph/managers/graphDataManager.ts`)
 
@@ -189,14 +207,14 @@ The settings are defined by the `Settings` interface in `client/src/features/set
 interface Settings {
   visualisation: {
     nodes: {
-      quality: 'low' | 'medium' | 'high';
-      enableInstancing: boolean;
-      enableHologram: boolean;
-      enableMetadataShape: boolean;
-      sizeRange: [number, number];
+      nodeSize: number; // Changed from sizeRange: [number, number]
       baseColor: string;
       opacity: number;
-      // ... other node settings
+      enableHologram: boolean;
+      enableMetadataShape: boolean;
+      quality: 'low' | 'medium' | 'high';
+      enableInstancing: boolean;
+      enableMetadataVisualisation: boolean;
     };
     edges: {
       color: string;
@@ -206,7 +224,13 @@ interface Settings {
       enableArrows: boolean;
       widthRange: [number, number];
       quality: 'low' | 'medium' | 'high';
-      // ... other edge settings
+      enableFlowEffect: boolean;
+      flowSpeed: number;
+      flowIntensity: number;
+      glowStrength: number;
+      distanceIntensity: number;
+      useGradient: boolean;
+      gradientColors: [string, string];
     };
     physics: {
       enabled: boolean;
@@ -216,79 +240,166 @@ interface Settings {
       damping: number;
       gravityStrength: number;
       centerAttractionStrength: number;
-      // ... other physics settings
+      boundsSize: number;
+      collisionRadius: number;
+      enableBounds: boolean;
+      iterations: number;
+      maxVelocity: number;
+      repulsionDistance: number;
+      massScale: number;
+      boundaryDamping: number;
     };
     rendering: {
       ambientLightIntensity: number;
-      directionalLightIntensity: number;
-      environmentIntensity: number;
       backgroundColor: string;
+      directionalLightIntensity: number;
       enableAmbientOcclusion: boolean;
       enableAntialiasing: boolean;
       enableShadows: boolean;
-      // ... other rendering settings
+      environmentIntensity: number;
+      shadowMapSize: string;
+      shadowBias: number;
+      context: 'desktop' | 'ar';
     };
     animations: {
-      enableNodeAnimations: boolean;
       enableMotionBlur: boolean;
+      enableNodeAnimations: boolean;
       motionBlurStrength: number;
-      // ... other animation settings
+      selectionWaveEnabled: boolean;
+      pulseEnabled: boolean;
+      pulseSpeed: number;
+      pulseStrength: number;
+      waveSpeed: number;
     };
     labels: {
-      enableLabels: boolean;
       desktopFontSize: number;
+      enableLabels: boolean;
       textColor: string;
       textOutlineColor: string;
-      // ... other label settings
+      textOutlineWidth: number;
+      textResolution: number;
+      textPadding: number;
+      billboardMode: 'camera' | 'vertical';
     };
     bloom: {
+      edgeBloomStrength: number;
       enabled: boolean;
-      strength: number;
+      environmentBloomStrength: number;
+      nodeBloomStrength: number;
       radius: number;
+      strength: number;
       threshold: number;
-      // ... other bloom settings
     };
     hologram: {
       ringCount: number;
-      sphereSizes: number[];
+      ringColor: string;
+      ringOpacity: number;
+      sphereSizes: [number, number];
       ringRotationSpeed: number;
+      enableBuckminster: boolean;
+      buckminsterSize: number;
+      buckminsterOpacity: number;
+      enableGeodesic: boolean;
+      geodesicSize: number;
+      geodesicOpacity: number;
+      enableTriangleSphere: boolean;
+      triangleSphereSize: number;
+      triangleSphereOpacity: number;
       globalRotationSpeed: number;
-      // ... other hologram settings
     };
+    camera?: CameraSettings;
   };
   system: {
     websocket: {
       reconnectAttempts: number;
       reconnectDelay: number;
       binaryChunkSize: number;
+      binaryUpdateRate?: number;
+      minUpdateRate?: number;
+      maxUpdateRate?: number;
+      motionThreshold?: number;
+      motionDamping?: number;
+      binaryMessageVersion?: number;
       compressionEnabled: boolean;
-      // ... other websocket settings
+      compressionThreshold: number;
+      heartbeatInterval?: number;
+      heartbeatTimeout?: number;
+      maxConnections?: number;
+      maxMessageSize?: number;
+      updateRate: number;
     };
     debug: {
       enabled: boolean;
+      logLevel?: 'debug' | 'info' | 'warn' | 'error';
+      logFormat?: 'json' | 'text';
       enableDataDebug: boolean;
       enableWebsocketDebug: boolean;
       logBinaryHeaders: boolean;
-      // ... other debug settings
+      logFullJson: boolean;
+      enablePhysicsDebug: boolean;
+      enableNodeDebug: boolean;
+      enableShaderDebug: boolean;
+      enableMatrixDebug: boolean;
+      enablePerformanceDebug: boolean;
     };
+    persistSettings: boolean;
+    customBackendUrl?: string;
   };
   xr: {
-    mode: 'immersive-ar';
-    roomScale: number;
-    spaceType: 'local-floor';
-    quality: 'low' | 'medium' | 'high';
-    enableHandTracking: boolean;
-    handMeshEnabled: boolean;
-    handMeshColor: string;
-    handMeshOpacity: number;
-    // ... other XR settings
-  };
-  ai: {
     enabled: boolean;
-    defaultModel: string;
-    temperature: number;
-    // ... other AI settings
+    clientSideEnableXR?: boolean;
+    mode?: 'inline' | 'immersive-vr' | 'immersive-ar';
+    roomScale?: number;
+    spaceType?: 'local-floor' | 'bounded-floor' | 'unbounded';
+    quality?: 'low' | 'medium' | 'high';
+    enableHandTracking: boolean;
+    handMeshEnabled?: boolean;
+    handMeshColor?: string;
+    handMeshOpacity?: number;
+    handPointSize?: number;
+    handRayEnabled?: boolean;
+    handRayColor?: string;
+    handRayWidth?: number;
+    gestureSmoothing?: number;
+    enableHaptics: boolean;
+    hapticIntensity?: number;
+    dragThreshold?: number;
+    pinchThreshold?: number;
+    rotationThreshold?: number;
+    interactionRadius?: number;
+    movementSpeed?: number;
+    deadZone?: number;
+    movementAxesHorizontal?: number;
+    movementAxesVertical?: number;
+    enableLightEstimation?: boolean;
+    enablePlaneDetection?: boolean;
+    enableSceneUnderstanding?: boolean;
+    planeColor?: string;
+    planeOpacity?: number;
+    planeDetectionDistance?: number;
+    showPlaneOverlay?: boolean;
+    snapToFloor?: boolean;
+    enablePassthroughPortal?: boolean;
+    passthroughOpacity?: number;
+    passthroughBrightness?: number;
+    passthroughContrast?: number;
+    portalSize?: number;
+    portalEdgeColor?: string;
+    portalEdgeWidth?: number;
+    controllerModel?: string;
+    renderScale?: number;
+    interactionDistance?: number;
+    locomotionMethod?: 'teleport' | 'continuous';
+    teleportRayColor?: string;
+    displayMode?: 'inline' | 'immersive-vr' | 'immersive-ar';
+    controllerRayColor?: string;
   };
+  auth: AuthSettings;
+  ragflow?: RAGFlowSettings;
+  perplexity?: PerplexitySettings;
+  openai?: OpenAISettings;
+  kokoro?: KokoroSettings;
+  whisper?: WhisperSettings;
 }
 ```
 

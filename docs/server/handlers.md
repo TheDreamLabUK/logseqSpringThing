@@ -39,27 +39,27 @@ pub async fn socket_flow_handler(
 ```rust
 pub fn config(cfg: &mut web::ServiceConfig) {
     cfg.service(
-        web::scope("/health")
+        web::scope("/api/health") // Corrected path
             .route("", web::get().to(health_check))
             .route("/ready", web::get().to(readiness_check))
     );
 }
 ```
-- Provides endpoints for system health monitoring (`/health`) and readiness checks (`/health/ready`).
+- Provides endpoints for system health monitoring (`/api/health`) and readiness checks (`/api/health/ready`).
 - Reports the status of core services and dependencies.
 
 ### Pages Handler
 ```rust
 pub fn config(cfg: &mut web::ServiceConfig) {
     cfg.service(
-        web::scope("/pages")
-            .route("/index.html", web::get().to(index_html_handler))
+        web::scope("/api/pages") // Corrected path
+            .route("/index.html", web::get().to(index_html_handler)) // Example, actual routes may vary
             // ... other static page routes
     );
 }
 ```
-- Serves static frontend assets and HTML pages.
-- Manages routing for client-side application entry points.
+- Serves static frontend assets and HTML pages, typically mounted under `/api/pages`.
+- Manages routing for client-side application entry points if applicable through this path.
 
 ## Middleware Integration
 

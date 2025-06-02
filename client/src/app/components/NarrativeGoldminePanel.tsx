@@ -17,6 +17,7 @@ const NarrativeGoldminePanel: React.FC = () => {
   return (
     <div style={panelStyle}>
       <iframe
+        id="narrative-goldmine-iframe" // Added ID
         src="https://narrativegoldmine.com//#/graph"
         style={iframeStyle}
         title="Narrative Goldmine"

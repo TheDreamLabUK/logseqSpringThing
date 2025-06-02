@@ -80,8 +80,7 @@ Returns complete graph structure:
 {
   "nodes": [...],
   "edges": [...],
-  "metadata": {...},
-  "simulation_params": {...}
+  "metadata": {...}
 }
 ```
 
@@ -95,6 +94,18 @@ GET /api/graph/data/paginated
 - `page_size`: Items per page (default: 100)
 - `sort`: Sort field
 - `filter`: Filter expression
+
+**Response:**
+```json
+{
+  "nodes": [...],
+  "edges": [...],
+  "metadata": {},
+  "totalPages": 0,
+  "currentPage": 1,
+  "totalItems": 0,
+  "pageSize": 100
+}
 
 ### Update Graph
 ```http
@@ -139,19 +150,26 @@ This endpoint is currently not implemented in the server. File content is primar
 
 ## Settings API
 
-### Get User Settings
+### Get Public Settings
 ```http
 GET /api/user-settings
 ```
 
-Returns all UI settings for the authenticated user.
+Returns global/default UI settings. This endpoint does not require authentication.
+
+### Get User-Specific Settings
+```http
+GET /api/user-settings/sync
+```
+
+Requires authentication. Returns user-specific UI settings. For power users, this endpoint returns and allows modification of the global UI settings.
 
 ### Get Visualisation Settings by Category
 ```http
 GET /api/visualisation/settings/{category}
 ```
 
-Returns specific visualisation settings by category. The category corresponds to top-level keys in the `visualisation` settings, e.g., `nodes`, `edges`, `physics`.
+Returns specific visualisation settings by category. The `{category}` can be a dot-separated path for nested visualisation settings (e.g., `nodes`, `edges.color`, `physics.gravity`).
 
 ### Update API Keys
 ```http
@@ -177,8 +195,9 @@ POST /api/ragflow/chat
 **Request Body:**
 ```json
 {
-  "query": "Your question here",
-  "conversation_id": "optional-previous-conversation-id"
+  "question": "Your question here",
+  "sessionId": "optional-previous-conversation-id",
+  "stream": false
 }
 ```
 
@@ -190,47 +209,12 @@ POST /api/ragflow/chat
 }
 ```
 
-### Perplexity Query
-```http
-POST /api/perplexity/chat
-```
-
-**Request Body:**
-```json
-{
-  "query": "Your question here",
-  "conversation_id": "optional-previous-conversation-id"
-}
-```
-
-**Response:**
-```json
-{
-  "answer": "The response from Perplexity AI",
-  "conversation_id": "conversation-id-for-follow-up-queries"
-}
-```
-
-### OpenAI Text-to-Speech
-```http
-POST /api/ai/tts
-```
-
-**Request Body:**
-```json
-{
-  "text": "The text to convert to speech."
-}
-```
-
-**Response:**
-Returns an audio stream (e.g., `audio/mpeg` for MP3).
 
 ## System Status
 
 ### Health Check
 ```http
-GET /health
+GET /api/health
 ```
 
 **Response:**

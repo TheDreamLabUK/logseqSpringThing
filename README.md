@@ -92,7 +92,7 @@ graph TB
         SettingsHandler[Settings Handler]
         FileService[File Service]
         GraphService[Graph Service]
-        GPUComputeService[GPU Compute Service]
+        GPUCompute[GPU Compute Service]
         PerplexityService[Perplexity Service]
         RagFlowService[RagFlow Service]
         SpeechService[Speech Service]
@@ -101,7 +101,9 @@ graph TB
         AudioProcessor[Audio Processor]
         MetadataManager[Metadata Manager]
         ProtectedSettings[Protected Settings]
-        AIService[AI Service]
+        PerplexityService_AI[Perplexity AI Service]
+        RagFlowService_AI[RagFlow AI Service]
+        SpeechService_AI[Speech AI Service]
     end
 
     %% External Components
@@ -143,7 +145,7 @@ graph TB
     NostrAuthHandler --> NostrService
 
     GraphService --> PhysicsEngine
-    PhysicsEngine --> GPUComputeService
+    PhysicsEngine --> GPUCompute
 
     %% Connections to External Components
     FileService --> GitHubAPI
@@ -151,9 +153,9 @@ graph TB
     RagFlowService --> RagFlowAPI
     SpeechService --> OpenAI_API
     NostrService --> NostrPlatformAPI
-    AIService --> PerplexityAI
-    AIService --> RagFlowAPI
-    AIService --> OpenAI_API
+    PerplexityService_AI --> PerplexityAI
+    RagFlowService_AI --> RagFlowAPI
+    SpeechService_AI --> OpenAI_API
 
     %% Styling for clarity
     style Frontend fill:#f9f,stroke:#333,stroke-width:2px
@@ -209,7 +211,7 @@ classDiagram
         -data: GraphData
         +fetchInitialData(): Promise<GraphData>
         +updateNodePositions(data: ArrayBuffer): void
-        +sendNodePositions(nodes: Node[]): void
+        +sendNodePositions(): void
         +getGraphData(): GraphData
     }
 
@@ -232,40 +234,54 @@ classDiagram
         <<Rust Struct>>
         +settings: Arc<RwLock<AppFullSettings>>
         +protected_settings: Arc<RwLock<ProtectedSettings>>
-        +metadata_manager: Arc<RwLock<MetadataManager>>
+        +metadata: Arc<RwLock<MetadataManager>>
         +graph_service: GraphService
         +github_service: Arc<GitHubService>
-        +file_service: Arc<FileService>
-        +gpu_compute_service: Option<Arc<RwLock<GPUComputeService>>>
-        +ai_service: Arc<AIService>
+        +content_api: Arc<FileService>
+        +gpu_compute: Option<Arc<RwLock<GPUCompute>>>
+        +perplexity_service: Option<Arc<PerplexityService>>
+        +ragflow_service: Option<Arc<RagFlowService>>
+        +speech_service: Option<Arc<SpeechService>>
         +nostr_service: Arc<NostrService>
-        +websocket_tx: broadcast::Sender<Message>
         +new(settings, github_service, file_service, gpu_compute_service, metadata_manager, graph_data, ai_service, websocket_tx): Result<Self, Error>
     }
 
     class GraphService {
         <<Rust Struct>>
-        +settings: Arc<RwLock<AppFullSettings>>
         +graph_data: Arc<RwLock<GraphData>>
         +node_map: Arc<RwLock<HashMap<String, Node>>>
-        +gpu_compute_service: Option<Arc<RwLock<GPUComputeService>>>
-        +metadata_manager: Arc<RwLock<MetadataManager>>
+        +gpu_compute: Option<Arc<RwLock<GPUCompute>>>
         +new(settings, gpu_compute_service, metadata_manager): Self
         +update_graph_data(new_data: GraphData): Result<(), GraphServiceError>
         +get_graph_data(): GraphData
         +calculate_layout(params: &SimulationParams): Result<(), GraphServiceError>
     }
 
-    class AIService {
+    class PerplexityService {
         <<Rust Struct>>
-        +config: AIServiceConfig
-        +perplexity_client: Option<PerplexityClient>
-        +openai_client: Option<OpenAIClient>
-        +ragflow_client: Option<RagflowClient>
-        +new(config: AIServiceConfig): Self
-        +chat_completion(model: &str, messages: Vec<ChatMessage>): Result<ChatResponse, AIServiceError>
-        +text_to_speech(text: &str) -> Result<Vec<u8>, AIServiceError>
-        +ragflow_chat(query: &str) -> Result<RagflowResponse, AIServiceError>
+        +config: PerplexityConfig
+        +client: reqwest::Client
+        +new(config: PerplexityConfig)
+        +chat_completion(messages: Vec<ChatMessage>): Result<ChatResponse, PerplexityError>
+    }
+
+    class RagFlowService {
+        <<Rust Struct>>
+        +config: RagFlowConfig
+        +client: reqwest::Client
+        +new(config: RagFlowConfig)
+        +chat(request: RagflowChatRequest): Result<RagflowChatResponse, RagFlowError>
+    }
+
+    class SpeechService {
+        <<Rust Struct>>
+        +sender: mpsc::Sender<SpeechCommand>
+        +settings: Arc<RwLock<SpeechSettings>>
+        +tts_provider: Arc<dyn TTSProvider>
+        +audio_tx: mpsc::Sender<Vec<u8>>
+        +http_client: reqwest::Client
+        +new(settings: Arc<RwLock<SpeechSettings>>, tts_provider: Arc<dyn TTSProvider>): Self
+        +text_to_speech(text: &str) -> Result<(), SpeechError>
     }
 
     class NostrService {
@@ -276,7 +292,7 @@ classDiagram
         +get_user(pubkey: &str): Option<NostrUser>
     }
     
-    class GPUComputeService {
+    class GPUCompute {
         <<Rust Struct>>
         +device: Arc<CudaDevice>
         +force_kernel: CudaFunction
@@ -288,11 +304,13 @@ classDiagram
     
     AppState --> GraphService
     AppState --> NostrService
-    AppState --> AIService
-    AppState --> GPUComputeService
+    AppState --> PerplexityService
+    AppState --> RagFlowService
+    AppState --> SpeechService
+    AppState --> GPUCompute
     AppState --> FileService
     AppState --> GitHubService
-    GraphService --> GPUComputeService
+    GraphService --> GPUCompute
 ```
 
 ### Sequence Diagrams
@@ -327,7 +345,7 @@ sequenceDiagram
 
     Client->>Store: Initialize settings
     Store->>Store: Load from localStorage
-    Store->>Server: GET /api/user-settings
+    Store->>Server: GET /api/user-settings/sync
     Server-->>Store: Settings data
     
     Client->>Auth: Check auth status
@@ -407,8 +425,6 @@ sequenceDiagram
     alt Power User
         Server->>Server: Update global settings
         Server->>Server: Save to settings.yaml
-        Server->>WS: Broadcast to all clients
-        WS-->>Client: Settings update
     else Regular User
         Server->>Server: Update user settings
         Server->>Server: Save to user file

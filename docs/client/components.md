@@ -30,11 +30,15 @@ flowchart TB
         AppInitializer[App Initializer]
         TwoPaneLayout[Two Pane Layout]
         RightPaneControlPanel[Right Pane Control Panel]
-        ControlPanel[Control Panel (Tabs)]
-        SettingsSections[Settings Sections]
+        SettingsPanelRedesign[Settings Panel Redesign]
+        TabsUI[Tabs UI]
+        SettingsSection[Settings Section]
         SettingControlComponent[Setting Control Component]
         AuthUIHandler[Auth UI Handler]
+        NostrAuthSection[Nostr Auth Section]
         MarkdownRenderer[Markdown Renderer]
+        ConversationPane[Conversation Pane]
+        NarrativeGoldminePanel[Narrative Goldmine Panel]
     end
     
     subgraph XR
@@ -54,10 +58,16 @@ flowchart TB
     
     AppInitializer --> TwoPaneLayout
     AppInitializer --> AuthUIHandler
+    TwoPaneLayout --> GraphViewport
     TwoPaneLayout --> RightPaneControlPanel
-    RightPaneControlPanel --> ControlPanel
-    ControlPanel --> SettingsSections
-    SettingsSections --> SettingControlComponent
+    TwoPaneLayout --> ConversationPane
+    TwoPaneLayout --> NarrativeGoldminePanel
+
+    RightPaneControlPanel --> NostrAuthSection
+    RightPaneControlPanel --> SettingsPanelRedesign
+    SettingsPanelRedesign --> TabsUI
+    SettingsPanelRedesign --> SettingsSection
+    SettingsSection --> SettingControlComponent
     RightPaneControlPanel --> MarkdownRenderer
     
     AppInitializer --> GraphCanvas
@@ -82,7 +92,7 @@ flowchart TB
     XRController --> SafeXRProvider
     HandInteractionSystem --> GraphManager
     
-    SettingsStore --> SettingsSections
+    SettingsStore --> SettingsSection
     SettingsStore --> SettingControlComponent
     API --> GraphDataManager
     API --> SettingsStore
@@ -201,8 +211,8 @@ Provides a safe context for WebXR hooks and components, handling browser compati
 ### Right Pane Control Panel (`client/src/app/components/RightPaneControlPanel.tsx`)
 Manages the content displayed in the right pane of the main application layout, including settings and feature tabs.
 
-### Control Panel (`client/src/components/layout/ControlPanel.tsx`)
-Provides the tabbed interface for organizing different categories of settings and tools within the right pane.
+### Settings Panel Redesign (`client/src/features/settings/components/panels/SettingsPanelRedesign.tsx`)
+Provides the tabbed interface for organizing different categories of settings and tools within the right pane, utilizing `client/src/ui/Tabs.tsx`.
 
 ### Settings Sections (`client/src/features/settings/components/SettingsSection.tsx`)
 Used within panels to group related settings. Supports collapsible sections and detaching into draggable, floating windows.
@@ -267,7 +277,7 @@ interface WebSocketServiceInterface {
   sendMessage(message: any): void;
   onBinaryMessage(callback: (data: ArrayBuffer) => void): () => void;
   onConnectionStatusChange(handler: (status: boolean) => void): () => void;
-  getConnectionStatus(): ConnectionState;
+  isReady(): boolean;
   dispose(): void;
 }
 ```
@@ -278,7 +288,7 @@ interface GraphDataManagerInterface {
   fetchInitialData(): Promise<void>;
   updateGraphData(data: any): void;
   updateNodePositions(positions: Float32Array): void;
-  sendNodePositions(nodes: Node[]): void; // Added based on README.md sequence diagram
+  sendNodePositions(): void;
   getGraphData(): GraphData;
   getNode(id: string): Node | undefined;
   subscribe(listener: (data: GraphData) => void): () => void;

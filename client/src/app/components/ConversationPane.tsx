@@ -58,10 +58,10 @@ const ConversationPane: React.FC = () => {
         }
       }
 
-      const payload: RagflowChatRequestPayload = { question, sessionId: sessionId ?? undefined };
+      const payload: RagflowChatRequestPayload = { question, sessionId: sessionId ?? undefined, stream: false };
       const response: RagflowChatResponsePayload = await apiService.sendRagflowChatMessage(payload, headers);
       
-      const botMessage: Message = { id: Date.now().toString() + '_bot', sender: 'bot', text: response.answer };
+      const botMessage: Message = { id: response.sessionId + '_bot', sender: 'bot', text: response.answer };
       setMessages(prev => [...prev, botMessage]);
       setSessionId(response.sessionId);
     } catch (err: any) {

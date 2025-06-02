@@ -50,7 +50,7 @@ export const settingsUIDefinition: Record<string, UICategoryDefinition> = {
           metalness: { label: 'Metalness', type: 'slider', min: 0, max: 1, step: 0.01, path: 'visualisation.nodes.metalness', description: 'How metallic nodes appear.' },
           opacity: { label: 'Opacity', type: 'slider', min: 0, max: 1, step: 0.01, path: 'visualisation.nodes.opacity', description: 'Overall opacity of nodes.' },
           roughness: { label: 'Roughness', type: 'slider', min: 0, max: 1, step: 0.01, path: 'visualisation.nodes.roughness', description: 'Surface roughness of nodes.' },
-          nodeSize: { label: 'Node Size', type: 'slider', min: 0.1, max: 5, step: 0.1, path: 'visualisation.nodes.nodeSize', description: 'Controls the overall size of the nodes.' },
+          nodeSize: { label: 'Node Size', type: 'slider', min: 0.01, max: 0.2, step: 0.01, path: 'visualisation.nodes.nodeSize', description: 'Controls the overall size of the nodes.' },
           quality: { label: 'Quality', type: 'radioGroup', options: [{value: 'low', label: 'Low'}, {value: 'medium', label: 'Medium'}, {value: 'high', label: 'High'}], path: 'visualisation.nodes.quality', description: 'Render quality of nodes.' },
           enableInstancing: { label: 'Enable Instancing', type: 'toggle', path: 'visualisation.nodes.enableInstancing', description: 'Use instanced rendering for nodes (performance).' },
           enableHologram: { label: 'Enable Hologram Effect', type: 'toggle', path: 'visualisation.nodes.enableHologram', description: 'Apply hologram effect to nodes.' },
