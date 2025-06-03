@@ -6,8 +6,8 @@ use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::Arc;
 use tokio::time::Duration;
 use log::{debug, info, warn, error};
-use actix::fut::WrapFuture;
-
+// use actix::fut::WrapFuture; // Unused import
+ 
 use crate::actors::messages::*;
 use crate::actors::client_manager_actor::ClientManagerActor;
 use crate::models::node::Node;
@@ -19,7 +19,7 @@ use crate::utils::binary_protocol;
 use crate::actors::gpu_compute_actor::GPUComputeActor;
 
 pub struct GraphServiceActor {
-    graph_data: GraphData,
+    graph_data: Arc<GraphData>, // Changed to Arc<GraphData>
     node_map: HashMap<u32, Node>,
     // gpu_compute_addr: Option<Addr<GPUComputeActor>>, // Unused
     client_manager: Addr<ClientManagerActor>,
@@ -34,7 +34,7 @@ impl GraphServiceActor {
         _gpu_compute_addr: Option<Addr<GPUComputeActor>>, // Marked as unused
     ) -> Self {
         Self {
-            graph_data: GraphData::new(), // Use GraphData::new()
+            graph_data: Arc::new(GraphData::new()), // Changed to Arc::new
             node_map: HashMap::new(),
             // gpu_compute_addr, // Unused
             client_manager,
@@ -44,8 +44,8 @@ impl GraphServiceActor {
         }
     }
 
-    pub fn get_graph_data(&self) -> &GraphData {
-        &self.graph_data
+    pub fn get_graph_data(&self) -> &GraphData { // Returns a reference to the inner GraphData
+        &self.graph_data // Dereferences Arc<GraphData> to &GraphData
     }
 
     pub fn get_node_map(&self) -> &HashMap<u32, Node> {
@@ -58,12 +58,13 @@ impl GraphServiceActor {
         // Update node_map
         self.node_map.insert(node.id, node.clone());
         
+        let graph_data_mut = Arc::make_mut(&mut self.graph_data);
         // Add to graph data if not already present
-        if !self.graph_data.nodes.iter().any(|n| n.id == node.id) {
-            self.graph_data.nodes.push(node);
+        if !graph_data_mut.nodes.iter().any(|n| n.id == node.id) {
+            graph_data_mut.nodes.push(node);
         } else {
             // Update existing node
-            if let Some(existing) = self.graph_data.nodes.iter_mut().find(|n| n.id == node.id) {
+            if let Some(existing) = graph_data_mut.nodes.iter_mut().find(|n| n.id == node.id) {
                 *existing = node; // Move node here instead of cloning
             }
         }
@@ -75,11 +76,12 @@ impl GraphServiceActor {
         // Remove from node_map
         self.node_map.remove(&node_id);
         
+        let graph_data_mut = Arc::make_mut(&mut self.graph_data);
         // Remove from graph data
-        self.graph_data.nodes.retain(|n| n.id != node_id);
+        graph_data_mut.nodes.retain(|n| n.id != node_id);
         
         // Remove related edges
-        self.graph_data.edges.retain(|e| e.source != node_id && e.target != node_id);
+        graph_data_mut.edges.retain(|e| e.source != node_id && e.target != node_id);
         
         debug!("Removed node: {}", node_id);
     }
@@ -87,12 +89,13 @@ impl GraphServiceActor {
     pub fn add_edge(&mut self, edge: Edge) {
         let edge_id = edge.id.clone(); // Store the ID before moving edge
         
+        let graph_data_mut = Arc::make_mut(&mut self.graph_data);
         // Add to graph data if not already present
-        if !self.graph_data.edges.iter().any(|e| e.id == edge.id) {
-            self.graph_data.edges.push(edge);
+        if !graph_data_mut.edges.iter().any(|e| e.id == edge.id) {
+            graph_data_mut.edges.push(edge);
         } else {
             // Update existing edge
-            if let Some(existing) = self.graph_data.edges.iter_mut().find(|e| e.id == edge.id) {
+            if let Some(existing) = graph_data_mut.edges.iter_mut().find(|e| e.id == edge.id) {
                 *existing = edge; // Move edge here instead of cloning
             }
         }
@@ -101,30 +104,25 @@ impl GraphServiceActor {
     }
 
     pub fn remove_edge(&mut self, edge_id: &str) {
-        self.graph_data.edges.retain(|e| e.id != edge_id);
+        Arc::make_mut(&mut self.graph_data).edges.retain(|e| e.id != edge_id);
         debug!("Removed edge: {}", edge_id);
     }
 
     pub fn build_from_metadata(&mut self, metadata: MetadataStore) -> Result<(), String> {
-        // Clear existing data
-        self.graph_data.nodes.clear();
-        self.graph_data.edges.clear();
-        self.node_map.clear();
+        let mut new_graph_data = GraphData::new(); // Create a new GraphData instance
+        self.node_map.clear(); // Clear node_map separately
 
         // Build nodes from metadata
         // Assuming metadata is MetadataStore which is HashMap<String, crate::models::metadata::Metadata>
-        for (filename_with_ext, file_meta_data) in &metadata { // Iterate over a reference
+        for (filename_with_ext, file_meta_data) in &metadata {
             let node_id_val = self.next_node_id.fetch_add(1, Ordering::SeqCst);
             let metadata_id_val = filename_with_ext.trim_end_matches(".md").to_string();
             
             let mut node = Node::new_with_id(metadata_id_val.clone(), Some(node_id_val));
             node.label = file_meta_data.file_name.trim_end_matches(".md").to_string();
-            
-            // Set file size, which also calculates mass
             node.set_file_size(file_meta_data.file_size as u64);
-            node.data.flags = 1; // Active by default
+            node.data.flags = 1;
 
-            // Populate node.metadata
             node.metadata.insert("fileName".to_string(), file_meta_data.file_name.clone());
             node.metadata.insert("fileSize".to_string(), file_meta_data.file_size.to_string());
             node.metadata.insert("nodeSize".to_string(), file_meta_data.node_size.to_string());
@@ -137,11 +135,11 @@ impl GraphServiceActor {
             if let Some(last_process) = file_meta_data.last_perplexity_process {
                 node.metadata.insert("lastPerplexityProcess".to_string(), last_process.to_rfc3339());
             }
-            // Add metadataId for client-side mapping
             node.metadata.insert("metadataId".to_string(), metadata_id_val);
 
-
-            self.add_node(node);
+            // Add to new_graph_data and self.node_map
+            self.node_map.insert(node.id, node.clone());
+            new_graph_data.nodes.push(node);
         }
 
         // Build edges from topic counts
@@ -153,11 +151,7 @@ impl GraphServiceActor {
                     let target_metadata_id = target_filename_ext.trim_end_matches(".md");
                     if let Some(target_node) = self.node_map.values().find(|n| n.metadata_id == target_metadata_id) {
                         if source_node.id != target_node.id {
-                            let edge_key = if source_node.id < target_node.id {
-                                (source_node.id, target_node.id)
-                            } else {
-                                (target_node.id, source_node.id)
-                            };
+                            let edge_key = if source_node.id < target_node.id { (source_node.id, target_node.id) } else { (target_node.id, source_node.id) };
                             *edge_map.entry(edge_key).or_insert(0.0) += *count as f32;
                         }
                     }
@@ -166,8 +160,13 @@ impl GraphServiceActor {
         }
 
         for ((source_id, target_id), weight) in edge_map {
-            self.add_edge(Edge::new(source_id, target_id, weight));
+            new_graph_data.edges.push(Edge::new(source_id, target_id, weight));
         }
+        
+        // Populate metadata in new_graph_data (assuming metadata is MetadataStore)
+        new_graph_data.metadata = metadata.clone(); // Clone the entire store
+
+        self.graph_data = Arc::new(new_graph_data); // Replace the old Arc with the new one
         
         info!("Built graph from metadata: {} nodes, {} edges",
               self.graph_data.nodes.len(), self.graph_data.edges.len());
@@ -177,6 +176,7 @@ impl GraphServiceActor {
 
     pub fn update_node_positions(&mut self, positions: Vec<(u32, BinaryNodeData)>) {
         let mut updated_count = 0;
+        let graph_data_mut = Arc::make_mut(&mut self.graph_data);
         
         for (node_id, position_data) in positions {
             // Update in node_map
@@ -187,7 +187,7 @@ impl GraphServiceActor {
             }
             
             // Update in graph_data.nodes
-            if let Some(node) = self.graph_data.nodes.iter_mut().find(|n| n.id == node_id) {
+            if let Some(node) = graph_data_mut.nodes.iter_mut().find(|n| n.id == node_id) {
                 node.data.position = position_data.position;
                 node.data.velocity = position_data.velocity;
             }
@@ -342,10 +342,10 @@ impl Actor for GraphServiceActor {
 
 // Message handlers
 impl Handler<GetGraphData> for GraphServiceActor {
-    type Result = Result<GraphData, String>;
-
+    type Result = Result<GraphData, String>; // Result type changed from Arc<GraphData>
+ 
     fn handle(&mut self, _msg: GetGraphData, _ctx: &mut Self::Context) -> Self::Result {
-        Ok(self.graph_data.clone())
+        Ok((*self.graph_data).clone()) // Clones the GraphData itself
     }
 }
 
@@ -438,8 +438,8 @@ impl Handler<UpdateNodePosition> for GraphServiceActor {
             let original_mass = node.data.mass;
             let original_flags = node.data.flags;
             
-            node.data.position = glam_to_vec3data(msg.position); // Convert glam::Vec3 to Vec3Data
-            node.data.velocity = glam_to_vec3data(msg.velocity); // Convert glam::Vec3 to Vec3Data
+            node.data.position = glam_to_vec3data(msg.position);
+            node.data.velocity = glam_to_vec3data(msg.velocity);
             
             // Restore mass and flags
             node.data.mass = original_mass;
@@ -450,18 +450,19 @@ impl Handler<UpdateNodePosition> for GraphServiceActor {
         }
         
         // Update corresponding node in graph
-        for node in &mut self.graph_data.nodes {
-            if node.id == msg.node_id {
+        let graph_data_mut = Arc::make_mut(&mut self.graph_data);
+        for node_in_graph_data in &mut graph_data_mut.nodes { // Iterate over mutable graph_data
+            if node_in_graph_data.id == msg.node_id {
                 // Preserve mass and flags
-                let original_mass = node.data.mass;
-                let original_flags = node.data.flags;
+                let original_mass = node_in_graph_data.data.mass;
+                let original_flags = node_in_graph_data.data.flags;
                 
-                node.data.position = glam_to_vec3data(msg.position); // Convert glam::Vec3 to Vec3Data
-                node.data.velocity = glam_to_vec3data(msg.velocity); // Convert glam::Vec3 to Vec3Data
+                node_in_graph_data.data.position = glam_to_vec3data(msg.position);
+                node_in_graph_data.data.velocity = glam_to_vec3data(msg.velocity);
                 
                 // Restore mass and flags
-                node.data.mass = original_mass;
-                node.data.flags = original_flags;
+                node_in_graph_data.data.mass = original_mass;
+                node_in_graph_data.data.flags = original_flags;
                 break;
             }
         }
@@ -487,12 +488,12 @@ impl Handler<UpdateGraphData> for GraphServiceActor {
         info!("Updating graph data with {} nodes, {} edges",
               msg.graph_data.nodes.len(), msg.graph_data.edges.len());
         
-        // Update graph data
-        self.graph_data = msg.graph_data;
+        // Update graph data by creating a new Arc
+        self.graph_data = Arc::new(msg.graph_data);
         
         // Rebuild node map
         self.node_map.clear();
-        for node in &self.graph_data.nodes {
+        for node in &self.graph_data.nodes { // Dereferences Arc for iteration
             self.node_map.insert(node.id, node.clone());
         }
         

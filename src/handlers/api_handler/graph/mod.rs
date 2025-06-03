@@ -45,18 +45,17 @@ pub async fn get_graph_data(state: web::Data<AppState>) -> impl Responder {
     let graph_data_result = state.graph_service_addr.send(GetGraphData).await;
 
     match graph_data_result {
-        Ok(Ok(graph)) => {
+        Ok(Ok(graph_data_owned)) => { // graph_data_owned is now GraphData
             debug!("Preparing graph response with {} nodes and {} edges",
-                graph.nodes.len(),
-                graph.edges.len()
+                graph_data_owned.nodes.len(),
+                graph_data_owned.edges.len()
             );
-
-            // Assuming GraphResponse expects crate::models::node::Node
-            // and crate::models::metadata::MetadataStore (which is HashMap<String, Metadata>)
+ 
+            // Clone data from the owned GraphData for the response
             let response = GraphResponse {
-                nodes: graph.nodes.clone(),
-                edges: graph.edges.clone(),
-                metadata: graph.metadata.clone(), // This is already HashMap<String, Metadata>
+                nodes: graph_data_owned.nodes.clone(),
+                edges: graph_data_owned.edges.clone(),
+                metadata: graph_data_owned.metadata.clone(),
             };
             HttpResponse::Ok().json(response)
         }
@@ -91,14 +90,14 @@ pub async fn get_paginated_graph_data(
     // For now, let's assume get_graph_data_mut was for reading and we use GetGraphData.
     // If mutable access is truly needed, specific messages for modifications are required.
     let graph_result = state.graph_service_addr.send(GetGraphData).await;
-    let graph = match graph_result {
-        Ok(Ok(g)) => g,
+    let graph_data_owned = match graph_result { // graph_data_owned is GraphData
+        Ok(Ok(g_owned)) => g_owned,
         _ => {
             error!("Failed to get graph data for pagination");
             return HttpResponse::InternalServerError().json(serde_json::json!({"error": "Failed to retrieve graph data"}));
         }
     };
-    let total_items = graph.nodes.len();
+    let total_items = graph_data_owned.nodes.len();
     
     if total_items == 0 {
         debug!("Graph is empty");
@@ -126,26 +125,26 @@ pub async fn get_paginated_graph_data(
     let end = std::cmp::min(start + page_size, total_items);
 
     debug!("Calculating slice from {} to {} out of {} total items", start, end, total_items);
-
-    let page_nodes = graph.nodes[start..end].to_vec();
-
+ 
+    let page_nodes = graph_data_owned.nodes[start..end].to_vec();
+ 
     let node_ids: std::collections::HashSet<_> = page_nodes.iter()
-        .map(|node| node.id) // Assuming node.id is u32
+        .map(|node| node.id)
         .collect();
-
-    let relevant_edges: Vec<_> = graph.edges.iter()
+ 
+    let relevant_edges: Vec<_> = graph_data_owned.edges.iter()
         .filter(|edge| {
             node_ids.contains(&edge.source) || node_ids.contains(&edge.target)
         })
         .cloned()
         .collect();
-
+ 
     debug!("Found {} relevant edges for {} nodes", relevant_edges.len(), page_nodes.len());
-
+ 
     let response = PaginatedGraphResponse {
         nodes: page_nodes,
         edges: relevant_edges,
-        metadata: graph.metadata.clone(),
+        metadata: graph_data_owned.metadata.clone(),
         total_pages,
         current_page: page + 1,
         total_items,

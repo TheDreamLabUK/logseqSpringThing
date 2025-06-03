@@ -420,7 +420,7 @@ async fn fetch_nodes(
     }
     
     let mut nodes = Vec::with_capacity(graph_data.nodes.len());
-    for node in graph_data.nodes {
+    for node in &graph_data.nodes { // Iterate over a slice
         // node.id is already a u32, no need to parse
         let node_id = node.id;
         let node_data = BinaryNodeData {

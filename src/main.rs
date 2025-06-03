@@ -220,13 +220,14 @@ async fn main() -> std::io::Result<()> {
     tokio::time::sleep(Duration::from_millis(500)).await;
     info!("Initial delay complete. Starting HTTP server...");
     
-    // Start simulation in GraphServiceActor
-    use webxr::actors::messages::StartSimulation;
-    if let Err(e) = app_state.graph_service_addr.send(StartSimulation).await {
-        error!("Failed to start simulation in GraphServiceActor: {}", e);
-        return Err(std::io::Error::new(std::io::ErrorKind::Other, format!("Failed to start simulation: {}", e)));
-    }
-    info!("Simulation started in GraphServiceActor");
+    // Start simulation in GraphServiceActor (Second start attempt commented out for debugging stack overflow)
+    // use webxr::actors::messages::StartSimulation;
+    // if let Err(e) = app_state.graph_service_addr.send(StartSimulation).await {
+    //     error!("Failed to start simulation in GraphServiceActor: {}", e);
+    //     return Err(std::io::Error::new(std::io::ErrorKind::Other, format!("Failed to start simulation: {}", e)));
+    // }
+    // info!("Simulation started in GraphServiceActor (Second start attempt commented out)");
+    info!("Skipping redundant StartSimulation message to GraphServiceActor for debugging stack overflow. Simulation should already be running from actor's started() method.");
  
     // Create web::Data after all initialization is complete
     let app_state_data = web::Data::new(app_state);
@@ -291,8 +292,9 @@ async fn main() -> std::io::Result<()> {
         app
     })
     .bind(&bind_address)?
+    .workers(4) // Explicitly set the number of worker threads
     .run();
-
+ 
     let server_handle = server.handle();
 
     // Set up signal handlers
