@@ -600,6 +600,7 @@ pub async fn get_settings_category(
     Ok(HttpResponse::Ok().json(value))
 }
 
+/*
 fn save_settings_to_file(settings: &Settings) -> std::io::Result<()> {
     debug!("Attempting to save settings to file");
 
@@ -656,6 +657,7 @@ fn save_settings_to_file(settings: &Settings) -> std::io::Result<()> {
         }
     }
 }
+*/
 
 pub fn config(cfg: &mut web::ServiceConfig) {
     cfg.service(

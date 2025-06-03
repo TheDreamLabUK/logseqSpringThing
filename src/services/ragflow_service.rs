@@ -42,30 +42,35 @@ impl From<std::io::Error> for RAGFlowError {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)] // Fields are part of API response, not necessarily used internally
 struct SessionResponse {
     code: i32,
     data: SessionData,
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)] // Fields are part of API response, not necessarily used internally
 struct SessionData {
     id: String,
     message: Option<Vec<Message>>,
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)] // Fields are part of API response, not necessarily used internally
 struct Message {
     role: String,
     content: String,
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)] // Fields are part of API response, not necessarily used internally
 struct CompletionResponse {
     code: i32,
     data: CompletionData,
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)] // Fields are part of API response, not necessarily used internally
 struct CompletionData {
     answer: Option<String>,
     reference: Option<serde_json::Value>,

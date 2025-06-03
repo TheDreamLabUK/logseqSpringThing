@@ -7,9 +7,9 @@ use tokio::sync::RwLock;
 use std::error::Error;
 use crate::config::AppFullSettings; // Changed from Settings to AppFullSettings
 
-const GITHUB_API_DELAY: Duration = Duration::from_millis(500);
-const MAX_RETRIES: u32 = 3;
-const RETRY_DELAY: Duration = Duration::from_secs(2);
+// const GITHUB_API_DELAY: Duration = Duration::from_millis(500); // Unused
+// const MAX_RETRIES: u32 = 3; // Unused
+// const RETRY_DELAY: Duration = Duration::from_secs(2); // Unused
 
 /// Core GitHub API client providing common functionality
 pub struct GitHubClient {
@@ -80,6 +80,7 @@ impl GitHubClient {
         })
     }
 
+    /*
     /// Get the properly encoded API path
     pub(crate) async fn get_api_path(&self) -> String {
         let settings = self.settings.read().await;
@@ -119,6 +120,7 @@ impl GitHubClient {
             encoded
         }
     }
+    */
 
     /// Get the full path for a file
     pub(crate) async fn get_full_path(&self, path: &str) -> String {
@@ -242,8 +244,10 @@ impl GitHubClient {
         &self.settings
     }
 
+    /*
     /// Get constants
     pub(crate) fn constants() -> (Duration, u32, Duration) {
         (GITHUB_API_DELAY, MAX_RETRIES, RETRY_DELAY)
     }
+    */
 }

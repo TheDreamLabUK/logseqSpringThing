@@ -30,6 +30,7 @@ impl ContentAPI {
         }
     }
 
+    /*
     /// Ensure consistent URL encoding for paths
     async fn encode_path(&self, path: &str) -> String {
         let settings = self.client.settings().read().await;
@@ -69,6 +70,7 @@ impl ContentAPI {
 
         encoded
     }
+    */
 
     /// Extract and update rate limit information from response headers
     async fn update_rate_limits(&self, headers: &HeaderMap) {

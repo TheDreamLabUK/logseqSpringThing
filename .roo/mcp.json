@@ -1,24 +1,3 @@
 {
-  "mcpServers": {
-    "gitmcp-threejs": {
-      "type": "sse",
-      "url": "https://gitmcp.io/mrdoob/three.js"
-    },
-    "gitmcp-react": {
-      "type": "sse",
-      "url": "https://gitmcp.io/facebook/react"
-    },
-    "gitmcp-r3f": {
-      "type": "sse",
-      "url": "https://gitmcp.io/pmndrs/react-three-fiber"
-    },
-    "gitmcp-r3xr": {
-      "type": "sse",
-      "url": "https://gitmcp.io/pmndrs/react-xr"
-    },
-    "gitmcp-metaquest": {
-      "type": "sse",
-      "url": "https://gitmcp.io/meta-quest/MetaXR-SDK" 
-    }
-  }
+  "mcpServers": {}
 }

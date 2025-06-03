@@ -122,8 +122,8 @@ pub struct SocketFlowServer {
     max_update_rate: u32,
     motion_threshold: f32,
     motion_damping: f32,
-    heartbeat_interval_ms: u64,
-    heartbeat_timeout_ms: u64,
+    // heartbeat_interval_ms: u64, // Unused
+    // heartbeat_timeout_ms: u64, // Unused
     nodes_in_motion: usize,    // Counter for nodes currently in motion
     total_node_count: usize,   // Total node count for percentage calculation
     last_motion_check: Instant, // Last time we checked motion percentage,
@@ -135,8 +135,8 @@ impl SocketFlowServer {
         let max_update_rate = pre_read_settings.max_update_rate;
         let motion_threshold = pre_read_settings.motion_threshold;
         let motion_damping = pre_read_settings.motion_damping;
-        let heartbeat_interval_ms = pre_read_settings.heartbeat_interval_ms;
-        let heartbeat_timeout_ms = pre_read_settings.heartbeat_timeout_ms;
+        // let heartbeat_interval_ms = pre_read_settings.heartbeat_interval_ms; // Unused
+        // let heartbeat_timeout_ms = pre_read_settings.heartbeat_timeout_ms; // Unused
 
         // Use position and velocity deadbands from constants
         let position_deadband = DEFAULT_POSITION_DEADBAND;
@@ -169,8 +169,8 @@ impl SocketFlowServer {
             max_update_rate,
             motion_threshold,
             motion_damping,
-            heartbeat_interval_ms,
-            heartbeat_timeout_ms,
+            // heartbeat_interval_ms, // Unused
+            // heartbeat_timeout_ms, // Unused
             nodes_in_motion: 0,
             total_node_count: 0,
             last_motion_check: Instant::now()

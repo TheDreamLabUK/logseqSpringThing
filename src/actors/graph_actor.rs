@@ -21,7 +21,7 @@ use crate::actors::gpu_compute_actor::GPUComputeActor;
 pub struct GraphServiceActor {
     graph_data: GraphData,
     node_map: HashMap<u32, Node>,
-    gpu_compute_addr: Option<Addr<GPUComputeActor>>,
+    // gpu_compute_addr: Option<Addr<GPUComputeActor>>, // Unused
     client_manager: Addr<ClientManagerActor>,
     simulation_running: AtomicBool,
     shutdown_complete: Arc<AtomicBool>,
@@ -31,12 +31,12 @@ pub struct GraphServiceActor {
 impl GraphServiceActor {
     pub fn new(
         client_manager: Addr<ClientManagerActor>,
-        gpu_compute_addr: Option<Addr<GPUComputeActor>>,
+        _gpu_compute_addr: Option<Addr<GPUComputeActor>>, // Marked as unused
     ) -> Self {
         Self {
             graph_data: GraphData::new(), // Use GraphData::new()
             node_map: HashMap::new(),
-            gpu_compute_addr,
+            // gpu_compute_addr, // Unused
             client_manager,
             simulation_running: AtomicBool::new(false),
             shutdown_complete: Arc::new(AtomicBool::new(false)),
@@ -243,6 +243,7 @@ impl GraphServiceActor {
         self.calculate_layout_cpu()
     }
 
+    /*
     fn initiate_gpu_computation(&self, ctx: &mut Context<Self>) {
         // Send GPU computation request if GPU compute actor is available
         if let Some(ref gpu_compute_addr) = self.gpu_compute_addr {
@@ -299,6 +300,7 @@ impl GraphServiceActor {
             }));
         }
     }
+    */
 
     fn calculate_layout_cpu(&self) -> Result<Vec<(u32, BinaryNodeData)>, String> {
         // Simple CPU physics simulation

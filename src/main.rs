@@ -165,7 +165,7 @@ async fn main() -> std::io::Result<()> {
 
     // Update metadata in app state using actor
     use webxr::actors::messages::UpdateMetadata;
-    if let Err(e) = app_state.metadata_addr.send(UpdateMetadata(metadata_store.clone())).await {
+    if let Err(e) = app_state.metadata_addr.send(UpdateMetadata { metadata: metadata_store.clone() }).await {
         error!("Failed to update metadata in actor: {}", e);
         return Err(std::io::Error::new(std::io::ErrorKind::Other, format!("Failed to update metadata in actor: {}", e)));
     }
@@ -189,24 +189,9 @@ async fn main() -> std::io::Result<()> {
             }
 
             // Convert GraphService::GraphData to models::graph::GraphData for GPU initialization
-            let models_graph_data = ModelsGraphData {
-                nodes: graph_data.nodes.iter().map(|n| webxr::models::node::Node {
-                    id: n.id,
-                    label: n.label.clone(),
-                    content: n.content.clone(),
-                    node_type: n.node_type.clone(),
-                    metadata: n.metadata.clone(),
-                    position: n.position.clone(),
-                }).collect(),
-                edges: graph_data.edges.iter().map(|e| webxr::models::edge::Edge {
-                    id: e.id,
-                    source: e.source,
-                    target: e.target,
-                    edge_type: e.edge_type.clone(),
-                    weight: e.weight,
-                    metadata: e.metadata.clone(),
-                }).collect(),
-            };
+            // Since GraphData (aliased as ModelsGraphData) derives Clone, and graph_data is already 
+            // the correct type (crate::models::graph::GraphData), we can just clone it.
+            let models_graph_data = graph_data.clone();
 
             // Initialize GPU compute through GPUComputeActor
             if let Some(gpu_compute_addr) = &app_state.gpu_compute_addr {
