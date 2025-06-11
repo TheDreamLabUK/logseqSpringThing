@@ -59,7 +59,8 @@ const GraphManager: React.FC<GraphManagerProps> = ({ onNodeDragStateChange }) =>
   const screenPosition = useMemo(() => new THREE.Vector2(), [])
 
   const [graphData, setGraphData] = useState<GraphData>({ nodes: [], edges: [] })
-  const [nodePositions, setNodePositions] = useState<Float32Array | null>(null);
+  const nodePositionsRef = useRef<Float32Array | null>(null);
+  const [edgePoints, setEdgePoints] = useState<number[]>([]);
   const [nodesAreAtOrigin, setNodesAreAtOrigin] = useState(false)
   const settings = useSettingsStore(state => state.settings)
   const [forceUpdate, setForceUpdate] = useState(0) // Force re-render on settings change
@@ -398,37 +399,67 @@ const GraphManager: React.FC<GraphManagerProps> = ({ onNodeDragStateChange }) =>
   const MAX_LOG_FILE_SIZE_ESTIMATE = Math.log10(5 * 1024 * 1024 + 1); // Approx 6.7, for 5MB
   const BASE_SPHERE_RADIUS = 0.5;
 
+  const labelsRef = useRef<THREE.Group>(null!);
+  const [_, setForceRender] = useState(0);
+
+
   // The main animation loop
   useFrame(async (state, delta) => {
-    if (!meshRef.current || graphData.nodes.length === 0) return;
+    if (!meshRef.current || !labelsRef.current || graphData.nodes.length === 0) return;
 
-    // --- THIS IS THE KEY CHANGE ---
     // Pull smooth positions from the worker on every frame
     const positions = await graphWorkerProxy.tick(delta);
+    nodePositionsRef.current = positions;
 
     if (positions) {
+      // 1. Update InstancedMesh (Nodes)
       const nodeSize = settings?.visualisation?.nodes?.nodeSize || 0.01;
       const BASE_SPHERE_RADIUS = 0.5;
       const scale = nodeSize / BASE_SPHERE_RADIUS;
-
-      const tempMatrix = new THREE.Matrix4(); // Re-use a matrix object
+      const tempMatrix = new THREE.Matrix4();
 
       for (let i = 0; i < graphData.nodes.length; i++) {
         const i3 = i * 3;
-        const x = positions[i3];
-        const y = positions[i3 + 1];
-        const z = positions[i3 + 2];
-
-        // Update the instance matrix
         tempMatrix.makeScale(scale, scale, scale);
-        tempMatrix.setPosition(x, y, z);
+        tempMatrix.setPosition(positions[i3], positions[i3 + 1], positions[i3 + 2]);
         meshRef.current.setMatrixAt(i, tempMatrix);
       }
       meshRef.current.instanceMatrix.needsUpdate = true;
 
-      // Also update labels and edges
-      // You'll need to pass the new `positions` array to your NodeLabels and edge drawing logic
-      setNodePositions(positions); // This will trigger re-render for labels/edges
+      // 2. Update Line (Edges)
+      const newEdgePoints: number[] = [];
+      graphData.edges.forEach(edge => {
+        const sourceNodeIndex = graphData.nodes.findIndex(n => n.id === edge.source);
+        const targetNodeIndex = graphData.nodes.findIndex(n => n.id === edge.target);
+        if (sourceNodeIndex !== -1 && targetNodeIndex !== -1) {
+          const i3s = sourceNodeIndex * 3;
+          const i3t = targetNodeIndex * 3;
+          newEdgePoints.push(positions[i3s], positions[i3s + 1], positions[i3s + 2]);
+          newEdgePoints.push(positions[i3t], positions[i3t + 1], positions[i3t + 2]);
+        }
+      });
+      setEdgePoints(newEdgePoints);
+
+
+      // 3. Update Text Labels
+      const labelSettings = settings?.visualisation?.labels;
+      const mainLabelFontSize = labelSettings?.desktopFontSize || 0.1;
+      const lineSpacing = mainLabelFontSize * 0.15;
+      labelsRef.current.children.forEach((billboard, i) => {
+        if (billboard instanceof THREE.Group && graphData.nodes[i]) {
+           const node = graphData.nodes[i];
+           let metadataString = '';
+           if (node.metadata?.fileSize) {
+              metadataString = `${(parseInt(node.metadata.fileSize, 10) / 1024).toFixed(1)} KB`;
+           }
+           const i3 = i * 3;
+           billboard.position.set(
+              positions[i3],
+              positions[i3 + 1] + (labelSettings?.textPadding || 0.3) + (metadataString ? mainLabelFontSize / 2 + lineSpacing / 2 : 0),
+              positions[i3 + 2]
+           );
+        }
+      });
     }
 
     // ... handle pending drag updates ...
@@ -441,123 +472,49 @@ const GraphManager: React.FC<GraphManagerProps> = ({ onNodeDragStateChange }) =>
     }
   });
 
-  // Memoize edge points
-  // Memoize edge points based on the new animated positions
-  const edgePoints = useMemo(() => {
-    if (!nodePositions || !graphData.edges || graphData.nodes.length === 0) return [];
 
-    const points: [number, number, number][] = [];
-    const { nodes, edges } = graphData;
-
-    edges.forEach(edge => {
-      const sourceNodeIndex = nodes.findIndex(n => n.id === edge.source);
-      const targetNodeIndex = nodes.findIndex(n => n.id === edge.target);
-
-      if (sourceNodeIndex !== -1 && targetNodeIndex !== -1) {
-        const i3s = sourceNodeIndex * 3;
-        const i3t = targetNodeIndex * 3;
-        points.push(
-          [nodePositions[i3s], nodePositions[i3s + 1], nodePositions[i3s + 2]],
-          [nodePositions[i3t], nodePositions[i3t + 1], nodePositions[i3t + 2]]
-        );
-      }
-    });
-    return points;
-  }, [nodePositions, graphData.nodes, graphData.edges]);
-
-  // Node labels component using settings from YAML
-  const NodeLabels = () => {
-    const labelSettings = settings?.visualisation?.labels || {
-      enabled: true,
-      desktopFontSize: 0.1,
-      textColor: '#000000',
-      textOutlineColor: '#ffffff',
-      textOutlineWidth: 0.01,
-      textPadding: 0.3,
-      textResolution: 32,
-      billboardMode: 'camera'
-    };
-
-    const isEnabled = typeof labelSettings === 'object' && labelSettings !== null && 'enabled' in labelSettings ? labelSettings.enabled : true;
-    if (!isEnabled) return null;
+  // Node labels component using settings from YAML - Rendered once, updated in useFrame
+  const NodeLabels = useMemo(() => {
+    const labelSettings = settings?.visualisation?.labels;
+    if (!labelSettings?.enableLabels) return null;
 
     const mainLabelFontSize = labelSettings.desktopFontSize || 0.1;
-    const metadataFontSize = mainLabelFontSize * 0.7; // Smaller font for metadata
-    const lineSpacing = mainLabelFontSize * 0.15; // Space between main label and metadata
+    const metadataFontSize = mainLabelFontSize * 0.7;
+    const lineSpacing = mainLabelFontSize * 0.15;
 
     return (
-      <group>
-        {graphData.nodes.map((node, index) => {
-          if (!nodePositions || !node.label) return null;
-
-          const i3 = index * 3;
-          const x = nodePositions[i3];
-          const y = nodePositions[i3 + 1];
-          const z = nodePositions[i3 + 2];
-
-          // Construct metadata string
+      <group ref={labelsRef}>
+        {graphData.nodes.map((node) => {
+          if (!node.label) return null;
           let metadataString = '';
-          if (node.metadata) {
-            const fileSize = node.metadata.fileSize; // Already a string from server
-            const hyperlinkCount = node.metadata.hyperlinkCount; // Already a string
-
-            if (fileSize) {
-              const sizeInKB = parseInt(fileSize, 10) / 1024;
-              metadataString += `${sizeInKB.toFixed(1)} KB`;
-            }
-            if (hyperlinkCount) {
-              if (metadataString) metadataString += ' | ';
-              metadataString += `${hyperlinkCount} links`;
-            }
-            // Could add lastModified here too, but might be too much info
-            // const lastModified = node.metadata.lastModified;
-            // if (lastModified) {
-            //   if (metadataString) metadataString += ' | ';
-            //   metadataString += `Mod: ${new Date(lastModified).toLocaleDateString()}`;
-            // }
+          if (node.metadata?.fileSize) {
+            metadataString = `${(parseInt(node.metadata.fileSize, 10) / 1024).toFixed(1)} KB`;
           }
-
           return (
-            <Billboard
-              key={node.id}
-              // Position the billboard slightly above the node center to accommodate two lines of text
-              position={[
-                x,
-                y + (labelSettings.textPadding || 0.3) + (metadataString ? mainLabelFontSize / 2 + lineSpacing / 2 : 0),
-                z
-              ]}
-              follow={labelSettings.billboardMode === 'camera'}
-            >
-              {/* Main Label (Filename) */}
+            <Billboard key={node.id} follow={labelSettings.billboardMode === 'camera'}>
               <Text
                 fontSize={mainLabelFontSize}
                 color={labelSettings.textColor || '#000000'}
                 anchorX="center"
-                anchorY="middle" // Anchor to middle for the main label
+                anchorY="middle"
                 outlineWidth={labelSettings.textOutlineWidth || 0.01}
                 outlineColor={labelSettings.textOutlineColor || '#ffffff'}
-                outlineOpacity={1.0}
                 renderOrder={10}
                 material-depthTest={false}
-                maxWidth={labelSettings.textResolution || 32}
               >
                 {node.label}
               </Text>
-
-              {/* Metadata String (File Size, Links) - rendered below the main label */}
               {metadataString && (
                 <Text
                   fontSize={metadataFontSize}
-                  color={labelSettings.textColor ? new THREE.Color(labelSettings.textColor).multiplyScalar(0.8).getStyle() : '#333333'} // Slightly dimmer
+                  color={labelSettings.textColor ? new THREE.Color(labelSettings.textColor).multiplyScalar(0.8).getStyle() : '#333333'}
                   anchorX="center"
-                  anchorY="top" // Anchor to top, so it sits below the main label
-                  position={[0, -mainLabelFontSize / 2 - lineSpacing, 0]} // Position it below the main label
+                  anchorY="top"
+                  position={[0, -mainLabelFontSize / 2 - lineSpacing, 0]}
                   outlineWidth={(labelSettings.textOutlineWidth || 0.01) * 0.7}
                   outlineColor={labelSettings.textOutlineColor || '#ffffff'}
-                  outlineOpacity={0.8}
                   renderOrder={10}
                   material-depthTest={false}
-                  maxWidth={(labelSettings.textResolution || 32) * 1.5} // Allow metadata to be a bit wider
                 >
                   {metadataString}
                 </Text>
@@ -567,7 +524,7 @@ const GraphManager: React.FC<GraphManagerProps> = ({ onNodeDragStateChange }) =>
         })}
       </group>
     );
-  };
+  }, [graphData.nodes, settings?.visualisation?.labels]);
 
   return (
     <>
@@ -608,11 +565,10 @@ const GraphManager: React.FC<GraphManagerProps> = ({ onNodeDragStateChange }) =>
           lineWidth={settings?.visualisation?.edges?.baseWidth || 1.0}
           transparent
           opacity={settings?.visualisation?.edges?.opacity || 0.6}
-          toneMapped={false} // Important for bloom effect
+          toneMapped={false}
         />
       )}
-
-      <NodeLabels />
+      {NodeLabels}
     </>
   )
 }
