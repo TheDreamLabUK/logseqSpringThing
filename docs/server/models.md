@@ -23,12 +23,10 @@ pub struct SimulationParams {
     pub time_step: f32,
     // pub phase: SimulationPhase, // If used, SimulationPhase would be an enum
     // pub mode: SimulationMode,   // If used, SimulationMode would be an enum
-    pub gravity_strength: f32, // This is usually part of PhysicsSettings in AppFullSettings
-    pub center_attraction_strength: f32, // This is usually part of PhysicsSettings in AppFullSettings
     // Other fields like collision_radius, max_velocity, repulsion_distance might be here or in PhysicsSettings
 }
 ```
-Note: Some fields like `gravity_strength`, `center_attraction_strength`, and `enable_bounds` are typically part of `PhysicsSettings` within `AppFullSettings`, which then might be used to populate or influence `SimulationParams` used by the `GraphService`.
+Note: Some physics parameters like `gravity_strength` and `center_attraction_strength` are part of `PhysicsSettings` within the main `AppFullSettings` and are used to influence the `SimulationParams` at runtime, but are not direct fields of this struct.
 
 ### Usage
 -   Configuring the physics engine for graph layout.
@@ -155,12 +153,12 @@ The `Metadata` struct contains details for each processed file/node:
 pub struct Metadata {
     pub file_name: String, // Original file name
     pub file_size: u64,    // File size in bytes (ensure type matches actual usage, e.g., u64)
-    // pub node_size: f64, // This is often a client-side or dynamically calculated value, not stored directly in server metadata
+    pub node_size: f64,
     pub hyperlink_count: usize,
     pub sha1: Option<String>, // SHA1 hash of the file content, optional
     pub node_id: String,      // Unique identifier for the graph node (often derived from file_name or path)
     pub last_modified: Option<i64>, // Unix timestamp (seconds), optional
-    
+
     // AI Service related fields
     pub perplexity_link: Option<String>, // Link to Perplexity discussion/page if available
     pub last_perplexity_process_time: Option<i64>, // Timestamp of last Perplexity processing, optional
@@ -174,7 +172,7 @@ pub struct Metadata {
 }
 ```
 -   The `MetadataStore` itself is a `HashMap`. Relationships between nodes (edges) are typically stored separately in `GraphData` within `GraphService`. Statistics are usually computed on-the-fly or by dedicated analysis processes rather than being stored directly in `MetadataStore`.
--   `node_size` as a distinct field in `Metadata` is less common server-side; visual node size is often determined client-side based on `file_size`, `hyperlink_count`, or other metrics from `Metadata`.
+-   The `node_size` field is calculated on the server based on file size and stored in the metadata for potential use by the client or other services.
 
 ### Operations
 -   The `MetadataStore` (as a `HashMap`) supports standard CRUD operations for `Metadata` entries.

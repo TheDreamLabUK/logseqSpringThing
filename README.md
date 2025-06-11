@@ -80,10 +80,10 @@ graph TD
 
         TwoPane --> GraphView
         TwoPane --> RightCtlPanel
+        TwoPane --> ConvoPane
+        TwoPane --> NarrativePane
         RightCtlPanel --> SettingsUI
-        RightCtlPanel --> ConvoPane
-        RightCtlPanel --> NarrativePane
-        
+
         SettingsUI --> SettingsMgr
         GraphView --> RenderEngine
         RenderEngine <--> GraphDataMgr
@@ -97,7 +97,7 @@ graph TD
     subgraph ServerApp [Backend (Rust, Actix)]
         direction LR
         Actix[Actix Web Server]
-        
+
         subgraph Handlers_Srv [API & WebSocket Handlers]
             direction TB
             SettingsH[SettingsHandler]
@@ -119,37 +119,36 @@ graph TD
             RAGFlowSvc_Srv[RAGFlowService]
             PerplexitySvc_Srv[PerplexityService]
         end
-        
-        subgraph CoreState_Srv [Shared State & Utils]
+
+        subgraph Actors_Srv [Actor System]
             direction TB
-            AppState_Srv[AppState (settings, metadata_store)]
-            ProtectedSettings_Srv[ProtectedSettings (API keys)]
-            MetadataStore_Srv[MetadataStore]
-            ClientMgr_Srv[ClientManager (Static)]
-            GPUCompute_Srv[GPUCompute (Optional)]
+            GraphServiceActor[GraphServiceActor]
+            SettingsActor[SettingsActor]
+            MetadataActor[MetadataActor]
+            ClientManagerActor[ClientManagerActor]
+            GPUComputeActor[GPUComputeActor]
+            ProtectedSettingsActor[ProtectedSettingsActor]
         end
+        AppState_Srv[AppState holds Addr<...>]
 
         Actix --> Handlers_Srv
 
-        SettingsH --> AppState_Srv
-        NostrAuthH --> NostrSvc_Srv
-        NostrAuthH --> ProtectedSettings_Srv
-        GraphAPI_H --> GraphSvc_Srv
-        FilesAPI_H --> FileSvc_Srv
-        RAGFlowH_Srv --> RAGFlowSvc_Srv
-        SocketFlowH --> ClientMgr_Srv
-        SpeechSocketH --> SpeechSvc_Srv
+        Handlers_Srv --> AppState_Srv
+        SocketFlowH --> ClientManagerActor
+        GraphAPI_H --> GraphServiceActor
+        SettingsH --> SettingsActor
+        NostrAuthH --> ProtectedSettingsActor
 
-        GraphSvc_Srv --> ClientMgr_Srv
-        GraphSvc_Srv --> MetadataStore_Srv
-        GraphSvc_Srv --> GPUCompute_Srv
-        GraphSvc_Srv --> AppState_Srv
+        GraphServiceActor --> ClientManagerActor
+        GraphServiceActor --> MetadataActor
+        GraphServiceActor --> GPUComputeActor
+        GraphServiceActor --> SettingsActor
 
-        FileSvc_Srv --> MetadataStore_Srv
-        NostrSvc_Srv --> ProtectedSettings_Srv
-        SpeechSvc_Srv --> AppState_Srv
-        RAGFlowSvc_Srv --> AppState_Srv
-        PerplexitySvc_Srv --> AppState_Srv
+        FileSvc_Srv --> MetadataActor
+        NostrSvc_Srv --> ProtectedSettingsActor
+        SpeechSvc_Srv --> SettingsActor
+        RAGFlowSvc_Srv --> SettingsActor
+        PerplexitySvc_Srv --> SettingsActor
     end
 
     subgraph External_Srv [External Services]
@@ -228,16 +227,12 @@ classDiagram
     package "Backend (Rust)" {
         class AppState {
             <<Struct>>
-            +settings: Arc<RwLock<AppFullSettings>>
-            +protected_settings: Arc<RwLock<ProtectedSettings>>
-            +metadata_store: Arc<RwLock<MetadataStore>>
-            +nostr_service: Arc<NostrService>
-            +file_service: Arc<FileService>
-            +graph_service: Arc<GraphService> %% Assuming GraphService is Arc-wrapped if shared this way
-            +perplexity_service: Option<Arc<PerplexityService>>
-            +ragflow_service: Option<Arc<RAGFlowService>>
-            +speech_service: Option<Arc<SpeechService>>
-            +gpu_compute: Option<Arc<RwLock<GPUCompute>>>
+            +graph_service_addr: Addr<GraphServiceActor>
+            +settings_addr: Addr<SettingsActor>
+            +metadata_addr: Addr<MetadataActor>
+            +client_manager_addr: Addr<ClientManagerActor>
+            +gpu_compute_addr: Option<Addr<GPUComputeActor>>
+            +protected_settings_addr: Addr<ProtectedSettingsActor>
         }
         class GraphService {
             <<Struct>>
@@ -273,15 +268,17 @@ classDiagram
             +fetch_and_process_content()
             +update_metadata_store()
         }
-        AppState --> GraphService
-        AppState --> NostrService
-        AppState --> PerplexityService
-        AppState --> RagFlowService
-        AppState --> SpeechService
-        AppState --> GPUCompute
-        AppState --> FileService
-        GraphService ..> GPUCompute : uses (optional)
-        NostrService ..> ProtectedSettings : uses
+        AppState --> GraphService : "<<holds>> Addr"
+        AppState --> NostrService : "<<holds>> Addr"
+        AppState --> PerplexityService : "<<holds>> Addr"
+        AppState --> RagFlowService : "<<holds>> Addr"
+        AppState --> SpeechService : "<<holds>> Addr"
+        AppState --> GPUCompute : "<<holds>> Addr"
+        AppState --> FileService : "<<holds>> Addr"
+
+        WebSocketService -->> GraphServiceActor : "<<sends>> UpdateNodePositions"
+        GraphService ..> GPUCompute : "uses (optional)"
+        NostrService ..> ProtectedSettingsActor : "uses"
     }
 ```
 
@@ -297,7 +294,7 @@ sequenceDiagram
     participant Services as Various Services (Graph, File, Nostr, AI)
     participant ClientMgr as ClientManager (Static)
     participant GraphSvc as GraphService
-    
+
     Main->>ConfigMod: AppFullSettings::load()
     ConfigMod-->>Main: loaded_settings
     Main->>AppStateMod: AppState::new(loaded_settings, /* other deps */)
@@ -338,7 +335,7 @@ sequenceDiagram
     WebSocketSvcClient->>WebSocketSvcClient: Set isConnected = true
     ServerWS-->>WebSocketSvcClient: Send {"type": "connection_established"} (or similar)
     WebSocketSvcClient->>WebSocketSvcClient: Set isServerReady = true
-    
+
     alt WebSocket isReady()
         WebSocketSvcClient->>ServerWS: Send {"type": "requestInitialData"}
         ServerWS-->>WebSocketSvcClient: Initial Graph Data (e.g., large JSON or binary)
@@ -367,10 +364,10 @@ sequenceDiagram
         ServerGraphSvc->>ServerGraphSvc: calculate_layout_cpu()
     end
     ServerGraphSvc->>ServerClientMgr: BroadcastBinaryPositions(updated_node_data)
-    
+
     ServerClientMgr->>ServerSocketFlowH: Distribute to connected clients
     ServerSocketFlowH-->>WebSocketSvcClient: Binary Position Update (Chunk)
-    
+
     WebSocketSvcClient->>GraphDataMgrClient: onBinaryMessage(chunk)
     GraphDataMgrClient->>GraphDataMgrClient: Decompress & Parse chunk
     GraphDataMgrClient->>ClientApp: Notify UI/Renderer of position changes
@@ -400,10 +397,10 @@ sequenceDiagram
     ClientUI->>NostrAuthSvcClient: initiateLogin()
     NostrAuthSvcClient->>ServerNostrAuthH: GET /api/auth/nostr/challenge (via APISvcClient)
     ServerNostrAuthH-->>NostrAuthSvcClient: challenge_string
-    
+
     NostrAuthSvcClient->>WindowNostr: signEvent(kind: 22242, content: "auth", tags:[["challenge", challenge_string], ["relay", ...]])
     WindowNostr-->>NostrAuthSvcClient: signed_auth_event
-    
+
     NostrAuthSvcClient->>APISvcClient: POST /api/auth/nostr (signed_auth_event)
     APISvcClient->>ServerNostrAuthH: Forward request
     ServerNostrAuthH->>ServerNostrSvc: verify_auth_event(signed_auth_event)

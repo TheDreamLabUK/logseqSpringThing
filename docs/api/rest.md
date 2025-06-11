@@ -103,7 +103,7 @@ Returns `GraphResponse` from `src/handlers/api_handler/graph/mod.rs`:
 ```json
 {
   "nodes": [
-    // Array of crate::utils::socket_flow_messages::Node
+    // Array of crate::models::node::Node
   ],
   "edges": [
     // Array of crate::models::edge::Edge
@@ -113,6 +113,7 @@ Returns `GraphResponse` from `src/handlers/api_handler/graph/mod.rs`:
   }
 }
 ```
+Note: The `Node` model used in this response is defined in `src/models/node.rs` and uses a `u32` for the `id` field.
 
 ### Get Paginated Graph Data
 ```http

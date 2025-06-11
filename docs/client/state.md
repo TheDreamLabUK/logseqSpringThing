@@ -21,21 +21,21 @@ flowchart TB
         RenderState[Rendering State]
         XRState[XR State]
     end
-    
+
     subgraph StateConsumers
         GraphManager[Graph Manager]
         ControlPanel[Control Panel]
         XRComponents[XR Components]
         VisualisationComponents[Visualisation Components]
     end
-    
+
     Settings --> VisualisationComponents
     Settings --> ControlPanel
     Settings --> XRComponents
-    
+
     GraphData --> GraphManager
     GraphData --> VisualisationComponents
-    
+
     UIState --> ControlPanel
     RenderState --> VisualisationComponents
     XRState --> XRComponents
@@ -45,7 +45,7 @@ flowchart TB
 
 ### Settings Store ([`client/src/store/settingsStore.ts`](../../client/src/store/settingsStore.ts))
 
-The Settings Store manages application settings with validation (primarily type-based), persistence, and observation. It uses Zustand with `immer` for immutable updates and `persist` for local storage.
+It uses Zustand for state management, `persist` middleware for saving to local storage, and `immer`'s `produce` utility for safe, immutable updates.
 
 **Key Features:**
 - Persistence to local storage (and potentially server-side sync via `settingsService.ts`).
@@ -55,127 +55,7 @@ The Settings Store manages application settings with validation (primarily type-
 - Employs a `deepMerge` utility ([`client/src/utils/deepMerge.ts`](../../client/src/utils/deepMerge.ts)) for merging settings updates.
 
 **Implementation Pattern (Zustand with Immer):**
-The `settingsStore` is a Zustand store. The `updateSettings` action leverages `immer`'s `produce` utility to allow direct-style mutations of the draft state, which `immer` then converts into an immutable update.
-```typescript
-import { create } from 'zustand';
-import { persist, createJSONStorage } from 'zustand/middleware';
-import { immer } from 'zustand/middleware/immer'; // Correct import for immer middleware
-import { produce } from 'immer'; // produce can also be used directly if needed
-import { Settings } from '../features/settings/config/settings';
-import { defaultSettings } from '../features/settings/config/defaultSettings';
-// import { settingsConfig } from '../features/settings/config/settingsConfig'; // May not be directly used in store
-import { deepMerge } from '../../utils/deepMerge';
-import { logger } from '../../utils/logger';
-// Assuming SettingsPath is a defined type for string paths
-type SettingsPath = string;
-
-interface SettingsState {
-  settings: Settings;
-  // Example of a more specific set function if paths are known
-  // setSetting: <K extends keyof Settings>(key: K, value: Settings[K]) => void;
-  updateSettings: (updater: (draft: Settings) => void | Settings) => void;
-  // Function to update a specific setting by path, using immer
-  setSettingByPath: (path: SettingsPath, value: any) => void;
-  // ... other actions
-}
-
-export const useSettingsStore = create<SettingsState>()(
-  persist(
-    immer( // Apply immer middleware
-      (set, get) => ({
-        settings: defaultSettings,
-        updateSettings: (updater) => {
-          // Immer's produce is implicitly handled by the immer middleware
-          // when the updater function mutates the draft directly.
-          // Or, if updater returns a new state, immer handles that too.
-          set((state) => {
-            // Create a draft and apply updates
-            const nextSettings = produce(state.settings, draftSettings => {
-              const result = updater(draftSettings);
-              // If updater returns a new settings object, use that,
-              // otherwise, the mutations on draftSettings are used.
-              if (result !== undefined) {
-                return result;
-              }
-            });
-            state.settings = nextSettings;
-          });
-          // ... notification and server sync logic (e.g., via settingsService.ts)
-        },
-        setSettingByPath: (path, value) => {
-          set(state => {
-            // Use produce to immutably update nested state via path
-            produce(state.settings, draft => {
-              let current: any = draft;
-              const pathParts = path.split('.');
-              for (let i = 0; i < pathParts.length - 1; i++) {
-                const part = pathParts[i];
-                if (current[part] === undefined || typeof current[part] !== 'object') {
-                  current[part] = {}; // Create structure if not exists
-                }
-                current = current[part];
-              }
-              current[pathParts[pathParts.length - 1]] = value;
-            })(state.settings); // This applies the changes to state.settings
-                                // The immer middleware for create() handles the final immutable update to the store state.
-                                // A more direct way with immer middleware:
-            // state.settings = produce(state.settings, draft => { ... });
-            // Or even more direct if immer middleware is correctly wrapping `set`:
-            // const pathParts = path.split('.');
-            // let current: any = state.settings;
-            // ... (mutation logic) ...
-            // However, the safest way with `set` is to ensure a new object is returned for `state.settings`
-            // or that `state.settings` itself is a draft that gets mutated.
-            // The example below ensures a new state.settings is created by produce
-            // and then assigned back.
-          });
-          // To be absolutely clear with immer middleware, the update can be:
-          // set(state => {
-          //   produce(state.settings, draft => {
-          //     // ... (mutation logic using path on draft) ...
-          //   });
-          // });
-          // Or if you want to replace the whole settings object:
-          // set(produce(draftState => {
-          //    // ... (mutation logic using path on draftState.settings) ...
-          // }));
-
-          // Corrected and simplified setSettingByPath using immer middleware:
-          // The `set` function provided by `immer` middleware already wraps `state` in a draft.
-          // So, you can mutate `state.settings` directly.
-          // set(state => {
-          //   let current: any = state.settings;
-          //   const pathParts = path.split('.');
-          //   for (let i = 0; i < pathParts.length - 1; i++) {
-          //     const part = pathParts[i];
-          //     if (current[part] === undefined || typeof current[part] !== 'object') {
-          //       current[part] = {};
-          //     }
-          //     current = current[part];
-          //   }
-          //   current[pathParts[pathParts.length - 1]] = value;
-          // });
-          // ... notification and server sync logic
-        },
-        // ... other actions like initialize, reset, get, subscribe, unsubscribe
-      })
-    ),
-    {
-      name: 'logseq-xr-settings', // LocalStorage key
-      storage: createJSONStorage(() => localStorage),
-      // Custom merge function to handle merging persisted state with initial/default state
-      merge: (persistedState, currentState) => {
-        // Ensure persistedState is an object and has 'settings'
-        if (typeof persistedState === 'object' && persistedState !== null && 'settings' in persistedState) {
-          return deepMerge(currentState, { settings: (persistedState as any).settings });
-        }
-        return currentState;
-      },
-      // ... other persist options
-    }
-  )
-);
-```
+The `set` and `updateSettings` methods in the store handle immutable updates for nested properties. The `set` method uses a path-based string to update specific values, while `updateSettings` accepts an Immer-style producer function for more complex mutations.
 
 **Settings Validation:**
 Settings validation primarily relies on **TypeScript's static type checking** during development and the structure enforced by UI components ([`SettingControlComponent.tsx`](../../client/src/features/settings/components/SettingControlComponent.tsx) based on [`settingsUIDefinition.ts`](../../client/src/features/settings/config/settingsUIDefinition.ts)). There is **no explicit runtime validation using Zod schemas** (like from `client/src/features/settings/types/settingsSchema.ts`) directly within the `settingsStore`'s `set` or `updateSettings` methods. Input validation is expected to occur in the UI components before attempting to update the store.
@@ -223,14 +103,14 @@ flowchart TD
     ValidState -->|Yes| LocalStorage[Store in Local Storage]
     ValidState -->|Yes| SyncToServer{Sync to Server?}
     ValidState -->|No| LogError[Log Error]
-    
+
     SyncToServer -->|Yes| APICall[POST to API]
     SyncToServer -->|No| Complete[Complete]
-    
+
     APICall --> ServerResponse{Success?}
     ServerResponse -->|Yes| Complete
     ServerResponse -->|No| RetryStrategy[Apply Retry Strategy]
-    
+
     RetryStrategy --> APICall
 ```
 
@@ -289,21 +169,6 @@ const unsubscribeSpecificSetting = useSettingsStore.subscribe(
 
 ## Settings Structure
 
-## Settings Structure
-
-The **source of truth** for the client-side settings structure is the `Settings` interface defined in [`client/src/features/settings/config/settings.ts`](../../client/src/features/settings/config/settings.ts). The UI representation and controls are defined in [`client/src/features/settings/config/settingsUIDefinition.ts`](../../client/src/features/settings/config/settingsUIDefinition.ts).
-
-**Key structural aspects to note from `settings.ts`:**
-
-*   **`visualisation.nodes.nodeSize`**: This is a single `number`, not a `sizeRange: [number, number]`.
-*   **`visualisation.physics`**: The `gravityStrength` and `centerAttractionStrength` fields previously documented are **not** part of the `PhysicsSettings` interface in the actual `settings.ts`. Refer to `settings.ts` for the correct fields within `PhysicsSettings` (e.g., `attractionStrength`, `repulsionStrength`, `damping`, etc.).
-*   **`visualisation.camera`**: `CameraSettings` is an optional property within `VisualisationSettings`.
-*   **AI Services**: Settings for AI services like `ragflow`, `perplexity`, `openai`, and `kokoro` are optional properties at the root level of the main `Settings` interface.
-*   **`whisper`**: Settings for `whisper` are **not present** in the current `Settings` interface in `settings.ts`.
-*   Many other fields might differ from previous documentation. **Always refer to [`client/src/features/settings/config/settings.ts`](../../client/src/features/settings/config/settings.ts) for the most accurate and complete structure.**
-
-Below is a *simplified conceptual representation*, highlighting some key categories. For the exact structure, please consult the `settings.ts` file.
-
 ```typescript
 // Simplified conceptual representation.
 // For the complete and accurate structure, see:
@@ -312,46 +177,33 @@ Below is a *simplified conceptual representation*, highlighting some key categor
 interface Settings {
   visualisation: {
     nodes: {
-      nodeSize: number;
+      nodeSize: number; // Note: This is a single number, not a range.
       baseColor: string;
-      // ... other node settings
+      // ... other node properties
     };
     edges: {
       baseWidth: number;
-      color: string;
-      // ... other edge settings
+      // ... other edge properties
     };
-    labels: {
-      enableLabels: boolean;
-      textColor: string;
-      // ... other label settings
-    };
-    physics: { // Check settings.ts for actual fields
+    physics: {
       enabled: boolean;
-      // ... other physics settings
+      // Note: gravityStrength and centerAttractionStrength are not in the config.
+      // ... other physics properties
     };
-    rendering: {
-      backgroundColor: string;
-      // ... other rendering settings
-    };
-    hologram?: HologramSettings; // Optional
-    camera?: CameraSettings;   // Optional
     // ... other visualisation categories
   };
   system: {
-    websocket: ClientWebSocketSettings; // Defined in settings.ts
-    debug: DebugSettings;             // Defined in settings.ts
+    websocket: ClientWebSocketSettings;
+    debug: DebugSettings;
     persistSettings: boolean;
-    customBackendUrl?: string;
   };
-  xr: XRSettings; // Defined in settings.ts
-  auth: AuthSettings; // Defined in settings.ts
-
-  // Optional AI Service Settings
-  ragflow?: RAGFlowSettings;       // Defined in settings.ts
-  perplexity?: PerplexitySettings; // Defined in settings.ts
-  openai?: OpenAISettings;         // Defined in settings.ts
-  kokoro?: KokoroSettings;         // Defined in settings.ts
+  xr: XRSettings;
+  auth: AuthSettings;
+  // Optional AI Service Settings (whisper is not a setting)
+  ragflow?: RAGFlowSettings;
+  perplexity?: PerplexitySettings;
+  openai?: OpenAISettings;
+  kokoro?: KokoroSettings;
 }
 ```
 

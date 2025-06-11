@@ -345,6 +345,7 @@ impl Handler<GetGraphData> for GraphServiceActor {
     type Result = Result<GraphData, String>; // Result type changed from Arc<GraphData>
  
     fn handle(&mut self, _msg: GetGraphData, _ctx: &mut Self::Context) -> Self::Result {
+        info!("DEBUG_VERIFICATION: GraphServiceActor handling GetGraphData with OWNED data clone strategy.");
         Ok((*self.graph_data).clone()) // Clones the GraphData itself
     }
 }

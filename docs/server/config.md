@@ -20,8 +20,7 @@ pub struct AppFullSettings {
     pub perplexity: Option<PerplexityConfig>,
     pub openai: Option<OpenAIConfig>,
     pub kokoro: Option<KokoroConfig>,
-    // pub whisper: Option<WhisperConfig>, // Whisper settings are NOT part of AppFullSettings
-                                        // STT is usually part of SpeechService or OpenAIConfig
+    pub whisper: Option<WhisperConfig>,
 }
 ```
 
@@ -40,7 +39,7 @@ pub struct AppFullSettings {
     -   `openai: Option<OpenAIConfig>` (may include API keys for various OpenAI services like TTS, STT/Whisper)
     -   `kokoro: Option<KokoroConfig>`
 
-Note: `whisper` is not a top-level configuration in `AppFullSettings`. Whisper STT functionality, if used via OpenAI, would typically have its API key configured within `OpenAIConfig`. If a different Whisper provider is used, its config might be part of `SpeechService` or another specific AI config block.
+Note: `whisper` is not a top-level configuration in `AppFullSettings`. Whisper STT functionality, if used via OpenAI, would typically have its API key configured within `OpenAIConfig`.
 
 ### Environment Loading
 Settings are loaded from a YAML file (defaulting to `/app/settings.yaml`) and can be overridden by environment variables. The `config` crate is used for this hierarchical loading.

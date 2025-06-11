@@ -12,27 +12,27 @@ graph TD
         AppInitializer[AppInitializer.tsx] --> UIMain[TwoPaneLayout.tsx]
         UIMain --> GraphViewport[GraphViewport.tsx]
         UIMain --> RightPane[RightPaneControlPanel.tsx]
+        UIMain --> ConversationPane[ConversationPane.tsx]
+        UIMain --> NarrativeGoldmine[NarrativeGoldminePanel.tsx]
         RightPane --> SettingsPanel[SettingsPanelRedesign.tsx]
-        RightPane --> ConversationPane[ConversationPane.tsx]
-        RightPane --> NarrativeGoldmine[NarrativeGoldminePanel.tsx]
-        
+
         SettingsPanel --> SettingsStore[settingsStore.ts (Zustand)]
         GraphViewport --> RenderingEngine[Rendering Engine (GraphCanvas, GraphManager)]
-        
+
         DataManager[GraphDataManager.ts] <--> RenderingEngine
         DataManager <--> WebSocketClient[WebSocketService.ts]
         DataManager <--> APIService[api.ts]
-        
+
         NostrAuthClient[nostrAuthService.ts] <--> APIService
         NostrAuthClient <--> UIMain % For Auth UI sections
-        
+
         XRModule[XRController.tsx] <--> RenderingEngine
         XRModule <--> SettingsStore
     end
 
     subgraph ServerApp [Backend (Rust, Actix)]
         ActixServer[Actix Web Server]
-        
+
         subgraph Handlers [API & WebSocket Handlers]
             direction LR
             SettingsHandler[settings_handler.rs]
@@ -54,15 +54,17 @@ graph TD
             RAGFlowService[RAGFlowService]
             PerplexityService[PerplexityService]
         end
-        
-        subgraph CoreState [Shared State & Utils]
+
+        subgraph Actors [Actor System]
             direction LR
-            AppState[AppState (settings, metadata_store)]
-            ProtectedSettings[ProtectedSettings (API keys, user profiles)]
-            MetadataStore[MetadataStore (HashMap)]
-            ClientManager[ClientManager (Static, for WebSockets)]
-            GPUComputeUtil[GPUCompute (Optional)]
+            GraphServiceActor[GraphServiceActor]
+            SettingsActor[SettingsActor]
+            MetadataActor[MetadataActor]
+            ClientManagerActor[ClientManagerActor]
+            GPUComputeActor[GPUComputeActor]
+            ProtectedSettingsActor[ProtectedSettingsActor]
         end
+        AppState[AppState holds Addr<...>]
 
         ActixServer --> SettingsHandler
         ActixServer --> NostrAuthHandler
@@ -73,29 +75,29 @@ graph TD
         ActixServer --> SpeechSocketHandler
         ActixServer --> HealthHandler
 
-        SettingsHandler --> AppState
+        SettingsHandler --> SettingsActor
         NostrAuthHandler --> NostrService
-        NostrAuthHandler --> ProtectedSettings
-        GraphAPIHandler --> GraphService
-        GraphAPIHandler --> FileService % For refresh/update triggers
+        NostrAuthHandler --> ProtectedSettingsActor
+        GraphAPIHandler --> GraphServiceActor
         FilesAPIHandler --> FileService
         RAGFlowAPIHandler --> RAGFlowService
-        
-        SocketFlowHandler --> ClientManager
+
+        SocketFlowHandler --> ClientManagerActor
         SpeechSocketHandler --> SpeechService
 
-        GraphService --> ClientManager % Broadcasts updates
-        GraphService --> MetadataStore % Reads metadata
-        GraphService --> GPUComputeUtil % Uses GPU for physics
-        GraphService --> AppState % Accesses simulation settings
+        GraphServiceActor --> ClientManagerActor % Broadcasts updates
+        GraphServiceActor --> MetadataActor % Reads metadata
+        GraphServiceActor --> GPUComputeActor % Uses GPU for physics
+        GraphServiceActor --> SettingsActor % Accesses simulation settings
 
-        FileService --> MetadataStore % Updates metadata
-        FileService --> AppState % Accesses GitHub config if needed
+        FileService --> MetadataActor % Updates metadata
 
-        NostrService --> ProtectedSettings % Manages users and their API keys
-        SpeechService --> AppState % Accesses AI service configs (OpenAI, Kokoro)
-        RAGFlowService --> AppState % Accesses RAGFlow config
-        PerplexityService --> AppState % Accesses Perplexity config
+        NostrService --> ProtectedSettingsActor % Manages users and their API keys
+        SpeechService --> SettingsActor % Accesses AI service configs (OpenAI, Kokoro)
+        RAGFlowService --> SettingsActor % Accesses RAGFlow config
+        PerplexityService --> SettingsActor % Accesses Perplexity config
+
+        Handlers --> AppState % Handlers get actor addresses from AppState
     end
 
     subgraph ExternalServices [External Services]

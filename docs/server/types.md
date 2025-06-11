@@ -36,24 +36,10 @@ pub struct BinaryNodeData {
     pub mass: u8,       // Used in server-side physics
     pub flags: u8,      // Used in server-side physics (e.g., is_fixed)
     pub padding: [u8; 2], // For alignment to 28 bytes (if NodeId is external) or 30 bytes (if NodeId is internal u16)
-                          // The client-side binary protocol is 26 bytes (NodeId u16, Position 3xf32, Velocity 3xf32)
+                          // The client-side `BinaryNodeData` type in `client/src/types/binaryProtocol.ts` and the server-side `WireNodeDataItem` in `src/utils/binary_protocol.rs` correctly reflect the **28-byte** wire format (`u32` ID, position, velocity).
 }
 
-// From src/utils/socket_flow_messages.rs - Represents a node for WebSocket communication and internal graph structure
-#[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(rename_all = "camelCase")]
-pub struct Node {
-    pub id: String, // Unique identifier (often numeric string for binary protocol compatibility)
-    pub label: String, // Display label
-    pub data: BinaryNodeData, // Contains position, velocity, mass, flags for server-side use
-    
-    // Metadata is typically associated via MetadataStore using node's id or a related metadata_id,
-    // rather than directly embedded as a HashMap here for performance in GraphData.
-    // pub metadata: Option<HashMap<String, Value>>, // Example if metadata were directly on the node
-    
-    // Visual properties like color, size are usually determined by client-side settings
-    // based on metadata, not stored directly on the server-side Node struct in GraphData.
-}
+// The primary `Node` model is defined in `src/models/node.rs`. It uses a `u32` for its `id` and contains a `metadata_id: String` field to link back to the original file/metadata entry.
 
 // From src/models/edge.rs
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
@@ -87,7 +73,7 @@ pub enum SimulationMode {
 ## Models
 
 ### Settings Models
-All settings structures are primarily defined in [`src/config/mod.rs`](../../src/config/mod.rs).
+The definitive source for all server-side settings structures is `src/config/mod.rs`.
 
 -   **`AppFullSettings`**: The root struct for all server-side configurations, loaded from `settings.yaml` (snake_case) and environment variables. It contains:
     -   `visualisation: VisualisationSettings`

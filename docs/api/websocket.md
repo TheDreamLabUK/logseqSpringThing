@@ -59,13 +59,12 @@ Authentication for WebSocket connections in LogseqXR is primarily handled during
 
 Position updates are transmitted as binary messages in both directions:
 
-- Each node update is 26 bytes.
-- Format: Node ID (u16, 2 bytes), Position (3x f32, 12 bytes), Velocity (3x f32, 12 bytes).
+- **Each node update is 28 bytes**.
+- Format: **Node ID (u32, 4 bytes)**, Position (3x f32, 12 bytes), Velocity (3x f32, 12 bytes). Total: 28 bytes per node.
 - Position and Velocity are three consecutive `f32` values (x, y, z).
-- Server-side `BinaryNodeData` (defined in `src/utils/socket_flow_messages.rs`) includes additional fields like `mass`, `flags`, and `padding` for physics simulation, but these are **not** part of the 26-byte wire format sent to the client.
-- The client-side `BinaryNodeData` (defined in `client/src/types/binaryProtocol.ts`) correctly reflects the 26-byte wire format: `nodeId`, `position`, `velocity`.
-- Server-side compression: Messages are compressed with zlib if their size exceeds the `compression_threshold` (configurable in `settings.yaml` under `system.websocket.compression_threshold`, default is 512 bytes).
-- Client-side decompression is handled by `client/src/utils/binaryUtils.ts::decompressZlib`.
+- Server-side `BinaryNodeData` (defined in `src/utils/socket_flow_messages.rs`) includes additional fields like `mass`, `flags`, and `padding` for physics simulation, but these are **not** part of the **28-byte** wire format sent to the client.
+- The client-side `BinaryNodeData` (defined in `client/src/types/binaryProtocol.ts`) and the server-side `WireNodeDataItem` in `binary_protocol.rs` correctly reflect the **28-byte** wire format: `nodeId`, `position`, `velocity`.
+- Server-side compression (zlib) is applied... Client-side decompression is handled by the `graph.worker.ts` off the main UI thread.
 
 #### Server → Client Updates
 
@@ -110,13 +109,13 @@ The `socket_flow_handler.rs` primarily handles the following JSON messages:
 **Client -> Server:**
 - `{"type": "ping"}`
 - `{"type": "requestInitialData"}`: This message implicitly starts the binary update stream if the server is ready.
-- `{"type": "subscribe_position_updates", "binary": true, "interval": <number>}`: While not a distinct message type in the server's `Message` enum (`src/utils/socket_flow_messages.rs`), the `requestInitialData` handler in `socket_flow_handler.rs` effectively processes the intent of starting binary updates. The client (`client/src/services/WebSocketService.ts`) sends this to configure the binary stream.
+- `{"type": "subscribe_position_updates", "binary": true, "interval": <number>}`: While not a distinct message type in the server's `Message` enum (`src/utils/socket_flow_messages.rs`), the `requestInitialData` handler in `socket_flow_handler.rs` implicitly starts the binary update stream. The client can send a `subscribe_position_updates` message to configure the stream, but the server's primary trigger is `requestInitialData`.
 - `{"type": "enableRandomization", "enabled": <boolean>}`: This message is acknowledged by the server, but server-side randomization has been removed. The client is responsible for any randomization effects.
 
 ## Optimization Features
 
 - Zlib compression for binary messages larger than `compression_threshold` (default 512 bytes, configurable).
-- Fixed-size binary format (26 bytes per node update) for efficient parsing.
+- Fixed-size binary format (28 bytes per node update) for efficient parsing.
 - Minimal overhead for binary messages (no explicit headers per node update within a batch).
 - Consistent use of `THREE.Vector3` for positions and velocities on the client-side.
 
@@ -148,5 +147,5 @@ This section refers to the server's dynamic management of binary position update
    - Proxy/Firewall: Verify WebSocket ports are open
 
 2. Binary Protocol Issues
-   - Message Size: Verify 26 bytes per node
+   - Message Size: Verify 28 bytes per node
    - Data Integrity: Validate Vector3 data

@@ -24,7 +24,7 @@ graph TB
             SettingsStore[useSettingsStore (Zustand)]
             GraphDataManager[GraphDataManager]
         end
-        
+
         subgraph APILayer [API Layer]
             NostrAuthService[nostrAuthService.ts]
             APIService[api.ts]
@@ -33,7 +33,7 @@ graph TB
         Rendering[Rendering Engine (R3F/Three.js)]
         WebSocketClient[WebSocketClient (WebSocketService.ts)]
         XRModule[XR Module]
-        
+
         AppInitializer --> TwoPaneLayout
         AppInitializer --> SettingsStore
         AppInitializer --> GraphDataManager
@@ -45,10 +45,10 @@ graph TB
 
         TwoPaneLayout --> GraphViewportUI
         TwoPaneLayout --> RightPaneControlPanel
+        TwoPaneLayout --> ConversationPane
+        TwoPaneLayout --> NarrativeGoldminePanel
         RightPaneControlPanel --> SettingsPanelRedesign
-        RightPaneControlPanel --> ConversationPane
-        RightPaneControlPanel --> NarrativeGoldminePanel
-        
+
         SettingsPanelRedesign --> SettingsStore
         ConversationPane --> APIService
         NarrativeGoldminePanel --> APIService
@@ -57,20 +57,20 @@ graph TB
         GraphDataManager --> Rendering
         SettingsStore --> APIService
         GraphDataManager --> WebSocketClient
-        
+
         NostrAuthService --> APIService
-        APIService --> WebSocketClient
+        GraphDataManager --> WebSocketClient
 
         XRModule --> Rendering
         XRModule --> SettingsStore
         WebSocketClient --> GraphDataManager
     end
-    
+
     subgraph ServerInterface [Server Interface]
         RESTAPI[REST API]
         WebSocketServer[WebSocket Server]
         AuthHandler[Authentication Handler]
-        
+
         APIService --> RESTAPI
         WebSocketClient --> WebSocketServer
         NostrAuthService --> AuthHandler
@@ -83,10 +83,7 @@ graph TB
 ### User Interface Layer
 The UI layer is built with React and TypeScript.
 - [`TwoPaneLayout.tsx`](../../client/src/app/TwoPaneLayout.tsx) serves as the primary layout, dividing the screen into a main visualisation area and a control panel area.
-- [`RightPaneControlPanel.tsx`](../../client/src/app/components/RightPaneControlPanel.tsx) hosts various control panels, including:
-    - [`SettingsPanelRedesign.tsx`](../../client/src/features/settings/components/panels/SettingsPanelRedesign.tsx) for application settings. This panel utilizes [`SettingsSection.tsx`](../../client/src/features/settings/components/SettingsSection.tsx) and [`SettingControlComponent.tsx`](../../client/src/features/settings/components/SettingControlComponent.tsx) for rendering individual settings.
-    - [`ConversationPane.tsx`](../../client/src/app/components/ConversationPane.tsx) for AI chat interactions.
-    - [`NarrativeGoldminePanel.tsx`](../../client/src/app/components/NarrativeGoldminePanel.tsx) for exploring narrative elements.
+- [`RightPaneControlPanel.tsx`](../../client/src/app/components/RightPaneControlPanel.tsx) hosts the authentication UI and the main settings panel: `SettingsPanelRedesign.tsx`. The `ConversationPane` and `NarrativeGoldminePanel` are rendered alongside it within the main `TwoPaneLayout`.
 - [`GraphViewport.tsx`](../../client/src/features/graph/components/GraphViewport.tsx) is responsible for the main 3D graph visualisation area.
 
 ### State Management
@@ -135,26 +132,26 @@ flowchart TB
         UserInput[User Input (UI/XR)]
         ServerData[Server Data (REST/WS)]
     end
-    
+
     subgraph Processing
         State[State Management (Zustand)]
         GraphProcessing[Graph Data Processing]
         RenderingLogic[Rendering Logic]
     end
-    
+
     subgraph Output
         Visualisation[3D Visualisation]
         UIUpdate[UI Update]
         ServerUpdate[Server Update (WS/REST)]
     end
-    
+
     UserInput --> State
     ServerData --> State
-    
+
     State --> GraphProcessing
     GraphProcessing --> RenderingLogic
     RenderingLogic --> Visualisation
-    
+
     State --> UIUpdate
     State --> ServerUpdate
 ```
@@ -201,7 +198,7 @@ stateDiagram-v2
     Running --> XR: Enter XR Mode
     XR --> Running: Exit XR Mode
     Running --> [*]: Shutdown
-    
+
     Running --> Error: Exception
     Error --> Running: Recover
     Error --> Shutdown: Fatal Error

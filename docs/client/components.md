@@ -34,7 +34,7 @@ flowchart TB
         SettingsSection[SettingsSection.tsx]
         SettingControlComp[SettingControlComponent.tsx]
     end
-    
+
     subgraph AuthUI [Authentication UI]
         AuthUIHandler[AuthUIHandler.tsx]
         NostrAuthSection[NostrAuthSection.tsx]
@@ -63,7 +63,7 @@ flowchart TB
         XRInitializer[xrInitializer.ts]
         XRSessionManager[xrSessionManager.ts]
     end
-    
+
     subgraph GenericUI [Generic UI Components]
         MarkdownRenderer[MarkdownRenderer.tsx]
         Button[Button.tsx]
@@ -89,7 +89,7 @@ flowchart TB
 
     RightPaneCtrlPanel --> NostrAuthSection
     RightPaneCtrlPanel --> SettingsPanelRedesign
-    
+
     SettingsPanelRedesign --> TabsUI
     TabsUI --> SettingsSection %% SettingsPanelRedesign renders SettingsSections directly or via Tabs
     SettingsSection --> SettingControlComp
@@ -117,7 +117,7 @@ flowchart TB
     GraphManager --> TextRenderer
     GraphManager --> MetadataVisualizer
     GraphManager --> HologramManager
-    
+
     %% XR Dependencies
     XRController --> XRScene
     XRController --> XRInitializer
@@ -272,19 +272,19 @@ sequenceDiagram
     participant WebSocketService
     participant GraphDataManager
     participant GraphCanvas
-    
+
     AppInitializer->>SettingsStore: initialise()
     SettingsStore-->>AppInitializer: Settings loaded
-    
+
     AppInitializer->>NostrAuthService: initialise()
     NostrAuthService-->>AppInitializer: Auth state ready
-    
+
     AppInitializer->>WebSocketService: connect()
     WebSocketService-->>AppInitializer: Connection established
-    
+
     AppInitializer->>GraphDataManager: fetchInitialData()
     GraphDataManager-->>AppInitializer: Initial graph data
-    
+
     AppInitializer->>GraphCanvas: Render 3D scene with initial data
 ```
 
@@ -325,7 +325,7 @@ Corresponds to methods in [`client/src/services/WebSocketService.ts`](../../clie
 interface GraphDataManagerInterface {
   fetchInitialData(): Promise<void>;
   setGraphData(nodes: Node[], edges: Edge[], metadata?: Record<string, any>): void;
-  updateNodePositions(data: ArrayBuffer | { nodeId: number; position: { x: number; y: number; z: number }; velocity?: { x: number; y: number; z: number }}[]): void;
+  updateNodePositions(data: ArrayBuffer): void;
   // sendNodePositions(): void; // This might be handled internally or via a different mechanism
   getGraphData(): { nodes: Node[]; edges: Edge[]; metadata: Record<string, any> };
   getNodeById(id: string): Node | undefined;
@@ -337,6 +337,7 @@ interface GraphDataManagerInterface {
   // Other methods like addNode, removeNode, addEdge, removeEdge might exist
 }
 ```
+The `graphDataManager` now delegates binary data processing to a web worker.
 Corresponds to methods and properties in [`client/src/features/graph/managers/graphDataManager.ts`](../../client/src/features/graph/managers/graphDataManager.ts).
 
 ## Dependency Injection

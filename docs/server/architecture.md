@@ -6,53 +6,23 @@ The app state module manages the application's shared state and provides thread-
 ## Core Structure
 
 ### AppState
-The `AppState` struct holds references to all major services and shared data. It is designed for thread-safe access using `Arc<RwLock<T>>` for mutable shared state.
+The `AppState` struct now holds actor addresses (`Addr<...Actor>`) for managing shared state. Communication happens via asynchronous message passing instead of `Arc<RwLock<T>>`.
 
 ```rust
-// Defined in src/app_state.rs
+// In src/app_state.rs
 pub struct AppState {
-    pub settings: Arc<RwLock<AppFullSettings>>, // Manages overall application settings
-    pub protected_settings: Arc<RwLock<ProtectedSettings>>, // Manages sensitive settings like API keys
-    pub metadata_store: Arc<RwLock<MetadataStore>>, // Stores metadata for files/nodes
-    
-    // Services - these are typically initialized and held by AppState
-    // Note: GraphService might not be directly in AppState if it's managed by ClientManager or similar static constructs
-    // For services like Perplexity, RAGFlow, Speech, GitHub, ContentAPI, NostrService, GPUCompute:
-    // They are often Arc-wrapped if shared, or directly owned if not.
-    // The exact structure depends on their initialization and sharing needs.
-    // Example:
-    pub github_service: Option<Arc<GitHubService>>, // Assuming a dedicated GitHub service
-    pub file_service: Arc<FileService>, // Handles file operations, uses ContentAPI internally
-    pub perplexity_service: Option<Arc<PerplexityService>>,
-    pub ragflow_service: Option<Arc<RAGFlowService>>,
-    pub speech_service: Option<Arc<SpeechService>>, // Manages STT/TTS
-    pub nostr_service: Arc<NostrService>, // Manages Nostr auth and user profiles
-    pub gpu_compute: Option<Arc<RwLock<GPUCompute>>>, // For GPU-accelerated physics
-
-    // Feature access control
-    pub feature_access: Arc<FeatureAccess>,
-
-    // Other state
-    // pub active_connections: Arc<AtomicUsize>, // Example for tracking WebSocket connections
-    // pub ragflow_default_session_id: String, // Example if a default session is maintained
+    pub graph_service_addr: Addr<GraphServiceActor>,
+    pub gpu_compute_addr: Option<Addr<GPUComputeActor>>,
+    pub settings_addr: Addr<SettingsActor>,
+    pub protected_settings_addr: Addr<ProtectedSettingsActor>,
+    pub metadata_addr: Addr<MetadataActor>,
+    pub client_manager_addr: Addr<ClientManagerActor>,
+    // ... other non-actor state like clients and services
 }
 ```
 
-**ClientManager Usage:**
-The `ClientManager` (defined in `src/handlers/socket_flow_handler.rs` or a similar central place for WebSocket client management) is typically a **static `Lazy` instance** (e.g., `APP_CLIENT_MANAGER`). It is **not directly a field** within `AppState` itself but is accessed globally by services that need to interact with connected WebSocket clients, such as `GraphService` or `SpeechService` (for broadcasting). `AppState` might provide a helper method like `ensure_client_manager()` or services might access the static instance directly.
-The `GraphService` itself is also often a complex entity, potentially started as a separate task/actor and interacting with the `APP_CLIENT_MANAGER` to send updates.
-
-```rust
-// In app_state.rs
-static APP_CLIENT_MANAGER: Lazy<Arc<ClientManager>> =
-    Lazy::new(|| Arc::new(ClientManager::new()));
-
-impl AppState {
-    pub async fn ensure_client_manager(&self) -> Arc<ClientManager> {
-        APP_CLIENT_MANAGER.clone()
-    }
-}
-```
+### ClientManager
+The `ClientManager` is now implemented as an **actor** (`ClientManagerActor`). Its address (`Addr<ClientManagerActor>`) is held in `AppState` and shared with other services that need to broadcast messages to clients, such as `GraphServiceActor`.
 
 ## Initialization
 
@@ -98,16 +68,15 @@ pub type SafeMetadataStore = Arc<RwLock<MetadataStore>>;
 ```
 
 ### Access Patterns
-Services and handlers access `AppState` fields using `read().await` for shared access and `write().await` for exclusive mutable access.
+Services and handlers access state by sending messages to the actors via their addresses in `AppState`.
 
 ```rust
-// Example access patterns (actual methods might differ)
-// async fn example_read_settings(app_state: &AppState) -> AppFullSettings {
-//     app_state.settings.read().await.clone()
+// Example access pattern using actor messages
+// async fn example_get_settings(app_state: &AppState) -> AppFullSettings {
+//     app_state.settings_addr.send(GetSettings).await.unwrap().unwrap()
 // }
-// async fn example_write_metadata(app_state: &AppState, new_metadata: MetadataStore) {
-//     let mut metadata_guard = app_state.metadata.write().await;
-//     *metadata_guard = new_metadata;
+// async fn example_update_metadata(app_state: &AppState, new_metadata: MetadataStore) {
+//     app_state.metadata_addr.do_send(UpdateMetadata { metadata: new_metadata });
 // }
 ```
 
