@@ -26,6 +26,10 @@ export default defineConfig({
       path: '/ws' // Explicitly set the path Nginx proxies
     },
     // Proxy is now handled by Nginx, remove proxy config from Vite
+    headers: {
+      'Cross-Origin-Opener-Policy': 'same-origin',
+      'Cross-Origin-Embedder-Policy': 'require-corp',
+    },
   },
   resolve: {
     alias: {
@@ -33,4 +37,3 @@ export default defineConfig({
     },
   },
 });
-

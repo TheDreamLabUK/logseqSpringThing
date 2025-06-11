@@ -102,7 +102,7 @@ const AppInitializer: React.FC<AppInitializerProps> = ({ onInitialized }) => {
     };
 
     initApp();
-  }, [initialize, onInitialized]);
+  }, []);
 
   // Initialize WebSocket and set up event handlers - now safer with more error handling
   const initializeWebSocket = async (settings: any): Promise<void> => {

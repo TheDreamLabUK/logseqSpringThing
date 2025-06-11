@@ -7,12 +7,6 @@ import { createLogger, createErrorMetadata } from '../../../utils/logger'
 const logger = createLogger('NostrAuthSection');
 
 const NostrAuthSection: React.FC = () => {
-  useEffect(() => {
-    // Initialize auth system when component mounts
-    initializeAuth().catch(error => {
-      logger.error('Failed to initialize auth system:', createErrorMetadata(error));
-    });
-  }, []);
 
   return (
     // Explicitly set dark background and text for the card to ensure theme consistency
