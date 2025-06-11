@@ -50,9 +50,7 @@ class GraphWorkerProxy {
   private sharedBuffer: SharedArrayBuffer | null = null;
   private isInitialized: boolean = false;
 
-  private constructor() {
-    this.initializeWorker();
-  }
+  private constructor() {}
 
   public static getInstance(): GraphWorkerProxy {
     if (!GraphWorkerProxy.instance) {
@@ -61,7 +59,10 @@ class GraphWorkerProxy {
     return GraphWorkerProxy.instance;
   }
 
-  private async initializeWorker(): Promise<void> {
+  public async initialize(): Promise<void> {
+    if (this.isInitialized) {
+      return;
+    }
     try {
       // Create worker instance
       this.worker = new Worker(
@@ -75,7 +76,7 @@ class GraphWorkerProxy {
       // Set up shared array buffer for position data (4 floats per node * max 10k nodes)
       const maxNodes = 10000;
       const bufferSize = maxNodes * 4 * 4; // 4 floats * 4 bytes per float
-      
+
       if (typeof SharedArrayBuffer !== 'undefined') {
         this.sharedBuffer = new SharedArrayBuffer(bufferSize);
         await this.workerApi.setupSharedPositions(this.sharedBuffer);
@@ -106,7 +107,7 @@ class GraphWorkerProxy {
 
     await this.workerApi.setGraphData(data);
     this.notifyGraphDataListeners(data);
-    
+
     if (debugState.isEnabled()) {
       logger.info(`Set graph data: ${data.nodes.length} nodes, ${data.edges.length} edges`);
     }
@@ -123,11 +124,11 @@ class GraphWorkerProxy {
     try {
       const positionArray = await this.workerApi.processBinaryData(data);
       this.notifyPositionUpdateListeners(positionArray);
-      
+
       // Get updated graph data from worker
       const graphData = await this.workerApi.getGraphData();
       this.notifyGraphDataListeners(graphData);
-      
+
       if (debugState.isDataDebugEnabled()) {
         logger.debug(`Processed binary data: ${positionArray.length / 4} position updates`);
       }
@@ -156,7 +157,7 @@ class GraphWorkerProxy {
     }
 
     await this.workerApi.updateNode(node);
-    
+
     // Get updated data and notify listeners
     const graphData = await this.workerApi.getGraphData();
     this.notifyGraphDataListeners(graphData);
@@ -171,7 +172,7 @@ class GraphWorkerProxy {
     }
 
     await this.workerApi.removeNode(nodeId);
-    
+
     // Get updated data and notify listeners
     const graphData = await this.workerApi.getGraphData();
     this.notifyGraphDataListeners(graphData);
@@ -192,7 +193,7 @@ class GraphWorkerProxy {
    */
   public onGraphDataChange(listener: GraphDataChangeListener): () => void {
     this.graphDataListeners.push(listener);
-    
+
     // Return unsubscribe function
     return () => {
       this.graphDataListeners = this.graphDataListeners.filter(l => l !== listener);
@@ -204,7 +205,7 @@ class GraphWorkerProxy {
    */
   public onPositionUpdate(listener: PositionUpdateListener): () => void {
     this.positionUpdateListeners.push(listener);
-    
+
     // Return unsubscribe function
     return () => {
       this.positionUpdateListeners = this.positionUpdateListeners.filter(l => l !== listener);
@@ -226,13 +227,13 @@ class GraphWorkerProxy {
       this.worker.terminate();
       this.worker = null;
     }
-    
+
     this.workerApi = null;
     this.graphDataListeners = [];
     this.positionUpdateListeners = [];
     this.sharedBuffer = null;
     this.isInitialized = false;
-    
+
     if (debugState.isEnabled()) {
       logger.info('Graph worker disposed');
     }

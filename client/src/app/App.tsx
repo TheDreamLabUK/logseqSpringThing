@@ -95,7 +95,7 @@ function App() {
           <XRCoreProvider>
             {/* Render TwoPaneLayout only after settings are initialized */}
             {initialized ? <TwoPaneLayout /> : <div>Loading application...</div>}
-            <AppInitializer onInitialized={handleInitialized} />
+            {!initialized && <AppInitializer onInitialized={handleInitialized} /> }
             {/* Toaster remains at the top level */}
             <Toaster />
           </XRCoreProvider>

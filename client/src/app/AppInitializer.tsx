@@ -3,6 +3,7 @@ import { createLogger, createErrorMetadata } from '../utils/logger';
 import { debugState } from '../utils/debugState';
 import { useSettingsStore } from '../store/settingsStore';
 import WebSocketService from '../services/WebSocketService';
+import { graphWorkerProxy } from '../features/graph/managers/graphWorkerProxy';
 import { graphDataManager } from '../features/graph/managers/graphDataManager';
 import { initializeAuth } from '../features/auth/initAuth';
 
@@ -44,6 +45,7 @@ const AppInitializer: React.FC<AppInitializerProps> = ({ onInitialized }) => {
 
         try {
           // Initialize settings
+          await graphWorkerProxy.initialize();
           const settings = await initialize();
 
           // Apply debug settings safely
