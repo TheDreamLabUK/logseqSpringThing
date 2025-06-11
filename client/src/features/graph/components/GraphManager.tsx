@@ -6,6 +6,7 @@ import { Text, Billboard } from '@react-three/drei' // OrbitControls removed
 // Use namespace import for THREE to access constructors
 import * as THREE from 'three'
 import { graphDataManager, type GraphData, type Node as GraphNode } from '../managers/graphDataManager'
+import { graphWorkerProxy } from '../managers/graphWorkerProxy'; // Import the proxy
 import { createLogger, createErrorMetadata } from '../../../utils/logger'
 import { debugState } from '../../../utils/debugState'
 import { useSettingsStore } from '../../../store/settingsStore'
@@ -49,19 +50,20 @@ interface GraphManagerProps {
 const GraphManager: React.FC<GraphManagerProps> = ({ onNodeDragStateChange }) => { // Accept prop
   const meshRef = useRef<THREE.InstancedMesh>(null) // Initialize with null, use THREE namespace
   // REMOVE: const orbitControlsRef = useRef<any>(null);
-  
+
   // Use useMemo for stable object references across renders
   const tempMatrix = useMemo(() => new THREE.Matrix4(), [])
   const tempPosition = useMemo(() => new THREE.Vector3(), [])
   const tempScale = useMemo(() => new THREE.Vector3(), [])
   const tempQuaternion = useMemo(() => new THREE.Quaternion(), [])
   const screenPosition = useMemo(() => new THREE.Vector2(), [])
-  
+
   const [graphData, setGraphData] = useState<GraphData>({ nodes: [], edges: [] })
+  const [nodePositions, setNodePositions] = useState<Float32Array | null>(null);
   const [nodesAreAtOrigin, setNodesAreAtOrigin] = useState(false)
   const settings = useSettingsStore(state => state.settings)
   const [forceUpdate, setForceUpdate] = useState(0) // Force re-render on settings change
-  
+
   // Minimal drag state for UI feedback
   const [dragState, setDragState] = useState<{
     nodeId: string | null;
@@ -135,10 +137,10 @@ const GraphManager: React.FC<GraphManagerProps> = ({ onNodeDragStateChange }) =>
 
     tempPosition.set(x, y, z)
     tempScale.set(scale, scale, scale)
-    
+
     tempMatrix.makeScale(scale, scale, scale)
     tempMatrix.setPosition(tempPosition)
-    
+
     meshRef.current.setMatrixAt(index, tempMatrix)
   }
 
@@ -186,6 +188,12 @@ const GraphManager: React.FC<GraphManagerProps> = ({ onNodeDragStateChange }) =>
       onNodeDragStateChange(true);
       setDragState({ nodeId: node.id, instanceId });
       lastClickTimeRef.current = 0; // Reset for next double click
+
+      // When a drag starts:
+      const numericId = graphDataManager.nodeIdMap.get(node.id);
+      if (numericId !== undefined) {
+        graphWorkerProxy.pinNode(numericId);
+      }
     } else {
       // Single click (or first click of a potential double click)
       clickTimeoutRef.current = setTimeout(() => {
@@ -224,42 +232,49 @@ const GraphManager: React.FC<GraphManagerProps> = ({ onNodeDragStateChange }) =>
   const handlePointerMove = useCallback((event: ThreeEvent<PointerEvent>) => {
     const drag = dragDataRef.current;
     if (!drag.isDragging || !meshRef.current) return;
-    
+
     event.stopPropagation();
-    
+
     // Use R3F's pointer coordinates directly
     const pointer = event.pointer;
-    
+
     // Create a plane at the node's depth perpendicular to the camera
     const cameraDirection = new THREE.Vector3();
     camera.getWorldDirection(cameraDirection);
-    
+
     // Create a plane at the drag start position
     const planeNormal = cameraDirection.clone().negate();
     const plane = new THREE.Plane(planeNormal, -planeNormal.dot(drag.startPosition));
-    
+
     // Cast a ray from the camera through the mouse position
     const raycaster = new THREE.Raycaster();
     raycaster.setFromCamera(pointer, camera);
-    
+
     // Find where the ray intersects the plane
     const intersection = new THREE.Vector3();
     raycaster.ray.intersectPlane(plane, intersection);
-    
+
     if (intersection) {
+      // Tell the worker to update this node's position directly
+      const numericId = graphDataManager.nodeIdMap.get(drag.nodeId!);
+      if (numericId !== undefined) {
+          graphWorkerProxy.updateUserDrivenNodePosition(numericId, intersection);
+      }
+
+      // The rest of the logic can stay similar for immediate visual feedback
       drag.currentPosition.copy(intersection);
-      
+
       // Update visual immediately (no React state)
       const nodeSize = settings?.visualisation?.nodes?.nodeSize || 0.01;
       const BASE_SPHERE_RADIUS = 0.5; // Ensure this matches your sphereGeometry radius
       const scale = nodeSize / BASE_SPHERE_RADIUS;
-      
+
       const tempMatrix = new THREE.Matrix4(); // Local temp matrix
       tempMatrix.makeScale(scale, scale, scale);
       tempMatrix.setPosition(drag.currentPosition);
       meshRef.current.setMatrixAt(drag.instanceId!, tempMatrix);
       meshRef.current.instanceMatrix.needsUpdate = true;
-      
+
       // Update the node in graphData to keep edges and labels in sync
       setGraphData(prev => ({
         ...prev,
@@ -273,11 +288,10 @@ const GraphManager: React.FC<GraphManagerProps> = ({ onNodeDragStateChange }) =>
             : node
         )
       }));
-      
+
       // Prepare update for throttled send
       const now = Date.now();
       if (now - drag.lastUpdateTime > 30) { // Throttle WebSocket updates (e.g., ~30fps)
-        const numericId = graphDataManager.nodeIdMap.get(drag.nodeId!);
         if (numericId !== undefined) {
           drag.pendingUpdate = {
             nodeId: numericId,
@@ -297,10 +311,15 @@ const GraphManager: React.FC<GraphManagerProps> = ({ onNodeDragStateChange }) =>
   const handlePointerUp = useCallback(() => {
     const drag = dragDataRef.current;
     if (!drag.isDragging) return;
-    
+
+    const numericId = graphDataManager.nodeIdMap.get(drag.nodeId!);
+    if (numericId !== undefined) {
+      // Un-pin the node in the worker so it can be moved by the simulation again
+      graphWorkerProxy.unpinNode(numericId);
+    }
+
     // Send final position
     if (drag.nodeId && graphDataManager.webSocketService) {
-      const numericId = graphDataManager.nodeIdMap.get(drag.nodeId);
       if (numericId !== undefined) {
         const finalUpdate: BinaryNodeData = {
           nodeId: numericId,
@@ -314,13 +333,13 @@ const GraphManager: React.FC<GraphManagerProps> = ({ onNodeDragStateChange }) =>
         graphDataManager.webSocketService.send(
           createBinaryNodeData([finalUpdate])
         );
-        
+
         if (debugState.isEnabled()) {
           logger.debug(`Sent final position for node ${drag.nodeId}`);
         }
       }
     }
-    
+
     dragDataRef.current.isDragging = false;
     dragDataRef.current.pendingUpdate = null; // Clear pending update
     onNodeDragStateChange(false); // <--- Signal drag end to parent
@@ -341,51 +360,24 @@ const GraphManager: React.FC<GraphManagerProps> = ({ onNodeDragStateChange }) =>
     };
   }, [handlePointerUp]);
 
-  // Subscribe to graph data changes
+  // Pass settings to worker whenever they change
+  useEffect(() => {
+    graphWorkerProxy.updateSettings(settings);
+  }, [settings]);
+
+  // Subscribe to graph *structural* changes (add/remove nodes)
   useEffect(() => {
     const handleGraphDataChange = (newData: GraphData) => {
-      setGraphData(newData)
+      // This now only handles structural changes, not frequent position updates
+      setGraphData(newData);
+    };
+    const unsubscribeData = graphDataManager.onGraphDataChange(handleGraphDataChange);
 
-      // Check if nodes are all at origin
-      const allAtOrigin = newData.nodes.every(node =>
-        !node.position || (node.position.x === 0 && node.position.y === 0 && node.position.z === 0)
-      )
-      setNodesAreAtOrigin(allAtOrigin)
-    }
+    // Initial data load
+    graphDataManager.getGraphData().then(handleGraphDataChange);
 
-    // Initial data load (now async)
-    graphDataManager.getGraphData().then(initialData => {
-      handleGraphDataChange(initialData)
-    }).catch(error => {
-      logger.error('Error getting initial graph data:', createErrorMetadata(error));
-    })
-
-    // Subscribe to updates
-    const unsubscribeData = graphDataManager.onGraphDataChange(handleGraphDataChange)
-    const unsubscribePositions = graphDataManager.onPositionUpdate((positions) => {
-      updateNodePositions(positions)
-    })
-
-    // Subscribe to viewport updates from settings store
-    // We'll use a different approach - subscribe to the whole store and check for changes
-    const unsubscribeViewport = useSettingsStore.subscribe((state, prevState) => {
-      // Check if any visualization settings changed
-      const visualizationChanged = state.settings?.visualisation !== prevState.settings?.visualisation
-      const xrChanged = state.settings?.xr !== prevState.settings?.xr
-      const debugChanged = state.settings?.system?.debug !== prevState.settings?.system?.debug
-      
-      if (visualizationChanged || xrChanged || debugChanged) {
-        logger.debug('GraphManager: Detected settings change, forcing update')
-        setForceUpdate(prev => prev + 1)
-      }
-    })
-
-    return () => {
-      unsubscribeData()
-      unsubscribePositions()
-      unsubscribeViewport()
-    }
-  }, [])
+    return () => unsubscribeData();
+  }, []);
 
   // Update node positions from binary data
   // Update node positions - Modified to NOT directly update mesh matrices from WebSocket data
@@ -406,10 +398,40 @@ const GraphManager: React.FC<GraphManagerProps> = ({ onNodeDragStateChange }) =>
   const MAX_LOG_FILE_SIZE_ESTIMATE = Math.log10(5 * 1024 * 1024 + 1); // Approx 6.7, for 5MB
   const BASE_SPHERE_RADIUS = 0.5;
 
-  useFrame(() => {
-    if (!meshRef.current) return;
+  // The main animation loop
+  useFrame(async (state, delta) => {
+    if (!meshRef.current || graphData.nodes.length === 0) return;
 
-    // Handle pending drag updates via RAF
+    // --- THIS IS THE KEY CHANGE ---
+    // Pull smooth positions from the worker on every frame
+    const positions = await graphWorkerProxy.tick(delta);
+
+    if (positions) {
+      const nodeSize = settings?.visualisation?.nodes?.nodeSize || 0.01;
+      const BASE_SPHERE_RADIUS = 0.5;
+      const scale = nodeSize / BASE_SPHERE_RADIUS;
+
+      const tempMatrix = new THREE.Matrix4(); // Re-use a matrix object
+
+      for (let i = 0; i < graphData.nodes.length; i++) {
+        const i3 = i * 3;
+        const x = positions[i3];
+        const y = positions[i3 + 1];
+        const z = positions[i3 + 2];
+
+        // Update the instance matrix
+        tempMatrix.makeScale(scale, scale, scale);
+        tempMatrix.setPosition(x, y, z);
+        meshRef.current.setMatrixAt(i, tempMatrix);
+      }
+      meshRef.current.instanceMatrix.needsUpdate = true;
+
+      // Also update labels and edges
+      // You'll need to pass the new `positions` array to your NodeLabels and edge drawing logic
+      setNodePositions(positions); // This will trigger re-render for labels/edges
+    }
+
+    // ... handle pending drag updates ...
     const drag = dragDataRef.current;
     if (drag.pendingUpdate && graphDataManager.webSocketService && graphDataManager.webSocketService.isReady()) {
       graphDataManager.webSocketService.send(
@@ -417,59 +439,31 @@ const GraphManager: React.FC<GraphManagerProps> = ({ onNodeDragStateChange }) =>
       );
       drag.pendingUpdate = null; // Clear after sending
     }
-
-    const nodeSettings = settings?.visualisation?.nodes;
-    const nodeSize = nodeSettings?.nodeSize || 0.01; // Default if not loaded
-
-    // Log the nodeSize being used
-    if (debugState.isEnabled()) { // Only log if debug mode is on
-        logger.debug('GraphManager useFrame - nodeSize:', nodeSize);
-    }
-
-    let needsUpdate = false;
-    graphData.nodes.forEach((node, index) => {
-      const pos = node.position;
-      if (pos && (pos.x !== 0 || pos.y !== 0 || pos.z !== 0)) {
-        // Use nodeSize directly as the scale
-        const scale = nodeSize / BASE_SPHERE_RADIUS;
-        updateInstanceMatrix(index, pos.x, pos.y, pos.z, scale);
-        needsUpdate = true;
-      }
-    });
-
-    if (needsUpdate) {
-      meshRef.current.instanceMatrix.needsUpdate = true;
-    }
-  })
+  });
 
   // Memoize edge points
+  // Memoize edge points based on the new animated positions
   const edgePoints = useMemo(() => {
-    if (!graphData.nodes || !graphData.edges) return []
+    if (!nodePositions || !graphData.edges || graphData.nodes.length === 0) return [];
 
-    const points: [number, number, number][] = []
-    const { nodes, edges } = graphData
+    const points: [number, number, number][] = [];
+    const { nodes, edges } = graphData;
 
     edges.forEach(edge => {
-      if (edge.source && edge.target) {
-        const sourceNode = nodes.find(n => n.id === edge.source)
-        const targetNode = nodes.find(n => n.id === edge.target)
-        if (sourceNode?.position && targetNode?.position) {
-          if (nodesAreAtOrigin) {
-            points.push(
-              getPositionForNode(sourceNode, nodes.indexOf(sourceNode)),
-              getPositionForNode(targetNode, nodes.indexOf(targetNode))
-            )
-          } else {
-            points.push(
-              [sourceNode.position.x, sourceNode.position.y, sourceNode.position.z],
-              [targetNode.position.x, targetNode.position.y, targetNode.position.z]
-            )
-          }
-        }
+      const sourceNodeIndex = nodes.findIndex(n => n.id === edge.source);
+      const targetNodeIndex = nodes.findIndex(n => n.id === edge.target);
+
+      if (sourceNodeIndex !== -1 && targetNodeIndex !== -1) {
+        const i3s = sourceNodeIndex * 3;
+        const i3t = targetNodeIndex * 3;
+        points.push(
+          [nodePositions[i3s], nodePositions[i3s + 1], nodePositions[i3s + 2]],
+          [nodePositions[i3t], nodePositions[i3t + 1], nodePositions[i3t + 2]]
+        );
       }
-    })
-    return points
-  }, [graphData.nodes, graphData.edges, nodesAreAtOrigin])
+    });
+    return points;
+  }, [nodePositions, graphData.nodes, graphData.edges]);
 
   // Node labels component using settings from YAML
   const NodeLabels = () => {
@@ -493,8 +487,13 @@ const GraphManager: React.FC<GraphManagerProps> = ({ onNodeDragStateChange }) =>
 
     return (
       <group>
-        {graphData.nodes.map(node => {
-          if (!node.position || !node.label) return null;
+        {graphData.nodes.map((node, index) => {
+          if (!nodePositions || !node.label) return null;
+
+          const i3 = index * 3;
+          const x = nodePositions[i3];
+          const y = nodePositions[i3 + 1];
+          const z = nodePositions[i3 + 2];
 
           // Construct metadata string
           let metadataString = '';
@@ -523,9 +522,9 @@ const GraphManager: React.FC<GraphManagerProps> = ({ onNodeDragStateChange }) =>
               key={node.id}
               // Position the billboard slightly above the node center to accommodate two lines of text
               position={[
-                node.position.x,
-                node.position.y + (labelSettings.textPadding || 0.3) + (metadataString ? mainLabelFontSize / 2 + lineSpacing / 2 : 0),
-                node.position.z
+                x,
+                y + (labelSettings.textPadding || 0.3) + (metadataString ? mainLabelFontSize / 2 + lineSpacing / 2 : 0),
+                z
               ]}
               follow={labelSettings.billboardMode === 'camera'}
             >
@@ -575,7 +574,7 @@ const GraphManager: React.FC<GraphManagerProps> = ({ onNodeDragStateChange }) =>
       {/* REMOVE THE LOCAL OrbitControls INSTANCE:
       <OrbitControls ref={orbitControlsRef} ... />
       */}
-      
+
       <instancedMesh
         ref={meshRef}
         args={[undefined, undefined, graphData.nodes.length]} // Geometry, Material, Count

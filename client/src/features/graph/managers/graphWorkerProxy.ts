@@ -35,6 +35,13 @@ export interface GraphData {
   edges: Edge[];
 }
 
+// Add Vec3 to be used in updateUserDrivenNodePosition
+export interface Vec3 {
+  x: number;
+  y: number;
+  z: number;
+}
+
 type GraphDataChangeListener = (data: GraphData) => void;
 type PositionUpdateListener = (positions: Float32Array) => void;
 
@@ -125,10 +132,6 @@ class GraphWorkerProxy {
       const positionArray = await this.workerApi.processBinaryData(data);
       this.notifyPositionUpdateListeners(positionArray);
 
-      // Get updated graph data from worker
-      const graphData = await this.workerApi.getGraphData();
-      this.notifyGraphDataListeners(graphData);
-
       if (debugState.isDataDebugEnabled()) {
         logger.debug(`Processed binary data: ${positionArray.length / 4} position updates`);
       }
@@ -176,6 +179,41 @@ class GraphWorkerProxy {
     // Get updated data and notify listeners
     const graphData = await this.workerApi.getGraphData();
     this.notifyGraphDataListeners(graphData);
+  }
+
+  public async updateSettings(settings: any): Promise<void> {
+    if (!this.workerApi) {
+      throw new Error('Worker not initialized');
+    }
+    await this.workerApi.updateSettings(settings);
+  }
+
+  public async pinNode(nodeId: number): Promise<void> {
+    if (!this.workerApi) {
+      throw new Error('Worker not initialized');
+    }
+    await this.workerApi.pinNode(nodeId);
+  }
+
+  public async unpinNode(nodeId: number): Promise<void> {
+    if (!this.workerApi) {
+      throw new Error('Worker not initialized');
+    }
+    await this.workerApi.unpinNode(nodeId);
+  }
+
+  public async updateUserDrivenNodePosition(nodeId: number, position: Vec3): Promise<void> {
+    if (!this.workerApi) {
+      throw new Error('Worker not initialized');
+    }
+    await this.workerApi.updateUserDrivenNodePosition(nodeId, position);
+  }
+
+  public async tick(deltaTime: number): Promise<Float32Array> {
+    if (!this.workerApi) {
+      throw new Error('Worker not initialized');
+    }
+    return await this.workerApi.tick(deltaTime);
   }
 
   /**

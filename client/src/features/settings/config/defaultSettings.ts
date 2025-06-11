@@ -58,6 +58,7 @@ export const defaultSettings: Settings = {
       repulsionDistance: 2.0, // From JSON (camelCase, was 7.6)
       massScale: 1.0, // From JSON (camelCase, was 6.3)
       boundaryDamping: 0.95, // From JSON (camelCase, was 0.15)
+      updateThreshold: 0.05,
       // gravity: 0, // Removed, does not exist in PhysicsSettings
       // friction: 0.9, // Removed, not in PhysicsSettings
       // attraction: 0.5, // Removed, not in PhysicsSettings

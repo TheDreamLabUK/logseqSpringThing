@@ -93,6 +93,15 @@ export const settingsUIDefinition: Record<string, UICategoryDefinition> = {
           repulsionDistance: { label: 'Repulsion Distance', type: 'slider', min: 0.1, max: 10, step: 0.1, path: 'visualisation.physics.repulsionDistance', description: 'Distance at which repulsion force acts.' },
           massScale: { label: 'Mass Scale', type: 'slider', min: 0.1, max: 10, step: 0.1, path: 'visualisation.physics.massScale', description: 'Scaling factor for node mass.' },
           boundaryDamping: { label: 'Boundary Damping', type: 'slider', min: 0, max: 1, step: 0.01, path: 'visualisation.physics.boundaryDamping', description: 'Damping when nodes hit boundaries.' },
+          updateThreshold: {
+            label: 'Update Threshold',
+            type: 'slider',
+            min: 0,
+            max: 0.5,
+            step: 0.001,
+            path: 'visualisation.physics.updateThreshold',
+            description: 'Distance threshold below which server position updates are ignored to let nodes settle. A value of 0 applies all updates.'
+          },
         },
       },
       rendering: {
