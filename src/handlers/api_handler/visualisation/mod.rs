@@ -8,17 +8,17 @@ use serde_json::Value;
 use std::collections::HashMap;
 // use std::fs; // Unused import
 // use std::path::PathBuf; // Unused import
- 
+
 // Internal helper function to convert camelCase or kebab-case to snake_case
 // This replaces the dependency on case_conversion.rs
 fn to_snake_case(s: &str) -> String {
     // First handle kebab-case by replacing hyphens with underscores
     let s = s.replace('-', "_");
-    
+
     // Then handle camelCase by adding underscores before uppercase letters
     let mut result = String::with_capacity(s.len() + 4);
     let mut chars = s.chars().peekable();
-    
+
     while let Some(c) = chars.next() {
         if c.is_ascii_uppercase() {
             // If this is an uppercase letter, add an underscore before it
@@ -375,7 +375,7 @@ pub async fn update_setting(
         Ok(_) => {
             // Convert back to AppFullSettings and update
             settings.visualisation = converted_settings.visualisation.clone();
-            
+
             // Update only the client-modifiable parts of system.websocket
             settings.system.websocket.reconnect_attempts = converted_settings.system.websocket.reconnect_attempts;
             settings.system.websocket.reconnect_delay = converted_settings.system.websocket.reconnect_delay;
@@ -490,11 +490,11 @@ pub async fn get_category_settings(
         openai: settings.openai.clone(),
         kokoro: settings.kokoro.clone(),
     };
- 
+
     let _settings_value = serde_json::to_value(&converted_settings)
         .map_err(|e| format!("Failed to serialize settings: {}", e))
         .unwrap_or_default();
- 
+
     let debug_enabled = settings.system.debug.enabled;
     let log_json = debug_enabled && settings.system.debug.log_full_json;
 
@@ -557,7 +557,7 @@ pub async fn get_visualisation_settings(
             })));
         }
     };
-    Ok(HttpResponse::Ok().json(&settings))
+    Ok(HttpResponse::Ok().json(&settings.visualisation))
 }
 
 pub async fn get_settings_category(

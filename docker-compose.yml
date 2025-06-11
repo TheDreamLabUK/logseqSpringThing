@@ -25,7 +25,7 @@ services:
     ports:
       - "4000:4000"  # Map container nginx port 4000 to host port 4000
     environment:
-      - RUST_LOG=off                 # Changed from info
+      - RUST_LOG=warn                 # Changed from info
       - RUST_BACKTRACE=1
       - BIND_ADDRESS=0.0.0.0
       - PORT=3001  # Explicitly set Rust backend to use port 3001

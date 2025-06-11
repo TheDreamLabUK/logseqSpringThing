@@ -41,25 +41,25 @@ async function decompressZlib(compressedData: ArrayBuffer): Promise<ArrayBuffer>
       const writer = cs.writable.getWriter();
       writer.write(new Uint8Array(compressedData.slice(2))); // Skip zlib header
       writer.close();
-      
+
       const output = [];
       const reader = cs.readable.getReader();
-      
+
       while (true) {
         const { value, done } = await reader.read();
         if (done) break;
         output.push(value);
       }
-      
+
       const totalLength = output.reduce((acc, arr) => acc + arr.length, 0);
       const result = new Uint8Array(totalLength);
       let offset = 0;
-      
+
       for (const arr of output) {
         result.set(arr, offset);
         offset += arr.length;
       }
-      
+
       return result.buffer;
     } catch (error) {
       console.error('Worker decompression failed:', error);
@@ -96,11 +96,11 @@ class GraphWorker {
       nodes: data.nodes.map(node => this.ensureNodeHasValidPosition(node)),
       edges: data.edges
     };
-    
+
     // Create ID mappings
     this.nodeIdMap.clear();
     this.reverseNodeIdMap.clear();
-    
+
     this.graphData.nodes.forEach((node, index) => {
       const numericId = parseInt(node.id, 10);
       if (!isNaN(numericId) && numericId >= 0 && numericId <= 0xFFFFFFFF) {
@@ -137,7 +137,7 @@ class GraphWorker {
 
       // Parse binary data
       const nodeUpdates = parseBinaryNodeData(data);
-      
+
       if (nodeUpdates.length === 0) {
         console.warn('No valid node updates parsed from binary data');
         return new Float32Array(0);
@@ -150,7 +150,7 @@ class GraphWorker {
       nodeUpdates.forEach((nodeUpdate, index) => {
         const { nodeId, position, velocity } = nodeUpdate;
         const stringNodeId = this.reverseNodeIdMap.get(nodeId);
-        
+
         if (stringNodeId) {
           const nodeIndex = this.graphData.nodes.findIndex(node => node.id === stringNodeId);
           if (nodeIndex >= 0) {
@@ -166,7 +166,7 @@ class GraphWorker {
             updatedCount++;
           }
         }
-        
+
         // Update position array
         const arrayOffset = index * 4;
         positionArray[arrayOffset] = nodeId;
@@ -180,7 +180,7 @@ class GraphWorker {
         this.positionView.set(positionArray);
       }
 
-      console.log(`GraphWorker: Updated ${updatedCount} nodes from binary data`);
+      //console.log(`GraphWorker: Updated ${updatedCount} nodes from binary data`);
       return positionArray;
     } catch (error) {
       console.error('GraphWorker: Error processing binary data:', error);
@@ -200,12 +200,12 @@ class GraphWorker {
    */
   async updateNode(node: Node): Promise<void> {
     const existingIndex = this.graphData.nodes.findIndex(n => n.id === node.id);
-    
+
     if (existingIndex >= 0) {
       this.graphData.nodes[existingIndex] = { ...this.graphData.nodes[existingIndex], ...node };
     } else {
       this.graphData.nodes.push(this.ensureNodeHasValidPosition(node));
-      
+
       // Update ID mappings
       const numericId = parseInt(node.id, 10);
       if (!isNaN(numericId)) {
@@ -224,12 +224,12 @@ class GraphWorker {
    */
   async removeNode(nodeId: string): Promise<void> {
     const numericId = this.nodeIdMap.get(nodeId);
-    
+
     this.graphData.nodes = this.graphData.nodes.filter(node => node.id !== nodeId);
     this.graphData.edges = this.graphData.edges.filter(
       edge => edge.source !== nodeId && edge.target !== nodeId
     );
-    
+
     if (numericId !== undefined) {
       this.nodeIdMap.delete(nodeId);
       this.reverseNodeIdMap.delete(numericId);
@@ -247,7 +247,7 @@ class GraphWorker {
     if (!node.position) {
       return { ...node, position: { x: 0, y: 0, z: 0 } };
     }
-    
+
     return {
       ...node,
       position: {

@@ -280,7 +280,7 @@ pub struct DebugSettings { // Matches TS DebugSettings + YAML fields
 }
 
 
-#[derive(Debug, Deserialize, Clone)] // Only Deserialize needed for loading YAML
+#[derive(Debug, Serialize, Deserialize, Clone)] // Only Deserialize needed for loading YAML
 // No rename_all needed if YAML keys are snake_case
 pub struct ServerSystemConfigFromFile {
     pub network: NetworkSettings,
@@ -484,9 +484,33 @@ impl Serialize for AppFullSettings {
     where
         S: serde::Serializer,
     {
-        // Convert self to a serde_json::Value first.
+        // Helper struct to serialize AppFullSettings without recursion
+        #[derive(Serialize)]
+        struct AppFullSettingsHelper<'a> {
+            visualisation: &'a VisualisationSettings,
+            system: &'a ServerSystemConfigFromFile,
+            xr: &'a XRSettings,
+            auth: &'a AuthSettings,
+            ragflow: &'a Option<RagFlowSettings>,
+            perplexity: &'a Option<PerplexitySettings>,
+            openai: &'a Option<OpenAISettings>,
+            kokoro: &'a Option<KokoroSettings>,
+        }
+
+        let helper = AppFullSettingsHelper {
+            visualisation: &self.visualisation,
+            system: &self.system,
+            xr: &self.xr,
+            auth: &self.auth,
+            ragflow: &self.ragflow,
+            perplexity: &self.perplexity,
+            openai: &self.openai,
+            kokoro: &self.kokoro,
+        };
+
+        // Convert the helper to a serde_json::Value. This avoids recursive serialization.
         // The sub-structs might have rename_all="camelCase", so this Value will be camelCase.
-        match serde_json::to_value(self) {
+        match serde_json::to_value(&helper) {
             Ok(camel_case_value) => {
                 // Convert the camelCase Value to snake_case Value.
                 let snake_case_value = keys_to_snake_case(camel_case_value);
@@ -527,7 +551,7 @@ impl AppFullSettings {
             );
         let config = builder.build()?;
         debug!("Configuration built successfully. Deserializing AppFullSettings...");
-        
+
         // Deserialize using field names (should match snake_case YAML)
         let result: Result<AppFullSettings, ConfigError> = config.clone().try_deserialize();
         if let Err(e) = &result {
