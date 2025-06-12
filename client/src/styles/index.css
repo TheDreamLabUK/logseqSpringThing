@@ -1,26 +1,14 @@
-@import '@radix-ui/themes/styles.css';
-
-/* Hardcode control panel background for visibility */
-.settings-panel,
-.h-full.flex.flex-col.bg-background,
-.w-full.h-full.flex.flex-col.min-h-0,
-/* Force all text on the control panel background to be white for visibility */
-.settings-panel,
-.h-full.flex.flex-col.bg-background,
-.w-full.h-full.flex.flex-col.min-h-0,
-.bg-background {
-  color: #fff !important;
-}
-
-.settings-panel * {
-  color: #fff !important;
-}
-.bg-background {
-  background: #18181b !important;
-}
+/* Correct import order */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+@import '@radix-ui/themes/styles.css';
 @import './tokens.css';
 @import './globals.css';
+
+/*
+  Removed hardcoded !important rules.
+  Styling should be handled by theme variables and Tailwind utility classes
+  to avoid specificity conflicts that break component styles.
+*/

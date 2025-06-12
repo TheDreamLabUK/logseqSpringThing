@@ -79,7 +79,7 @@ const LowerControlPanel: React.FC = () => {
 
   return (
     // Main container now stacks its children vertically and ensures full height.
-    <div className="flex flex-col w-full h-full bg-card text-card-foreground overflow-hidden">
+    <div className="flex flex-col w-full h-full bg-card text-card-foreground overflow-hidden z-10">
       {/* Top Section: Settings Tabs - Takes 60% of the available height */}
       <div className="h-[60%] border-b border-border flex flex-col overflow-hidden">
         <Tabs

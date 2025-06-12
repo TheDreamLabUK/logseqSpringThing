@@ -46,13 +46,12 @@ const Tabs: React.FC<TabsProps> = ({
           <button
             key={index}
             onClick={() => setActiveTab(index)}
-            style={{ backgroundColor: 'yellow', color: 'black', padding: '10px', border: '2px solid red', display: 'block', visibility: 'visible', opacity: 1, zIndex: 9999 }}
             className={cn(
               // Base styles for dark theme button appearance
               'appearance-none border-none bg-transparent', // Restore bg-transparent
               'flex items-center px-4 py-2', // Adjusted padding
               'text-sm font-medium', // Consistent font styling
-              'text-muted-foreground hover:text-foreground', // Restore text colors
+              'text-foreground/70 hover:text-foreground', // Use a more visible muted color
               'focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background', // Focus ring for accessibility
               'whitespace-nowrap transition-colors duration-150 ease-in-out', // Smooth transition
               // Remove default bottom border, apply only to active

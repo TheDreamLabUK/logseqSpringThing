@@ -15,19 +15,11 @@ const Slider = React.forwardRef<
     )}
     {...props}
   >
-    <SliderPrimitive.Track
-      className="relative h-1.5 w-full grow overflow-hidden rounded-full bg-primary/20"
-      style={{ height: '10px', width: '100%', backgroundColor: 'blue', display: 'block', opacity: 1, visibility: 'visible' }}
-    >
-      <SliderPrimitive.Range
-        className="absolute h-full bg-primary"
-        style={{ height: '100%', backgroundColor: 'green', display: 'block', opacity: 1, visibility: 'visible' }}
-      />
+    {/* Track: use bg-muted for better contrast */}
+    <SliderPrimitive.Track className="custom-slider-track relative h-2 w-full grow overflow-hidden rounded-full bg-muted">
+      <SliderPrimitive.Range className="custom-slider-range absolute h-full bg-primary" />
     </SliderPrimitive.Track>
-    <SliderPrimitive.Thumb
-      className="block h-4 w-4 rounded-full border border-primary/50 bg-background shadow transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50"
-      style={{ height: '20px', width: '20px', backgroundColor: 'orange', display: 'block', opacity: 1, visibility: 'visible', border: '2px solid red' }}
-    />
+    <SliderPrimitive.Thumb className="custom-slider-thumb block h-5 w-5 rounded-full border-2 border-primary bg-primary shadow-lg ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50" />
   </SliderPrimitive.Root>
 ))
 Slider.displayName = SliderPrimitive.Root.displayName

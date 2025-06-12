@@ -73,14 +73,23 @@ const GraphManager: React.FC<GraphManagerProps> = ({ onNodeDragStateChange }) =>
 
   // Performance-optimized drag data using refs (no re-renders)
   const dragDataRef = useRef({
+    // General state
     isDragging: false,
+    pointerDown: false,
     nodeId: null as string | null,
     instanceId: null as number | null,
-    startPosition: new THREE.Vector3(),
-    currentPosition: new THREE.Vector3(),
-    offset: new THREE.Vector2(),
+
+    // Drag detection
+    startPointerPos: new THREE.Vector2(), // Screen position (in pixels) on pointer down
+    startTime: 0, // Time on pointer down
+
+    // 3D positions
+    startNodePos3D: new THREE.Vector3(),
+    currentNodePos3D: new THREE.Vector3(),
+
+    // Server updates
     lastUpdateTime: 0,
-    pendingUpdate: null as BinaryNodeData | null
+    pendingUpdate: null as BinaryNodeData | null,
   });
 
   const { camera, size } = useThree()
@@ -145,212 +154,177 @@ const GraphManager: React.FC<GraphManagerProps> = ({ onNodeDragStateChange }) =>
     meshRef.current.setMatrixAt(index, tempMatrix)
   }
 
-  // Optimized drag event handlers
-  const clickTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const lastClickTimeRef = useRef<number>(0);
-  const DOUBLE_CLICK_THRESHOLD = 300; // ms
+  // Drag detection threshold in screen pixels
+  const DRAG_THRESHOLD = 5;
 
   const slugifyNodeLabel = (label: string): string => {
     return label.toLowerCase().replace(/\s+/g, '%20');
   };
 
-  const handleNodeClick = useCallback((event: ThreeEvent<PointerEvent>) => {
-    const instanceId = event.instanceId;
-    if (instanceId === undefined) return;
+  const handlePointerDown = useCallback((event: ThreeEvent<PointerEvent>) => {
+  const instanceId = event.instanceId;
+  if (instanceId === undefined) return;
 
-    event.stopPropagation();
-    const node = graphData.nodes[instanceId];
-    if (!node || !node.label) return;
+  event.stopPropagation();
+  const node = graphData.nodes[instanceId];
+  if (!node) return;
 
-    const currentTime = Date.now();
+  // Record initial state for drag detection
+  dragDataRef.current = {
+    ...dragDataRef.current,
+    pointerDown: true,
+    isDragging: false, // Reset dragging state
+    nodeId: node.id,
+    instanceId,
+    startPointerPos: new THREE.Vector2(event.nativeEvent.offsetX, event.nativeEvent.offsetY),
+    startTime: Date.now(),
+    startNodePos3D: new THREE.Vector3(node.position.x, node.position.y, node.position.z),
+    currentNodePos3D: new THREE.Vector3(node.position.x, node.position.y, node.position.z),
+  };
 
-    if (clickTimeoutRef.current) {
-      clearTimeout(clickTimeoutRef.current);
-      clickTimeoutRef.current = null;
-    }
-
-    // Double click
-    if (currentTime - lastClickTimeRef.current < DOUBLE_CLICK_THRESHOLD) {
-      if (debugState.isEnabled()) {
-        logger.debug(`Double-clicked node ${node.id} (instance ${instanceId})`);
-      }
-      // Initiate drag on double click
-      const pointer = event.pointer;
-      dragDataRef.current = {
-        isDragging: true,
-        nodeId: node.id,
-        instanceId,
-        startPosition: new THREE.Vector3(node.position.x, node.position.y, node.position.z),
-        currentPosition: new THREE.Vector3(node.position.x, node.position.y, node.position.z),
-        offset: new THREE.Vector2(pointer.x, pointer.y),
-        lastUpdateTime: 0,
-        pendingUpdate: null
-      };
-      onNodeDragStateChange(true);
-      setDragState({ nodeId: node.id, instanceId });
-      lastClickTimeRef.current = 0; // Reset for next double click
-
-      // When a drag starts:
-      const numericId = graphDataManager.nodeIdMap.get(node.id);
-      if (numericId !== undefined) {
-        graphWorkerProxy.pinNode(numericId);
-      }
-    } else {
-      // Single click (or first click of a potential double click)
-      clickTimeoutRef.current = setTimeout(() => {
-        if (debugState.isEnabled()) {
-          logger.debug(`Single-clicked node ${node.id} (instance ${instanceId})`);
-        }
-        const slug = slugifyNodeLabel(node.label!);
-        const narrativeGoldmineUrl = `https://narrativegoldmine.com//#/page/${slug}`;
-        // This assumes the Narrative Goldmine panel is an iframe or a component that listens to URL changes.
-        // If it's an iframe, you might target its src. If it's a React component, you might use react-router or a state management solution.
-        // For now, let's log it. A more robust solution would involve a shared service or context.
-        logger.info(`Updating Narrative Goldmine URL to: ${narrativeGoldmineUrl}`);
-        // Example: window.postMessage({ type: 'UPDATE_NARRATIVE_URL', url: narrativeGoldmineUrl }, '*');
-        // Or if it's a sibling iframe:
-        // const iframe = document.getElementById('narrative-goldmine-iframe') as HTMLIFrameElement;
-        // if (iframe) iframe.src = narrativeGoldmineUrl;
-
-        // To actually change the browser's URL (if Narrative Goldmine is part of the same SPA but different route):
-        // window.history.pushState({}, '', narrativeGoldmineUrl); // or router.push(...)
-
-        // For now, we'll assume a global event or direct update if possible.
-        // This part needs to be integrated with how NarrativeGoldminePanel actually receives its URL.
-        // One simple way, if it's an iframe with a known ID:
-        const narrativeIframe = document.getElementById('narrative-goldmine-iframe') as HTMLIFrameElement | null;
-        if (narrativeIframe) {
-           narrativeIframe.src = narrativeGoldmineUrl;
-        } else {
-           logger.warn('Narrative Goldmine iframe not found. Cannot update URL.');
-        }
-
-      }, DOUBLE_CLICK_THRESHOLD);
-    }
-    lastClickTimeRef.current = currentTime;
-  }, [graphData.nodes, onNodeDragStateChange, camera, size]);
+  if (debugState.isEnabled()) {
+    logger.debug(`Pointer down on node ${node.id}`);
+  }
+}, [graphData.nodes]);
 
   const handlePointerMove = useCallback((event: ThreeEvent<PointerEvent>) => {
     const drag = dragDataRef.current;
-    if (!drag.isDragging || !meshRef.current) return;
+    if (!drag.pointerDown) return; // Only proceed if pointer is down
 
-    event.stopPropagation();
+    // Step 1: Check if we should START dragging
+    if (!drag.isDragging) {
+      const currentPos = new THREE.Vector2(event.nativeEvent.offsetX, event.nativeEvent.offsetY);
+      const distance = currentPos.distanceTo(drag.startPointerPos);
 
-    // Use R3F's pointer coordinates directly
-    const pointer = event.pointer;
+      if (distance > DRAG_THRESHOLD) {
+        // Threshold exceeded, officially start the drag
+        drag.isDragging = true;
+        onNodeDragStateChange(true); // Disable camera controls
+        setDragState({ nodeId: drag.nodeId, instanceId: drag.instanceId });
 
-    // Create a plane at the node's depth perpendicular to the camera
-    const cameraDirection = new THREE.Vector3();
-    camera.getWorldDirection(cameraDirection);
-
-    // Create a plane at the drag start position
-    const planeNormal = cameraDirection.clone().negate();
-    const plane = new THREE.Plane(planeNormal, -planeNormal.dot(drag.startPosition));
-
-    // Cast a ray from the camera through the mouse position
-    const raycaster = new THREE.Raycaster();
-    raycaster.setFromCamera(pointer, camera);
-
-    // Find where the ray intersects the plane
-    const intersection = new THREE.Vector3();
-    raycaster.ray.intersectPlane(plane, intersection);
-
-    if (intersection) {
-      // Tell the worker to update this node's position directly
-      const numericId = graphDataManager.nodeIdMap.get(drag.nodeId!);
-      if (numericId !== undefined) {
-          graphWorkerProxy.updateUserDrivenNodePosition(numericId, intersection);
-      }
-
-      // The rest of the logic can stay similar for immediate visual feedback
-      drag.currentPosition.copy(intersection);
-
-      // Update visual immediately (no React state)
-      const nodeSize = settings?.visualisation?.nodes?.nodeSize || 0.01;
-      const BASE_SPHERE_RADIUS = 0.5; // Ensure this matches your sphereGeometry radius
-      const scale = nodeSize / BASE_SPHERE_RADIUS;
-
-      const tempMatrix = new THREE.Matrix4(); // Local temp matrix
-      tempMatrix.makeScale(scale, scale, scale);
-      tempMatrix.setPosition(drag.currentPosition);
-      meshRef.current.setMatrixAt(drag.instanceId!, tempMatrix);
-      meshRef.current.instanceMatrix.needsUpdate = true;
-
-      // Update the node in graphData to keep edges and labels in sync
-      setGraphData(prev => ({
-        ...prev,
-        nodes: prev.nodes.map((node, idx) =>
-          idx === drag.instanceId
-            ? { ...node, position: {
-                x: drag.currentPosition.x,
-                y: drag.currentPosition.y,
-                z: drag.currentPosition.z
-              }}
-            : node
-        )
-      }));
-
-      // Prepare update for throttled send
-      const now = Date.now();
-      if (now - drag.lastUpdateTime > 30) { // Throttle WebSocket updates (e.g., ~30fps)
+        const numericId = graphDataManager.nodeIdMap.get(drag.nodeId!);
         if (numericId !== undefined) {
-          drag.pendingUpdate = {
-            nodeId: numericId,
-            position: {
-              x: drag.currentPosition.x,
-              y: drag.currentPosition.y,
-              z: drag.currentPosition.z
-            },
-            velocity: { x: 0, y: 0, z: 0 } // Assuming velocity resets or is handled server-side
-          };
-          drag.lastUpdateTime = now;
+          graphWorkerProxy.pinNode(numericId);
+        }
+        if (debugState.isEnabled()) {
+          logger.debug(`Drag started on node ${drag.nodeId}`);
         }
       }
     }
-  }, [settings?.visualisation?.nodes?.nodeSize, camera, setGraphData]); // Added setGraphData to deps
+
+    // Step 2: If we are dragging, execute the move logic
+    if (drag.isDragging) {
+      event.stopPropagation();
+
+      // Create a plane at the node's starting depth, facing the camera
+      const planeNormal = camera.getWorldDirection(new THREE.Vector3()).negate();
+      const plane = new THREE.Plane(planeNormal, -planeNormal.dot(drag.startNodePos3D));
+
+      // Cast a ray from the camera through the current mouse position
+      const raycaster = new THREE.Raycaster();
+      raycaster.setFromCamera(event.pointer, camera);
+
+      // Find where the ray intersects the plane
+      const intersection = new THREE.Vector3();
+      if (raycaster.ray.intersectPlane(plane, intersection)) {
+        const numericId = graphDataManager.nodeIdMap.get(drag.nodeId!);
+        if (numericId !== undefined) {
+          graphWorkerProxy.updateUserDrivenNodePosition(numericId, intersection);
+        }
+
+        drag.currentNodePos3D.copy(intersection);
+
+        // Update visual immediately for responsiveness
+        const nodeSize = settings?.visualisation?.nodes?.nodeSize || 0.01;
+        const scale = nodeSize / BASE_SPHERE_RADIUS;
+        const tempMatrix = new THREE.Matrix4();
+        tempMatrix.makeScale(scale, scale, scale);
+        tempMatrix.setPosition(drag.currentNodePos3D);
+        if (meshRef.current) {
+          meshRef.current.setMatrixAt(drag.instanceId!, tempMatrix);
+          meshRef.current.instanceMatrix.needsUpdate = true;
+        }
+
+        // Update graphData to keep edges/labels in sync
+        setGraphData(prev => ({
+          ...prev,
+          nodes: prev.nodes.map((node, idx) =>
+            idx === drag.instanceId
+              ? { ...node, position: { x: drag.currentNodePos3D.x, y: drag.currentNodePos3D.y, z: drag.currentNodePos3D.z } }
+              : node
+          )
+        }));
+
+        // Throttle WebSocket updates
+        const now = Date.now();
+        if (now - drag.lastUpdateTime > 30) {
+          if (numericId !== undefined) {
+            drag.pendingUpdate = {
+              nodeId: numericId,
+              position: { x: drag.currentNodePos3D.x, y: drag.currentNodePos3D.y, z: drag.currentNodePos3D.z },
+              velocity: { x: 0, y: 0, z: 0 }
+            };
+            drag.lastUpdateTime = now;
+          }
+        }
+      }
+    }
+  }, [onNodeDragStateChange, camera, settings?.visualisation?.nodes?.nodeSize]);
 
   const handlePointerUp = useCallback(() => {
     const drag = dragDataRef.current;
-    if (!drag.isDragging) return;
+    if (!drag.pointerDown) return; // Not a tracked interaction
 
-    const numericId = graphDataManager.nodeIdMap.get(drag.nodeId!);
-    if (numericId !== undefined) {
-      // Un-pin the node in the worker so it can be moved by the simulation again
-      graphWorkerProxy.unpinNode(numericId);
-    }
+    if (drag.isDragging) {
+      // --- End of a DRAG action ---
+      if (debugState.isEnabled()) logger.debug(`Drag ended for node ${drag.nodeId}`);
 
-    // Send final position
-    if (drag.nodeId && graphDataManager.webSocketService) {
+      const numericId = graphDataManager.nodeIdMap.get(drag.nodeId!);
       if (numericId !== undefined) {
+        graphWorkerProxy.unpinNode(numericId);
+
+        // Send final position update
         const finalUpdate: BinaryNodeData = {
           nodeId: numericId,
-          position: {
-            x: drag.currentPosition.x,
-            y: drag.currentPosition.y,
-            z: drag.currentPosition.z
-          },
+          position: { x: drag.currentNodePos3D.x, y: drag.currentNodePos3D.y, z: drag.currentNodePos3D.z },
           velocity: { x: 0, y: 0, z: 0 }
         };
-        graphDataManager.webSocketService.send(
-          createBinaryNodeData([finalUpdate])
-        );
+        graphDataManager.webSocketService?.send(createBinaryNodeData([finalUpdate]));
+      }
+      onNodeDragStateChange(false); // Re-enable camera controls
 
-        if (debugState.isEnabled()) {
-          logger.debug(`Sent final position for node ${drag.nodeId}`);
+    } else {
+      // --- This was a CLICK action ---
+      const node = graphData.nodes.find(n => n.id === drag.nodeId);
+      if (node?.label) {
+        if (debugState.isEnabled()) logger.debug(`Click action on node ${node.id}`);
+
+        const slug = slugifyNodeLabel(node.label);
+        const narrativeGoldmineUrl = `https://narrativegoldmine.com//#/page/${slug}`;
+        const narrativeIframe = document.getElementById('narrative-goldmine-iframe') as HTMLIFrameElement | null;
+
+        if (narrativeIframe) {
+          narrativeIframe.src = narrativeGoldmineUrl;
+        } else {
+          logger.warn('Narrative Goldmine iframe not found. Cannot update URL.');
         }
       }
     }
 
+    // --- Reset state for the next interaction ---
+    dragDataRef.current.pointerDown = false;
     dragDataRef.current.isDragging = false;
-    dragDataRef.current.pendingUpdate = null; // Clear pending update
-    onNodeDragStateChange(false); // <--- Signal drag end to parent
+    dragDataRef.current.nodeId = null;
+    dragDataRef.current.instanceId = null;
+    dragDataRef.current.pendingUpdate = null;
     setDragState({ nodeId: null, instanceId: null });
-  }, [onNodeDragStateChange]); // Add onNodeDragStateChange to deps
+
+  }, [graphData.nodes, onNodeDragStateChange]);
 
   // Global pointer up listener for cases where mouse is released outside canvas
   useEffect(() => {
     const handleGlobalPointerUp = () => {
-      if (dragDataRef.current.isDragging) {
+      if (dragDataRef.current.pointerDown) {
         handlePointerUp();
       }
     };
@@ -536,7 +510,7 @@ const GraphManager: React.FC<GraphManagerProps> = ({ onNodeDragStateChange }) =>
         ref={meshRef}
         args={[undefined, undefined, graphData.nodes.length]} // Geometry, Material, Count
         frustumCulled={false}
-        onPointerDown={handleNodeClick} // Corrected to use handleNodeClick
+        onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp} // To handle release on the mesh
         onPointerMissed={() => { // To handle release outside the mesh but on canvas
