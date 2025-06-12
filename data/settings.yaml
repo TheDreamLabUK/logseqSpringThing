@@ -4,7 +4,7 @@ visualisation:
     metalness: 0.63
     opacity: 0.65
     roughness: 0.73
-    node_size: 0.02
+    node_size: 0.1
     quality: 'medium'
     enable_instancing: false
     enable_hologram: false
@@ -86,13 +86,13 @@ visualisation:
     pulse_strength: 0.6
     wave_speed: 0.5
   labels:
-    desktop_font_size: 0.15
+    desktop_font_size: 0.2
     enable_labels: true # Note: JSON also has 'enabled: true', this one is more specific
     text_color: '#f8f8f2'
     text_outline_color: '#181c28'
     text_outline_width: 0.01
     text_resolution: 32
-    text_padding: 0.3
+    text_padding: 0.6
     billboard_mode: 'camera'
     enabled: true # General enabled flag for labels
   bloom: # This is for visualisation.bloom specific settings

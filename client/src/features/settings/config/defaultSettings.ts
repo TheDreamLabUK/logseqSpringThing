@@ -10,7 +10,7 @@ export const defaultSettings: Settings = {
       metalness: 0.63,
       opacity: 0.65,
       roughness: 0.73,
-      nodeSize: 0.04,
+      nodeSize: 0.1,
       quality: "medium",
       enableInstancing: false, // From JSON (camelCase)
       enableHologram: true,    // From JSON (camelCase)
@@ -92,13 +92,13 @@ export const defaultSettings: Settings = {
       waveSpeed: 0.5,
     },
     labels: {
-      desktopFontSize: 0.15, // From JSON (camelCase, was 0.02)
+      desktopFontSize: 0.2, // From JSON (camelCase, was 0.02)
       enableLabels: true, // From JSON (camelCase, was false)
       textColor: "#f8f8f2", // From JSON (camelCase, was #851414)
       textOutlineColor: "#181c28", // From JSON (camelCase, was #dcdbdb)
       textOutlineWidth: 0.01, // From JSON (camelCase, was 0.001)
       textResolution: 32, // From JSON (camelCase, was 15)
-      textPadding: 0.3, // From JSON (camelCase, was 0.06)
+      textPadding: 0.6, // From JSON (camelCase, was 0.06)
       billboardMode: "camera",
       // enabled: true, // Removed, 'enableLabels' is used
     },
