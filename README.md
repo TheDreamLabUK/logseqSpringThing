@@ -1,6 +1,7 @@
 # LogseqXR: Immersive WebXR Visualisation for Logseq Knowledge Graphs
 
-![Current Version](./visionflow.gif)
+<img src="./visionflow.gif" alt="Current Version" style="width:100%; display:block; margin:0 auto;">
+
 ![Runtime Old Screenshot](./jarvisOld.png)
 
 **Inspired by the innovative work of Prof. Rob Aspin:** [https://github.com/trebornipsa](https://github.com/trebornipsa)
