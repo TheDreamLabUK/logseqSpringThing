@@ -407,7 +407,7 @@ export function SettingsPanelRedesign({ toggleLowerRightPaneDock, isLowerRightPa
 
   return (
     // Dynamically set background and text color from settings
-    <div className="dark w-full h-full flex flex-col min-h-0 bg-background text-foreground">
+    <div className="w-full h-full flex flex-col min-h-0 bg-background text-foreground">
       <div className="px-4 py-3 border-b border-border flex items-center justify-between">
         <div>
           <h2 className="text-lg font-semibold">Settings</h2>

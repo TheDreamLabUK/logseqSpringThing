@@ -1,10 +1,13 @@
 # LogseqXR: Immersive WebXR Visualisation for Logseq Knowledge Graphs
 
-![image](https://github.com/user-attachments/assets/269a678d-88a5-42de-9d67-d73b64f4e520)
+![Current Version](./visionflow.gif)
+![Runtime Old Screenshot](./jarvisOld.png)
 
 **Inspired by the innovative work of Prof. Rob Aspin:** [https://github.com/trebornipsa](https://github.com/trebornipsa)
 
-![P1080785_1728030359430_0](https://github.com/user-attachments/assets/3ecac4a3-95d7-4c75-a3b2-e93deee565d6)
+![Group In Octave](./groupOctave.jpg)
+
+![Chloe In Octave](./ChloeOctave.jpg)
 
 ## About LogseqXR
 

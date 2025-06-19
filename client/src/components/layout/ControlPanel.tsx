@@ -54,6 +54,7 @@ const LowerControlPanel: React.FC = () => {
         // Ensure the parent div allows the iframe to take full height
         <div className="w-full h-full flex flex-col overflow-hidden">
           <iframe
+            id="narrative-goldmine-iframe"
             src="https://narrativegoldmine.com//#/graph" // This is the external website
             className="w-full h-full border-none flex-grow" // Use flex-grow to fill space
             title="Narrative Gold Mine"
