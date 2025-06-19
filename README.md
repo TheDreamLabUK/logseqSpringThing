@@ -58,22 +58,22 @@ Our documentation is organised into several key sections:
 
 ```mermaid
 graph TD
-    subgraph ClientApp [Frontend (TypeScript, React, R3F)]
+    subgraph ClientApp ["Frontend"]
         direction LR
-        AppInit[AppInitializer.tsx]
-        TwoPane[TwoPaneLayout.tsx]
-        GraphView[GraphViewport.tsx]
-        RightCtlPanel[RightPaneControlPanel.tsx]
-        SettingsUI[SettingsPanelRedesign.tsx]
-        ConvoPane[ConversationPane.tsx]
-        NarrativePane[NarrativeGoldminePanel.tsx]
-        SettingsMgr[settingsStore.ts]
-        GraphDataMgr[GraphDataManager.ts]
-        RenderEngine[Rendering Engine (GraphCanvas, GraphManager)]
-        WebSocketSvc[WebSocketService.ts]
-        APISvc[api.ts]
-        NostrAuthSvcClient[nostrAuthService.ts]
-        XRController[XRController.tsx]
+        AppInit[AppInitializer]
+        TwoPane[TwoPaneLayout]
+        GraphView[GraphViewport]
+        RightCtlPanel[RightPaneControlPanel]
+        SettingsUI[SettingsPanelRedesign]
+        ConvoPane[ConversationPane]
+        NarrativePane[NarrativeGoldminePanel]
+        SettingsMgr[settingsStore]
+        GraphDataMgr[GraphDataManager]
+        RenderEngine[GraphCanvas & GraphManager]
+        WebSocketSvc[WebSocketService]
+        APISvc[api]
+        NostrAuthSvcClient[nostrAuthService]
+        XRController[XRController]
 
         AppInit --> TwoPane
         AppInit --> SettingsMgr
@@ -97,25 +97,25 @@ graph TD
         XRController <--> SettingsMgr
     end
 
-    subgraph ServerApp [Backend (Rust, Actix)]
+    subgraph ServerApp ["Backend"]
         direction LR
-        Actix[Actix Web Server]
+        Actix[ActixWebServer]
 
-        subgraph Handlers_Srv [API & WebSocket Handlers]
+        subgraph Handlers_Srv ["API_WebSocket_Handlers"]
             direction TB
             SettingsH[SettingsHandler]
             NostrAuthH[NostrAuthHandler]
-            GraphAPI_H[GraphAPI Handler]
-            FilesAPI_H[FilesAPI Handler]
+            GraphAPI_H[GraphAPIHandler]
+            FilesAPI_H[FilesAPIHandler]
             RAGFlowH_Srv[RAGFlowHandler]
             SocketFlowH[SocketFlowHandler]
             SpeechSocketH[SpeechSocketHandler]
             HealthH[HealthHandler]
         end
 
-        subgraph Services_Srv [Core Services]
+        subgraph Services_Srv ["Core_Services"]
             direction TB
-            GraphSvc_Srv[GraphService (PhysicsEngine)]
+            GraphSvc_Srv[GraphService]
             FileSvc_Srv[FileService]
             NostrSvc_Srv[NostrService]
             SpeechSvc_Srv[SpeechService]
@@ -123,7 +123,7 @@ graph TD
             PerplexitySvc_Srv[PerplexityService]
         end
 
-        subgraph Actors_Srv [Actor System]
+        subgraph Actors_Srv ["Actor_System"]
             direction TB
             GraphServiceActor[GraphServiceActor]
             SettingsActor[SettingsActor]
@@ -154,14 +154,14 @@ graph TD
         PerplexitySvc_Srv --> SettingsActor
     end
 
-    subgraph External_Srv [External Services]
+    subgraph External_Srv ["External_Services"]
         direction LR
-        GitHub[GitHub API]
-        NostrRelays_Ext[Nostr Relays]
-        OpenAI[OpenAI API]
-        PerplexityAI_Ext[Perplexity AI API]
-        RAGFlow_Ext[RAGFlow API]
-        Kokoro_Ext[Kokoro API]
+        GitHub[GitHubAPI]
+        NostrRelays_Ext[NostrRelays]
+        OpenAI[OpenAIAPI]
+        PerplexityAI_Ext[PerplexityAIAPI]
+        RAGFlow_Ext[RAGFlowAPI]
+        Kokoro_Ext[KokoroAPI]
     end
 
     WebSocketSvc <--> SocketFlowH
@@ -185,104 +185,102 @@ graph TD
 classDiagram
     direction LR
 
-    package "Frontend (TypeScript)" {
-        class AppInitializer {
-            <<React Component>>
-            +initializeServices()
-        }
-        class GraphManager {
-            <<React Component>>
-            +renderNodesAndEdges()
-        }
-        class WebSocketService {
-            <<Service>>
-            +connect()
-            +sendMessage()
-            +onBinaryMessage()
-            +isReady()
-        }
-        class SettingsStore {
-            <<Zustand Store>>
-            +settings: Settings
-            +updateSettings()
-        }
-        class GraphDataManager {
-            <<Service>>
-            +fetchInitialData()
-            +updateNodePositions()
-            +getGraphData()
-            +setWebSocketService()
-        }
-        class NostrAuthService {
-            <<Service>>
-            +loginWithNostr()
-            +verifySession()
-            +logout()
-        }
-        AppInitializer --> SettingsStore
-        AppInitializer --> NostrAuthService
-        AppInitializer --> WebSocketService
-        AppInitializer --> GraphDataManager
-        GraphDataManager --> WebSocketService
-        GraphDataManager --> GraphManager
+    %% Frontend Classes
+    class AppInitializer {
+        <<ReactComponent>>
+        +initializeServices()
     }
-
-    package "Backend (Rust)" {
-        class AppState {
-            <<Struct>>
-            +graph_service_addr: Addr<GraphServiceActor>
-            +settings_addr: Addr<SettingsActor>
-            +metadata_addr: Addr<MetadataActor>
-            +client_manager_addr: Addr<ClientManagerActor>
-            +gpu_compute_addr: Option<Addr<GPUComputeActor>>
-            +protected_settings_addr: Addr<ProtectedSettingsActor>
-        }
-        class GraphService {
-            <<Struct>>
-            +graph_data: Arc<RwLock<GraphData>>
-            +start_simulation_loop()
-            +broadcast_updates()
-        }
-        class PerplexityService {
-            <<Struct>>
-            +query()
-        }
-        class RagFlowService {
-            <<Struct>>
-            +chat()
-        }
-        class SpeechService {
-            <<Struct>>
-            +process_stt_request()
-            +process_tts_request()
-        }
-        class NostrService {
-            <<Struct>>
-            +verify_auth_event()
-            +validate_session()
-            +manage_user_api_keys()
-        }
-        class GPUCompute {
-            <<Struct>>
-            +run_simulation_step()
-        }
-        class FileService {
-            <<Struct>>
-            +fetch_and_process_content()
-            +update_metadata_store()
-        }
-        AppState --> GraphService : "<<holds>> Addr"
-        AppState --> NostrService : "<<holds>> Addr"
-        AppState --> PerplexityService : "<<holds>> Addr"
-        AppState --> RagFlowService : "<<holds>> Addr"
-        AppState --> SpeechService : "<<holds>> Addr"
-        AppState --> GPUCompute : "<<holds>> Addr"
-        AppState --> FileService : "<<holds>> Addr"
-
-        WebSocketService -->> GraphServiceActor : "<<sends>> UpdateNodePositions"
-        GraphService ..> GPUCompute : "uses (optional)"
-        NostrService ..> ProtectedSettingsActor : "uses"
+    class GraphManager {
+        <<ReactComponent>>
+        +renderNodesAndEdges()
     }
+    class WebSocketService {
+        <<Service>>
+        +connect()
+        +sendMessage()
+        +onBinaryMessage()
+        +isReady()
+    }
+    class SettingsStore {
+        <<ZustandStore>>
+        +settings: Settings
+        +updateSettings()
+    }
+    class GraphDataManager {
+        <<Service>>
+        +fetchInitialData()
+        +updateNodePositions()
+        +getGraphData()
+        +setWebSocketService()
+    }
+    class NostrAuthService {
+        <<Service>>
+        +loginWithNostr()
+        +verifySession()
+        +logout()
+    }
+    AppInitializer --> SettingsStore
+    AppInitializer --> NostrAuthService
+    AppInitializer --> WebSocketService
+    AppInitializer --> GraphDataManager
+    GraphDataManager --> WebSocketService
+    GraphDataManager --> GraphManager
+
+    %% Backend Classes
+    class AppState {
+        <<Struct>>
+        +graph_service_addr: Addr_GraphServiceActor
+        +settings_addr: Addr_SettingsActor
+        +metadata_addr: Addr_MetadataActor
+        +client_manager_addr: Addr_ClientManagerActor
+        +gpu_compute_addr: Option_Addr_GPUComputeActor
+        +protected_settings_addr: Addr_ProtectedSettingsActor
+    }
+    class GraphService {
+        <<Struct>>
+        +graph_data: Arc_RwLock_GraphData
+        +start_simulation_loop()
+        +broadcast_updates()
+    }
+    class PerplexityService {
+        <<Struct>>
+        +query()
+    }
+    class RagFlowService {
+        <<Struct>>
+        +chat()
+    }
+    class SpeechService {
+        <<Struct>>
+        +process_stt_request()
+        +process_tts_request()
+    }
+    class NostrService {
+        <<Struct>>
+        +verify_auth_event()
+        +validate_session()
+        +manage_user_api_keys()
+    }
+    class GPUCompute {
+        <<Struct>>
+        +run_simulation_step()
+    }
+    class FileService {
+        <<Struct>>
+        +fetch_and_process_content()
+        +update_metadata_store()
+    }
+    AppState --> GraphService : holds_Addr
+    AppState --> NostrService : holds_Addr
+    AppState --> PerplexityService : holds_Addr
+    AppState --> RagFlowService : holds_Addr
+    AppState --> SpeechService : holds_Addr
+    AppState --> GPUCompute : holds_Addr
+    AppState --> FileService : holds_Addr
+
+    WebSocketService ..> GraphServiceActor : sends_UpdateNodePositions
+    GraphService ..> GPUCompute : uses_optional
+    NostrService ..> ProtectedSettingsActor : uses
 ```
 
 ### Sequence Diagrams
