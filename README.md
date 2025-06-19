@@ -9,9 +9,62 @@
 
 ![Chloe In Octave](./ChloeOctave.jpg)
 
-## About LogseqXR
+## A Note on AI-Driven Development
 
-LogseqXR transforms your Logseq knowledge base into an immersive 3D visualisation that you can explore in VR/AR. Experience your ideas as tangible objects in space, discover new connections, and interact with your knowledge in ways never before possible.
+This project was built over several months by a non-programmer, using AI agents as the primary tool for coding, debugging, and architectural design. This AI-first approach has shaped not only how the project was built but also the docs and diagrams you see here.
+
+### AI in the Development Process
+
+The entire codebase, from the Rust backend with Actix to the TypeScript frontend with React and Three.js, was generated through an iterative, conversational process with AI agents. This workflow allowed for rapid prototyping, complex feature implementation, and exploration of technologies that would typically be beyond the reach of a solo, non-technical founder.
+
+### Integrated AI Features
+
+Beyond its creation, LogseqXR integrates several cutting-edge AI services to enhance the user's interaction with their knowledge graph. These services are orchestrated by the Rust backend and made accessible through a dedicated conversational UI on the client.
+
+```mermaid
+graph TD
+    subgraph Client
+        UI["ConversationPane (React)"]
+    end
+
+    subgraph "Backend (Rust)"
+        APIServer["API Server (Actix)"]
+        RAGFlowSvc["RAGFlowService.rs"]
+        PerplexitySvc["PerplexityService.rs"]
+        SpeechSvc["SpeechService.rs"]
+    end
+
+    subgraph "External AI APIs"
+        RAGFlowAPI["RAGFlow API"]
+        PerplexityAPI["Perplexity API"]
+        OpenAI_API["OpenAI API (TTS/STT)"]
+        KokoroAPI_Ext["Kokoro API (TTS)"]
+    end
+
+    UI -->|REST API Call| APIServer
+    APIServer --> RAGFlowSvc
+    APIServer --> PerplexitySvc
+    APIServer --> SpeechSvc
+
+    RAGFlowSvc --> RAGFlowAPI
+    PerplexitySvc --> PerplexityAPI
+    SpeechSvc --> OpenAI_API
+    SpeechSvc --> KokoroAPI_Ext
+
+    OpenAI_API -->|Audio/Text| SpeechSvc
+    KokoroAPI_Ext -->|Audio| SpeechSvc
+    RAGFlowAPI -->|Text| RAGFlowSvc
+    PerplexityAPI -->|Text| PerplexitySvc
+
+    RAGFlowSvc -->|Response| APIServer
+    PerplexitySvc -->|Response| APIServer
+    SpeechSvc -->|Response| APIServer
+
+    APIServer -->|Response| UI
+```
+
+-   **Conversational Q&A:** The [`ConversationPane.tsx`](client/src/app/components/ConversationPane.tsx) allows users to chat with their knowledge graph. Backend services like [`RAGFlowService.rs`](src/services/ragflow_service.rs) and [`PerplexityService.rs`](src/services/perplexity_service.rs) process these queries to provide context-aware answers.
+-   **Voice Interaction:** The [`SpeechService.rs`](src/services/speech_service.rs) integrates with OpenAI and Kokoro for high-quality Text-to-Speech (TTS) and Speech-to-Text (STT), enabling users to speak to their graph and hear responses.
 
 ## Quick Links
 
@@ -21,8 +74,6 @@ LogseqXR transforms your Logseq knowledge base into an immersive 3D visualisatio
 - [Contributing Guidelines](docs/contributing.md)
 
 ## Documentation
-
-Our documentation is organised into several key sections:
 
 ### Client Documentation
 - [Architecture](docs/client/architecture.md)
@@ -559,3 +610,4 @@ This project is licensed under the MIT License. See the [LICENSE](LICENSE) file 
 - Perplexity AI and RAGFlow: For their AI services enhancing content processing and interaction.
 - Three.js: For the robust 3D rendering capabilities utilised in the frontend.
 - Actix: For the high-performance web framework powering the backend server.
+```
