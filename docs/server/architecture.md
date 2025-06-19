@@ -123,22 +123,22 @@ The graph system manages the core data structures and algorithms for the knowled
 ```mermaid
 flowchart TB
     subgraph Input
-        MarkdownFiles[Markdown Files via Content API]
-        UserUpdates[User Updates via API/WebSocket]
-        GitHubContent[GitHub Content via GitHubClient & ContentAPI]
+        MarkdownFiles["Markdown Files"]
+        UserUpdates["User Updates"]
+        GitHubContent["GitHub Content"]
     end
 
     subgraph Processing
-        ContentAPI[Content API (File Service)]
-        MetadataStore[Metadata Store]
-        GraphService[Graph Service]
-        GPUCompute[GPU Compute]
+        ContentAPI["ContentAPI"]
+        MetadataStore["MetadataStore"]
+        GraphService["GraphService"]
+        GPUCompute["GPUCompute"]
     end
 
     subgraph Output
-        GraphData[Graph Data (In-Memory in GraphService)]
-        ClientUpdates[Client Updates (via ClientManager & WebSocket)]
-        PersistedMetadata[Persisted Metadata (via MetadataStore)]
+        GraphData["GraphData"]
+        ClientUpdates["ClientUpdates"]
+        PersistedMetadata["PersistedMetadata"]
     end
 
     MarkdownFiles --> ContentAPI

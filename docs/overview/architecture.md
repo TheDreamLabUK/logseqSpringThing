@@ -8,63 +8,63 @@ The following diagram illustrates the core components of the LogseqXR system and
 
 ```mermaid
 graph TD
-    subgraph ClientApp [Frontend (TypeScript, React, R3F)]
-        AppInitializer[AppInitializer.tsx] --> UIMain[TwoPaneLayout.tsx]
-        UIMain --> GraphViewport[GraphViewport.tsx]
-        UIMain --> RightPane[RightPaneControlPanel.tsx]
-        UIMain --> ConversationPane[ConversationPane.tsx]
-        UIMain --> NarrativeGoldmine[NarrativeGoldminePanel.tsx]
-        RightPane --> SettingsPanel[SettingsPanelRedesign.tsx]
+    subgraph ClientApp ["Frontend"]
+        AppInitializer["AppInitializer.tsx"] --> UIMain["TwoPaneLayout.tsx"]
+        UIMain --> GraphViewport["GraphViewport.tsx"]
+        UIMain --> RightPane["RightPaneControlPanel.tsx"]
+        UIMain --> ConversationPane["ConversationPane.tsx"]
+        UIMain --> NarrativeGoldmine["NarrativeGoldminePanel.tsx"]
+        RightPane --> SettingsPanel["SettingsPanelRedesign.tsx"]
 
-        SettingsPanel --> SettingsStore[settingsStore.ts (Zustand)]
-        GraphViewport --> RenderingEngine[Rendering Engine (GraphCanvas, GraphManager)]
+        SettingsPanel --> SettingsStore["settingsStore.ts"]
+        GraphViewport --> RenderingEngine["GraphCanvas_and_GraphManager"]
 
-        DataManager[GraphDataManager.ts] <--> RenderingEngine
-        DataManager <--> WebSocketClient[WebSocketService.ts]
-        DataManager <--> APIService[api.ts]
+        DataManager["GraphDataManager.ts"] <--> RenderingEngine
+        DataManager <--> WebSocketClient["WebSocketService.ts"]
+        DataManager <--> APIService["api.ts"]
 
-        NostrAuthClient[nostrAuthService.ts] <--> APIService
-        NostrAuthClient <--> UIMain % For Auth UI sections
+        NostrAuthClient["nostrAuthService.ts"] <--> APIService
+        NostrAuthClient <--> UIMain
 
-        XRModule[XRController.tsx] <--> RenderingEngine
+        XRModule["XRController.tsx"] <--> RenderingEngine
         XRModule <--> SettingsStore
     end
 
-    subgraph ServerApp [Backend (Rust, Actix)]
-        ActixServer[Actix Web Server]
+    subgraph ServerApp ["Backend"]
+        ActixServer["Actix Web Server"]
 
-        subgraph Handlers [API & WebSocket Handlers]
+        subgraph Handlers ["API_WebSocket_Handlers"]
             direction LR
-            SettingsHandler[settings_handler.rs]
-            NostrAuthHandler[nostr_handler.rs]
-            GraphAPIHandler[api_handler/graph/mod.rs]
-            FilesAPIHandler[api_handler/files/mod.rs]
-            RAGFlowAPIHandler[ragflow_handler.rs]
-            SocketFlowHandler[socket_flow_handler.rs]
-            SpeechSocketHandler[speech_socket_handler.rs]
-            HealthHandler[health_handler.rs]
+            SettingsHandler["settings_handler.rs"]
+            NostrAuthHandler["nostr_handler.rs"]
+            GraphAPIHandler["api_handler_graph_mod_rs"]
+            FilesAPIHandler["api_handler_files_mod_rs"]
+            RAGFlowAPIHandler["ragflow_handler.rs"]
+            SocketFlowHandler["socket_flow_handler.rs"]
+            SpeechSocketHandler["speech_socket_handler.rs"]
+            HealthHandler["health_handler.rs"]
         end
 
-        subgraph Services [Core Services]
+        subgraph Services ["Core_Services"]
             direction LR
-            GraphService[GraphService (Physics)]
-            FileService[FileService]
-            NostrService[NostrService]
-            SpeechService[SpeechService]
-            RAGFlowService[RAGFlowService]
-            PerplexityService[PerplexityService]
+            GraphService["GraphService"]
+            FileService["FileService"]
+            NostrService["NostrService"]
+            SpeechService["SpeechService"]
+            RAGFlowService["RAGFlowService"]
+            PerplexityService["PerplexityService"]
         end
 
-        subgraph Actors [Actor System]
+        subgraph Actors ["Actor_System"]
             direction LR
-            GraphServiceActor[GraphServiceActor]
-            SettingsActor[SettingsActor]
-            MetadataActor[MetadataActor]
-            ClientManagerActor[ClientManagerActor]
-            GPUComputeActor[GPUComputeActor]
-            ProtectedSettingsActor[ProtectedSettingsActor]
+            GraphServiceActor["GraphServiceActor"]
+            SettingsActor["SettingsActor"]
+            MetadataActor["MetadataActor"]
+            ClientManagerActor["ClientManagerActor"]
+            GPUComputeActor["GPUComputeActor"]
+            ProtectedSettingsActor["ProtectedSettingsActor"]
         end
-        AppState[AppState holds Addr<...>]
+        AppState["AppState"]
 
         ActixServer --> SettingsHandler
         ActixServer --> NostrAuthHandler
@@ -85,35 +85,33 @@ graph TD
         SocketFlowHandler --> ClientManagerActor
         SpeechSocketHandler --> SpeechService
 
-        GraphServiceActor --> ClientManagerActor % Broadcasts updates
-        GraphServiceActor --> MetadataActor % Reads metadata
-        GraphServiceActor --> GPUComputeActor % Uses GPU for physics
-        GraphServiceActor --> SettingsActor % Accesses simulation settings
+        GraphServiceActor --> ClientManagerActor
+        GraphServiceActor --> MetadataActor
+        GraphServiceActor --> GPUComputeActor
+        GraphServiceActor --> SettingsActor
 
-        FileService --> MetadataActor % Updates metadata
+        FileService --> MetadataActor
 
-        NostrService --> ProtectedSettingsActor % Manages users and their API keys
-        SpeechService --> SettingsActor % Accesses AI service configs (OpenAI, Kokoro)
-        RAGFlowService --> SettingsActor % Accesses RAGFlow config
-        PerplexityService --> SettingsActor % Accesses Perplexity config
+        NostrService --> ProtectedSettingsActor
+        SpeechService --> SettingsActor
+        RAGFlowService --> SettingsActor
+        PerplexityService --> SettingsActor
 
-        Handlers --> AppState % Handlers get actor addresses from AppState
+        Handlers --> AppState
     end
 
-    subgraph ExternalServices [External Services]
-        GitHubAPI[GitHub API]
-        NostrRelays[Nostr Relays]
-        OpenAI_API[OpenAI API (TTS, STT/Whisper)]
-        PerplexityAI_API[Perplexity AI API]
-        RAGFlow_API[RAGFlow API]
-        KokoroAPI[Kokoro API (TTS)]
+    subgraph ExternalServices ["External_Services"]
+        GitHubAPI["GitHub API"]
+        NostrRelays["Nostr Relays"]
+        OpenAI_API["OpenAI API"]
+        PerplexityAI_API["Perplexity AI API"]
+        RAGFlow_API["RAGFlow API"]
+        KokoroAPI["Kokoro API"]
     end
 
-    %% Client to Backend Communication
     WebSocketClient <--> SocketFlowHandler
-    APIService <--> ActixServer % Represents REST API calls to various handlers
+    APIService <--> ActixServer
 
-    %% Backend to External Services
     FileService --> GitHubAPI
     NostrService --> NostrRelays
     SpeechService --> OpenAI_API

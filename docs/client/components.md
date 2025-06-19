@@ -10,7 +10,7 @@ The client is organized into a modular component architecture with clear separat
 flowchart TB
     subgraph CoreServices [Core Services & Stores]
         APIService[api.ts]
-        SettingsStore[settingsStore.ts (Zustand)]
+        SettingsStore["settingsStore.ts"]
         NostrAuthSvc[nostrAuthService.ts]
         Logger[logger.ts]
         Utils[utils/*]
@@ -30,7 +30,7 @@ flowchart TB
 
     subgraph SettingsUI [Settings UI Components]
         SettingsPanelRedesign[SettingsPanelRedesign.tsx]
-        TabsUI[Tabs.tsx (generic UI)]
+        TabsUI["Tabs.tsx"]
         SettingsSection[SettingsSection.tsx]
         SettingControlComp[SettingControlComponent.tsx]
     end
@@ -40,7 +40,7 @@ flowchart TB
         NostrAuthSection[NostrAuthSection.tsx]
     end
 
-    subgraph RenderingEngine [Rendering Engine (R3F/Three.js)]
+    subgraph RenderingEngine ["Rendering Engine"]
         GraphCanvas[GraphCanvas.tsx]
         GraphManager[GraphManager.tsx]
         GraphViewport[GraphViewport.tsx]
@@ -82,7 +82,7 @@ flowchart TB
     AppInitializer --> XRController
 
     %% UI Structure
-    TwoPaneLayout --> GraphViewport %% For displaying the graph
+    TwoPaneLayout --> GraphViewport
     TwoPaneLayout --> RightPaneCtrlPanel
     TwoPaneLayout --> ConversationPane
     TwoPaneLayout --> NarrativeGoldminePanel
@@ -91,12 +91,12 @@ flowchart TB
     RightPaneCtrlPanel --> SettingsPanelRedesign
 
     SettingsPanelRedesign --> TabsUI
-    TabsUI --> SettingsSection %% SettingsPanelRedesign renders SettingsSections directly or via Tabs
+    TabsUI --> SettingsSection
     SettingsSection --> SettingControlComp
 
     %% Data Flow & Dependencies
     SettingsStore --> SettingControlComp
-    SettingsStore --> GraphManager %% Settings affect rendering
+    SettingsStore --> GraphManager
     SettingsStore --> HologramManager
     SettingsStore --> TextRenderer
 
@@ -108,7 +108,7 @@ flowchart TB
 
     WebSocketSvc --> GraphDataMgr
     GraphDataMgr --> GraphManager
-    GraphDataMgr --> APIService %% For fetching initial data via REST
+    GraphDataMgr --> APIService
 
     %% Rendering Dependencies
     GraphCanvas --> GraphManager
@@ -123,9 +123,9 @@ flowchart TB
     XRController --> XRInitializer
     XRController --> XRSessionManager
     XRScene --> XRVisualisationConnector
-    XRVisualisationConnector --> GraphManager %% XR needs to interact with graph elements
+    XRVisualisationConnector --> GraphManager
     XRVisualisationConnector --> HandInteractionSystem
-    HandInteractionSystem --> GraphManager %% Hand interactions can modify graph
+    HandInteractionSystem --> GraphManager
 
     %% Cross-cutting
     Logger -.-> APIService

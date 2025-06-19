@@ -21,7 +21,7 @@ graph TB
         end
 
         subgraph StateManagement [State Management]
-            SettingsStore[useSettingsStore (Zustand)]
+            SettingsStore["useSettingsStore"]
             GraphDataManager[GraphDataManager]
         end
 
@@ -30,9 +30,9 @@ graph TB
             APIService[api.ts]
         end
 
-        Rendering[Rendering Engine (R3F/Three.js)]
-        WebSocketClient[WebSocketClient (WebSocketService.ts)]
-        XRModule[XR Module]
+        Rendering["Rendering Engine"]
+        WebSocketClient["WebSocketClient"]
+        XRModule["XR Module"]
 
         AppInitializer --> TwoPaneLayout
         AppInitializer --> SettingsStore
@@ -129,20 +129,20 @@ The XR module, located under [`client/src/features/xr/`](../../client/src/featur
 ```mermaid
 flowchart TB
     subgraph Input
-        UserInput[User Input (UI/XR)]
-        ServerData[Server Data (REST/WS)]
+        UserInput["UserInput"]
+        ServerData["ServerData"]
     end
 
     subgraph Processing
-        State[State Management (Zustand)]
-        GraphProcessing[Graph Data Processing]
-        RenderingLogic[Rendering Logic]
+        State["State Management"]
+        GraphProcessing["Graph Data Processing"]
+        RenderingLogic["Rendering Logic"]
     end
 
     subgraph Output
-        Visualisation[3D Visualisation]
-        UIUpdate[UI Update]
-        ServerUpdate[Server Update (WS/REST)]
+        Visualisation["3D Visualisation"]
+        UIUpdate["UI Update"]
+        ServerUpdate["Server Update"]
     end
 
     UserInput --> State

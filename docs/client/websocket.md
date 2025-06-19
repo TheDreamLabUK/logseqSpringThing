@@ -14,22 +14,22 @@ The client uses WebSocket connections for real-time communication with the serve
 
 ```mermaid
 graph TB
-    subgraph ClientSide [Client]
-        App[Application UI/Logic] --> GDM[GraphDataManager]
-        App --> WSS[WebSocketService]
+    subgraph ClientSide ["Client"]
+        App["Application UI/Logic"] --> GDM["GraphDataManager"]
+        App --> WSS["WebSocketService"]
         WSS --> GDM
-        GDM --> RenderingEngine[Rendering Engine (GraphManager etc.)]
+        GDM --> RenderingEngine["Rendering Engine"]
     end
-    
-    subgraph ServerSide [Server]
-        ServerWSS[WebSocket Server Handler (socket_flow_handler.rs)]
-        ClientMgr[ClientManager]
-        GraphSvc[GraphService (Physics Engine)]
-        
+
+    subgraph ServerSide ["Server"]
+        ServerWSS["WebSocket Server Handler"]
+        ClientMgr["ClientManager"]
+        GraphSvc["GraphService"]
+
         ServerWSS <--> ClientMgr
         GraphSvc --> ClientMgr
     end
-    
+
     WSS <--> ServerWSS
 ```
 
@@ -75,7 +75,7 @@ sequenceDiagram
     participant BinaryHandler
     participant GraphManager
     participant Visualisation
-    
+
     Server->>WebSocket: Binary Message
     WebSocket->>BinaryHandler: Process ArrayBuffer
     BinaryHandler->>GraphManager: Update Node Positions
