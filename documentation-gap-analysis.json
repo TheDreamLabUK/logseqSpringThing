@@ -1,0 +1,266 @@
+{
+  "step": "Gap Analysis",
+  "timestamp": "2025-06-22T00:00:00Z",
+  "findings": {
+    "missingDocs": [
+      {
+        "category": "Actor System",
+        "path": "src/actors/",
+        "priority": "HIGH",
+        "items": [
+          "graph_actor.rs",
+          "settings_actor.rs",
+          "metadata_actor.rs",
+          "client_manager_actor.rs",
+          "gpu_compute_actor.rs",
+          "protected_settings_actor.rs",
+          "messages.rs"
+        ]
+      },
+      {
+        "category": "Authentication",
+        "path": "multiple",
+        "priority": "HIGH",
+        "items": [
+          "src/handlers/nostr_handler.rs",
+          "src/services/nostr_service.rs",
+          "client/src/services/nostrAuthService.ts",
+          "client/src/features/auth/"
+        ]
+      },
+      {
+        "category": "AI Services",
+        "path": "src/services/",
+        "priority": "HIGH",
+        "items": [
+          "ragflow_service.rs",
+          "perplexity_service.rs",
+          "speech_service.rs",
+          "src/utils/audio_processor.rs"
+        ]
+      },
+      {
+        "category": "GPU Compute",
+        "path": "src/utils/",
+        "priority": "MEDIUM",
+        "items": [
+          "gpu_compute.rs",
+          "compute_forces.cu",
+          "gpu_diagnostics.rs"
+        ]
+      },
+      {
+        "category": "Feature Access",
+        "path": "src/config/",
+        "priority": "MEDIUM",
+        "items": [
+          "feature_access.rs",
+          "feature_access_test.rs"
+        ]
+      },
+      {
+        "category": "Binary Protocol",
+        "path": "src/utils/",
+        "priority": "HIGH",
+        "items": [
+          "binary_protocol.rs",
+          "socket_flow_messages.rs",
+          "socket_flow_constants.rs"
+        ]
+      },
+      {
+        "category": "Client Features",
+        "path": "client/src/",
+        "priority": "MEDIUM",
+        "items": [
+          "contexts/ApplicationModeContext.tsx",
+          "contexts/WindowSizeContext.tsx",
+          "services/platformManager.ts",
+          "app/components/MarkdownDisplayPanel.tsx",
+          "ui/"
+        ]
+      }
+    ],
+    "outdatedDocs": [
+      {
+        "file": "docs/server/handlers.md",
+        "issues": [
+          "Missing file_handler.rs",
+          "Missing graph_handler.rs",
+          "Missing visualization_handler.rs",
+          "Incomplete route documentation"
+        ]
+      },
+      {
+        "file": "docs/server/services.md",
+        "issues": [
+          "Generic AIService mentioned instead of specific services",
+          "GitHub service structure evolved",
+          "Missing actor integration"
+        ]
+      },
+      {
+        "file": "docs/api/websocket.md",
+        "issues": [
+          "Binary protocol not documented",
+          "Real-time sync improvements missing"
+        ]
+      },
+      {
+        "file": "docs/server/config.md",
+        "issues": [
+          "AppFullSettings vs Settings distinction unclear",
+          "Environment variables not fully documented"
+        ]
+      }
+    ],
+    "undocumentedFeatures": [
+      {
+        "feature": "Empty Graph Checking",
+        "file": "src/services/empty_graph_check.rs"
+      },
+      {
+        "feature": "Pagination",
+        "file": "src/models/pagination.rs"
+      },
+      {
+        "feature": "Protected Settings",
+        "file": "src/models/protected_settings.rs"
+      },
+      {
+        "feature": "Client Settings Payload",
+        "file": "src/models/client_settings_payload.rs"
+      },
+      {
+        "feature": "Testing Infrastructure",
+        "files": ["src/utils/tests/", "src/config/feature_access_test.rs"]
+      }
+    ],
+    "documentationStructure": {
+      "totalFiles": 33,
+      "categories": {
+        "api": 3,
+        "client": 13,
+        "server": 8,
+        "technical": 1,
+        "development": 3,
+        "deployment": 2,
+        "overview": 1,
+        "root": 2
+      }
+    },
+    "codebaseStructure": {
+      "server": {
+        "handlers": 10,
+        "services": 7,
+        "actors": 7,
+        "models": 10,
+        "utils": 11,
+        "config": 3,
+        "types": 2
+      },
+      "client": {
+        "features": {
+          "auth": 3,
+          "settings": 10,
+          "visualisation": 10,
+          "xr": 9
+        },
+        "services": 3,
+        "contexts": 2,
+        "ui": 13,
+        "utils": 7,
+        "types": 6
+      }
+    }
+  },
+  "updatePlan": {
+    "priority1": [
+      {
+        "task": "Create Actor System Documentation",
+        "newFile": "docs/server/actors.md",
+        "scope": "Document all actors, messages, and integration patterns",
+        "effort": "3-5 days"
+      },
+      {
+        "task": "Create Authentication Documentation",
+        "newFile": "docs/security/authentication.md",
+        "scope": "Nostr auth, API keys, security patterns",
+        "effort": "2-3 days"
+      },
+      {
+        "task": "Create Binary Protocol Documentation",
+        "newFile": "docs/api/binary-protocol.md",
+        "scope": "Protocol spec, message formats, examples",
+        "effort": "2-3 days"
+      },
+      {
+        "task": "Update Handler Documentation",
+        "updateFile": "docs/server/handlers.md",
+        "scope": "All current handlers, routes, middleware",
+        "effort": "2-3 days"
+      }
+    ],
+    "priority2": [
+      {
+        "task": "Create AI Services Documentation",
+        "newFile": "docs/server/ai-services.md",
+        "scope": "RAGFlow, Perplexity, Speech services",
+        "effort": "3-4 days"
+      },
+      {
+        "task": "Create GPU Compute Documentation",
+        "newFile": "docs/server/gpu-compute.md",
+        "scope": "CUDA integration, performance, fallbacks",
+        "effort": "2-3 days"
+      },
+      {
+        "task": "Create Feature Access Documentation",
+        "newFile": "docs/server/feature-access.md",
+        "scope": "Feature flags, power users, access control",
+        "effort": "1-2 days"
+      },
+      {
+        "task": "Update Client Architecture",
+        "updateFile": "docs/client/architecture.md",
+        "scope": "New contexts, state management, components",
+        "effort": "2-3 days"
+      }
+    ],
+    "priority3": [
+      {
+        "task": "Create Configuration Guide",
+        "newFile": "docs/configuration/index.md",
+        "scope": "Complete config reference, env vars",
+        "effort": "2-3 days"
+      },
+      {
+        "task": "Create Testing Documentation",
+        "newFile": "docs/development/testing.md",
+        "scope": "Test structure, running tests, guidelines",
+        "effort": "1-2 days"
+      },
+      {
+        "task": "Create UI Component Documentation",
+        "newFile": "docs/client/ui-components.md",
+        "scope": "Component library, usage, styling",
+        "effort": "2-3 days"
+      },
+      {
+        "task": "Update Deployment Documentation",
+        "updateFile": "docs/deployment/docker.md",
+        "scope": "Production setup, scaling, monitoring",
+        "effort": "1-2 days"
+      }
+    ]
+  },
+  "progress": "0%",
+  "metrics": {
+    "totalGaps": 45,
+    "missingDocs": 32,
+    "outdatedDocs": 8,
+    "undocumentedFeatures": 5,
+    "estimatedEffort": "6-9 weeks",
+    "recommendedTeamSize": "1-2 technical writers"
+  }
+}

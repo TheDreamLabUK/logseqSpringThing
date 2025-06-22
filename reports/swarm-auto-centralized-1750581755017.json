@@ -1,0 +1,13 @@
+{
+  "objective": "Fully synchronize project documentation in 'docs/' with the codebase in 'src/' and 'client/'. Create a detailed update plan, write the documentation in parallel, and perform a final consistency review. Check for previous attempts in the logs and markdown in the project root, it's possible you can resume.",
+  "strategy": "auto",
+  "mode": "centralized",
+  "maxAgents": 5,
+  "timeout": 60,
+  "parallel": false,
+  "monitor": false,
+  "output": "json",
+  "outputDir": "./reports",
+  "timestamp": "2025-06-22T08:42:35.017Z",
+  "id": "swarm-auto-centralized-1750581755017"
+}

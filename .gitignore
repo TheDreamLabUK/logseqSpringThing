@@ -7,11 +7,15 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 debug_log.txt
+claude-flow
+.roomodes
+CLAUDE.md
 
 # Dependencies
 node_modules
 client/node_modules
 .pnpm-store/
+# .claude
 .npm
 .yarn
 /featureclient/

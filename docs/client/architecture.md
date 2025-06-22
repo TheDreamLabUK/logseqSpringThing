@@ -87,10 +87,19 @@ The UI layer is built with React and TypeScript.
 - [`GraphViewport.tsx`](../../client/src/features/graph/components/GraphViewport.tsx) is responsible for the main 3D graph visualisation area.
 
 ### State Management
-State management is primarily handled by **Zustand**, a lightweight and flexible state management solution. The main state stores are:
-- `useSettingsStore` ([`client/src/store/settingsStore.ts`](../../client/src/store/settingsStore.ts)) - Manages application settings with validation and persistence.
-- `GraphDataManager` ([`client/src/features/graph/managers/graphDataManager.ts`](../../client/src/features/graph/managers/graphDataManager.ts)) - Manages the graph data structure (nodes, edges, metadata) and handles real-time updates from the WebSocket.
-State changes are propagated through Zustand's subscription mechanism, allowing components to react efficiently to specific state slices.
+State management is handled through a combination of **Zustand** stores and **React Context API**, providing both global and localized state management solutions.
+
+#### Zustand Stores
+- `useSettingsStore` ([`client/src/store/settingsStore.ts`](../../client/src/store/settingsStore.ts)) - Manages application settings with validation and persistence
+- `GraphDataManager` ([`client/src/features/graph/managers/graphDataManager.ts`](../../client/src/features/graph/managers/graphDataManager.ts)) - Manages the graph data structure (nodes, edges, metadata) and handles real-time updates from the WebSocket
+- `usePlatformStore` ([`client/src/services/platformManager.ts`](../../client/src/services/platformManager.ts)) - Manages platform detection, XR capabilities, and device-specific features
+
+#### React Contexts
+- `ApplicationModeContext` ([`client/src/contexts/ApplicationModeContext.tsx`](../../client/src/contexts/ApplicationModeContext.tsx)) - Manages application mode (desktop/mobile/XR) and layout settings
+- `WindowSizeContext` ([`client/src/contexts/WindowSizeContext.tsx`](../../client/src/contexts/WindowSizeContext.tsx)) - Provides responsive window size information to components
+- Control panel contexts for localized UI state management
+
+State changes are propagated through Zustand's subscription mechanism and React's context system, allowing components to react efficiently to specific state slices.
 
 ### API Layer
 The API layer handles communication with the server through REST endpoints and manages authentication:
@@ -110,9 +119,19 @@ The rendering engine is built on **React Three Fiber (`@react-three/fiber`)** an
 
 ### WebSocket Client
 The WebSocket client ([`client/src/services/WebSocketService.ts`](../../client/src/services/WebSocketService.ts)) provides real-time communication with the server for:
-- Live position updates using a custom binary protocol.
-- Graph data synchronization.
-- Control messages and event notifications (e.g., `connection_established`, `loading`).
+- Live position updates using a custom binary protocol
+- Graph data synchronization
+- Control messages and event notifications (e.g., `connection_established`, `loading`)
+- Configurable reconnection attempts and compression settings
+- Binary chunk processing for large data transfers
+
+### Platform Manager
+The Platform Manager ([`client/src/services/platformManager.ts`](../../client/src/services/platformManager.ts)) provides comprehensive platform detection and capability management:
+- **Platform Detection**: Identifies device types (desktop, mobile, Quest, Pico)
+- **XR Capabilities**: Detects VR/AR support, hand tracking availability
+- **Performance Tiers**: Adjusts settings based on device capabilities
+- **Event System**: Notifies components of platform changes
+- **Backwards Compatibility**: Provides both hook-based and singleton patterns
 
 ### XR Module
 The XR module, located under [`client/src/features/xr/`](../../client/src/features/xr/), integrates WebXR capabilities for VR/AR experiences:
@@ -172,14 +191,20 @@ flowchart TB
 
 ## Key Architectural Patterns
 
-1. **Component-Based Architecture** - Leveraging React's component model for modular and reusable UI elements.
-2. **State Management with Zustand** - Centralized and reactive state management for application settings and graph data.
-3. **Composition over Inheritance** - Building complex behaviors by combining simpler components and hooks.
-4. **Service Layer** - Abstracting API calls and WebSocket communication into dedicated service modules ([`api.ts`](../../client/src/services/api.ts), [`WebSocketService.ts`](../../client/src/services/WebSocketService.ts), [`nostrAuthService.ts`](../../client/src/services/nostrAuthService.ts)).
-5. **React Context API** - Used for dependency injection and sharing global state that doesn't fit well into Zustand or is more localized. Examples include:
-    - [`ApplicationModeContext.tsx`](../../client/src/contexts/ApplicationModeContext.tsx)
-    - [`WindowSizeContext.tsx`](../../client/src/contexts/WindowSizeContext.tsx)
-    - [`control-panel-context.tsx`](../../client/src/features/settings/components/control-panel-context.tsx)
+1. **Component-Based Architecture** - Leveraging React's component model for modular and reusable UI elements
+2. **Hybrid State Management** - Combining Zustand for global state and React Context for localized state
+3. **Composition over Inheritance** - Building complex behaviors by combining simpler components and hooks
+4. **Service Layer** - Abstracting API calls and WebSocket communication into dedicated service modules:
+    - [`api.ts`](../../client/src/services/api.ts) - RESTful API communication
+    - [`WebSocketService.ts`](../../client/src/services/WebSocketService.ts) - Real-time data streaming
+    - [`nostrAuthService.ts`](../../client/src/services/nostrAuthService.ts) - Authentication services
+    - [`platformManager.ts`](../../client/src/services/platformManager.ts) - Platform detection and capabilities
+5. **Context-Based Dependency Injection** - Using React Context API for:
+    - Application-wide mode management (desktop/mobile/XR)
+    - Responsive design through window size context
+    - Feature-specific state isolation
+6. **Progressive Enhancement** - Adapting UI and features based on platform capabilities
+7. **Type-Safe Communication** - Using TypeScript interfaces for client-server data contracts
 
 ## Cross-Cutting Concerns
 
@@ -210,9 +235,29 @@ stateDiagram-v2
 The client communicates with the server through two primary channels:
 
 1. **REST API** - For configuration, authentication, and data operations
+    - Feature-based access control through Nostr authentication
+    - Settings synchronization with server-side validation
+    - File processing and graph data operations
+    - AI service integration (RAGFlow, Perplexity)
+
 2. **WebSocket** - For real-time updates and streaming data
+    - Binary protocol for efficient position updates
+    - JSON messages for control and metadata
+    - Automatic reconnection with exponential backoff
+    - Compression for large payloads
 
 This dual-channel approach allows for efficient communication patterns based on the nature of the data being exchanged.
+
+## Client Settings Architecture
+
+The client uses a comprehensive settings payload structure ([`client_settings_payload.rs`](../../src/models/client_settings_payload.rs)) that includes:
+- **Visualization Settings**: Nodes, edges, physics, rendering, animations, labels, bloom, hologram, camera
+- **System Settings**: WebSocket configuration, debug options, persistence
+- **XR Settings**: VR/AR modes, hand tracking, locomotion, passthrough
+- **Authentication Settings**: Provider configuration, feature access
+- **AI Service Settings**: RAGFlow, Perplexity, OpenAI, Kokoro configurations
+
+Settings are validated on both client and server sides, with automatic type conversion between camelCase (client) and snake_case (server).
 
 ## Related Documentation
 

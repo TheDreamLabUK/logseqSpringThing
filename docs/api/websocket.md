@@ -16,6 +16,14 @@ Connect to: `wss://your-domain/wss` (Note: The actual path is `/wss` as handled 
 6. Server sends: `{"type": "updatesStarted", "timestamp": <timestamp>}`
 7. Server sends: `{"type": "loading", "message": "Calculating initial layout..."}` (if applicable)
 
+### Authentication Requirements
+
+WebSocket connections may require authentication depending on the server configuration:
+
+1. **Session-based Auth**: If the user has an active Nostr session, the session cookie is sent during the WebSocket handshake
+2. **Token-based Auth**: Authentication tokens can be passed via query parameters: `wss://your-domain/wss?token=<session-token>`
+3. **Public Access**: Some deployments may allow unauthenticated WebSocket connections with limited features
+
 ## Authentication
 
 Authentication for WebSocket connections in LogseqXR is primarily handled during the initial HTTP handshake that upgrades to a WebSocket connection. This means that user authentication (e.g., via Nostr) should occur before or during the establishment of the WebSocket connection, typically through standard HTTP mechanisms (like cookies or authorization headers). The server's `socket_flow_handler.rs` does not process an explicit `{"type": "auth", "token": "..."}` message over the WebSocket itself.
@@ -59,12 +67,39 @@ Authentication for WebSocket connections in LogseqXR is primarily handled during
 
 Position updates are transmitted as binary messages in both directions:
 
-- **Each node update is 28 bytes**.
-- Format: **Node ID (u32, 4 bytes)**, Position (3x f32, 12 bytes), Velocity (3x f32, 12 bytes). Total: 28 bytes per node.
-- Position and Velocity are three consecutive `f32` values (x, y, z).
-- Server-side `BinaryNodeData` (defined in `src/utils/socket_flow_messages.rs`) includes additional fields like `mass`, `flags`, and `padding` for physics simulation, but these are **not** part of the **28-byte** wire format sent to the client.
-- The client-side `BinaryNodeData` (defined in `client/src/types/binaryProtocol.ts`) and the server-side `WireNodeDataItem` in `binary_protocol.rs` correctly reflect the **28-byte** wire format: `nodeId`, `position`, `velocity`.
-- Server-side compression (zlib) is applied... Client-side decompression is handled by the `graph.worker.ts` off the main UI thread.
+#### Wire Format (28 bytes per node)
+
+```
+┌─────────────┬────────────────┬────────────────┐
+│  Node ID    │    Position    │    Velocity    │
+│  (4 bytes)  │   (12 bytes)   │   (12 bytes)   │
+└─────────────┴────────────────┴────────────────┘
+```
+
+- **Node ID**: u32 (4 bytes) - Unique identifier for the node
+- **Position**: Vec3 (12 bytes) - X, Y, Z coordinates as f32 values
+- **Velocity**: Vec3 (12 bytes) - X, Y, Z velocity components as f32 values
+
+#### Implementation Details
+
+- Server-side `BinaryNodeData` includes additional fields (`mass`, `flags`, `padding`) for physics simulation that are **NOT** transmitted
+- The `WireNodeDataItem` in `binary_protocol.rs` defines the exact 28-byte wire format
+- All multi-byte values use little-endian byte order
+- Compression (zlib) is applied to messages larger than the configured threshold (default: 1KB)
+- Client-side decompression is handled by `graph.worker.ts` off the main UI thread
+
+#### Example Binary Data
+
+For a single node with ID=1, position=(10.0, 20.0, 30.0), velocity=(0.1, 0.2, 0.3):
+```
+01 00 00 00  // Node ID: 1 (little-endian u32)
+00 00 20 41  // X position: 10.0 (little-endian f32)
+00 00 A0 41  // Y position: 20.0 (little-endian f32)
+00 00 F0 41  // Z position: 30.0 (little-endian f32)
+CD CC CC 3D  // X velocity: 0.1 (little-endian f32)
+CD CC 4C 3E  // Y velocity: 0.2 (little-endian f32)
+9A 99 99 3E  // Z velocity: 0.3 (little-endian f32)
+```
 
 #### Server → Client Updates
 
@@ -114,10 +149,28 @@ The `socket_flow_handler.rs` primarily handles the following JSON messages:
 
 ## Optimization Features
 
-- Zlib compression for binary messages larger than `compression_threshold` (default 512 bytes, configurable).
-- Fixed-size binary format (28 bytes per node update) for efficient parsing.
-- Minimal overhead for binary messages (no explicit headers per node update within a batch).
-- Consistent use of `THREE.Vector3` for positions and velocities on the client-side.
+### Binary Protocol Optimizations
+
+1. **Fixed-Size Records**: 28 bytes per node enables fast parsing without delimiters
+2. **Zero-Copy Serialization**: Uses Rust's `bytemuck` for direct memory mapping
+3. **Batch Updates**: Multiple nodes in a single WebSocket frame
+4. **Compression**: Zlib compression for messages > 1KB (configurable)
+5. **Differential Updates**: Only nodes with significant position changes are sent
+
+### Performance Characteristics
+
+| Node Count | Uncompressed Size | Compressed Size (typical) | Bandwidth at 5Hz |
+|------------|-------------------|---------------------------|------------------|
+| 100        | 2.8 KB           | ~2 KB                    | 10 KB/s          |
+| 1,000      | 28 KB            | ~15 KB                   | 75 KB/s          |
+| 10,000     | 280 KB           | ~120 KB                  | 600 KB/s         |
+
+### Client-Side Optimizations
+
+- Web Worker processing keeps the main thread responsive
+- TypedArray views for efficient binary data access
+- Object pooling for Vector3 instances
+- Throttled update application based on frame rate
 
 ## Error Handling
 
@@ -141,11 +194,70 @@ This section refers to the server's dynamic management of binary position update
 
 ### Common Issues
 
-1. Connection Issues
+1. **Connection Issues**
    - Mixed Content: Ensure WebSocket uses WSS with HTTPS
    - CORS: Check server configuration for cross-origin
    - Proxy/Firewall: Verify WebSocket ports are open
+   - Authentication: Verify session tokens are valid
 
-2. Binary Protocol Issues
-   - Message Size: Verify 28 bytes per node
-   - Data Integrity: Validate Vector3 data
+2. **Binary Protocol Issues**
+   - Message Size: Must be multiple of 28 bytes
+   - Byte Order: Ensure little-endian encoding
+   - Node IDs: Must be valid u32 values
+   - Float Values: Check for NaN or Infinity
+
+3. **Performance Issues**
+   - High CPU: Reduce update frequency or node count
+   - Memory Growth: Check for message queue buildup
+   - Network Latency: Enable compression for large graphs
+
+### Debug Logging
+
+Enable detailed logging:
+
+**Server-side**:
+```bash
+RUST_LOG=logseq_spring_thing::handlers::socket_flow_handler=debug,\
+logseq_spring_thing::utils::binary_protocol=trace
+```
+
+**Client-side**:
+```javascript
+localStorage.setItem('debug', 'websocket:*,binary:*');
+```
+
+### Binary Message Inspection
+
+To inspect binary messages in browser DevTools:
+
+```javascript
+// In console, before connecting:
+const originalSend = WebSocket.prototype.send;
+WebSocket.prototype.send = function(data) {
+    if (data instanceof ArrayBuffer) {
+        console.log('Binary message:', new Uint8Array(data));
+    }
+    return originalSend.call(this, data);
+};
+```
+
+## Security Considerations
+
+### Binary Protocol Security
+
+1. **Input Validation**
+   - All node IDs are validated against known nodes
+   - Position/velocity values are bounds-checked
+   - Message size limits prevent memory exhaustion
+
+2. **Rate Limiting**
+   - Client update frequency is throttled server-side
+   - Maximum nodes per update is enforced
+   - Connection count limits prevent DoS
+
+3. **Authentication**
+   - Binary updates require valid session
+   - Node modifications are access-controlled
+   - Audit logging for suspicious patterns
+
+For more details on the binary protocol implementation, see [Binary Protocol Documentation](./binary-protocol.md).

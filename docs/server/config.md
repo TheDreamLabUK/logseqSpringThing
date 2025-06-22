@@ -66,21 +66,38 @@ impl AppFullSettings {
 
 ## Feature Access and Permissions
 
-Feature access is managed by the `FeatureAccess` struct, typically defined in [`src/config/feature_access.rs`](../../src/config/feature_access.rs). This struct is initialized based on `AuthSettings` (e.g., list of power user pubkeys) from `AppFullSettings`.
+Feature access is managed by the `FeatureAccess` struct defined in [`src/config/feature_access.rs`](../../src/config/feature_access.rs). This struct is initialized from environment variables and provides fine-grained access control.
 
 ```rust
 pub struct FeatureAccess {
-    pub power_users: Vec<String>, // List of Nostr pubkeys for power users
-    // ... other feature-specific access controls
+    // Base access control
+    pub approved_pubkeys: Vec<String>,
+    
+    // Feature-specific access
+    pub perplexity_enabled: Vec<String>,
+    pub openai_enabled: Vec<String>,
+    pub ragflow_enabled: Vec<String>,
+    
+    // Role-based access control
+    pub power_users: Vec<String>,
+    pub settings_sync_enabled: Vec<String>,
 }
 
 impl FeatureAccess {
+    pub fn from_env() -> Self;
+    pub fn register_new_user(&mut self, pubkey: &str) -> bool;
+    pub fn has_access(&self, pubkey: &str) -> bool;
+    pub fn has_perplexity_access(&self, pubkey: &str) -> bool;
+    pub fn has_openai_access(&self, pubkey: &str) -> bool;
+    pub fn has_ragflow_access(&self, pubkey: &str) -> bool;
     pub fn is_power_user(&self, pubkey: &str) -> bool;
     pub fn can_sync_settings(&self, pubkey: &str) -> bool;
     pub fn has_feature_access(&self, pubkey: &str, feature: &str) -> bool;
     pub fn get_available_features(&self, pubkey: &str) -> Vec<String>;
 }
 ```
+
+For detailed information about feature access control, see [Feature Access Documentation](feature-access.md).
 
 ## Security Settings
 
@@ -115,5 +132,67 @@ Settings are validated during deserialization by the `config` crate. Custom vali
 The current implementation does not support hot reloading of configuration. Changes to `settings.yaml` or environment variables require a server restart to take effect.
 
 ### Saving Settings
-`AppFullSettings` implements a `save(&self, path: &Path) -> Result<(), ConfigError>` method (or similar signature) to persist the current settings state back to the specified YAML file (typically `settings.yaml`). This serialization is done using `serde_yaml` and handles converting the Rust struct (usually in snake_case or as defined by `serde` attributes) to YAML format. This method is invoked when power users modify global settings that need to be persisted.
+`AppFullSettings` implements a `save(&self, path: &Path) -> Result<(), ConfigError>` method to persist the current settings state back to the specified YAML file (typically `settings.yaml`). This serialization is done using `serde_yaml` and handles converting the Rust struct (usually in snake_case or as defined by `serde` attributes) to YAML format. This method is invoked when power users modify global settings that need to be persisted.
 The `AppFullSettings` struct itself derives `Serialize` and `Deserialize` from `serde` for this purpose.
+
+## Client Settings Integration
+
+### Client Settings Payload
+The client communicates settings updates through a comprehensive payload structure defined in [`src/models/client_settings_payload.rs`](../../src/models/client_settings_payload.rs). This structure mirrors the client's TypeScript settings but uses Rust conventions:
+
+```rust
+#[derive(Deserialize, Debug, Default, Clone)]
+pub struct ClientSettingsPayload {
+    pub visualisation: Option<ClientVisualisationSettings>,
+    pub system: Option<ClientSystemSettings>,
+    pub xr: Option<ClientXRSettings>,
+    pub auth: Option<ClientAuthSettings>,
+    pub ragflow: Option<ClientRagFlowSettings>,
+    pub perplexity: Option<ClientPerplexitySettings>,
+    pub openai: Option<ClientOpenAISettings>,
+    pub kokoro: Option<ClientKokoroSettings>,
+}
+```
+
+### Settings Conversion
+The system handles automatic conversion between:
+- **Client Format**: camelCase JSON from TypeScript
+- **Server Format**: snake_case Rust structs
+- **UI Settings**: Subset of settings safe for client display
+
+### Settings Synchronization
+Users with `settings_sync` permission can store and retrieve their settings across devices:
+- Settings are stored per user (by Nostr pubkey)
+- Power users can modify global server settings
+- Cache management for performance optimization
+
+## Environment Variables
+
+### Core Settings
+- `SETTINGS_FILE_PATH` - Path to settings YAML file (default: `/app/settings.yaml`)
+- `SYSTEM_NETWORK_PORT` - Override network port
+- `SYSTEM_NETWORK_BIND_ADDRESS` - Override bind address
+
+### Feature Access
+- `APPROVED_PUBKEYS` - Comma-separated list of approved user pubkeys
+- `PERPLEXITY_ENABLED_PUBKEYS` - Users with Perplexity AI access
+- `OPENAI_ENABLED_PUBKEYS` - Users with OpenAI/Kokoro access
+- `RAGFLOW_ENABLED_PUBKEYS` - Users with RAGFlow chat access
+- `POWER_USER_PUBKEYS` - Administrative users
+- `SETTINGS_SYNC_ENABLED_PUBKEYS` - Users who can sync settings
+
+### AI Service Keys
+- `PERPLEXITY_API_KEY` - Perplexity AI service key
+- `OPENAI_API_KEY` - OpenAI service key
+- `RAGFLOW_API_KEY` - RAGFlow service key
+- `KOKORO_API_URL` - Kokoro TTS service URL
+
+## Configuration Best Practices
+
+1. **Secrets Management**: Never commit API keys to version control
+2. **Environment Separation**: Use different settings files for dev/staging/prod
+3. **Validation**: Implement custom validation for critical settings
+4. **Documentation**: Keep settings documentation in sync with code
+5. **Backwards Compatibility**: Handle missing optional fields gracefully
+6. **Performance**: Cache frequently accessed settings
+7. **Security**: Validate all client-provided settings before applying
