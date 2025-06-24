@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import Tabs from '@/ui/Tabs';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/ui/Card';
 import { Button } from '@/ui/Button';
+import { SearchInput } from '@/ui/SearchInput';
 import {
   Eye,
   Settings, // Reverted to Settings
@@ -9,12 +10,21 @@ import {
   Info,
   ChevronDown,
   ChevronUp, // Added ChevronUp
-  Check
+  Check,
+  Search,
+  Keyboard
 } from 'lucide-react';
 import { useSettingsStore } from '@/store/settingsStore';
 import { SettingControlComponent } from '../SettingControlComponent';
 import { settingsUIDefinition } from '../../config/settingsUIDefinition';
 import { cn } from '@/utils/cn';
+import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
+import { KeyboardShortcutsModal } from '@/components/KeyboardShortcutsModal';
+import { LoadingSpinner, LoadingOverlay } from '@/ui/LoadingSpinner';
+import { SkeletonSetting } from '@/ui/LoadingSkeleton';
+import { useErrorHandler } from '@/hooks/useErrorHandler';
+import { useToast } from '@/ui/useToast';
+import { UndoRedoControls } from '../UndoRedoControls';
 
 interface SettingItem {
   key: string;
@@ -39,6 +49,12 @@ export function SettingsPanelRedesign({ toggleLowerRightPaneDock, isLowerRightPa
   const { settings, isPowerUser } = useSettingsStore();
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set(['Node Appearance']));
   const [savedNotification, setSavedNotification] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [showShortcuts, setShowShortcuts] = useState(false);
+  const [loadingSettings, setLoadingSettings] = useState<Set<string>>(new Set());
+  const [isInitializing, setIsInitializing] = useState(true);
+  const { handleError } = useErrorHandler();
+  const { toast } = useToast();
 
   // Dynamically get background and text color from settings
   const panelBackground: string = String(useSettingsStore.getState().get('visualisation.rendering.backgroundColor') || '#18181b');
@@ -285,6 +301,95 @@ export function SettingsPanelRedesign({ toggleLowerRightPaneDock, isLowerRightPa
     }
   }), []);
 
+  // Filter settings based on search query
+  const filterSettings = (groups: SettingGroup[], query: string): SettingGroup[] => {
+    if (!query.trim()) return groups;
+    
+    const lowerQuery = query.toLowerCase();
+    return groups
+      .map(group => {
+        const filteredItems = group.items.filter(item => {
+          const matchesKey = item.key.toLowerCase().includes(lowerQuery);
+          const matchesLabel = item.definition?.label?.toLowerCase().includes(lowerQuery);
+          const matchesDescription = item.definition?.description?.toLowerCase().includes(lowerQuery);
+          const matchesGroup = group.title.toLowerCase().includes(lowerQuery);
+          const matchesGroupDesc = group.description?.toLowerCase().includes(lowerQuery);
+          
+          return matchesKey || matchesLabel || matchesDescription || matchesGroup || matchesGroupDesc;
+        });
+        
+        if (filteredItems.length > 0) {
+          return { ...group, items: filteredItems };
+        }
+        return null;
+      })
+      .filter(group => group !== null) as SettingGroup[];
+  };
+
+  // Auto-expand groups when searching
+  React.useEffect(() => {
+    if (searchQuery.trim()) {
+      // Expand all groups that have matching items
+      const groupsToExpand = new Set<string>();
+      Object.values(settingsStructure).forEach(section => {
+        const filtered = filterSettings(section.groups, searchQuery);
+        filtered.forEach(group => {
+          groupsToExpand.add(group.title);
+        });
+      });
+      setExpandedGroups(groupsToExpand);
+    }
+  }, [searchQuery, settingsStructure]);
+
+  // Register keyboard shortcuts
+  useKeyboardShortcuts({
+    'settings-search': {
+      key: '/',
+      ctrl: true,
+      description: 'Focus search in settings',
+      category: 'Settings',
+      handler: () => {
+        const searchInput = document.querySelector('input[placeholder="Search settings..."]') as HTMLInputElement;
+        searchInput?.focus();
+      }
+    },
+    'settings-shortcuts': {
+      key: '?',
+      shift: true,
+      description: 'Show keyboard shortcuts',
+      category: 'General',
+      handler: () => setShowShortcuts(true)
+    },
+    'settings-clear-search': {
+      key: 'Escape',
+      description: 'Clear search',
+      category: 'Settings',
+      handler: () => setSearchQuery(''),
+      enabled: !!searchQuery
+    },
+    'settings-toggle-poweruser': {
+      key: 'p',
+      ctrl: true,
+      shift: true,
+      description: 'Toggle power user mode',
+      category: 'Settings',
+      handler: () => {
+        toast({
+          title: 'Authentication required',
+          description: 'Please authenticate with Nostr to enable power user features',
+        });
+      }
+    }
+  });
+
+  // Simulate initial loading
+  React.useEffect(() => {
+    const timer = setTimeout(() => {
+      setIsInitializing(false);
+    }, 800);
+    return () => clearTimeout(timer);
+  }, []);
+
   const toggleGroup = (groupTitle: string) => {
     setExpandedGroups(prev => {
       const next = new Set(prev);
@@ -297,12 +402,48 @@ export function SettingsPanelRedesign({ toggleLowerRightPaneDock, isLowerRightPa
     });
   };
 
-  const handleSettingChange = (path: string, value: any) => {
-    useSettingsStore.getState().set(path, value);
+  const handleSettingChange = async (path: string, value: any) => {
+    // Add loading state for this setting
+    setLoadingSettings(prev => new Set(prev).add(path));
+    
+    try {
+      // Simulate async save operation
+      await new Promise((resolve, reject) => {
+        setTimeout(() => {
+          // Simulate random errors for demonstration
+          if (Math.random() > 0.9) {
+            reject(new Error('Failed to save setting'));
+          } else {
+            resolve(true);
+          }
+        }, 500);
+      });
+      
+      useSettingsStore.getState().set(path, value);
 
-    // Show save notification
-    setSavedNotification(path);
-    setTimeout(() => setSavedNotification(null), 2000);
+      // Show success toast
+      toast({
+        title: 'Setting saved',
+        description: `Successfully updated ${path.split('.').pop()}`,
+      });
+      
+      // Also show inline notification
+      setSavedNotification(path);
+      setTimeout(() => setSavedNotification(null), 2000);
+    } catch (error) {
+      handleError(error, {
+        title: 'Failed to save setting',
+        actionLabel: 'Retry',
+        onAction: () => handleSettingChange(path, value)
+      });
+    } finally {
+      // Remove loading state
+      setLoadingSettings(prev => {
+        const next = new Set(prev);
+        next.delete(path);
+        return next;
+      });
+    }
   };
 
   const renderSettingGroup = (group: SettingGroup) => {
@@ -343,28 +484,40 @@ export function SettingsPanelRedesign({ toggleLowerRightPaneDock, isLowerRightPa
 
         {isExpanded && (
           <CardContent className="pt-0 pb-3 px-4 space-y-3">
-            {group.items.map((item) => {
-              if (item.isPowerUser && !isPowerUser) return null;
+            {isInitializing ? (
+              // Show skeleton while loading
+              <>
+                <SkeletonSetting />
+                <SkeletonSetting />
+                <SkeletonSetting />
+              </>
+            ) : (
+              group.items.map((item) => {
+                if (item.isPowerUser && !isPowerUser) return null;
 
               const value = useSettingsStore.getState().get(item.path);
+              const isLoading = loadingSettings.has(item.path);
 
               return (
                 <div key={item.key} className="relative">
-                  <SettingControlComponent
-                    path={item.path}
-                    settingDef={item.definition}
-                    value={value}
-                    onChange={(newValue) => handleSettingChange(item.path, newValue)}
-                  />
-                  {savedNotification === item.path && (
-                    <div className="absolute -top-1 -right-1 flex items-center gap-1 text-xs text-green-600 bg-green-50 px-2 py-1 rounded">
+                  <LoadingOverlay isLoading={isLoading} label="Saving...">
+                    <SettingControlComponent
+                      path={item.path}
+                      settingDef={item.definition}
+                      value={value}
+                      onChange={(newValue) => handleSettingChange(item.path, newValue)}
+                    />
+                  </LoadingOverlay>
+                  {savedNotification === item.path && !isLoading && (
+                    <div className="absolute -top-1 -right-1 flex items-center gap-1 text-xs text-green-600 bg-green-50 px-2 py-1 rounded z-20">
                       <Check className="h-3 w-3" />
                       Saved
                     </div>
                   )}
-                </div>
-              );
-            })}
+                  </div>
+                );
+              })
+            )}
           </CardContent>
         )}
       </Card>
@@ -387,9 +540,23 @@ export function SettingsPanelRedesign({ toggleLowerRightPaneDock, isLowerRightPa
       );
     }
 
+    const filteredGroups = filterSettings(tab.groups, searchQuery);
+    
+    if (searchQuery && filteredGroups.length === 0) {
+      return (
+        <div className="flex flex-col items-center justify-center h-64 text-center p-6">
+          <Search className="h-12 w-12 text-muted-foreground mb-4" />
+          <h3 className="text-lg font-medium mb-2">No results found</h3>
+          <p className="text-sm text-muted-foreground max-w-sm">
+            Try searching with different keywords or browse categories.
+          </p>
+        </div>
+      );
+    }
+
     return (
       <div className="flex-1 min-h-0 space-y-3">
-        {tab.groups.map(group => (
+        {filteredGroups.map(group => (
           <React.Fragment key={group.title}>
             {renderSettingGroup(group)}
           </React.Fragment>
@@ -408,21 +575,50 @@ export function SettingsPanelRedesign({ toggleLowerRightPaneDock, isLowerRightPa
   return (
     // Dynamically set background and text color from settings
     <div className="w-full h-full flex flex-col min-h-0 bg-background text-foreground">
-      <div className="px-4 py-3 border-b border-border flex items-center justify-between">
-        <div>
-          <h2 className="text-lg font-semibold">Settings</h2>
-          <p className="text-sm text-muted-foreground">
-            Customize your visualization
-          </p>
+      <div className="border-b border-border">
+        <div className="px-4 py-3 flex items-center justify-between">
+          <div>
+            <h2 className="text-lg font-semibold">Settings</h2>
+            <p className="text-sm text-muted-foreground">
+              Customize your visualization
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <UndoRedoControls showHistory />
+            <div className="w-px h-6 bg-border" />
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={toggleLowerRightPaneDock}
+              title={isLowerRightPaneDocked ? "Expand lower panels" : "Collapse lower panels"}
+            >
+              {isLowerRightPaneDocked ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
+            </Button>
+          </div>
         </div>
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={toggleLowerRightPaneDock}
-          title={isLowerRightPaneDocked ? "Expand lower panels" : "Collapse lower panels"}
-        >
-          {isLowerRightPaneDocked ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
-        </Button>
+        <div className="px-4 pb-3">
+          <SearchInput
+            value={searchQuery}
+            onChange={setSearchQuery}
+            placeholder="Search settings..."
+            className="w-full"
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') {
+                setSearchQuery('');
+              }
+            }}
+          />
+          <div className="mt-2 flex items-center justify-between text-xs text-muted-foreground">
+            <span>Press <kbd className="px-1 py-0.5 bg-muted rounded text-xs">Ctrl+/</kbd> to search</span>
+            <button
+              onClick={() => setShowShortcuts(true)}
+              className="flex items-center gap-1 hover:text-foreground transition-colors"
+            >
+              <Keyboard className="h-3 w-3" />
+              <span>View shortcuts</span>
+            </button>
+          </div>
+        </div>
       </div>
 
       <div className="flex-1 overflow-auto">
@@ -447,6 +643,12 @@ export function SettingsPanelRedesign({ toggleLowerRightPaneDock, isLowerRightPa
           </div>
         )}
       </div>
+
+      {/* Keyboard Shortcuts Modal */}
+      <KeyboardShortcutsModal
+        isOpen={showShortcuts}
+        onClose={() => setShowShortcuts(false)}
+      />
     </div>
   );
 }

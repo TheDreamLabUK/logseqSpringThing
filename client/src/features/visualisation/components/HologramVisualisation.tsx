@@ -53,7 +53,7 @@ interface HologramVisualisationProps {
  * 1. As a standalone component with its own canvas (standalone=true)
  * 2. As a component inside an existing canvas (standalone=false)
  */
-export const HologramVisualisation: React.FC<HologramVisualisationProps> = ({
+export const HologramVisualisation = React.memo<HologramVisualisationProps>(({
   position = [0, 0, 0],
   size = 1,
   standalone = true,
@@ -104,17 +104,29 @@ export const HologramVisualisation: React.FC<HologramVisualisationProps> = ({
 
   // For embedded use, just render the content
   return <HologramContent />;
-};
+}, (prevProps, nextProps) => {
+  // Custom comparison for better performance
+  return (
+    prevProps.position?.[0] === nextProps.position?.[0] &&
+    prevProps.position?.[1] === nextProps.position?.[1] &&
+    prevProps.position?.[2] === nextProps.position?.[2] &&
+    prevProps.size === nextProps.size &&
+    prevProps.standalone === nextProps.standalone &&
+    prevProps.children === nextProps.children
+  );
+});
+
+HologramVisualisation.displayName = 'HologramVisualisation';
 
 /**
  * Hologram Overlay - Creates a floating hologram effect for UI elements
  * This component provides a hologram-styled container for regular React components
  */
-export const HologramOverlay: React.FC<{
+export const HologramOverlay = React.memo<{
   children: React.ReactNode;
   className?: string;
   glowColor?: string;
-}> = ({
+}>(({
   children,
   className = '',
   glowColor = '#00ffff'
@@ -190,7 +202,9 @@ export const HologramOverlay: React.FC<{
       </style>
     </div>
   );
-};
+});
+
+HologramOverlay.displayName = 'HologramOverlay';
 
 // Example usage component to demonstrate both 3D and UI hologram effects
 export const HologramExample: React.FC = () => {

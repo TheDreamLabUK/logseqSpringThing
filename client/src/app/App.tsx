@@ -12,6 +12,13 @@ import { createLogger, createErrorMetadata } from '../utils/logger'
 // Removed SimpleThreeWindowPage import
 // import SimpleGraphPage from '../pages/AppPage' // Corrected path: SimpleGraphPage is exported from AppPage.tsx
 import TwoPaneLayout from './TwoPaneLayout'; // Added import for TwoPaneLayout
+import { CommandPalette } from '../features/command-palette/components/CommandPalette'
+import { initializeCommandPalette } from '../features/command-palette/defaultCommands'
+import { HelpProvider } from '../features/help/components/HelpProvider'
+import { registerSettingsHelp } from '../features/help/settingsHelp'
+import { TooltipProvider } from '../ui/Tooltip'
+import { OnboardingProvider } from '../features/onboarding/components/OnboardingProvider'
+import { welcomeFlow, settingsFlow, advancedFlow, registerOnboardingCommands } from '../features/onboarding/flows/defaultFlows'
 
 import '../styles/tokens.css'
 // Removed layout.css import
@@ -67,7 +74,24 @@ function App() {
 
   // Simplified useEffect, only checking initialization
   useEffect(() => {
-    // No need to set isLoading here if AppInitializer handles it or SimpleGraphPage has its own loading state
+    // Initialize command palette, help system, and onboarding on first load
+    if (initialized) {
+      initializeCommandPalette();
+      registerSettingsHelp();
+      registerOnboardingCommands();
+      
+      // Check if this is the first visit
+      const hasVisited = localStorage.getItem('hasVisited');
+      if (!hasVisited) {
+        localStorage.setItem('hasVisited', 'true');
+        // Start welcome tour after a short delay
+        setTimeout(() => {
+          window.dispatchEvent(new CustomEvent('start-onboarding', { 
+            detail: { flowId: 'welcome' } 
+          }));
+        }, 1000);
+      }
+    }
   }, [initialized])
 
   // Wrap handleInitialized in useCallback to stabilize its reference
@@ -88,19 +112,27 @@ function App() {
 
   return (
     <ThemeProvider defaultTheme="dark">
-      {/* Removed WindowSizeProvider */}
-      <ErrorBoundary>
-        <ApplicationModeProvider>
-          {/* Removed PanelProvider */}
-          <XRCoreProvider>
-            {/* Render TwoPaneLayout only after settings are initialized */}
-            {initialized ? <TwoPaneLayout /> : <div>Loading application...</div>}
-            {!initialized && <AppInitializer onInitialized={handleInitialized} /> }
-            {/* Toaster remains at the top level */}
-            <Toaster />
-          </XRCoreProvider>
-        </ApplicationModeProvider>
-      </ErrorBoundary>
+      <TooltipProvider>
+        <HelpProvider>
+          <OnboardingProvider>
+            {/* Removed WindowSizeProvider */}
+            <ErrorBoundary>
+              <ApplicationModeProvider>
+                {/* Removed PanelProvider */}
+                <XRCoreProvider>
+                  {/* Render TwoPaneLayout only after settings are initialized */}
+                  {initialized ? <TwoPaneLayout /> : <div>Loading application...</div>}
+                  {!initialized && <AppInitializer onInitialized={handleInitialized} /> }
+                  {/* Command Palette */}
+                  <CommandPalette />
+                  {/* Toaster remains at the top level */}
+                  <Toaster />
+                </XRCoreProvider>
+              </ApplicationModeProvider>
+            </ErrorBoundary>
+          </OnboardingProvider>
+        </HelpProvider>
+      </TooltipProvider>
     </ThemeProvider>
   )
 }

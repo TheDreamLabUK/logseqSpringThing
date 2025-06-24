@@ -6,9 +6,10 @@ import { Switch } from '@/ui/Switch';
 import { Input } from '@/ui/Input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/ui/Select';
 import { RadioGroup, RadioGroupItem } from '@/ui/RadioGroup'; // Added RadioGroup imports
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/ui/Tooltip';
 import { Button } from '@/ui/Button';
-import { Info, Eye, EyeOff } from 'lucide-react';
+import { Eye, EyeOff } from 'lucide-react';
+import { HelpTooltip } from '../../help/components/HelpTooltip';
+import { helpRegistry } from '../../help/HelpRegistry';
 
 // Simple inline useDebounce hook
 function useDebounce<T>(value: T, delay: number): T {
@@ -35,7 +36,7 @@ export interface SettingControlProps {
   onChange: (value: any) => void;
 }
 
-export function SettingControlComponent({ path, settingDef, value, onChange }: SettingControlProps) {
+export const SettingControlComponent = React.memo(({ path, settingDef, value, onChange }: SettingControlProps) => {
   // State for debounced inputs
   const [inputValue, setInputValue] = useState(String(value ?? ''));
   const debouncedInputValue = useDebounce(inputValue, 300); // 300ms debounce
@@ -88,6 +89,7 @@ export function SettingControlComponent({ path, settingDef, value, onChange }: S
             id={path}
             checked={Boolean(value)}
             onCheckedChange={onChange}
+            label={settingDef.label}
           />
         );
 
@@ -106,6 +108,11 @@ export function SettingControlComponent({ path, settingDef, value, onChange }: S
               step={settingDef.step ?? 0.01}
               onValueChange={([val]) => onChange(val)}
               className="flex-1"
+              label={settingDef.label}
+              aria-valuemin={settingDef.min ?? 0}
+              aria-valuemax={settingDef.max ?? 1}
+              aria-valuenow={numericValue}
+              aria-valuetext={`${numericValue.toFixed(settingDef.step && settingDef.step < 1 ? 2 : 0)}${settingDef.unit ? ` ${settingDef.unit}` : ''}`}
             />
             <span className="text-xs font-mono w-16 text-right tabular-nums">
               {numericValue.toFixed(settingDef.step && settingDef.step < 1 ? 2 : 0)}
@@ -158,7 +165,7 @@ export function SettingControlComponent({ path, settingDef, value, onChange }: S
                 onClick={() => setShowPassword(!showPassword)}
                 title={showPassword ? "Hide value" : "Show value"}
               >
-                {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                {showPassword ? <EyeOff className="h-4 w-4" aria-hidden="true" /> : <Eye className="h-4 w-4" aria-hidden="true" />}
               </Button>
             )}
             {settingDef.unit && <span className="text-xs text-muted-foreground">{settingDef.unit}</span>}
@@ -182,6 +189,7 @@ export function SettingControlComponent({ path, settingDef, value, onChange }: S
                 }
               }}
               className="h-8 w-10 p-0.5 border-border cursor-pointer"
+              aria-label="Choose color"
             />
             <Input
               type="text"
@@ -347,23 +355,38 @@ export function SettingControlComponent({ path, settingDef, value, onChange }: S
     return renderControl();
   }
 
+  // Get help content from registry if available
+  const helpId = `settings.${path.replace(/\./g, '.')}`;
+  const helpContent = helpRegistry.getHelp(helpId);
+
   return (
     <div className="setting-control grid grid-cols-3 items-center gap-x-4 gap-y-2 py-3 border-b border-border/30 last:border-b-0 hover:bg-muted/20 transition-colors rounded-sm px-1 -mx-1">
       <div className="col-span-1 flex items-center"> {/* Label takes 1/3rd */}
-        <Label htmlFor={path} className="text-sm flex items-center gap-1.5">
-          <span>{settingDef.label}</span>
-          {settingDef.description && (
-            <TooltipProvider delayDuration={100}>
-              <Tooltip content={settingDef.description} side="top" align="start">
-                <Info className="h-3.5 w-3.5 text-muted-foreground/70 hover:text-muted-foreground cursor-help" />
-              </Tooltip>
-            </TooltipProvider>
-          )}
-        </Label>
+        <HelpTooltip
+          help={helpContent || settingDef.description || ''}
+          showIndicator={!!settingDef.description || !!helpContent}
+          side="top"
+          align="start"
+        >
+          <Label htmlFor={path} className="text-sm cursor-help">
+            {settingDef.label}
+            {settingDef.required && <span className="text-destructive ml-1" aria-label="required">*</span>}
+          </Label>
+        </HelpTooltip>
       </div>
       <div className="col-span-2"> {/* Control takes 2/3rds */}
         {renderControl()}
       </div>
     </div>
   );
-}
+}, (prevProps, nextProps) => {
+  // Custom comparison for better performance
+  return (
+    prevProps.path === nextProps.path &&
+    prevProps.value === nextProps.value &&
+    prevProps.settingDef === nextProps.settingDef &&
+    prevProps.onChange === nextProps.onChange
+  );
+});
+
+SettingControlComponent.displayName = 'SettingControlComponent';
