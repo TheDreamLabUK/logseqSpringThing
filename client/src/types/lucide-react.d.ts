@@ -10,16 +10,19 @@ declare module 'lucide-react' {
 
   export type Icon = FC<IconProps>;
 
+  // This generic export will cover all icons from the library
   const icons: { [key: string]: Icon };
   export default icons;
 
-  // You can still export specific icons if you prefer, but the default export covers all of them.
+  // You can still export specific icons if you need explicit names for clarity
   export const X: Icon;
   export const Settings: Icon;
   export const Eye: Icon;
+  export const EyeOff: Icon;
   export const ChevronDown: Icon;
   export const ChevronUp: Icon;
   export const Check: Icon;
+  export const CheckCircle: Icon;
   export const Send: Icon;
   export const Download: Icon;
   export const Anchor: Icon;
@@ -36,4 +39,7 @@ declare module 'lucide-react' {
   export const Maximize: Icon;
   export const Terminal: Icon;
   export const Smartphone: Icon;
+  export const Loader2: Icon;
+  export const AlertTriangle: Icon;
+  export const Circle: Icon;
 }

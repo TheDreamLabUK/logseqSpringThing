@@ -1,21 +1,17 @@
 import { useEffect, Component, ReactNode, useCallback } from 'react'
 import AppInitializer from './AppInitializer'
-import { ThemeProvider } from '@/features/design-system/ThemeProvider'
-import { ApplicationModeProvider } from '@/contexts/ApplicationModeContext'
-import { EnhancedToastProvider } from '@/features/design-system/components/Toast'
-import XRCoreProvider from '@/features/xr/providers/XRCoreProvider'
-import { useSettingsStore } from '@/store/settingsStore'
-import { createLogger, createErrorMetadata } from '@/utils/logger'
+import { ApplicationModeProvider } from '../contexts/ApplicationModeContext';
+import XRCoreProvider from '../features/xr/providers/XRCoreProvider';
+import { useSettingsStore } from '../store/settingsStore';
+import { createLogger, createErrorMetadata } from '../utils/logger';
 import TwoPaneLayout from './TwoPaneLayout';
-import { CommandPalette } from '@/features/command-palette/components/CommandPalette'
-import { initializeCommandPalette } from '@/features/command-palette/defaultCommands'
-import { HelpProvider } from '@/features/help/components/HelpProvider'
-import { registerSettingsHelp } from '@/features/help/settingsHelp'
-import { TooltipProvider } from '@/features/design-system/components/Tooltip'
-import { OnboardingProvider } from '@/features/onboarding/components/OnboardingProvider'
-import { registerOnboardingCommands } from '@/features/onboarding/flows/defaultFlows'
-
-import '@/styles/tokens.css'
+import { CommandPalette } from '../features/command-palette/components/CommandPalette';
+import { initializeCommandPalette } from '../features/command-palette/defaultCommands';
+import { HelpProvider } from '../features/help/components/HelpProvider';
+import { registerSettingsHelp } from '../features/help/settingsHelp';
+import { OnboardingProvider } from '../features/onboarding/components/OnboardingProvider';
+import { registerOnboardingCommands } from '../features/onboarding/flows/defaultFlows';
+import '../styles/tokens.css';
 const logger = createLogger('App')
 
 // Error boundary component to catch rendering errors
@@ -92,25 +88,19 @@ function App() {
   }, [])
 
   return (
-    <ThemeProvider defaultTheme="dark">
-      <EnhancedToastProvider>
-        <TooltipProvider>
-          <HelpProvider>
-            <OnboardingProvider>
-              <ErrorBoundary>
-                <ApplicationModeProvider>
-                  <XRCoreProvider>
-                    {initialized ? <TwoPaneLayout /> : <div>Loading application...</div>}
-                    {!initialized && <AppInitializer onInitialized={handleInitialized} /> }
-                    <CommandPalette />
-                  </XRCoreProvider>
-                </ApplicationModeProvider>
-              </ErrorBoundary>
-            </OnboardingProvider>
-          </HelpProvider>
-        </TooltipProvider>
-      </EnhancedToastProvider>
-    </ThemeProvider>
+    <HelpProvider>
+      <OnboardingProvider>
+        <ErrorBoundary>
+          <ApplicationModeProvider>
+            <XRCoreProvider>
+              {initialized ? <TwoPaneLayout /> : <div>Loading application...</div>}
+              {!initialized && <AppInitializer onInitialized={handleInitialized} /> }
+              <CommandPalette />
+            </XRCoreProvider>
+          </ApplicationModeProvider>
+        </ErrorBoundary>
+      </OnboardingProvider>
+    </HelpProvider>
   )
 }
 
