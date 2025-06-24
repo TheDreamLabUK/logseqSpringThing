@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import Tabs from '@/features/design-system/components/Tabs';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/features/design-system/components/Tabs';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/features/design-system/components/Card';
 import { Button } from '@/features/design-system/components/Button';
 import { SearchInput } from '@/features/design-system/components/SearchInput';
@@ -61,8 +61,8 @@ export function SettingsPanelRedesignOptimized({ toggleLowerRightPaneDock, isLow
   const { toast } = useToast();
 
   // Dynamically get background and text color from settings
-  const panelBackground: string = useSelectiveSetting(s => s.visualisation.rendering.backgroundColor) ?? '#18181b';
-  const panelForeground: string = useSelectiveSetting(s => s.visualisation.labels.textOutlineColor) ?? '#fff';
+  const panelBackground: string = useSelectiveSetting('visualisation.rendering.backgroundColor') ?? '#18181b';
+  const panelForeground: string = useSelectiveSetting('visualisation.labels.textOutlineColor') ?? '#fff';
   const { set: setSetting } = useSettingSetter();
 
   // Organize settings into logical groups with better structure
@@ -423,18 +423,7 @@ export function SettingsPanelRedesignOptimized({ toggleLowerRightPaneDock, isLow
     setLoadingSettings(prev => new Set(prev).add(path));
 
     try {
-      // Simulate async save operation
-      await new Promise((resolve, reject) => {
-        setTimeout(() => {
-          // Simulate random errors for demonstration
-          if (Math.random() > 0.9) {
-            reject(new Error('Failed to save setting'));
-          } else {
-            resolve(true);
-          }
-        }, 500);
-      });
-
+      // Save the setting - this should handle persistence automatically
       setSetting(path, value);
 
       // Show success toast
@@ -563,13 +552,6 @@ export function SettingsPanelRedesignOptimized({ toggleLowerRightPaneDock, isLow
     );
   };
 
-  // Create tabs array for the Tabs component
-  const tabs = Object.entries(settingsStructure).map(([key, section]) => ({
-    label: section.label,
-    icon: section.icon,
-    content: renderTabContent(key)
-  }));
-
   return (
     // Dynamically set background and text color from settings
     <div className="w-full h-full flex flex-col min-h-0 bg-background text-foreground">
@@ -620,12 +602,21 @@ export function SettingsPanelRedesignOptimized({ toggleLowerRightPaneDock, isLow
       </div>
 
       <div className="flex-1 overflow-auto">
-        <Tabs
-          tabs={tabs}
-          className="h-full"
-          tabListClassName="px-4 bg-muted/30"
-          tabContentClassName="px-4 py-3"
-        />
+        <Tabs defaultValue="appearance" className="h-full">
+          <TabsList className="px-4 bg-muted/30 w-full justify-start">
+            {Object.entries(settingsStructure).map(([key, section]) => (
+              <TabsTrigger key={key} value={key} className="flex items-center gap-2">
+                {section.icon}
+                {section.label}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+          {Object.entries(settingsStructure).map(([key, section]) => (
+            <TabsContent key={key} value={key} className="px-4 py-3">
+              {renderTabContent(key)}
+            </TabsContent>
+          ))}
+        </Tabs>
       </div>
 
       {/* Status bar */}

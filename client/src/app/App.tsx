@@ -11,6 +11,7 @@ import { HelpProvider } from '../features/help/components/HelpProvider';
 import { registerSettingsHelp } from '../features/help/settingsHelp';
 import { OnboardingProvider } from '../features/onboarding/components/OnboardingProvider';
 import { registerOnboardingCommands } from '../features/onboarding/flows/defaultFlows';
+import { TooltipProvider } from '../features/design-system/components/Tooltip';
 import '../styles/tokens.css';
 const logger = createLogger('App')
 
@@ -88,19 +89,21 @@ function App() {
   }, [])
 
   return (
-    <HelpProvider>
-      <OnboardingProvider>
-        <ErrorBoundary>
-          <ApplicationModeProvider>
-            <XRCoreProvider>
-              {initialized ? <TwoPaneLayout /> : <div>Loading application...</div>}
-              {!initialized && <AppInitializer onInitialized={handleInitialized} /> }
-              <CommandPalette />
-            </XRCoreProvider>
-          </ApplicationModeProvider>
-        </ErrorBoundary>
-      </OnboardingProvider>
-    </HelpProvider>
+    <TooltipProvider delayDuration={300} skipDelayDuration={100}>
+      <HelpProvider>
+        <OnboardingProvider>
+          <ErrorBoundary>
+            <ApplicationModeProvider>
+              <XRCoreProvider>
+                {initialized ? <TwoPaneLayout /> : <div>Loading application...</div>}
+                {!initialized && <AppInitializer onInitialized={handleInitialized} /> }
+                <CommandPalette />
+              </XRCoreProvider>
+            </ApplicationModeProvider>
+          </ErrorBoundary>
+        </OnboardingProvider>
+      </HelpProvider>
+    </TooltipProvider>
   )
 }
 

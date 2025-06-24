@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { HelpCircle, Info, ExternalLink } from 'lucide-react';
-import { Tooltip, TooltipTrigger, TooltipContent } from '@/features/design-system/components/Tooltip';
+import { TooltipRoot, TooltipTrigger, TooltipContent } from '@/features/design-system/components/Tooltip';
 import { cn } from '@/utils/cn';
 import { HelpContent } from '../types';
 
@@ -62,27 +62,23 @@ export function HelpTooltip({
     </div>
   );
 
-  const content = (
-    <div className={cn("relative inline-flex items-center", className)}>
-      {children}
-      {showIndicator && (
-        <div className={cn(
-          "ml-1 inline-flex items-center justify-center",
-          "w-4 h-4 rounded-full",
-          "bg-muted hover:bg-muted/80 transition-colors",
-          "cursor-help",
-          indicatorClassName
-        )}>
-          <Info className="h-3 w-3 text-muted-foreground" />
-        </div>
-      )}
-    </div>
-  );
-
   return (
-    <Tooltip delayDuration={300}>
+    <TooltipRoot delayDuration={300}>
       <TooltipTrigger asChild>
-        {content}
+        <div className={cn("relative inline-flex items-center", className)}>
+          {children}
+          {showIndicator && (
+            <div className={cn(
+              "ml-1 inline-flex items-center justify-center",
+              "w-4 h-4 rounded-full",
+              "bg-muted hover:bg-muted/80 transition-colors",
+              "cursor-help",
+              indicatorClassName
+            )}>
+              <Info className="h-3 w-3 text-muted-foreground" />
+            </div>
+          )}
+        </div>
       </TooltipTrigger>
       <TooltipContent
         side={side}
@@ -91,6 +87,6 @@ export function HelpTooltip({
       >
         {tooltipContent}
       </TooltipContent>
-    </Tooltip>
+    </TooltipRoot>
   );
 }
