@@ -1,6 +1,6 @@
 import React, { useState, useCallback, CSSProperties } from 'react';
 import GraphViewport from '../features/graph/components/GraphViewport';
-import { SettingsPanelRedesign } from '../features/settings/components/panels/SettingsPanelRedesign';
+import RightPaneControlPanel from './components/RightPaneControlPanel';
 // import MarkdownDisplayPanel from './components/MarkdownDisplayPanel'; // Remove this
 import ConversationPane from './components/ConversationPane'; // Add this
 import NarrativeGoldminePanel from './components/NarrativeGoldminePanel';
@@ -332,7 +332,7 @@ const TwoPaneLayout: React.FC = () => {
         {!isRightPaneDocked && (
           <>
             <div style={rightPaneTopStyle}>
-              <SettingsPanelRedesign toggleLowerRightPaneDock={toggleLowerRightPaneDock} isLowerRightPaneDocked={isLowerRightPaneDocked} />
+              <RightPaneControlPanel toggleLowerRightPaneDock={toggleLowerRightPaneDock} isLowerRightPaneDocked={isLowerRightPaneDocked} />
             </div>
             {!isLowerRightPaneDocked && ( // Hide divider and lower container when docked
               <>

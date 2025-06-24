@@ -1,8 +1,8 @@
 import React, { useState, useMemo } from 'react';
-import Tabs from '@/ui/components/Tabs';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/ui/components/Card';
-import { Button } from '@/ui/components/Button';
-import { SearchInput } from '@/ui/components/SearchInput';
+import Tabs from '@/features/design-system/components/Tabs';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/features/design-system/components/Card';
+import { Button } from '@/features/design-system/components/Button';
+import { SearchInput } from '@/features/design-system/components/SearchInput';
 import {
   Eye,
   Settings,
@@ -21,12 +21,14 @@ import { settingsUIDefinition } from '../../config/settingsUIDefinition';
 import { cn } from '@/utils/cn';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 import { KeyboardShortcutsModal } from '@/components/KeyboardShortcutsModal';
-import { LoadingSpinner, LoadingOverlay } from '@/ui/components/LoadingSpinner';
-import { SkeletonSetting } from '@/ui/components/LoadingSkeleton';
+import { LoadingSpinner, LoadingOverlay } from '@/features/design-system/components/LoadingSpinner';
+import { SkeletonSetting } from '@/features/design-system/components/LoadingSkeleton';
 import { useErrorHandler } from '@/hooks/useErrorHandler';
-import { useToast } from '@/ui/components/Toast';
+import { useToast } from '@/features/design-system/components/Toast';
 import { UndoRedoControls } from '../UndoRedoControls';
 import NostrAuthSection from '../../../auth/components/NostrAuthSection';
+import { useSelectiveSetting, useSettingSetter } from '@/hooks/useSelectiveSettingsStore';
+import { VirtualizedSettingsGroup } from '../VirtualizedSettingsGroup';
 
 interface SettingItem {
   key: string;
@@ -42,13 +44,13 @@ interface SettingGroup {
   isPowerUser?: boolean;
 }
 
-interface SettingsPanelRedesignProps {
+interface SettingsPanelRedesignOptimizedProps {
   toggleLowerRightPaneDock: () => void;
   isLowerRightPaneDocked: boolean;
 }
 
-export function SettingsPanelRedesign({ toggleLowerRightPaneDock, isLowerRightPaneDocked }: SettingsPanelRedesignProps) {
-  const { settings, isPowerUser } = useSettingsStore();
+export function SettingsPanelRedesignOptimized({ toggleLowerRightPaneDock, isLowerRightPaneDocked }: SettingsPanelRedesignOptimizedProps) {
+  const { isPowerUser } = useSettingsStore();
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set(['Node Appearance']));
   const [savedNotification, setSavedNotification] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -59,8 +61,9 @@ export function SettingsPanelRedesign({ toggleLowerRightPaneDock, isLowerRightPa
   const { toast } = useToast();
 
   // Dynamically get background and text color from settings
-  const panelBackground: string = String(useSettingsStore.getState().get('visualisation.rendering.backgroundColor') || '#18181b');
-  const panelForeground: string = String(useSettingsStore.getState().get('visualisation.labels.textOutlineColor') || '#fff');
+  const panelBackground: string = useSelectiveSetting(s => s.visualisation.rendering.backgroundColor) ?? '#18181b';
+  const panelForeground: string = useSelectiveSetting(s => s.visualisation.labels.textOutlineColor) ?? '#fff';
+  const { set: setSetting } = useSettingSetter();
 
   // Organize settings into logical groups with better structure
   const settingsStructure = useMemo(() => ({
@@ -432,7 +435,7 @@ export function SettingsPanelRedesign({ toggleLowerRightPaneDock, isLowerRightPa
         }, 500);
       });
 
-      useSettingsStore.getState().set(path, value);
+      setSetting(path, value);
 
       // Show success toast
       toast({
@@ -459,7 +462,7 @@ export function SettingsPanelRedesign({ toggleLowerRightPaneDock, isLowerRightPa
     }
   };
 
-  const renderSettingGroup = (group: SettingGroup) => {
+  const renderSettingGroup = (group: SettingGroup, groupIndex: number) => {
     if (group.isPowerUser && !isPowerUser) return null;
 
     const isExpanded = expandedGroups.has(group.title);
@@ -497,40 +500,17 @@ export function SettingsPanelRedesign({ toggleLowerRightPaneDock, isLowerRightPa
 
         {isExpanded && (
           <CardContent className="pt-0 pb-3 px-4 space-y-3">
-            {isInitializing ? (
-              // Show skeleton while loading
-              <>
-                <SkeletonSetting />
-                <SkeletonSetting />
-                <SkeletonSetting />
-              </>
-            ) : (
-              group.items.map((item) => {
-                if (item.isPowerUser && !isPowerUser) return null;
-
-              const value = useSettingsStore.getState().get(item.path);
-              const isLoading = loadingSettings.has(item.path);
-
-              return (
-                <div key={item.key} className="relative">
-                  <LoadingOverlay isLoading={isLoading} label="Saving...">
-                    <SettingControlComponent
-                      path={item.path}
-                      settingDef={item.definition}
-                      value={value}
-                      onChange={(newValue) => handleSettingChange(item.path, newValue)}
-                    />
-                  </LoadingOverlay>
-                  {savedNotification === item.path && !isLoading && (
-                    <div className="absolute -top-1 -right-1 flex items-center gap-1 text-xs text-green-600 bg-green-50 px-2 py-1 rounded z-20">
-                      <Check className="h-3 w-3" />
-                      Saved
-                    </div>
-                  )}
-                  </div>
-                );
-              })
-            )}
+            <VirtualizedSettingsGroup
+              title={group.title}
+              items={group.items}
+              isExpanded={isExpanded}
+              onToggle={() => toggleGroup(group.title)}
+              isPowerUser={isPowerUser}
+              loadingSettings={loadingSettings}
+              savedNotification={savedNotification}
+              onSettingChange={handleSettingChange}
+              groupIndex={groupIndex}
+            />
           </CardContent>
         )}
       </Card>
@@ -574,9 +554,9 @@ export function SettingsPanelRedesign({ toggleLowerRightPaneDock, isLowerRightPa
 
     return (
       <div className="flex-1 min-h-0 space-y-3">
-        {filteredGroups.map(group => (
+        {filteredGroups.map((group, index) => (
           <React.Fragment key={group.title}>
-            {renderSettingGroup(group)}
+            {renderSettingGroup(group, index)}
           </React.Fragment>
         ))}
       </div>

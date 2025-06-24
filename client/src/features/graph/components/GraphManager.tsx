@@ -43,11 +43,7 @@ const getPositionForNode = (node: GraphNode, index: number): [number, number, nu
 }
 
 // Define props for GraphManager
-interface GraphManagerProps {
-  onNodeDragStateChange: (isDragging: boolean) => void;
-}
-
-const GraphManager: React.FC<GraphManagerProps> = ({ onNodeDragStateChange }) => { // Accept prop
+const GraphManager: React.FC = () => {
   const meshRef = useRef<THREE.InstancedMesh>(null) // Initialize with null, use THREE namespace
   // REMOVE: const orbitControlsRef = useRef<any>(null);
 
@@ -199,7 +195,6 @@ const GraphManager: React.FC<GraphManagerProps> = ({ onNodeDragStateChange }) =>
       if (distance > DRAG_THRESHOLD) {
         // Threshold exceeded, officially start the drag
         drag.isDragging = true;
-        onNodeDragStateChange(true); // Disable camera controls
         setDragState({ nodeId: drag.nodeId, instanceId: drag.instanceId });
 
         const numericId = graphDataManager.nodeIdMap.get(drag.nodeId!);
@@ -269,7 +264,7 @@ const GraphManager: React.FC<GraphManagerProps> = ({ onNodeDragStateChange }) =>
         }
       }
     }
-  }, [onNodeDragStateChange, camera, settings?.visualisation?.nodes?.nodeSize]);
+  }, [camera, settings?.visualisation?.nodes?.nodeSize]);
 
   const handlePointerUp = useCallback(() => {
     const drag = dragDataRef.current;
@@ -291,7 +286,6 @@ const GraphManager: React.FC<GraphManagerProps> = ({ onNodeDragStateChange }) =>
         };
         graphDataManager.webSocketService?.send(createBinaryNodeData([finalUpdate]));
       }
-      onNodeDragStateChange(false); // Re-enable camera controls
 
     } else {
       // --- This was a CLICK action ---
@@ -319,7 +313,7 @@ const GraphManager: React.FC<GraphManagerProps> = ({ onNodeDragStateChange }) =>
     dragDataRef.current.pendingUpdate = null;
     setDragState({ nodeId: null, instanceId: null });
 
-  }, [graphData.nodes, onNodeDragStateChange]);
+  }, [graphData.nodes]);
 
   // Global pointer up listener for cases where mouse is released outside canvas
   useEffect(() => {

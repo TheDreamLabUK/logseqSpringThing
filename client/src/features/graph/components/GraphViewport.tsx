@@ -65,7 +65,7 @@ const GraphViewport: React.FC = () => {
 
         let minX = Infinity, minY = Infinity, minZ = Infinity;
         let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
-        
+
         data.nodes.forEach((node) => {
           if (node.position) {
             minX = Math.min(minX, node.position.x);
@@ -80,11 +80,11 @@ const GraphViewport: React.FC = () => {
         const centerX = (minX === Infinity || maxX === -Infinity) ? 0 : (maxX + minX) / 2;
         const centerY = (minY === Infinity || maxY === -Infinity) ? 0 : (maxY + minY) / 2;
         const centerZ = (minZ === Infinity || maxZ === -Infinity) ? 0 : (maxZ + minZ) / 2;
-        
+
         const width = (minX === Infinity || maxX === -Infinity) ? 0 : maxX - minX;
         const height = (minY === Infinity || maxY === -Infinity) ? 0 : maxY - minY;
         const depth = (minZ === Infinity || maxZ === -Infinity) ? 0 : maxZ - minZ;
-        
+
         const maxDimension = Math.max(width, height, depth, 1); // Ensure maxDimension is at least 1
 
         setGraphCenter([centerX, centerY, centerZ]);
@@ -127,7 +127,7 @@ const GraphViewport: React.FC = () => {
       >
         <color attach="background" args={[backgroundColor]} />
         <CameraController center={graphCenter} size={graphSize} />
-        
+
         <ambientLight intensity={renderingSettings?.ambientLightIntensity ?? 0.6} />
         <directionalLight
           position={[10, 10, 5]} // Using hardcoded default as not in settings
@@ -148,14 +148,13 @@ const GraphViewport: React.FC = () => {
           target={graphCenter}
           enabled={!isNodeDragging} // <--- Control OrbitControls here
         />
-        
+
         <Suspense fallback={null}>
-          {/* Pass setIsNodeDragging to GraphManager */}
-          <GraphManager onNodeDragStateChange={setIsNodeDragging} />
+          <GraphManager />
           {/* HologramVisualisation could be added here if it's part of the core graph view */}
           {/* <HologramVisualisation standalone={false} position={[0, 0, 0]} size={20} /> */}
         </Suspense>
-        
+
         {/* Removed showAxesHelper and showStats as they are not in DebugSettings type from settings.ts */}
         {/* {debugSettings?.showAxesHelper && <axesHelper args={[graphSize > 0 ? graphSize / 10 : 2]} />} */}
         {/* {debugSettings?.showStats && <Stats />} */}
