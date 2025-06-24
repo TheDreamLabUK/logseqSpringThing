@@ -1,10 +1,10 @@
 import React, { useEffect } from 'react';
 import { X, Keyboard } from 'lucide-react';
-import { Button } from '../ui/Button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/Card';
-import { useKeyboardShortcutsList, formatShortcut } from '../hooks/useKeyboardShortcuts';
-import { cn } from '../utils/cn';
-import { useFocusTrap, useAnnounce } from '../utils/accessibility';
+import { Button } from '@/features/design-system/components/Button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/features/design-system/components/Card';
+import { useKeyboardShortcutsList, formatShortcut } from '@/hooks/useKeyboardShortcuts';
+import { cn } from '@/utils/cn';
+import { useFocusTrap, useAnnounce } from '@/utils/accessibility';
 
 interface KeyboardShortcutsModalProps {
   isOpen: boolean;

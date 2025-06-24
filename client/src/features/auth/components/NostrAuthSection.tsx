@@ -1,8 +1,8 @@
 import React, { useEffect } from 'react'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../../ui/Card'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/features/design-system/components/Card'
 import AuthUIHandler from './AuthUIHandler'
 import { initializeAuth } from '../initAuth'
-import { createLogger, createErrorMetadata } from '../../../utils/logger'
+import { createLogger, createErrorMetadata } from '@/utils/logger'
 
 const logger = createLogger('NostrAuthSection');
 

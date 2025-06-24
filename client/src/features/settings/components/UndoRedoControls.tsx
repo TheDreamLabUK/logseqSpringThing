@@ -1,10 +1,10 @@
 import React from 'react';
 import { Undo, Redo, History } from 'lucide-react';
-import { Button } from '../../../ui/Button';
-import { TooltipRoot, TooltipContent, TooltipTrigger } from '../../../ui/Tooltip';
+import { Button } from '@/features/design-system/components/Button';
+import { TooltipRoot, TooltipContent, TooltipTrigger } from '@/features/design-system/components/Tooltip';
 import { useSettingsHistory } from '../hooks/useSettingsHistory';
-import { useKeyboardShortcuts } from '../../../hooks/useKeyboardShortcuts';
-import { cn } from '../../../utils/cn';
+import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
+import { cn } from '@/utils/cn';
 
 interface UndoRedoControlsProps {
   className?: string;

@@ -23,7 +23,7 @@ declare module 'lucide-react' {
   export const CircleDashed: Icon;
   export const BrushIcon: Icon;
   export const MoveHorizontal: Icon;
-  
+
   // Additional icons used in PanelManager
   export const Settings: Icon;
   export const LayoutGrid: Icon;
@@ -42,7 +42,15 @@ declare module 'lucide-react' {
   export const Send: Icon;
   export const Download: Icon;
   export const Anchor: Icon;
-  
+  export const Search: Icon;
+  export const Keyboard: Icon;
+  export const User: Icon;
+  export const Undo: Icon;
+  export const Redo: Icon;
+  export const History: Icon;
+  export const HelpCircle: Icon;
+  export const ExternalLink: Icon;
+
   // Add any other icons that might be used in your project
   // This is not an exhaustive list, just including the ones I've seen so far
 }

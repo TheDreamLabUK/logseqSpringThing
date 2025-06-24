@@ -1,15 +1,15 @@
 import React, { useState } from 'react'; // Added React import
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '../../../ui/Collapsible';
-import { Card, CardContent, CardHeader, CardTitle } from '../../../ui/Card';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/features/design-system/components/Collapsible';
+import { Card, CardContent, CardHeader, CardTitle } from '@/features/design-system/components/Card';
 import { ChevronDown, ChevronUp, Minimize, Maximize } from 'lucide-react';
-import { Button } from '../../../ui/Button';
+import { Button } from '@/features/design-system/components/Button';
 // Removed import for SettingsSectionProps from types
 // Removed import for SettingsSubsection
 import Draggable from 'react-draggable';
 import { useControlPanelContext } from './control-panel-context';
 import { UISettingDefinition } from '../config/settingsUIDefinition'; // Import the definition type
 import { SettingControlComponent } from './SettingControlComponent'; // Import the control component
-import { useSettingsStore } from '../../../store/settingsStore'; // Adjust path if necessary
+import { useSettingsStore } from '@/store/settingsStore'; // Adjust path if necessary
 
 // Define props locally
 interface SettingsSectionProps {

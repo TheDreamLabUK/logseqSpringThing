@@ -1,8 +1,8 @@
 import React, { useState, useMemo } from 'react';
-import Tabs from '../../../../ui/Tabs';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../../../ui/Card';
-import { Button } from '../../../../ui/Button';
-import { SearchInput } from '../../../../ui/SearchInput';
+import Tabs from '@/ui/components/Tabs';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/ui/components/Card';
+import { Button } from '@/ui/components/Button';
+import { SearchInput } from '@/ui/components/SearchInput';
 import {
   Eye,
   Settings,
@@ -15,16 +15,16 @@ import {
   Keyboard,
   User,
 } from 'lucide-react';
-import { useSettingsStore } from '../../../../store/settingsStore';
+import { useSettingsStore } from '@/store/settingsStore';
 import { SettingControlComponent } from '../SettingControlComponent';
 import { settingsUIDefinition } from '../../config/settingsUIDefinition';
-import { cn } from '../../../../utils/cn';
-import { useKeyboardShortcuts } from '../../../../hooks/useKeyboardShortcuts';
-import { KeyboardShortcutsModal } from '../../../../components/KeyboardShortcutsModal';
-import { LoadingSpinner, LoadingOverlay } from '../../../../ui/LoadingSpinner';
-import { SkeletonSetting } from '../../../../ui/LoadingSkeleton';
-import { useErrorHandler } from '../../../../hooks/useErrorHandler';
-import { useToast } from '../../../../ui/useToast';
+import { cn } from '@/utils/cn';
+import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
+import { KeyboardShortcutsModal } from '@/components/KeyboardShortcutsModal';
+import { LoadingSpinner, LoadingOverlay } from '@/ui/components/LoadingSpinner';
+import { SkeletonSetting } from '@/ui/components/LoadingSkeleton';
+import { useErrorHandler } from '@/hooks/useErrorHandler';
+import { useToast } from '@/ui/components/Toast';
 import { UndoRedoControls } from '../UndoRedoControls';
 import NostrAuthSection from '../../../auth/components/NostrAuthSection';
 

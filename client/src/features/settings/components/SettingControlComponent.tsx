@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { UISettingDefinition } from '../config/settingsUIDefinition'; // Import the new definition type
-import { Label } from '../../../ui/Label';
-import { Slider } from '../../../ui/Slider';
-import { Switch } from '../../../ui/Switch';
-import { Input } from '../../../ui/Input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../../ui/Select';
-import { RadioGroup, RadioGroupItem } from '../../../ui/RadioGroup'; // Added RadioGroup imports
-import { Button } from '../../../ui/Button';
+import { Label } from '@/features/design-system/components/Label';
+import { Slider } from '@/features/design-system/components/Slider';
+import { Switch } from '@/features/design-system/components/Switch';
+import { Input } from '@/features/design-system/components/Input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/features/design-system/components/Select';
+import { RadioGroup, RadioGroupItem } from '@/features/design-system/components/RadioGroup'; // Added RadioGroup imports
+import { Button } from '@/features/design-system/components/Button';
 import { Eye, EyeOff } from 'lucide-react';
 import { HelpTooltip } from '../../help/components/HelpTooltip';
 import { helpRegistry } from '../../help/HelpRegistry';
@@ -31,7 +31,7 @@ function useDebounce<T>(value: T, delay: number): T {
 // Define props based on the plan
 export interface SettingControlProps {
   path: string;
-  settingDef: UISettingDefinition;
+  settingDef: UISettingDefinition & { required?: boolean };
   value: any;
   onChange: (value: any) => void;
 }

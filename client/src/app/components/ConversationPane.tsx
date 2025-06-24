@@ -1,14 +1,14 @@
 // client/src/app/components/ConversationPane.tsx
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Button } from '../../ui/Button';
-import { Input } from '../../ui/Input';
+import { Button } from '@/features/design-system/components/Button';
+import { Input } from '@/features/design-system/components/Input';
 import { Send } from 'lucide-react';
-import { apiService } from '../../services/api';
-import { useSettingsStore } from '../../store/settingsStore'; // For auth check
-import { nostrAuth } from '../../services/nostrAuthService'; // For getting token
-import { createLogger, createErrorMetadata } from '../../utils/logger';
-import MarkdownRenderer from '../../ui/markdown/MarkdownRenderer'; // For rendering bot responses
-import { RagflowChatRequestPayload, RagflowChatResponsePayload } from '../../types/ragflowTypes'; // Import DTOs
+import { apiService } from '@/services/api';
+import { useSettingsStore } from '@/store/settingsStore'; // For auth check
+import { nostrAuth } from '@/services/nostrAuthService'; // For getting token
+import { createLogger, createErrorMetadata } from '@/utils/logger';
+import MarkdownRenderer from '@/features/design-system/patterns/MarkdownRenderer'; // For rendering bot responses
+import { RagflowChatRequestPayload, RagflowChatResponsePayload } from '@/types/ragflowTypes'; // Import DTOs
 // import { shallow } from 'zustand/shallow'; // Not needed for this approach
 
 const logger = createLogger('ConversationPane');
@@ -60,7 +60,7 @@ const ConversationPane: React.FC = () => {
 
       const payload: RagflowChatRequestPayload = { question, sessionId: sessionId ?? undefined, stream: false };
       const response: RagflowChatResponsePayload = await apiService.sendRagflowChatMessage(payload, headers);
-      
+
       const botMessage: Message = { id: response.sessionId + '_bot', sender: 'bot', text: response.answer };
       setMessages(prev => [...prev, botMessage]);
       setSessionId(response.sessionId);
@@ -123,10 +123,10 @@ const ConversationPane: React.FC = () => {
           disabled={isLoading || !isPowerUser}
           aria-label="Chat input"
         />
-        <Button 
-            onClick={handleSendMessage} 
-            disabled={isLoading || !currentInput.trim() || !isPowerUser} 
-            size="icon" 
+        <Button
+            onClick={handleSendMessage}
+            disabled={isLoading || !currentInput.trim() || !isPowerUser}
+            size="icon"
             variant="ghost"
             aria-label="Send message"
             className="hover:bg-primary/10"

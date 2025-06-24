@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { HelpCircle, Info, ExternalLink } from 'lucide-react';
-import { Tooltip, TooltipTrigger, TooltipContent } from '../../../ui/Tooltip';
-import { cn } from '../../../utils/cn';
+import { Tooltip, TooltipTrigger, TooltipContent } from '@/features/design-system/components/Tooltip';
+import { cn } from '@/utils/cn';
 import { HelpContent } from '../types';
 
 interface HelpTooltipProps {

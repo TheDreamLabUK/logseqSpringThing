@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { nostrAuth, AuthState } from '../../../services/nostrAuthService';
-import { createLogger, createErrorMetadata } from '../../../utils/logger';
-import { Button } from '../../../ui/Button';
-import { Card, CardContent } from '../../../ui/Card';
+import { nostrAuth, AuthState } from '@/services/nostrAuthService';
+import { createLogger, createErrorMetadata } from '@/utils/logger';
+import { Button } from '@/features/design-system/components/Button';
+import { Card, CardContent } from '@/features/design-system/components/Card';
 
 const logger = createLogger('AuthUIHandler');
 
@@ -72,9 +72,9 @@ const AuthUIHandler: React.FC<AuthUIHandlerProps> = ({ className = '' }) => {
               </span>
             </div>
           </div>
-          <Button 
-            variant="destructive" 
-            onClick={handleLogout} 
+          <Button
+            variant="destructive"
+            onClick={handleLogout}
             disabled={isLoading}
             className="w-full"
           >
@@ -83,8 +83,8 @@ const AuthUIHandler: React.FC<AuthUIHandlerProps> = ({ className = '' }) => {
         </div>
       ) : (
         <div className="space-y-4">
-          <Button 
-            onClick={handleLogin} 
+          <Button
+            onClick={handleLogin}
             disabled={isLoading}
             className="w-full"
           >
