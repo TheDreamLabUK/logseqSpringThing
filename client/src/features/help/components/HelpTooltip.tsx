@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { HelpCircle, Info, ExternalLink } from 'lucide-react';
-import { TooltipRoot, TooltipTrigger, TooltipContent } from '../../../ui/Tooltip';
+import { Tooltip, TooltipTrigger, TooltipContent } from '../../../ui/Tooltip';
 import { cn } from '../../../utils/cn';
 import { HelpContent } from '../types';
 
@@ -80,17 +80,17 @@ export function HelpTooltip({
   );
 
   return (
-    <TooltipRoot delayDuration={300}>
+    <Tooltip delayDuration={300}>
       <TooltipTrigger asChild>
         {content}
       </TooltipTrigger>
-      <TooltipContent 
-        side={side} 
+      <TooltipContent
+        side={side}
         align={align}
         className="bg-popover text-popover-foreground border shadow-md"
       >
         {tooltipContent}
       </TooltipContent>
-    </TooltipRoot>
+    </Tooltip>
   );
 }

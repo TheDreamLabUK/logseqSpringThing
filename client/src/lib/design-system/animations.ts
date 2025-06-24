@@ -4,7 +4,7 @@
  */
 
 import { Variants, Transition } from 'framer-motion'
-import { tokens } from './tokens'
+import { tokens } from '../../design-system/tokens'
 
 // Animation transitions
 export const transitions = {
@@ -31,7 +31,7 @@ export const transitions = {
       stiffness: 150,
     },
   },
-  
+
   // Easing transitions
   easing: {
     easeIn: {
@@ -57,59 +57,59 @@ export const variants = {
     animate: { opacity: 1 },
     exit: { opacity: 0 },
   } as Variants,
-  
+
   // Scale animations
   scale: {
     initial: { opacity: 0, scale: 0.9 },
     animate: { opacity: 1, scale: 1 },
     exit: { opacity: 0, scale: 0.9 },
   } as Variants,
-  
+
   // Slide animations
   slideUp: {
     initial: { opacity: 0, y: 20 },
     animate: { opacity: 1, y: 0 },
     exit: { opacity: 0, y: -20 },
   } as Variants,
-  
+
   slideDown: {
     initial: { opacity: 0, y: -20 },
     animate: { opacity: 1, y: 0 },
     exit: { opacity: 0, y: 20 },
   } as Variants,
-  
+
   slideLeft: {
     initial: { opacity: 0, x: 20 },
     animate: { opacity: 1, x: 0 },
     exit: { opacity: 0, x: -20 },
   } as Variants,
-  
+
   slideRight: {
     initial: { opacity: 0, x: -20 },
     animate: { opacity: 1, x: 0 },
     exit: { opacity: 0, x: 20 },
   } as Variants,
-  
+
   // Expand animations
   expandVertical: {
     initial: { height: 0, opacity: 0 },
     animate: { height: 'auto', opacity: 1 },
     exit: { height: 0, opacity: 0 },
   } as Variants,
-  
+
   expandHorizontal: {
     initial: { width: 0, opacity: 0 },
     animate: { width: 'auto', opacity: 1 },
     exit: { width: 0, opacity: 0 },
   } as Variants,
-  
+
   // Rotate animations
   rotate: {
     initial: { opacity: 0, rotate: -10 },
     animate: { opacity: 1, rotate: 0 },
     exit: { opacity: 0, rotate: 10 },
   } as Variants,
-  
+
   // Blur animations
   blur: {
     initial: { opacity: 0, filter: 'blur(10px)' },
@@ -127,7 +127,7 @@ export const staggerVariants = {
       },
     },
   } as Variants,
-  
+
   containerFast: {
     animate: {
       transition: {
@@ -135,7 +135,7 @@ export const staggerVariants = {
       },
     },
   } as Variants,
-  
+
   containerSlow: {
     animate: {
       transition: {
@@ -143,7 +143,7 @@ export const staggerVariants = {
       },
     },
   } as Variants,
-  
+
   item: {
     initial: { opacity: 0, y: 20 },
     animate: { opacity: 1, y: 0 },
@@ -156,17 +156,17 @@ export const interactionVariants = {
     scale: 1.05,
     transition: transitions.spring.smooth,
   },
-  
+
   tap: {
     scale: 0.95,
     transition: transitions.spring.snappy,
   },
-  
+
   hoverLift: {
     y: -4,
     transition: transitions.spring.smooth,
   },
-  
+
   hoverGlow: {
     boxShadow: tokens.shadows.lg,
     transition: transitions.easing.easeOut,
@@ -181,14 +181,14 @@ export const pageTransitions = {
     exit: { opacity: 0, scale: 1.05 },
     transition: transitions.easing.easeInOut,
   } as Variants,
-  
+
   slideLeft: {
     initial: { x: '100%', opacity: 0 },
     animate: { x: 0, opacity: 1 },
     exit: { x: '-100%', opacity: 0 },
     transition: transitions.spring.smooth,
   } as Variants,
-  
+
   slideUp: {
     initial: { y: '100%', opacity: 0 },
     animate: { y: 0, opacity: 1 },
@@ -204,7 +204,7 @@ export const gestureAnimations = {
     dragConstraints: { top: 0, left: 0, right: 0, bottom: 0 },
     whileDrag: { scale: 1.1, cursor: 'grabbing' },
   },
-  
+
   pinch: {
     whileTap: { scale: 0.9 },
     whileInView: { scale: 1 },
@@ -223,7 +223,7 @@ export const loadingVariants = {
       },
     },
   } as Variants,
-  
+
   pulse: {
     animate: {
       scale: [1, 1.2, 1],
@@ -235,7 +235,7 @@ export const loadingVariants = {
       },
     },
   } as Variants,
-  
+
   dots: {
     animate: {
       y: [0, -10, 0],
@@ -256,14 +256,14 @@ export const animationUtils = {
       delay: index * baseDelay,
     },
   }),
-  
+
   // Create custom spring animation
   createSpring: (stiffness = 260, damping = 20) => ({
     type: 'spring',
     stiffness,
     damping,
   }),
-  
+
   // Create custom bezier curve animation
   createBezier: (curve: [number, number, number, number], duration = 0.3) => ({
     duration,

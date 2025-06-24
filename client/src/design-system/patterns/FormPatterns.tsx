@@ -7,7 +7,7 @@ import * as React from 'react'
 import { motion } from 'framer-motion'
 import { Button, Input, InputGroup, Card, CardHeader, CardTitle, CardContent, CardFooter } from '../components'
 import { animations } from '../animations'
-import { cn } from '../../utils/utils'
+import { cn } from '../../utils/cn'
 
 // Login Form Pattern
 export const LoginFormPattern = () => {
@@ -15,28 +15,28 @@ export const LoginFormPattern = () => {
   const [password, setPassword] = React.useState('')
   const [loading, setLoading] = React.useState(false)
   const [errors, setErrors] = React.useState<{ email?: string; password?: string }>({})
-  
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setErrors({})
     setLoading(true)
-    
+
     // Simulate validation
     const newErrors: typeof errors = {}
     if (!email) newErrors.email = 'Email is required'
     if (!password) newErrors.password = 'Password is required'
-    
+
     if (Object.keys(newErrors).length > 0) {
       setErrors(newErrors)
       setLoading(false)
       return
     }
-    
+
     // Simulate API call
     await new Promise((resolve) => setTimeout(resolve, 2000))
     setLoading(false)
   }
-  
+
   return (
     <Card className="w-full max-w-md mx-auto" variant="elevated">
       <form onSubmit={handleSubmit}>
@@ -118,7 +118,7 @@ export const MultiStepFormPattern = () => {
     { id: 'preferences', title: 'Preferences', description: 'Choose your preferences' },
     { id: 'review', title: 'Review', description: 'Review and confirm' },
   ]
-  
+
   const [currentStep, setCurrentStep] = React.useState(0)
   const [formData, setFormData] = React.useState({
     email: '',
@@ -128,26 +128,26 @@ export const MultiStepFormPattern = () => {
     notifications: true,
     theme: 'system',
   })
-  
+
   const isLastStep = currentStep === steps.length - 1
   const isFirstStep = currentStep === 0
-  
+
   const handleNext = () => {
     if (!isLastStep) {
       setCurrentStep(currentStep + 1)
     }
   }
-  
+
   const handlePrevious = () => {
     if (!isFirstStep) {
       setCurrentStep(currentStep - 1)
     }
   }
-  
+
   const handleSubmit = () => {
     console.log('Form submitted:', formData)
   }
-  
+
   return (
     <Card className="w-full max-w-2xl mx-auto" variant="elevated">
       <CardHeader>
@@ -198,7 +198,7 @@ export const MultiStepFormPattern = () => {
               ))}
             </div>
           </div>
-          
+
           {/* Step Info */}
           <div className="text-center">
             <motion.h3
@@ -224,7 +224,7 @@ export const MultiStepFormPattern = () => {
           </div>
         </div>
       </CardHeader>
-      
+
       <CardContent>
         <motion.div
           key={currentStep}
@@ -251,7 +251,7 @@ export const MultiStepFormPattern = () => {
               />
             </InputGroup>
           )}
-          
+
           {currentStep === 1 && (
             <InputGroup>
               <Input
@@ -271,7 +271,7 @@ export const MultiStepFormPattern = () => {
               </div>
             </InputGroup>
           )}
-          
+
           {currentStep === 2 && (
             <div className="space-y-4">
               <div className="flex items-center justify-between p-4 border border-border rounded-lg">
@@ -291,7 +291,7 @@ export const MultiStepFormPattern = () => {
               </div>
             </div>
           )}
-          
+
           {currentStep === 3 && (
             <div className="space-y-4">
               <h4 className="font-medium">Review Your Information</h4>
@@ -305,7 +305,7 @@ export const MultiStepFormPattern = () => {
           )}
         </motion.div>
       </CardContent>
-      
+
       <CardFooter className="justify-between">
         <Button
           onClick={handlePrevious}

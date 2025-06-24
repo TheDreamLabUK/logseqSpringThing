@@ -1,6 +1,6 @@
 import React, { useState, useCallback, CSSProperties } from 'react';
 import GraphViewport from '../features/graph/components/GraphViewport';
-import RightPaneControlPanel from './components/RightPaneControlPanel';
+import { SettingsPanelRedesign } from '../features/settings/components/panels/SettingsPanelRedesign';
 // import MarkdownDisplayPanel from './components/MarkdownDisplayPanel'; // Remove this
 import ConversationPane from './components/ConversationPane'; // Add this
 import NarrativeGoldminePanel from './components/NarrativeGoldminePanel';
@@ -71,11 +71,11 @@ const TwoPaneLayout: React.FC = () => {
 
             const minPanelHeight = 50;
             const dividerHeight = 10; // From horizontalTopDividerStyle and horizontalBottomDividerStyle
-            
+
             // Ensure top panel doesn't get too small or too large, leaving space for two other panels and two dividers
             if (newTopPanelHeight > minPanelHeight &&
                 newTopPanelHeight < (rightPaneRect.height - (2 * minPanelHeight + 2 * dividerHeight))) {
-                
+
                 setRightPaneTopHeight(newTopPanelHeight);
 
                 // Recalculate height for the middle panel (ConversationPane)
@@ -126,15 +126,15 @@ const TwoPaneLayout: React.FC = () => {
   const toggleRightPaneDock = () => {
     setIsRightPaneDocked(!isRightPaneDocked);
   };
-  
+
   const toggleBottomPaneDock = () => {
     setIsBottomPaneDocked(!isBottomPaneDocked);
   };
-  
+
   const toggleLowerRightPaneDock = () => {
     setIsLowerRightPaneDocked(!isLowerRightPaneDocked);
   };
-  
+
   // Effect for setting initial pane widths and heights
   React.useEffect(() => {
     const updateLayout = () => {
@@ -148,7 +148,7 @@ const TwoPaneLayout: React.FC = () => {
         if (rightPaneContainer && !isDraggingHorizontalTop && !isDraggingHorizontalBottom) {
           const totalHeight = rightPaneContainer.clientHeight;
           const dividerHeight = 10;
-          
+
           if (isLowerRightPaneDocked) {
             // When lower right pane is docked, top pane takes all available space
             setRightPaneTopHeight(totalHeight);
@@ -332,7 +332,7 @@ const TwoPaneLayout: React.FC = () => {
         {!isRightPaneDocked && (
           <>
             <div style={rightPaneTopStyle}>
-              <RightPaneControlPanel toggleLowerRightPaneDock={toggleLowerRightPaneDock} isLowerRightPaneDocked={isLowerRightPaneDocked} />
+              <SettingsPanelRedesign toggleLowerRightPaneDock={toggleLowerRightPaneDock} isLowerRightPaneDocked={isLowerRightPaneDocked} />
             </div>
             {!isLowerRightPaneDocked && ( // Hide divider and lower container when docked
               <>

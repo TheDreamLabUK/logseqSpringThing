@@ -1,11 +1,11 @@
 import React, { useMemo, useCallback } from 'react';
 import { FixedSizeList as List } from 'react-window';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/ui/Card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../../ui/Card';
 import { ChevronDown, Check } from 'lucide-react';
 import { SettingControlComponent } from './SettingControlComponent';
-import { useSettingsStore } from '@/store/settingsStore';
-import { cn } from '@/utils/cn';
-import { LoadingOverlay } from '@/ui/LoadingSpinner';
+import { useSettingsStore } from '../../../store/settingsStore';
+import { cn } from '../../../utils/cn';
+import { LoadingOverlay } from '../../../ui/LoadingSpinner';
 
 interface SettingItem {
   key: string;
@@ -28,13 +28,13 @@ interface VirtualizedSettingsGroupProps {
 }
 
 // Memoized row component for virtualization
-const SettingRow = React.memo(({ 
-  index, 
-  style, 
-  data 
-}: { 
-  index: number; 
-  style: React.CSSProperties; 
+const SettingRow = React.memo(({
+  index,
+  style,
+  data
+}: {
+  index: number;
+  style: React.CSSProperties;
   data: {
     items: SettingItem[];
     isPowerUser: boolean;
@@ -46,12 +46,12 @@ const SettingRow = React.memo(({
 }) => {
   const { items, isPowerUser, savedNotification, loadingSettings, onSettingChange, getSettingValue } = data;
   const item = items[index];
-  
+
   if (item.isPowerUser && !isPowerUser) return null;
-  
+
   const value = getSettingValue(item.path);
   const isLoading = loadingSettings.has(item.path);
-  
+
   return (
     <div style={style} className="px-4">
       <div className="relative">
@@ -76,18 +76,18 @@ const SettingRow = React.memo(({
   // Custom comparison for better performance
   const prevItem = prevProps.data.items[prevProps.index];
   const nextItem = nextProps.data.items[nextProps.index];
-  
+
   if (prevItem.path !== nextItem.path) return false;
-  
+
   const prevValue = prevProps.data.getSettingValue(prevItem.path);
   const nextValue = nextProps.data.getSettingValue(nextItem.path);
-  
+
   const prevLoading = prevProps.data.loadingSettings.has(prevItem.path);
   const nextLoading = nextProps.data.loadingSettings.has(nextItem.path);
-  
+
   const prevSaved = prevProps.data.savedNotification === prevItem.path;
   const nextSaved = nextProps.data.savedNotification === nextItem.path;
-  
+
   return (
     prevValue === nextValue &&
     prevLoading === nextLoading &&
@@ -114,13 +114,13 @@ export const VirtualizedSettingsGroup = React.memo(({
   const getSettingValue = useCallback((path: string) => {
     return useSettingsStore.getState().get(path);
   }, []);
-  
+
   // Filter items for power users
-  const visibleItems = useMemo(() => 
+  const visibleItems = useMemo(() =>
     items.filter(item => !item.isPowerUser || isPowerUser),
     [items, isPowerUser]
   );
-  
+
   // Memoized data object for virtualized list
   const listData = useMemo(() => ({
     items: visibleItems,
@@ -130,14 +130,14 @@ export const VirtualizedSettingsGroup = React.memo(({
     onSettingChange,
     getSettingValue
   }), [visibleItems, isPowerUser, savedNotification, loadingSettings, onSettingChange, getSettingValue]);
-  
+
   if (isPowerUser !== undefined && !isPowerUser) return null;
-  
+
   // Calculate optimal height for the virtual list
   const itemHeight = 80; // Approximate height of each setting row
   const maxVisibleItems = 8; // Show max 8 items before scrolling
   const listHeight = Math.min(visibleItems.length * itemHeight, maxVisibleItems * itemHeight);
-  
+
   return (
     <Card className="mb-3 overflow-hidden">
       <CardHeader
@@ -168,7 +168,7 @@ export const VirtualizedSettingsGroup = React.memo(({
           />
         </div>
       </CardHeader>
-      
+
       {isExpanded && visibleItems.length > 0 && (
         <CardContent className="p-0">
           <List

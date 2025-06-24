@@ -1,7 +1,7 @@
 import React from 'react';
-import { Undo2, Redo2, History } from 'lucide-react';
+import { Undo, Redo, History } from 'lucide-react';
 import { Button } from '../../../ui/Button';
-import { TooltipRoot, TooltipTrigger, TooltipContent } from '../../../ui/Tooltip';
+import { TooltipRoot, TooltipContent, TooltipTrigger } from '../../../ui/Tooltip';
 import { useSettingsHistory } from '../hooks/useSettingsHistory';
 import { useKeyboardShortcuts } from '../../../hooks/useKeyboardShortcuts';
 import { cn } from '../../../utils/cn';
@@ -12,13 +12,13 @@ interface UndoRedoControlsProps {
 }
 
 export function UndoRedoControls({ className, showHistory = false }: UndoRedoControlsProps) {
-  const { 
-    undo, 
-    redo, 
-    canUndo, 
-    canRedo, 
+  const {
+    undo,
+    redo,
+    canUndo,
+    canRedo,
     getHistoryInfo,
-    historyLength 
+    historyLength
   } = useSettingsHistory();
 
   // Register keyboard shortcuts
@@ -55,7 +55,7 @@ export function UndoRedoControls({ className, showHistory = false }: UndoRedoCon
             disabled={!canUndo}
             className="h-8 w-8"
           >
-            <Undo2 className="h-4 w-4" />
+            <Undo className="h-4 w-4" />
           </Button>
         </TooltipTrigger>
         <TooltipContent>
@@ -79,7 +79,7 @@ export function UndoRedoControls({ className, showHistory = false }: UndoRedoCon
             disabled={!canRedo}
             className="h-8 w-8"
           >
-            <Redo2 className="h-4 w-4" />
+            <Redo className="h-4 w-4" />
           </Button>
         </TooltipTrigger>
         <TooltipContent>

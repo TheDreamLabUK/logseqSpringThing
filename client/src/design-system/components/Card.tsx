@@ -6,8 +6,8 @@
 import * as React from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { cva, type VariantProps } from 'class-variance-authority'
-import { cn } from '../../utils/utils'
-import { animations } from '../animations'
+import { cn } from '../../utils/cn'
+import { animations } from '../../lib/design-system/animations'
 
 const cardVariants = cva(
   'rounded-xl bg-card text-card-foreground transition-all duration-200',
@@ -67,7 +67,7 @@ const Card = React.forwardRef<HTMLDivElement, CardProps>(
     ref
   ) => {
     const MotionComponent = motion[Component as keyof typeof motion] as any
-    
+
     const cardContent = (
       <Component
         ref={ref}
@@ -81,11 +81,11 @@ const Card = React.forwardRef<HTMLDivElement, CardProps>(
         {children}
       </Component>
     )
-    
+
     if (!animated) {
       return cardContent
     }
-    
+
     return (
       <MotionComponent
         ref={ref}
@@ -111,7 +111,6 @@ const Card = React.forwardRef<HTMLDivElement, CardProps>(
               }
             : undefined
         }
-        {...props}
       >
         {children}
       </MotionComponent>
@@ -215,7 +214,7 @@ const CardStack = React.forwardRef<HTMLDivElement, CardStackProps>(
       md: direction === 'vertical' ? 'space-y-4' : 'space-x-4',
       lg: direction === 'vertical' ? 'space-y-6' : 'space-x-6',
     }
-    
+
     return (
       <motion.div
         ref={ref}
@@ -228,7 +227,6 @@ const CardStack = React.forwardRef<HTMLDivElement, CardStackProps>(
         variants={animations.staggerVariants.container}
         initial="initial"
         animate="animate"
-        {...props}
       >
         {React.Children.map(children, (child, index) => (
           <motion.div
@@ -253,7 +251,7 @@ interface AnimatedCardProps extends CardProps {
 const AnimatedCard = React.forwardRef<HTMLDivElement, AnimatedCardProps>(
   ({ animationType = 'lift', children, ...props }, ref) => {
     const [isFlipped, setIsFlipped] = React.useState(false)
-    
+
     const animationVariants = {
       lift: {
         rest: { y: 0, boxShadow: 'var(--shadow-sm)' },
@@ -274,7 +272,7 @@ const AnimatedCard = React.forwardRef<HTMLDivElement, AnimatedCardProps>(
         hover: { rotateY: 180 },
       },
     }
-    
+
     return (
       <motion.div
         ref={ref}

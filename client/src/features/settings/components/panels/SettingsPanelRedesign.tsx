@@ -1,30 +1,32 @@
 import React, { useState, useMemo } from 'react';
-import Tabs from '@/ui/Tabs';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/ui/Card';
-import { Button } from '@/ui/Button';
-import { SearchInput } from '@/ui/SearchInput';
+import Tabs from '../../../../ui/Tabs';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../../../ui/Card';
+import { Button } from '../../../../ui/Button';
+import { SearchInput } from '../../../../ui/SearchInput';
 import {
   Eye,
-  Settings, // Reverted to Settings
+  Settings,
   Smartphone,
   Info,
   ChevronDown,
-  ChevronUp, // Added ChevronUp
+  ChevronUp,
   Check,
   Search,
-  Keyboard
+  Keyboard,
+  User,
 } from 'lucide-react';
-import { useSettingsStore } from '@/store/settingsStore';
+import { useSettingsStore } from '../../../../store/settingsStore';
 import { SettingControlComponent } from '../SettingControlComponent';
 import { settingsUIDefinition } from '../../config/settingsUIDefinition';
-import { cn } from '@/utils/cn';
-import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
-import { KeyboardShortcutsModal } from '@/components/KeyboardShortcutsModal';
-import { LoadingSpinner, LoadingOverlay } from '@/ui/LoadingSpinner';
-import { SkeletonSetting } from '@/ui/LoadingSkeleton';
-import { useErrorHandler } from '@/hooks/useErrorHandler';
-import { useToast } from '@/ui/useToast';
+import { cn } from '../../../../utils/cn';
+import { useKeyboardShortcuts } from '../../../../hooks/useKeyboardShortcuts';
+import { KeyboardShortcutsModal } from '../../../../components/KeyboardShortcutsModal';
+import { LoadingSpinner, LoadingOverlay } from '../../../../ui/LoadingSpinner';
+import { SkeletonSetting } from '../../../../ui/LoadingSkeleton';
+import { useErrorHandler } from '../../../../hooks/useErrorHandler';
+import { useToast } from '../../../../ui/useToast';
 import { UndoRedoControls } from '../UndoRedoControls';
+import NostrAuthSection from '../../../auth/components/NostrAuthSection';
 
 interface SettingItem {
   key: string;
@@ -275,6 +277,17 @@ export function SettingsPanelRedesign({ toggleLowerRightPaneDock, isLowerRightPa
         }
       ]
     },
+    auth: {
+      label: 'Authentication',
+      icon: <User className="h-4 w-4" />,
+      groups: [
+        {
+          title: 'Nostr Authentication',
+          description: 'Authenticate to access advanced features.',
+          items: [], // The NostrAuthSection component will be rendered directly.
+        },
+      ],
+    },
     advanced: {
       label: 'Advanced',
       icon: <Settings className="h-4 w-4" />,
@@ -304,7 +317,7 @@ export function SettingsPanelRedesign({ toggleLowerRightPaneDock, isLowerRightPa
   // Filter settings based on search query
   const filterSettings = (groups: SettingGroup[], query: string): SettingGroup[] => {
     if (!query.trim()) return groups;
-    
+
     const lowerQuery = query.toLowerCase();
     return groups
       .map(group => {
@@ -314,10 +327,10 @@ export function SettingsPanelRedesign({ toggleLowerRightPaneDock, isLowerRightPa
           const matchesDescription = item.definition?.description?.toLowerCase().includes(lowerQuery);
           const matchesGroup = group.title.toLowerCase().includes(lowerQuery);
           const matchesGroupDesc = group.description?.toLowerCase().includes(lowerQuery);
-          
+
           return matchesKey || matchesLabel || matchesDescription || matchesGroup || matchesGroupDesc;
         });
-        
+
         if (filteredItems.length > 0) {
           return { ...group, items: filteredItems };
         }
@@ -405,7 +418,7 @@ export function SettingsPanelRedesign({ toggleLowerRightPaneDock, isLowerRightPa
   const handleSettingChange = async (path: string, value: any) => {
     // Add loading state for this setting
     setLoadingSettings(prev => new Set(prev).add(path));
-    
+
     try {
       // Simulate async save operation
       await new Promise((resolve, reject) => {
@@ -418,7 +431,7 @@ export function SettingsPanelRedesign({ toggleLowerRightPaneDock, isLowerRightPa
           }
         }, 500);
       });
-      
+
       useSettingsStore.getState().set(path, value);
 
       // Show success toast
@@ -426,7 +439,7 @@ export function SettingsPanelRedesign({ toggleLowerRightPaneDock, isLowerRightPa
         title: 'Setting saved',
         description: `Successfully updated ${path.split('.').pop()}`,
       });
-      
+
       // Also show inline notification
       setSavedNotification(path);
       setTimeout(() => setSavedNotification(null), 2000);
@@ -540,8 +553,13 @@ export function SettingsPanelRedesign({ toggleLowerRightPaneDock, isLowerRightPa
       );
     }
 
+    // Special handling for the Auth tab
+    if (tabKey === 'auth') {
+      return <NostrAuthSection />;
+    }
+
     const filteredGroups = filterSettings(tab.groups, searchQuery);
-    
+
     if (searchQuery && filteredGroups.length === 0) {
       return (
         <div className="flex flex-col items-center justify-center h-64 text-center p-6">
@@ -578,9 +596,9 @@ export function SettingsPanelRedesign({ toggleLowerRightPaneDock, isLowerRightPa
       <div className="border-b border-border">
         <div className="px-4 py-3 flex items-center justify-between">
           <div>
-            <h2 className="text-lg font-semibold">Settings</h2>
+            <h2 className="text-lg font-semibold">Settings & Controls</h2>
             <p className="text-sm text-muted-foreground">
-              Customize your visualization
+              Customize your visualization and experience
             </p>
           </div>
           <div className="flex items-center gap-2">

@@ -7,8 +7,8 @@ import * as React from 'react'
 import { Slot } from '@radix-ui/react-slot'
 import { cva, type VariantProps } from 'class-variance-authority'
 import { motion, AnimatePresence } from 'framer-motion'
-import { cn } from '../../utils/utils'
-import { animations } from '../animations'
+import { cn } from '../../utils/cn'
+import { animations } from '../../lib/design-system/animations'
 
 const buttonVariants = cva(
   'inline-flex items-center justify-center whitespace-nowrap font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 relative overflow-hidden',
@@ -87,23 +87,23 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
     const Comp = asChild ? Slot : motion.button
     const isDisabled = disabled || loading
     const [ripples, setRipples] = React.useState<{ x: number; y: number; id: number }[]>([])
-    
+
     const handleClick = (e: React.MouseEvent<HTMLButtonElement>) => {
       if (ripple && !isDisabled) {
         const rect = e.currentTarget.getBoundingClientRect()
         const x = e.clientX - rect.left
         const y = e.clientY - rect.top
         const id = Date.now()
-        
+
         setRipples((prev) => [...prev, { x, y, id }])
         setTimeout(() => {
           setRipples((prev) => prev.filter((r) => r.id !== id))
         }, 600)
       }
-      
+
       onClick?.(e)
     }
-    
+
     const buttonContent = (
       <>
         {/* Ripple effect */}
@@ -127,7 +127,7 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
             />
           ))}
         </AnimatePresence>
-        
+
         {/* Button content */}
         <span className="relative z-10 flex items-center gap-2">
           {loading ? (
@@ -164,7 +164,7 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
             </>
           )}
         </span>
-        
+
         {/* Pulse animation */}
         {pulse && !isDisabled && (
           <motion.span
@@ -179,23 +179,21 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
         )}
       </>
     )
-    
+
     if (asChild) {
       return (
         <Slot
           className={cn(buttonVariants({ variant, size, fullWidth, className }))}
           ref={ref}
-          disabled={isDisabled}
           aria-disabled={isDisabled}
           aria-busy={loading}
           onClick={handleClick}
-          {...props}
         >
           {buttonContent}
         </Slot>
       )
     }
-    
+
     return (
       <Comp
         className={cn(buttonVariants({ variant, size, fullWidth, className }))}
@@ -207,7 +205,6 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
         whileHover={!isDisabled ? animations.interactionVariants.hover : undefined}
         whileTap={!isDisabled ? animations.interactionVariants.tap : undefined}
         transition={animations.transitions.spring.smooth}
-        {...props}
       >
         {buttonContent}
       </Comp>
@@ -230,7 +227,7 @@ const ButtonGroup = React.forwardRef<HTMLDivElement, ButtonGroupProps>(
       md: orientation === 'horizontal' ? 'gap-4' : 'gap-4',
       lg: orientation === 'horizontal' ? 'gap-6' : 'gap-6',
     }
-    
+
     return (
       <div
         ref={ref}

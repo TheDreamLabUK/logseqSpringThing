@@ -6,7 +6,7 @@
 import * as React from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { getCSSVariables, tokens } from './tokens'
-import { animations } from './animations'
+import { animations } from '../lib/design-system/animations'
 
 type Theme = 'light' | 'dark' | 'system'
 type ResolvedTheme = 'light' | 'dark'
@@ -47,7 +47,7 @@ export const ThemeProvider = ({
   const [theme, setThemeState] = React.useState<Theme>(defaultTheme)
   const [systemTheme, setSystemTheme] = React.useState<ResolvedTheme>('light')
   const [mounted, setMounted] = React.useState(false)
-  
+
   // Get resolved theme (actual light/dark)
   const resolvedTheme = React.useMemo<ResolvedTheme>(() => {
     if (theme === 'system' && enableSystem) {
@@ -55,7 +55,7 @@ export const ThemeProvider = ({
     }
     return theme as ResolvedTheme
   }, [theme, systemTheme, enableSystem])
-  
+
   // Load theme from localStorage
   React.useEffect(() => {
     const savedTheme = localStorage.getItem(storageKey) as Theme | null
@@ -64,38 +64,38 @@ export const ThemeProvider = ({
     }
     setMounted(true)
   }, [storageKey])
-  
+
   // Detect system theme
   React.useEffect(() => {
     if (!enableSystem) return
-    
+
     const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)')
     setSystemTheme(mediaQuery.matches ? 'dark' : 'light')
-    
+
     const handleChange = (e: MediaQueryListEvent) => {
       setSystemTheme(e.matches ? 'dark' : 'light')
     }
-    
+
     mediaQuery.addEventListener('change', handleChange)
     return () => mediaQuery.removeEventListener('change', handleChange)
   }, [enableSystem])
-  
+
   // Apply theme to document
   React.useEffect(() => {
     if (!mounted) return
-    
+
     const root = document.documentElement
     const cssVariables = getCSSVariables(resolvedTheme)
-    
+
     // Apply theme class
     root.classList.remove('light', 'dark')
     root.classList.add(resolvedTheme)
-    
+
     // Apply CSS variables
     Object.entries(cssVariables).forEach(([key, value]) => {
       root.style.setProperty(key, value)
     })
-    
+
     // Handle transition
     if (disableTransitionOnChange) {
       root.classList.add('disable-transitions')
@@ -103,7 +103,7 @@ export const ThemeProvider = ({
         root.classList.remove('disable-transitions')
       }, 0)
     }
-    
+
     // Update meta theme-color
     const metaThemeColor = document.querySelector('meta[name="theme-color"]')
     if (metaThemeColor) {
@@ -113,7 +113,7 @@ export const ThemeProvider = ({
       )
     }
   }, [resolvedTheme, mounted, disableTransitionOnChange])
-  
+
   const setTheme = React.useCallback(
     (newTheme: Theme) => {
       setThemeState(newTheme)
@@ -121,11 +121,11 @@ export const ThemeProvider = ({
     },
     [storageKey]
   )
-  
+
   const toggleTheme = React.useCallback(() => {
     setTheme(resolvedTheme === 'light' ? 'dark' : 'light')
   }, [resolvedTheme, setTheme])
-  
+
   const value = React.useMemo(
     () => ({
       theme,
@@ -136,12 +136,12 @@ export const ThemeProvider = ({
     }),
     [theme, resolvedTheme, setTheme, toggleTheme, systemTheme]
   )
-  
+
   // Prevent flash of incorrect theme
   if (!mounted) {
     return null
   }
-  
+
   return (
     <ThemeContext.Provider value={value}>
       {children}
@@ -158,19 +158,19 @@ interface ThemeToggleProps {
 
 export const ThemeToggle = ({ className, showLabel = false, size = 'md' }: ThemeToggleProps) => {
   const { theme, setTheme, resolvedTheme } = useTheme()
-  
+
   const sizes = {
     sm: 'h-8 w-8',
     md: 'h-10 w-10',
     lg: 'h-12 w-12',
   }
-  
+
   const iconSizes = {
     sm: 'h-4 w-4',
     md: 'h-5 w-5',
     lg: 'h-6 w-6',
   }
-  
+
   const options: { value: Theme; icon: React.ReactNode; label: string }[] = [
     {
       value: 'light',
@@ -215,9 +215,9 @@ export const ThemeToggle = ({ className, showLabel = false, size = 'md' }: Theme
       ),
     },
   ]
-  
+
   const currentOption = options.find((opt) => opt.value === theme) || options[0]
-  
+
   return (
     <div className={className}>
       {showLabel && (
@@ -271,7 +271,7 @@ interface ThemedProps {
 
 export const Themed = ({ children, className, lightClassName, darkClassName }: ThemedProps) => {
   const { resolvedTheme } = useTheme()
-  
+
   const finalClassName = React.useMemo(() => {
     const classes = [className]
     if (resolvedTheme === 'light' && lightClassName) {
@@ -281,6 +281,6 @@ export const Themed = ({ children, className, lightClassName, darkClassName }: T
     }
     return classes.filter(Boolean).join(' ')
   }, [className, lightClassName, darkClassName, resolvedTheme])
-  
+
   return <div className={finalClassName}>{children}</div>
 }

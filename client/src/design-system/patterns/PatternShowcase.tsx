@@ -30,14 +30,14 @@ import {
 } from '../components'
 import { ThemeToggle } from '../ThemeProvider'
 import { animations } from '../animations'
-import { cn } from '../../utils/utils'
+import { cn } from '../../utils/cn'
 
 export const PatternShowcase = () => {
   const [activeSection, setActiveSection] = React.useState('buttons')
   const { toast: showToast } = useToast()
   const [modalOpen, setModalOpen] = React.useState(false)
   const [confirmModalOpen, setConfirmModalOpen] = React.useState(false)
-  
+
   const sections = [
     { id: 'buttons', label: 'Buttons' },
     { id: 'cards', label: 'Cards' },
@@ -46,7 +46,7 @@ export const PatternShowcase = () => {
     { id: 'notifications', label: 'Notifications' },
     { id: 'animations', label: 'Animations' },
   ]
-  
+
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
@@ -56,7 +56,7 @@ export const PatternShowcase = () => {
           <ThemeToggle />
         </div>
       </header>
-      
+
       {/* Navigation */}
       <nav className="container mt-6">
         <div className="flex gap-2 p-1 bg-muted rounded-lg w-fit">
@@ -78,7 +78,7 @@ export const PatternShowcase = () => {
           ))}
         </div>
       </nav>
-      
+
       {/* Content */}
       <main className="container mt-8 pb-16">
         <motion.div
@@ -108,7 +108,7 @@ export const PatternShowcase = () => {
                   </ButtonGroup>
                 </CardContent>
               </Card>
-              
+
               <Card>
                 <CardHeader>
                   <CardTitle>Button Sizes</CardTitle>
@@ -124,7 +124,7 @@ export const PatternShowcase = () => {
                   </ButtonGroup>
                 </CardContent>
               </Card>
-              
+
               <Card>
                 <CardHeader>
                   <CardTitle>Button States</CardTitle>
@@ -149,7 +149,7 @@ export const PatternShowcase = () => {
               </Card>
             </div>
           )}
-          
+
           {/* Cards Section */}
           {activeSection === 'cards' && (
             <div className="space-y-8">
@@ -167,7 +167,7 @@ export const PatternShowcase = () => {
                       </p>
                     </CardContent>
                   </Card>
-                  
+
                   <Card variant="elevated">
                     <CardHeader>
                       <CardTitle>Elevated Card</CardTitle>
@@ -179,7 +179,7 @@ export const PatternShowcase = () => {
                       </p>
                     </CardContent>
                   </Card>
-                  
+
                   <Card variant="outlined">
                     <CardHeader>
                       <CardTitle>Outlined Card</CardTitle>
@@ -191,7 +191,7 @@ export const PatternShowcase = () => {
                       </p>
                     </CardContent>
                   </Card>
-                  
+
                   <Card variant="ghost">
                     <CardHeader>
                       <CardTitle>Ghost Card</CardTitle>
@@ -203,7 +203,7 @@ export const PatternShowcase = () => {
                       </p>
                     </CardContent>
                   </Card>
-                  
+
                   <Card variant="gradient">
                     <CardHeader>
                       <CardTitle>Gradient Card</CardTitle>
@@ -215,7 +215,7 @@ export const PatternShowcase = () => {
                       </p>
                     </CardContent>
                   </Card>
-                  
+
                   <Card variant="glass">
                     <CardHeader>
                       <CardTitle>Glass Card</CardTitle>
@@ -229,7 +229,7 @@ export const PatternShowcase = () => {
                   </Card>
                 </div>
               </div>
-              
+
               <div>
                 <h2 className="text-2xl font-semibold mb-4">Animated Cards</h2>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -239,14 +239,14 @@ export const PatternShowcase = () => {
                       <CardDescription>Hover to see lift effect</CardDescription>
                     </CardHeader>
                   </AnimatedCard>
-                  
+
                   <AnimatedCard animationType="glow">
                     <CardHeader>
                       <CardTitle>Glow Animation</CardTitle>
                       <CardDescription>Hover to see glow effect</CardDescription>
                     </CardHeader>
                   </AnimatedCard>
-                  
+
                   <AnimatedCard animationType="tilt">
                     <CardHeader>
                       <CardTitle>Tilt Animation</CardTitle>
@@ -257,7 +257,7 @@ export const PatternShowcase = () => {
               </div>
             </div>
           )}
-          
+
           {/* Forms Section */}
           {activeSection === 'forms' && (
             <div className="space-y-8">
@@ -305,7 +305,7 @@ export const PatternShowcase = () => {
               </Card>
             </div>
           )}
-          
+
           {/* Modals Section */}
           {activeSection === 'modals' && (
             <div className="space-y-8">
@@ -324,7 +324,7 @@ export const PatternShowcase = () => {
                       Confirmation Modal
                     </Button>
                   </ButtonGroup>
-                  
+
                   <Modal
                     open={modalOpen}
                     onOpenChange={setModalOpen}
@@ -351,7 +351,7 @@ export const PatternShowcase = () => {
                       </Button>
                     </ModalFooter>
                   </Modal>
-                  
+
                   <ConfirmationModal
                     open={confirmModalOpen}
                     onOpenChange={setConfirmModalOpen}
@@ -365,7 +365,7 @@ export const PatternShowcase = () => {
               </Card>
             </div>
           )}
-          
+
           {/* Notifications Section */}
           {activeSection === 'notifications' && (
             <div className="space-y-8">
@@ -414,7 +414,7 @@ export const PatternShowcase = () => {
               </Card>
             </div>
           )}
-          
+
           {/* Animations Section */}
           {activeSection === 'animations' && (
             <div className="space-y-8">

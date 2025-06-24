@@ -7,7 +7,7 @@ import * as React from 'react'
 import * as DialogPrimitive from '@radix-ui/react-dialog'
 import { motion, AnimatePresence } from 'framer-motion'
 import { cva, type VariantProps } from 'class-variance-authority'
-import { cn } from '../../utils/utils'
+import { cn } from '../../utils/cn'
 import { animations } from '../animations'
 
 const modalVariants = cva(
@@ -290,14 +290,14 @@ const ConfirmationModal = ({
     onCancel?.()
     onOpenChange(false)
   }
-  
+
   const handleConfirm = () => {
     onConfirm()
     if (!loading) {
       onOpenChange(false)
     }
   }
-  
+
   const iconVariants = {
     default: (
       <svg className="h-6 w-6 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -315,7 +315,7 @@ const ConfirmationModal = ({
       </svg>
     ),
   }
-  
+
   return (
     <Modal open={open} onOpenChange={onOpenChange} size="sm">
       <ModalBody>

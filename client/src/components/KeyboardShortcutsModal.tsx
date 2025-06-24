@@ -1,10 +1,10 @@
 import React, { useEffect } from 'react';
 import { X, Keyboard } from 'lucide-react';
-import { Button } from '@/ui/Button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/ui/Card';
-import { useKeyboardShortcutsList, formatShortcut } from '@/hooks/useKeyboardShortcuts';
-import { cn } from '@/utils/cn';
-import { useFocusTrap, useAnnounce } from '@/utils/accessibility';
+import { Button } from '../ui/Button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/Card';
+import { useKeyboardShortcutsList, formatShortcut } from '../hooks/useKeyboardShortcuts';
+import { cn } from '../utils/cn';
+import { useFocusTrap, useAnnounce } from '../utils/accessibility';
 
 interface KeyboardShortcutsModalProps {
   isOpen: boolean;
@@ -39,21 +39,21 @@ export function KeyboardShortcutsModal({ isOpen, onClose }: KeyboardShortcutsMod
   if (!isOpen) return null;
 
   return (
-    <div 
+    <div
       className="fixed inset-0 z-50 flex items-center justify-center"
       role="dialog"
       aria-modal="true"
       aria-labelledby="keyboard-shortcuts-title"
     >
       {/* Backdrop */}
-      <div 
+      <div
         className="absolute inset-0 bg-background/80 backdrop-blur-sm"
         onClick={onClose}
         aria-hidden="true"
       />
-      
+
       {/* Modal */}
-      <Card 
+      <Card
         ref={containerRef as any}
         className="relative z-10 w-full max-w-2xl max-h-[80vh] overflow-hidden"
       >
@@ -72,7 +72,7 @@ export function KeyboardShortcutsModal({ isOpen, onClose }: KeyboardShortcutsMod
             <X className="h-4 w-4" />
           </Button>
         </CardHeader>
-        
+
         <CardContent className="overflow-auto max-h-[calc(80vh-100px)]">
           {shortcuts.size === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
@@ -87,7 +87,7 @@ export function KeyboardShortcutsModal({ isOpen, onClose }: KeyboardShortcutsMod
                   </h3>
                   <div className="space-y-2">
                     {categoryShortcuts.map((shortcut, index) => (
-                      <div 
+                      <div
                         key={index}
                         className={cn(
                           "flex items-center justify-between py-2 px-3 rounded-md",

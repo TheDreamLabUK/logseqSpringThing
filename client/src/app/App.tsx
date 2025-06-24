@@ -1,6 +1,6 @@
 import { useEffect, Component, ReactNode, useCallback } from 'react'
 import AppInitializer from './AppInitializer'
-import { ThemeProvider } from '../ui/ThemeProvider'
+import { ThemeProvider } from '../design-system/ThemeProvider'
 import { ApplicationModeProvider } from '../contexts/ApplicationModeContext'
 import { Toaster } from '../ui/Toaster'
 // import { TooltipProvider } from '../ui/Tooltip'
@@ -79,15 +79,15 @@ function App() {
       initializeCommandPalette();
       registerSettingsHelp();
       registerOnboardingCommands();
-      
+
       // Check if this is the first visit
       const hasVisited = localStorage.getItem('hasVisited');
       if (!hasVisited) {
         localStorage.setItem('hasVisited', 'true');
         // Start welcome tour after a short delay
         setTimeout(() => {
-          window.dispatchEvent(new CustomEvent('start-onboarding', { 
-            detail: { flowId: 'welcome' } 
+          window.dispatchEvent(new CustomEvent('start-onboarding', {
+            detail: { flowId: 'welcome' }
           }));
         }, 1000);
       }

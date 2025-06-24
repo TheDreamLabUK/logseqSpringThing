@@ -6,7 +6,7 @@
 import * as React from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { cva, type VariantProps } from 'class-variance-authority'
-import { cn } from '../../utils/utils'
+import { cn } from '../../utils/cn'
 import { animations } from '../animations'
 
 const inputVariants = cva(
@@ -88,37 +88,37 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
   ) => {
     const [isFocused, setIsFocused] = React.useState(false)
     const [hasValue, setHasValue] = React.useState(!!value)
-    
+
     // Determine state based on props
     const state = error ? 'error' : success ? 'success' : warning ? 'warning' : stateProp || 'default'
     const message = error || success || warning || helper
-    
+
     React.useEffect(() => {
       setHasValue(!!value)
     }, [value])
-    
+
     const handleFocus = (e: React.FocusEvent<HTMLInputElement>) => {
       setIsFocused(true)
       onFocus?.(e)
     }
-    
+
     const handleBlur = (e: React.FocusEvent<HTMLInputElement>) => {
       setIsFocused(false)
       onBlur?.(e)
     }
-    
+
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
       setHasValue(!!e.target.value)
       onChange?.(e)
     }
-    
+
     const handleClear = () => {
       if (onClear) {
         onClear()
       }
       setHasValue(false)
     }
-    
+
     const inputElement = (
       <div className="relative w-full">
         {/* Floating Label */}
@@ -143,7 +143,7 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
             {label}
           </motion.label>
         )}
-        
+
         {/* Input Container */}
         <div className="relative flex items-center">
           {/* Left Icon */}
@@ -152,7 +152,7 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
               {icon}
             </div>
           )}
-          
+
           {/* Input Field */}
           <input
             ref={ref}
@@ -174,7 +174,7 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
             aria-describedby={message ? `${props.id}-message` : undefined}
             {...props}
           />
-          
+
           {/* Right Icon / Clear Button */}
           <div className="absolute right-3 flex items-center gap-2">
             {clearable && hasValue && !disabled && (
@@ -207,7 +207,7 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
             )}
           </div>
         </div>
-        
+
         {/* Focus Line Animation */}
         {animated && variant === 'flushed' && (
           <motion.div
@@ -220,7 +220,7 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
         )}
       </div>
     )
-    
+
     return (
       <div className="w-full">
         {/* Standard Label */}
@@ -237,10 +237,10 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
             {label}
           </label>
         )}
-        
+
         {/* Input */}
         {inputElement}
-        
+
         {/* Helper/Error Message */}
         <AnimatePresence mode="wait">
           {message && (
@@ -281,7 +281,7 @@ const InputGroup = React.forwardRef<HTMLDivElement, InputGroupProps>(
       md: orientation === 'horizontal' ? 'gap-4' : 'gap-4',
       lg: orientation === 'horizontal' ? 'gap-6' : 'gap-6',
     }
-    
+
     return (
       <div
         ref={ref}
@@ -309,14 +309,14 @@ const SearchInput = React.forwardRef<HTMLInputElement, SearchInputProps>(
       onChange?.(e)
       onSearch?.(e.target.value)
     }
-    
+
     const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
       if (e.key === 'Enter') {
         onSearch?.(e.currentTarget.value)
       }
       onKeyDown?.(e)
     }
-    
+
     return (
       <Input
         ref={ref}

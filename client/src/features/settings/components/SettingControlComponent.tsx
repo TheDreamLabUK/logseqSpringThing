@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { UISettingDefinition } from '../config/settingsUIDefinition'; // Import the new definition type
-import { Label } from '@/ui/Label';
-import { Slider } from '@/ui/Slider';
-import { Switch } from '@/ui/Switch';
-import { Input } from '@/ui/Input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/ui/Select';
-import { RadioGroup, RadioGroupItem } from '@/ui/RadioGroup'; // Added RadioGroup imports
-import { Button } from '@/ui/Button';
+import { Label } from '../../../ui/Label';
+import { Slider } from '../../../ui/Slider';
+import { Switch } from '../../../ui/Switch';
+import { Input } from '../../../ui/Input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../../ui/Select';
+import { RadioGroup, RadioGroupItem } from '../../../ui/RadioGroup'; // Added RadioGroup imports
+import { Button } from '../../../ui/Button';
 import { Eye, EyeOff } from 'lucide-react';
 import { HelpTooltip } from '../../help/components/HelpTooltip';
 import { helpRegistry } from '../../help/HelpRegistry';
@@ -243,7 +243,7 @@ export const SettingControlComponent = React.memo(({ path, settingDef, value, on
             </SelectContent>
           </Select>
         );
-      
+
       case 'radioGroup':
         return (
           <RadioGroup
@@ -298,7 +298,7 @@ export const SettingControlComponent = React.memo(({ path, settingDef, value, on
         const createColorChangeHandler = (index: 0 | 1) => (e: React.ChangeEvent<HTMLInputElement>) => {
           const newColorValue = e.target.value;
           const currentColors = [color1, color2];
-          
+
           if (/^#[0-9A-Fa-f]{6}$/i.test(newColorValue)) {
             currentColors[index] = newColorValue;
             onChange([...currentColors]);
