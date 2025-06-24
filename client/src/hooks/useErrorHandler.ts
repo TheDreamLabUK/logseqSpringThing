@@ -1,5 +1,5 @@
 import { useCallback } from 'react';
-import { useToast } from '@/ui/useToast';
+import { useToast, ToastAction } from '../features/design-system/components';
 
 interface ErrorOptions {
   title?: string;
@@ -61,10 +61,11 @@ export function useErrorHandler() {
       title,
       description: friendlyMessage,
       variant: 'destructive',
-      action: actionLabel && onAction ? {
-        label: actionLabel,
-        onClick: onAction
-      } : undefined,
+      action: actionLabel && onAction ? (
+        <ToastAction altText={actionLabel} onClick={onAction}>
+          {actionLabel}
+        </ToastAction>
+      ) : undefined,
     });
 
     // Log error to console in development
@@ -101,7 +102,7 @@ export function withErrorHandler<T extends (...args: any[]) => Promise<any>>(
       return await fn(...args);
     } catch (error) {
       const { toast } = useToast();
-      
+
       // Similar error handling logic as above
       let message = 'An unexpected error occurred';
       if (error instanceof Error) {

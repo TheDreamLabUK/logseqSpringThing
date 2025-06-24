@@ -7,7 +7,7 @@ import { debugState } from '../utils/debugState'
 import { deepMerge } from '../utils/deepMerge';
 import { settingsService } from '../services/settingsService';
 import { produce } from 'immer';
-import { toast } from '../ui/useToast'; // Import toast
+import { toast } from '../features/design-system/components/Toast'; // Import toast
 
 const logger = createLogger('SettingsStore')
 

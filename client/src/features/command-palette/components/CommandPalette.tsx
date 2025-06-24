@@ -1,7 +1,7 @@
 import React, { useEffect, useRef } from 'react';
-import { Command as CommandIcon, Search } from 'lucide-react';
+import { Terminal as CommandIcon, Search } from 'lucide-react';
 import { cn } from '../../../utils/cn';
-import { SearchInput } from '../../../ui/SearchInput';
+import { SearchInput } from '../../design-system/components';
 import { useCommandPalette } from '../hooks/useCommandPalette';
 import { Command } from '../types';
 import { formatShortcut } from '../../../hooks/useKeyboardShortcuts';
@@ -158,7 +158,7 @@ export function CommandPalette() {
   };
 
   return (
-    <div 
+    <div
       className="fixed inset-0 z-50 flex items-start justify-center pt-[15vh]"
       role="dialog"
       aria-modal="true"
@@ -166,7 +166,7 @@ export function CommandPalette() {
     >
       {/* Backdrop */}
       <div className="absolute inset-0 bg-background/80 backdrop-blur-sm" aria-hidden="true" />
-      
+
       {/* Dialog */}
       <div
         ref={dialogRef as any}

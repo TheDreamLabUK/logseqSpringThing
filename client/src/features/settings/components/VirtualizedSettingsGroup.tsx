@@ -1,11 +1,11 @@
 import React, { useMemo, useCallback } from 'react';
 import { FixedSizeList as List } from 'react-window';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../../ui/Card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../design-system/components/Card';
 import { ChevronDown, Check } from 'lucide-react';
 import { SettingControlComponent } from './SettingControlComponent';
 import { useSettingsStore } from '../../../store/settingsStore';
 import { cn } from '../../../utils/cn';
-import { LoadingOverlay } from '../../../ui/LoadingSpinner';
+import { LoadingSpinner } from '../../design-system/components';
 
 interface SettingItem {
   key: string;
@@ -55,14 +55,15 @@ const SettingRow = React.memo(({
   return (
     <div style={style} className="px-4">
       <div className="relative">
-        <LoadingOverlay isLoading={isLoading} label="Saving...">
+        <div className="relative">
+          {isLoading && <LoadingSpinner />}
           <SettingControlComponent
             path={item.path}
             settingDef={item.definition}
             value={value}
             onChange={(newValue) => onSettingChange(item.path, newValue)}
           />
-        </LoadingOverlay>
+        </div>
         {savedNotification === item.path && !isLoading && (
           <div className="absolute -top-1 -right-1 flex items-center gap-1 text-xs text-green-600 bg-green-50 px-2 py-1 rounded z-20">
             <Check className="h-3 w-3" />

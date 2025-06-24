@@ -63,7 +63,7 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
     },
     ref
   ) => {
-    const Comp = asChild ? Slot : motion.button
+    const Comp: any = asChild ? Slot : motion.button
     const isDisabled = disabled || loading
 
     const buttonContent = (

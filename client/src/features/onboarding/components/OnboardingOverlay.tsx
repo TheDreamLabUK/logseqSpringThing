@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { X, ChevronLeft, ChevronRight, SkipForward } from 'lucide-react';
-import { Button } from '../../../ui/Button';
+import { Button } from '../../design-system/components';
 import { cn } from '../../../utils/cn';
 import { OnboardingStep } from '../types';
 
@@ -35,7 +35,7 @@ export function OnboardingOverlay({
       if (element) {
         const rect = element.getBoundingClientRect();
         setTargetRect(rect);
-        
+
         // Scroll element into view
         element.scrollIntoView({ behavior: 'smooth', block: 'center' });
       }
@@ -94,7 +94,7 @@ export function OnboardingOverlay({
     <>
       {/* Backdrop */}
       <div className="fixed inset-0 z-10000 bg-black/50 animate-in fade-in duration-200" />
-      
+
       {/* Highlight cutout */}
       {targetRect && (
         <div
@@ -179,7 +179,7 @@ export function OnboardingOverlay({
                 Skip tour
               </Button>
             )}
-            
+
             <Button
               size="sm"
               onClick={onNext}
