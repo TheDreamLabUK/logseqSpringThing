@@ -65,8 +65,15 @@ export class VoiceWebSocketService {
    * Connect to WebSocket
    */
   async connect(url: string): Promise<void> {
-    if (this.socket && this.socket.readyState === WebSocket.OPEN) {
+    // Check if already connected or connecting
+    if (this.socket && (this.socket.readyState === WebSocket.OPEN || this.socket.readyState === WebSocket.CONNECTING)) {
       return;
+    }
+
+    // Clean up any existing connection
+    if (this.socket) {
+      this.socket.close();
+      this.socket = null;
     }
 
     return new Promise((resolve, reject) => {
@@ -87,7 +94,9 @@ export class VoiceWebSocketService {
         this.socket.onclose = (event) => {
           console.log('Voice WebSocket disconnected');
           this.emit('disconnected', event);
-          this.attemptReconnect(url);
+          if (event.code !== 1000) { // Only reconnect if not normal closure
+            this.attemptReconnect(url);
+          }
         };
 
         this.socket.onerror = (error) => {
@@ -195,27 +204,52 @@ export class VoiceWebSocketService {
       return;
     }
 
-    // Request microphone access
-    const micAccess = await this.audioInput.requestMicrophoneAccess();
-    if (!micAccess) {
-      throw new Error('Microphone access denied');
+    // Check browser support first
+    const support = AudioInputService.getBrowserSupport();
+    if (!support.getUserMedia) {
+      throw new Error('Browser does not support microphone access. Please use a modern browser with HTTPS.');
     }
 
-    // Start recording
-    await this.audioInput.startRecording();
-    this.isStreamingAudio = true;
+    if (!support.isHttps) {
+      throw new Error('Microphone access requires HTTPS or localhost. Please use a secure connection.');
+    }
 
-    // Send start streaming message
-    const message: VoiceMessage = {
-      type: 'stt',
-      data: {
-        action: 'start',
-        ...options
+    if (!support.mediaRecorder) {
+      throw new Error('Browser does not support audio recording. Please use a modern browser.');
+    }
+
+    if (!support.audioContext) {
+      throw new Error('Browser does not support Web Audio API. Please use a modern browser.');
+    }
+
+    try {
+      // Request microphone access
+      const micAccess = await this.audioInput.requestMicrophoneAccess();
+      if (!micAccess) {
+        throw new Error('Microphone access denied');
       }
-    };
 
-    this.send(JSON.stringify(message));
-    this.emit('audioStreamingStarted');
+      // Start recording
+      await this.audioInput.startRecording();
+      this.isStreamingAudio = true;
+
+      // Send start streaming message
+      const message: VoiceMessage = {
+        type: 'stt',
+        data: {
+          action: 'start',
+          ...options
+        }
+      };
+
+      this.send(JSON.stringify(message));
+      this.emit('audioStreamingStarted');
+    } catch (error) {
+      // Clean up on error
+      this.isStreamingAudio = false;
+      this.audioInput.stopRecording();
+      throw error;
+    }
   }
 
   /**
@@ -343,9 +377,11 @@ export class VoiceWebSocketService {
   async disconnect(): Promise<void> {
     this.stopAllAudio();
     if (this.socket) {
-      this.socket.close();
+      this.socket.close(1000, 'Normal closure'); // Send normal closure code
       this.socket = null;
     }
+    // Reset reconnection attempts to prevent reconnecting after manual disconnect
+    this.reconnectAttempts = this.maxReconnectAttempts;
   }
 
   /**

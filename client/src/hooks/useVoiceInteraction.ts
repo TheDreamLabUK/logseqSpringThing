@@ -32,14 +32,24 @@ export function useVoiceInteraction(options: UseVoiceInteractionOptions = {}): U
   const { autoConnect = true, onTranscription, onError, language } = options;
   const settings = useSettingsStore((state) => state.settings);
 
+  // All state hooks must be called unconditionally
   const [isConnected, setIsConnected] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [transcription, setTranscription] = useState('');
   const [partialTranscription, setPartialTranscription] = useState('');
 
+  // All ref hooks must be called unconditionally
   const voiceServiceRef = useRef<VoiceWebSocketService>();
+  const autoConnectAttemptedRef = useRef(false);
+  const onTranscriptionRef = useRef(onTranscription);
+  const onErrorRef = useRef(onError);
 
+  // Update refs on every render to have latest callbacks
+  onTranscriptionRef.current = onTranscription;
+  onErrorRef.current = onError;
+
+  // All useEffect hooks must be called unconditionally and in the same order
   useEffect(() => {
     voiceServiceRef.current = VoiceWebSocketService.getInstance();
     const voiceService = voiceServiceRef.current;
@@ -55,10 +65,10 @@ export function useVoiceInteraction(options: UseVoiceInteractionOptions = {}): U
       if (result.isFinal) {
         setTranscription(result.text);
         setPartialTranscription('');
-        onTranscription?.(result.text, true);
+        onTranscriptionRef.current?.(result.text, true);
       } else {
         setPartialTranscription(result.text);
-        onTranscription?.(result.text, false);
+        onTranscriptionRef.current?.(result.text, false);
       }
     };
 
@@ -67,7 +77,7 @@ export function useVoiceInteraction(options: UseVoiceInteractionOptions = {}): U
 
     const handleError = (error: any) => {
       console.error('Voice interaction error:', error);
-      onError?.(error);
+      onErrorRef.current?.(error);
     };
 
     // Subscribe to events
@@ -80,11 +90,6 @@ export function useVoiceInteraction(options: UseVoiceInteractionOptions = {}): U
     audioOutput.on('audioStarted', handleAudioStarted);
     audioOutput.on('audioEnded', handleAudioEnded);
 
-    // Auto-connect if enabled
-    if (autoConnect && (settings.system?.customBackendUrl || window.location.origin)) {
-      connect();
-    }
-
     // Cleanup
     return () => {
       voiceService.off('connected', handleConnected);
@@ -94,7 +99,15 @@ export function useVoiceInteraction(options: UseVoiceInteractionOptions = {}): U
       audioOutput.off('audioStarted', handleAudioStarted);
       audioOutput.off('audioEnded', handleAudioEnded);
     };
-  }, [autoConnect, onTranscription, onError, settings]);
+  }, []); // Empty dependency array to avoid re-registration
+
+  // Separate effect for auto-connect to avoid dependency issues
+  useEffect(() => {
+    if (autoConnect && !autoConnectAttemptedRef.current && voiceServiceRef.current && (settings.system?.customBackendUrl || window.location.origin)) {
+      autoConnectAttemptedRef.current = true;
+      connect().catch(console.error);
+    }
+  }, [autoConnect, settings.system?.customBackendUrl]);
 
   const connect = useCallback(async () => {
     if (!voiceServiceRef.current || isConnected) return;
@@ -106,18 +119,19 @@ export function useVoiceInteraction(options: UseVoiceInteractionOptions = {}): U
       console.error('Failed to connect to voice service:', error);
       onError?.(error);
     }
-  }, [isConnected, settings, onError]);
+  }, [isConnected, settings.system?.customBackendUrl]);
 
   const disconnect = useCallback(async () => {
     if (!voiceServiceRef.current) return;
 
     try {
       await voiceServiceRef.current.disconnect();
+      autoConnectAttemptedRef.current = false; // Reset auto-connect flag
     } catch (error) {
       console.error('Failed to disconnect from voice service:', error);
       onError?.(error);
     }
-  }, [onError]);
+  }, []);
 
   const startListening = useCallback(async () => {
     if (!voiceServiceRef.current || !isConnected || isListening) return;
@@ -129,7 +143,7 @@ export function useVoiceInteraction(options: UseVoiceInteractionOptions = {}): U
       console.error('Failed to start listening:', error);
       onError?.(error);
     }
-  }, [isConnected, isListening, language, onError]);
+  }, [isConnected, isListening, language]);
 
   const stopListening = useCallback(() => {
     if (!voiceServiceRef.current || !isListening) return;
@@ -155,7 +169,7 @@ export function useVoiceInteraction(options: UseVoiceInteractionOptions = {}): U
       onError?.(error);
       throw error;
     }
-  }, [isConnected, settings, onError]);
+  }, [isConnected, settings.kokoro?.defaultVoice, settings.kokoro?.defaultSpeed, settings.kokoro?.stream]);
 
   const toggleListening = useCallback(async () => {
     if (isListening) {

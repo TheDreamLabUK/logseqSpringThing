@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useVoiceInteraction } from '../hooks/useVoiceInteraction';
 import { VoiceWebSocketService } from '../services/VoiceWebSocketService';
+import { AudioInputService } from '../services/AudioInputService';
 
 // Simple icon components to avoid lucide-react import issues
 const MicIcon = ({ className }: { className?: string }) => (
@@ -43,6 +44,7 @@ export const VoiceButton: React.FC<VoiceButtonProps> = ({
 }) => {
   const [audioLevel, setAudioLevel] = useState(0);
   const [hasError, setHasError] = useState(false);
+  const [isSupported, setIsSupported] = useState(true);
 
   const {
     isListening,
@@ -55,8 +57,12 @@ export const VoiceButton: React.FC<VoiceButtonProps> = ({
     }
   });
 
-  // Debug logging
-  console.log('VoiceButton rendering:', { isListening, isSpeaking, hasError });
+  // Check browser support on mount
+  useEffect(() => {
+    const support = AudioInputService.getBrowserSupport();
+    const supported = support.getUserMedia && support.audioContext && support.isHttps && support.mediaRecorder;
+    setIsSupported(supported);
+  }, []);
 
   // Get audio level from VoiceWebSocketService directly for visual feedback
   useEffect(() => {
@@ -71,11 +77,26 @@ export const VoiceButton: React.FC<VoiceButtonProps> = ({
     };
   }, []);
 
+  // Clear error when listening state changes
+  useEffect(() => {
+    if (isListening && hasError) {
+      setHasError(false);
+    }
+  }, [isListening, hasError]);
+
   const handleToggle = async () => {
+    if (!isSupported) {
+      setHasError(true);
+      console.error('Voice features not supported in this browser/environment');
+      return;
+    }
+
     try {
+      setHasError(false);
       await toggleListening();
     } catch (error) {
       console.error('Failed to toggle voice input:', error);
+      setHasError(true);
     }
   };
 

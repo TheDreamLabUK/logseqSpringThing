@@ -55,7 +55,27 @@ export class AudioInputService {
   async requestMicrophoneAccess(constraints: AudioConstraints = {}): Promise<boolean> {
     try {
       this.setState('requesting');
-      
+
+      // Comprehensive browser support check
+      if (!navigator || !navigator.mediaDevices) {
+        throw new Error('Browser does not support media devices. Please use a modern browser with HTTPS.');
+      }
+
+      // Check for getUserMedia with fallbacks
+      const getUserMedia = navigator.mediaDevices.getUserMedia ||
+                          (navigator as any).webkitGetUserMedia ||
+                          (navigator as any).mozGetUserMedia ||
+                          (navigator as any).msGetUserMedia;
+
+      if (!getUserMedia) {
+        throw new Error('Browser does not support microphone access. Please use a modern browser with HTTPS.');
+      }
+
+      // Check if we're in a secure context
+      if (location.protocol !== 'https:' && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') {
+        throw new Error('Microphone access requires HTTPS or localhost. Please use a secure connection.');
+      }
+
       const defaultConstraints: MediaStreamConstraints = {
         audio: {
           echoCancellation: constraints.echoCancellation ?? true,
@@ -66,7 +86,17 @@ export class AudioInputService {
         }
       };
 
-      this.stream = await navigator.mediaDevices.getUserMedia(defaultConstraints);
+      // Use the modern API if available, fallback to older APIs
+      if (navigator.mediaDevices.getUserMedia) {
+        this.stream = await navigator.mediaDevices.getUserMedia(defaultConstraints);
+      } else {
+        // Fallback for older browsers
+        this.stream = await new Promise<MediaStream>((resolve, reject) => {
+          const legacyGetUserMedia = getUserMedia.bind(navigator);
+          legacyGetUserMedia(defaultConstraints, resolve, reject);
+        });
+      }
+
       await this.setupAudioNodes();
       this.setState('ready');
       return true;
@@ -86,15 +116,15 @@ export class AudioInputService {
 
     // Create source from stream
     this.sourceNode = this.audioContext.createMediaStreamSource(this.stream);
-    
+
     // Create analyser for visualization
     this.analyserNode = this.audioContext.createAnalyser();
     this.analyserNode.fftSize = 2048;
     this.analyserNode.smoothingTimeConstant = 0.8;
-    
+
     // Connect nodes
     this.sourceNode.connect(this.analyserNode);
-    
+
     // Load and setup audio worklet if needed
     try {
       await this.setupAudioWorklet();
@@ -111,7 +141,7 @@ export class AudioInputService {
 
     // Register worklet module
     await this.audioContext.audioWorklet.addModule('/audio-processor.js');
-    
+
     // Create processor node
     this.processorNode = new AudioWorkletNode(this.audioContext, 'audio-processor', {
       numberOfInputs: 1,
@@ -147,7 +177,7 @@ export class AudioInputService {
 
     // Check supported mime types
     const supportedType = this.getSupportedMimeType(mimeType);
-    
+
     this.mediaRecorder = new MediaRecorder(this.stream, {
       mimeType: supportedType,
       audioBitsPerSecond: 128000
@@ -217,7 +247,7 @@ export class AudioInputService {
       timestamp: Date.now() - this.recordingStartTime,
       duration: 100 // Approximate based on timeslice
     };
-    
+
     this.audioChunks.push(chunk);
     this.emit('audioChunk', chunk);
   }
@@ -270,7 +300,7 @@ export class AudioInputService {
     const bufferLength = this.analyserNode.frequencyBinCount;
     const dataArray = new Uint8Array(bufferLength);
     this.analyserNode.getByteFrequencyData(dataArray);
-    
+
     return dataArray;
   }
 
@@ -283,7 +313,7 @@ export class AudioInputService {
     const bufferLength = this.analyserNode.frequencyBinCount;
     const dataArray = new Uint8Array(bufferLength);
     this.analyserNode.getByteTimeDomainData(dataArray);
-    
+
     return dataArray;
   }
 
@@ -292,27 +322,27 @@ export class AudioInputService {
    */
   async release() {
     this.stopRecording();
-    
+
     if (this.processorNode) {
       this.processorNode.disconnect();
       this.processorNode = null;
     }
-    
+
     if (this.analyserNode) {
       this.analyserNode.disconnect();
       this.analyserNode = null;
     }
-    
+
     if (this.sourceNode) {
       this.sourceNode.disconnect();
       this.sourceNode = null;
     }
-    
+
     if (this.stream) {
       this.stream.getTracks().forEach(track => track.stop());
       this.stream = null;
     }
-    
+
     this.setState('idle');
   }
 
@@ -359,9 +389,33 @@ export class AudioInputService {
    * Check if browser supports required APIs
    */
   static isSupported(): boolean {
-    return !!(navigator.mediaDevices && 
+    return !!(navigator.mediaDevices &&
              navigator.mediaDevices.getUserMedia &&
              window.MediaRecorder &&
-             window.AudioContext);
+             (window.AudioContext || (window as any).webkitAudioContext));
+  }
+
+  /**
+   * Get detailed browser support information
+   */
+  static getBrowserSupport(): {
+    mediaDevices: boolean;
+    getUserMedia: boolean;
+    mediaRecorder: boolean;
+    audioContext: boolean;
+    isHttps: boolean;
+  } {
+    return {
+      mediaDevices: !!navigator.mediaDevices,
+      getUserMedia: !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia) ||
+                   !!((navigator as any).webkitGetUserMedia ||
+                      (navigator as any).mozGetUserMedia ||
+                      (navigator as any).msGetUserMedia),
+      mediaRecorder: !!window.MediaRecorder,
+      audioContext: !!(window.AudioContext || (window as any).webkitAudioContext),
+      isHttps: location.protocol === 'https:' ||
+               location.hostname === 'localhost' ||
+               location.hostname === '127.0.0.1'
+    };
   }
 }

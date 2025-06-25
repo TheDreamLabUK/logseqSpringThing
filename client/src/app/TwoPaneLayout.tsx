@@ -6,6 +6,7 @@ import ConversationPane from './components/ConversationPane'; // Add this
 import NarrativeGoldminePanel from './components/NarrativeGoldminePanel';
 import { VoiceButton } from '../components/VoiceButton';
 import { VoiceIndicator } from '../components/VoiceIndicator';
+import { BrowserSupportWarning } from '../components/BrowserSupportWarning';
 
 const TwoPaneLayout: React.FC = () => {
   // Initialize leftPaneWidth to 80% of window width, or a fallback.
@@ -387,6 +388,22 @@ const TwoPaneLayout: React.FC = () => {
       <button onClick={toggleRightPaneDock} style={dockButtonStyle} title={isRightPaneDocked ? "Expand Right Pane" : "Collapse Right Pane"}>
         {isRightPaneDocked ? '>' : '<'}
       </button>
+
+      {/* Browser Support Warning - Top positioned */}
+      <div
+        style={{
+          position: 'fixed',
+          top: '20px',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          zIndex: 10000,
+          maxWidth: '600px',
+          width: '90%',
+          pointerEvents: 'auto'
+        }}
+      >
+        <BrowserSupportWarning />
+      </div>
 
       {/* Voice Interaction Components - Floating UI */}
       <div
