@@ -67,6 +67,12 @@ pub enum TTSProvider {
     Kokoro,
 }
 
+#[derive(Debug, Clone)]
+pub enum STTProvider {
+    Whisper,
+    OpenAI,
+}
+
 #[derive(Debug)]
 pub enum SpeechCommand {
     Initialize,
@@ -74,6 +80,10 @@ pub enum SpeechCommand {
     TextToSpeech(String, SpeechOptions),
     Close,
     SetTTSProvider(TTSProvider),
+    SetSTTProvider(STTProvider),
+    StartTranscription(TranscriptionOptions),
+    StopTranscription,
+    ProcessAudioChunk(Vec<u8>),
 }
 
 #[derive(Debug, Clone)]
@@ -88,6 +98,25 @@ impl Default for SpeechOptions {
         Self {
             voice: "af_heart".to_string(), // Default Kokoro voice
             speed: 1.0,
+            stream: true,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct TranscriptionOptions {
+    pub language: Option<String>,
+    pub model: Option<String>,
+    pub temperature: Option<f32>,
+    pub stream: bool,
+}
+
+impl Default for TranscriptionOptions {
+    fn default() -> Self {
+        Self {
+            language: None,
+            model: Some("whisper-1".to_string()),
+            temperature: None,
             stream: true,
         }
     }

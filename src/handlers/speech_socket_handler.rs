@@ -32,19 +32,31 @@ struct SetProviderRequest {
     provider: String,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct STTActionRequest {
+    action: String, // "start" or "stop"
+    language: Option<String>,
+    model: Option<String>,
+}
+
 pub struct SpeechSocket {
     id: String,
     app_state: Arc<AppState>,
     heartbeat: Instant,
     audio_rx: Option<broadcast::Receiver<Vec<u8>>>,
+    transcription_rx: Option<broadcast::Receiver<String>>,
 }
 
 impl SpeechSocket {
     pub fn new(id: String, app_state: Arc<AppState>) -> Self {
-        let audio_rx = if let Some(speech_service) = &app_state.speech_service {
-            Some(speech_service.subscribe_to_audio())
+        let (audio_rx, transcription_rx) = if let Some(speech_service) = &app_state.speech_service {
+            (
+                Some(speech_service.subscribe_to_audio()),
+                Some(speech_service.subscribe_to_transcriptions())
+            )
         } else {
-            None
+            (None, None)
         };
 
         Self {
@@ -52,6 +64,7 @@ impl SpeechSocket {
             app_state,
             heartbeat: Instant::now(),
             audio_rx,
+            transcription_rx,
         }
     }
     
@@ -129,6 +142,20 @@ impl Actor for SpeechSocket {
                 }
             }.into_actor(self)));
         }
+        
+        // Start listening for transcription data
+        if let Some(mut rx) = self.transcription_rx.take() {
+            let addr = ctx.address();
+            
+            ctx.spawn(Box::pin(async move {
+                while let Ok(transcription_text) = rx.recv().await {
+                    // Send transcription to the client
+                    if addr.try_send(TranscriptionMessage(transcription_text)).is_err() {
+                        break;
+                    }
+                }
+            }.into_actor(self)));
+        }
     }
 }
 
@@ -145,6 +172,33 @@ impl Handler<AudioChunkMessage> for SpeechSocket {
     fn handle(&mut self, msg: AudioChunkMessage, ctx: &mut Self::Context) -> Self::Result {
         // Send binary audio data to the client
         ctx.binary(msg.0);
+    }
+}
+
+// Message type for transcription data
+struct TranscriptionMessage(String);
+
+impl Message for TranscriptionMessage {
+    type Result = ();
+}
+
+impl Handler<TranscriptionMessage> for SpeechSocket {
+    type Result = ();
+
+    fn handle(&mut self, msg: TranscriptionMessage, ctx: &mut Self::Context) -> Self::Result {
+        // Send transcription as JSON to the client
+        let message = json!({
+            "type": "transcription",
+            "data": {
+                "text": msg.0,
+                "isFinal": true,
+                "timestamp": std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_millis()
+            }
+        });
+        ctx.text(message.to_string());
     }
 }
 
@@ -187,6 +241,68 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SpeechSocket {
                                     ctx.text(json!({"type": "error", "message": "Invalid TTS request format"}).to_string());
                                 }
                             }
+                            Some("stt") => {
+                                // Parse as STT action request
+                                if let Ok(stt_req) = serde_json::from_value::<STTActionRequest>(msg) {
+                                    match stt_req.action.as_str() {
+                                        "start" => {
+                                            if let Some(speech_service) = &self.app_state.speech_service {
+                                                use crate::types::speech::TranscriptionOptions;
+                                                let options = TranscriptionOptions {
+                                                    language: stt_req.language,
+                                                    model: stt_req.model,
+                                                    temperature: None,
+                                                    stream: true,
+                                                };
+                                                
+                                                let fut = speech_service.start_transcription(options).boxed().into_actor(self);
+                                                ctx.spawn(fut.map(|result, _, ctx| {
+                                                    match result {
+                                                        Ok(_) => {
+                                                            ctx.text(json!({
+                                                                "type": "stt_started",
+                                                                "message": "Transcription started"
+                                                            }).to_string());
+                                                        },
+                                                        Err(e) => {
+                                                            ctx.text(json!({
+                                                                "type": "error",
+                                                                "message": format!("Failed to start transcription: {}", e)
+                                                            }).to_string());
+                                                        }
+                                                    }
+                                                }));
+                                            }
+                                        },
+                                        "stop" => {
+                                            if let Some(speech_service) = &self.app_state.speech_service {
+                                                let fut = speech_service.stop_transcription().boxed().into_actor(self);
+                                                ctx.spawn(fut.map(|result, _, ctx| {
+                                                    match result {
+                                                        Ok(_) => {
+                                                            ctx.text(json!({
+                                                                "type": "stt_stopped",
+                                                                "message": "Transcription stopped"
+                                                            }).to_string());
+                                                        },
+                                                        Err(e) => {
+                                                            ctx.text(json!({
+                                                                "type": "error",
+                                                                "message": format!("Failed to stop transcription: {}", e)
+                                                            }).to_string());
+                                                        }
+                                                    }
+                                                }));
+                                            }
+                                        },
+                                        _ => {
+                                            ctx.text(json!({"type": "error", "message": "Invalid STT action"}).to_string());
+                                        }
+                                    }
+                                } else {
+                                    ctx.text(json!({"type": "error", "message": "Invalid STT request format"}).to_string());
+                                }
+                            }
                             _ => {
                                 ctx.text(json!({"type": "error", "message": "Unknown message type"}).to_string());
                             }
@@ -197,9 +313,24 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SpeechSocket {
                     }
                 }
             }
-            Ok(ws::Message::Binary(_)) => {
-                // Binary data from client not supported in this handler
-                ctx.text(json!({"type": "error", "message": "Binary data not supported"}).to_string());
+            Ok(ws::Message::Binary(bin)) => {
+                debug!("[SpeechSocket] Received binary audio data: {} bytes", bin.len());
+                self.heartbeat = Instant::now();
+                
+                // Process audio chunk for STT
+                if let Some(speech_service) = &self.app_state.speech_service {
+                    let audio_data = bin.to_vec();
+                    
+                    // Send to speech service for processing
+                    let app_state = self.app_state.clone();
+                    let fut = async move {
+                        if let Err(e) = speech_service.process_audio_chunk(audio_data).await {
+                            error!("Failed to process audio chunk: {}", e);
+                        }
+                    }.boxed().into_actor(self);
+                    
+                    ctx.spawn(fut);
+                }
             }
             Ok(ws::Message::Close(reason)) => {
                 info!("[SpeechSocket] Client disconnected: {}", self.id);

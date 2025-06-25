@@ -14,7 +14,7 @@ use tokio::net::TcpStream;
 use url::Url;
 use base64::Engine as _;
 use base64::engine::general_purpose::{STANDARD as BASE64};
-use crate::types::speech::{SpeechError, SpeechCommand, TTSProvider, SpeechOptions};
+use crate::types::speech::{SpeechError, SpeechCommand, TTSProvider, STTProvider, SpeechOptions, TranscriptionOptions};
 use reqwest::Client;
 
 
@@ -22,8 +22,11 @@ pub struct SpeechService {
     sender: Arc<Mutex<mpsc::Sender<SpeechCommand>>>,
     settings: Arc<RwLock<AppFullSettings>>,
     tts_provider: Arc<RwLock<TTSProvider>>,
+    stt_provider: Arc<RwLock<STTProvider>>,
     // Audio broadcast channel for distributing TTS audio to all connected clients
     audio_tx: broadcast::Sender<Vec<u8>>,
+    // Transcription broadcast channel for distributing transcription results
+    transcription_tx: broadcast::Sender<String>,
     http_client: Arc<Client>,
 }
 
@@ -38,11 +41,16 @@ impl SpeechService {
         // Create HTTP client for Kokoro TTS API
         let http_client = Arc::new(Client::new());
 
+        // Create transcription broadcast channel
+        let (transcription_tx, _) = broadcast::channel(100);
+        
         let service = SpeechService {
             sender,
             settings,
             tts_provider: Arc::new(RwLock::new(TTSProvider::Kokoro)), // Updated default to Kokoro
+            stt_provider: Arc::new(RwLock::new(STTProvider::Whisper)), // Default to Whisper
             audio_tx,
+            transcription_tx,
             http_client,
         };
 
@@ -54,7 +62,9 @@ impl SpeechService {
         let settings: Arc<RwLock<AppFullSettings>> = Arc::clone(&self.settings);
         let http_client = Arc::clone(&self.http_client);
         let tts_provider = Arc::clone(&self.tts_provider);
+        let stt_provider = Arc::clone(&self.stt_provider);
         let audio_tx = self.audio_tx.clone();
+        let transcription_tx = self.transcription_tx.clone();
 
         task::spawn(async move {
             let mut ws_stream: Option<WebSocketStream<MaybeTlsStream<TcpStream>>> = None;
@@ -324,6 +334,40 @@ impl SpeechService {
                         }
                         // info!("TextToSpeech arm commented out for debugging delimiter issue."); // This line can be removed now
                     }
+                    SpeechCommand::SetSTTProvider(provider) => {
+                        let mut current_provider = stt_provider.write().await;
+                        *current_provider = provider.clone();
+                        info!("STT provider updated to: {:?}", provider);
+                    },
+                    SpeechCommand::StartTranscription(options) => {
+                        let provider = {
+                            let p = stt_provider.read().await;
+                            p.clone()
+                        };
+                        
+                        match provider {
+                            STTProvider::Whisper => {
+                                // TODO: Implement Whisper STT connection
+                                info!("Starting Whisper transcription with options: {:?}", options);
+                                // For now, just send a mock transcription
+                                let _ = transcription_tx.send("Whisper STT not yet implemented".to_string());
+                            },
+                            STTProvider::OpenAI => {
+                                info!("Starting OpenAI transcription with options: {:?}", options);
+                                // TODO: Implement OpenAI STT
+                            }
+                        }
+                    },
+                    SpeechCommand::StopTranscription => {
+                        info!("Stopping transcription");
+                        // TODO: Implement stop logic
+                    },
+                    SpeechCommand::ProcessAudioChunk(audio_data) => {
+                        debug!("Processing audio chunk of size: {} bytes", audio_data.len());
+                        // TODO: Send to active STT provider
+                        // For now, just acknowledge
+                        let _ = transcription_tx.send(format!("Received {} bytes of audio", audio_data.len()));
+                    }
                 }
             }
 }
@@ -368,5 +412,34 @@ impl SpeechService {
     // Current provider
     pub async fn get_tts_provider(&self) -> TTSProvider {
         self.tts_provider.read().await.clone()
+    }
+    
+    pub async fn set_stt_provider(&self, provider: STTProvider) -> Result<(), Box<dyn Error>> {
+        let command = SpeechCommand::SetSTTProvider(provider);
+        self.sender.lock().await.send(command).await.map_err(|e| Box::new(SpeechError::from(e)))?;
+        Ok(())
+    }
+    
+    pub async fn start_transcription(&self, options: TranscriptionOptions) -> Result<(), Box<dyn Error>> {
+        let command = SpeechCommand::StartTranscription(options);
+        self.sender.lock().await.send(command).await.map_err(|e| Box::new(SpeechError::from(e)))?;
+        Ok(())
+    }
+    
+    pub async fn stop_transcription(&self) -> Result<(), Box<dyn Error>> {
+        let command = SpeechCommand::StopTranscription;
+        self.sender.lock().await.send(command).await.map_err(|e| Box::new(SpeechError::from(e)))?;
+        Ok(())
+    }
+    
+    pub async fn process_audio_chunk(&self, audio_data: Vec<u8>) -> Result<(), Box<dyn Error>> {
+        let command = SpeechCommand::ProcessAudioChunk(audio_data);
+        self.sender.lock().await.send(command).await.map_err(|e| Box::new(SpeechError::from(e)))?;
+        Ok(())
+    }
+    
+    // Get a subscriber to the transcription broadcast channel
+    pub fn subscribe_to_transcriptions(&self) -> broadcast::Receiver<String> {
+        self.transcription_tx.subscribe()
     }
 }
