@@ -78,9 +78,9 @@ export const VoiceButton: React.FC<VoiceButtonProps> = ({
   };
 
   const variantClasses = {
-    primary: 'bg-blue-500 hover:bg-blue-600 text-white',
-    secondary: 'bg-gray-200 hover:bg-gray-300 text-gray-700',
-    ghost: 'hover:bg-gray-100 text-gray-600'
+    primary: 'bg-primary hover:bg-primary/90 text-primary-foreground',
+    secondary: 'bg-secondary hover:bg-secondary/90 text-secondary-foreground',
+    ghost: 'hover:bg-accent text-accent-foreground'
   };
 
   const buttonClasses = `
@@ -89,8 +89,8 @@ export const VoiceButton: React.FC<VoiceButtonProps> = ({
     ${className}
     relative flex items-center justify-center
     rounded-full transition-all duration-200
-    focus:outline-none focus:ring-2 focus:ring-blue-400
-    ${isListening ? 'ring-2 ring-red-400' : ''}
+    focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background
+    ${isListening ? 'ring-2 ring-destructive' : ''}
   `;
 
   return (
@@ -102,7 +102,7 @@ export const VoiceButton: React.FC<VoiceButtonProps> = ({
       {/* Audio level indicator */}
       {isListening && (
         <div
-          className="absolute inset-0 rounded-full bg-red-400 opacity-30 animate-pulse"
+          className="absolute inset-0 rounded-full bg-destructive opacity-30 animate-pulse"
           style={{
             transform: `scale(${1 + audioLevel * 0.5})`,
             transition: 'transform 100ms ease-out'

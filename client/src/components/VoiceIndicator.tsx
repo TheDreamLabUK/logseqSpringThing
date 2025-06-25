@@ -81,20 +81,16 @@ export const VoiceIndicator: React.FC<VoiceIndicatorProps> = ({
   }, []);
 
   const statusConfig = {
-    idle: { icon: null, text: '', color: 'text-gray-400' },
-    listening: { icon: MicIcon, text: 'Listening...', color: 'text-red-500' },
-    processing: { icon: LoaderIcon, text: 'Processing...', color: 'text-blue-500' },
-    speaking: { icon: VolumeIcon, text: 'Speaking...', color: 'text-green-500' }
+    idle: { icon: null, text: 'Ready', color: 'text-muted-foreground' },
+    listening: { icon: MicIcon, text: 'Listening...', color: 'text-destructive' },
+    processing: { icon: LoaderIcon, text: 'Processing...', color: 'text-primary' },
+    speaking: { icon: VolumeIcon, text: 'Speaking...', color: 'text-accent' }
   };
 
   const currentStatus = statusConfig[status];
 
-  if (status === 'idle' && !transcription && !partialTranscription) {
-    return null;
-  }
-
   return (
-    <div className={`flex flex-col gap-2 p-3 rounded-lg bg-gray-50 ${className}`}>
+    <div className={`flex flex-col gap-2 p-3 rounded-lg bg-card border border-border shadow-sm ${className} ${(status === 'idle' && !transcription && !partialTranscription) ? 'opacity-50' : ''}`}>
       {/* Status indicator */}
       {showStatus && currentStatus.icon && (
         <div className={`flex items-center gap-2 ${currentStatus.color}`}>
@@ -126,10 +122,10 @@ export const VoiceIndicator: React.FC<VoiceIndicatorProps> = ({
       {showTranscription && (transcription || partialTranscription) && (
         <div className="text-sm">
           {transcription && (
-            <p className="text-gray-800">{transcription}</p>
+            <p className="text-foreground">{transcription}</p>
           )}
           {partialTranscription && (
-            <p className="text-gray-500 italic">{partialTranscription}</p>
+            <p className="text-muted-foreground italic">{partialTranscription}</p>
           )}
         </div>
       )}
