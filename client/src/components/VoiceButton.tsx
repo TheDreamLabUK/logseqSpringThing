@@ -42,13 +42,21 @@ export const VoiceButton: React.FC<VoiceButtonProps> = ({
   variant = 'primary'
 }) => {
   const [audioLevel, setAudioLevel] = useState(0);
+  const [hasError, setHasError] = useState(false);
+
   const {
     isListening,
     isSpeaking,
     toggleListening
   } = useVoiceInteraction({
-    onError: (error) => console.error('Voice interaction error:', error)
+    onError: (error) => {
+      console.error('Voice interaction error:', error);
+      setHasError(true);
+    }
   });
+
+  // Debug logging
+  console.log('VoiceButton rendering:', { isListening, isSpeaking, hasError });
 
   // Get audio level from VoiceWebSocketService directly for visual feedback
   useEffect(() => {

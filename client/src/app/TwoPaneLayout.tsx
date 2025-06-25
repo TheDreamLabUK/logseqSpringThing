@@ -389,17 +389,37 @@ const TwoPaneLayout: React.FC = () => {
       </button>
 
       {/* Voice Interaction Components - Floating UI */}
-      <div style={{
-        position: 'fixed',
-        bottom: '20px',
-        left: '20px',
-        zIndex: 1000,
-        display: 'flex',
-        flexDirection: 'column',
-        gap: '12px',
-        alignItems: 'flex-start'
-      }}>
-        <VoiceButton size="lg" variant="primary" />
+      <div
+        style={{
+          position: 'fixed',
+          bottom: '20px',
+          left: '20px',
+          zIndex: 9999,
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '12px',
+          alignItems: 'flex-start',
+          pointerEvents: 'auto'
+        }}
+        className="voice-components-container"
+      >
+        <div style={{
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '8px',
+          alignItems: 'center'
+        }}>
+          <VoiceButton size="lg" variant="primary" />
+          <div style={{
+            fontSize: '10px',
+            color: 'rgba(255, 255, 255, 0.8)',
+            textAlign: 'center',
+            fontWeight: '500',
+            textShadow: '0 1px 2px rgba(0, 0, 0, 0.8)'
+          }}>
+            Voice
+          </div>
+        </div>
         <VoiceIndicator
           className="max-w-md"
           showTranscription={true}
