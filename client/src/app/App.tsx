@@ -5,6 +5,8 @@ import XRCoreProvider from '../features/xr/providers/XRCoreProvider';
 import { useSettingsStore } from '../store/settingsStore';
 import { createLogger, createErrorMetadata } from '../utils/logger';
 import TwoPaneLayout from './TwoPaneLayout';
+import Quest3ARLayout from './Quest3ARLayout';
+import { useQuest3Integration } from '../hooks/useQuest3Integration';
 import { CommandPalette } from '../features/command-palette/components/CommandPalette';
 import { initializeCommandPalette } from '../features/command-palette/defaultCommands';
 import { HelpProvider } from '../features/help/components/HelpProvider';
@@ -60,6 +62,9 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, { hasError: boolean; e
 
 function App() {
   const initialized = useSettingsStore(state => state.initialized)
+  const { shouldUseQuest3Layout, isQuest3Detected, autoStartSuccessful } = useQuest3Integration({
+    enableAutoStart: true
+  });
 
   useEffect(() => {
     // Initialize command palette, help system, and onboarding on first load
@@ -95,7 +100,15 @@ function App() {
           <ErrorBoundary>
             <ApplicationModeProvider>
               <XRCoreProvider>
-                {initialized ? <TwoPaneLayout /> : <div>Loading application...</div>}
+                {initialized ? (
+                  shouldUseQuest3Layout ? (
+                    <Quest3ARLayout />
+                  ) : (
+                    <TwoPaneLayout />
+                  )
+                ) : (
+                  <div>Loading application...</div>
+                )}
                 {!initialized && <AppInitializer onInitialized={handleInitialized} /> }
                 <CommandPalette />
               </XRCoreProvider>
