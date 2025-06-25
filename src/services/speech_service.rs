@@ -221,7 +221,6 @@ impl SpeechService {
                                                             if let Some(audio_data) = item["audio"].as_str() {
                                                                 match BASE64.decode(audio_data) {
                                                                     Ok(audio_bytes) => {
-                                                                        // Note: Audio data will be handled by socket-flow server
                                                                         debug!("Received audio data of size: {}", audio_bytes.len());
                                                                     },
                                                                     Err(e) => error!("Failed to decode audio data: {}", e),
@@ -260,120 +259,107 @@ impl SpeechService {
                         break;
                     },
                     SpeechCommand::SetTTSProvider(provider) => {
-                        // Update the provider
                         let mut current_provider = tts_provider.write().await;
                         *current_provider = provider.clone();
                         info!("TTS provider updated to: {:?}", provider);
                     },
                     SpeechCommand::TextToSpeech(text, options) => {
-                        // Check which provider to use
-                        let provider = {
-                            let p = tts_provider.read().await;
-                            p.clone()
-                        };
+                        let provider = tts_provider.read().await.clone();
 
                         match provider {
                             TTSProvider::OpenAI => {
-                                // Ignore OpenAI for now and just log
                                 info!("TextToSpeech command with OpenAI provider not implemented");
                             },
                             TTSProvider::Kokoro => {
                                 info!("Processing TextToSpeech command with Kokoro provider");
-                                let kokoro_config = { // Read settings within scope
+                                let kokoro_config = {
                                     let s = settings.read().await;
-                                    s.kokoro.clone() // Clone the Option<KokoroSettings>
+                                    s.kokoro.clone()
                                 };
 
-                                // Check if Kokoro is configured
                                 if let Some(config) = kokoro_config {
-                                    // Safely get API URL or skip if missing
                                     let api_url_base = match config.api_url.as_deref() {
                                         Some(url) if !url.is_empty() => url,
                                         _ => {
                                             error!("Kokoro API URL not configured or empty.");
-                                            continue; // Skip this TTS request
+                                            continue;
                                         }
                                     };
                                     let api_url = format!("{}/v1/audio/speech", api_url_base.trim_end_matches('/'));
                                     info!("Sending TTS request to Kokoro API: {}", api_url);
 
-                                    // Use defaults from config if available, otherwise hardcoded defaults
                                     let response_format = config.default_format.as_deref().unwrap_or("mp3");
 
                                     let request_body = json!({
-                                        "model": "kokoro", // Assuming model is fixed
+                                        "model": "kokoro",
                                         "input": text,
-                                        "voice": options.voice.clone(), // Voice comes from request options
+                                        "voice": options.voice.clone(),
                                         "response_format": response_format,
-                                        "speed": options.speed, // Speed comes from request options
-                                        "stream": options.stream // Stream comes from request options
+                                        "speed": options.speed,
+                                        "stream": options.stream
                                     });
 
-                                let response = match http_client
-                                    .post(&api_url)
-                                    .header("Content-Type", "application/json")
-                                    .body(request_body.to_string())
-                                    .send()
-                                    .await
-                                {
-                                    Ok(response) => {
-                                        if !response.status().is_success() {
-                                            let status = response.status();
-                                            let error_text = response.text().await.unwrap_or_default();
-                                            error!("Kokoro API error {}: {}", status, error_text);
-                                            continue;
-                                        }
-                                        response
-                                    }
-                                    Err(e) => {
-                                        error!("Failed to connect to Kokoro API: {}", e);
-                                        continue;
-                                    }
-                                };
-
-                                // Handle the response (streaming or not)
-                                if options.stream {
-                                    let stream = response.bytes_stream();
-                                    let audio_broadcaster = audio_tx.clone();
-
-                                    // Process the streaming response
-                                    tokio::spawn(async move {
-                                        let mut stream = Box::pin(stream);
-
-                                        while let Some(item) = stream.next().await {
-                                            match item {
-                                                Ok(bytes) => {
-                                                    // Send audio chunk to all connected clients
-                                                    if let Err(e) = audio_broadcaster.send(bytes.to_vec()) {
-                                                        error!("Failed to broadcast audio chunk: {}", e);
-                                                    }
-                                                }
-                                                Err(e) => {
-                                                    error!("Error receiving audio stream: {}", e);
-                                                    break;
-                                                }
+                                    let response = match http_client
+                                        .post(&api_url)
+                                        .header("Content-Type", "application/json")
+                                        .body(request_body.to_string())
+                                        .send()
+                                        .await
+                                    {
+                                        Ok(response) => {
+                                            if !response.status().is_success() {
+                                                let status = response.status();
+                                                let error_text = response.text().await.unwrap_or_default();
+                                                error!("Kokoro API error {}: {}", status, error_text);
+                                                continue;
                                             }
-                                        }
-                                        debug!("Finished streaming audio from Kokoro");
-                                    });
-                                } else {
-                                    // Handle non-streaming response
-                                    match response.bytes().await {
-                                        Ok(bytes) => {
-                                            // Send the complete audio file in one chunk
-                                            if let Err(e) = audio_tx.send(bytes.to_vec()) {
-                                                error!("Failed to send audio data: {}", e);
-                                            } else {
-                                                debug!("Sent {} bytes of audio data", bytes.len());
-                                            }
+                                            response
                                         }
                                         Err(e) => {
-                                            error!("Failed to get audio bytes: {}", e);
+                                            error!("Failed to connect to Kokoro API: {}", e);
+                                            continue;
+                                        }
+                                    };
+
+                                    if options.stream {
+                                        let stream = response.bytes_stream();
+                                        let audio_broadcaster = audio_tx.clone();
+
+                                        tokio::spawn(async move {
+                                            let mut stream = Box::pin(stream);
+
+                                            while let Some(item) = stream.next().await {
+                                                match item {
+                                                    Ok(bytes) => {
+                                                        if let Err(e) = audio_broadcaster.send(bytes.to_vec()) {
+                                                            error!("Failed to broadcast audio chunk: {}", e);
+                                                        }
+                                                    }
+                                                    Err(e) => {
+                                                        error!("Error receiving audio stream: {}", e);
+                                                        break;
+                                                    }
+                                                }
+                                            }
+                                            debug!("Finished streaming audio from Kokoro");
+                                        });
+                                    } else {
+                                        match response.bytes().await {
+                                            Ok(bytes) => {
+                                                if let Err(e) = audio_tx.send(bytes.to_vec()) {
+                                                    error!("Failed to send audio data: {}", e);
+                                                } else {
+                                                    debug!("Sent {} bytes of audio data", bytes.len());
+                                                }
+                                            }
+                                            Err(e) => {
+                                                error!("Failed to get audio bytes: {}", e);
+                                            }
                                         }
                                     }
+                                } else {
+                                    error!("Kokoro configuration not found");
                                 }
-                            } else {
-                                error!("Kokoro configuration not found");
                             }
                         }
                     },
@@ -383,10 +369,7 @@ impl SpeechService {
                         info!("STT provider updated to: {:?}", provider);
                     },
                     SpeechCommand::StartTranscription(options) => {
-                        let provider = {
-                            let p = stt_provider.read().await;
-                            p.clone()
-                        };
+                        let provider = stt_provider.read().await.clone();
 
                         match provider {
                             STTProvider::Whisper => {
@@ -397,12 +380,10 @@ impl SpeechService {
                                     s.whisper.clone()
                                 };
 
-                                // Check if Whisper is configured
                                 if let Some(config) = whisper_config {
                                     let api_url = config.api_url.as_deref().unwrap_or("http://172.18.0.4:8000");
                                     info!("Whisper STT initialized with API URL: {}", api_url);
 
-                                    // Send confirmation that transcription is ready
                                     let _ = transcription_tx.send("Whisper STT ready".to_string());
                                 } else {
                                     error!("Whisper configuration not found");
@@ -422,66 +403,47 @@ impl SpeechService {
                     SpeechCommand::ProcessAudioChunk(audio_data) => {
                         debug!("Processing audio chunk of size: {} bytes", audio_data.len());
 
-                        // Get the current STT provider configuration
-                        let provider = {
-                            let p = stt_provider.read().await;
-                            p.clone()
-                        };
+                        let provider = stt_provider.read().await.clone();
 
                         match provider {
                             STTProvider::Whisper => {
-                                // Load Whisper configuration from settings
                                 let whisper_config = {
                                     let s = settings.read().await;
                                     s.whisper.clone()
                                 };
 
                                 if let Some(config) = whisper_config {
-                                    // Construct the Whisper API URL with default fallback to Docker network IP
                                     let api_url_base = config.api_url.as_deref().unwrap_or("http://172.18.0.4:8000");
                                     let api_url = format!("{}/transcription/", api_url_base.trim_end_matches('/'));
 
-                                    // Create multipart form data for the Whisper-WebUI-Backend API
-                                    // The API expects a file upload with audio data as WAV format
                                     let form = reqwest::multipart::Form::new()
                                         .part("file", reqwest::multipart::Part::bytes(audio_data)
                                             .file_name("audio.wav")
                                             .mime_str("audio/wav").unwrap_or_else(|_| reqwest::multipart::Part::bytes(vec![]).mime_str("audio/wav").unwrap()));
 
-                                    // Add optional Whisper parameters from configuration
-                                    // These parameters control the transcription behavior
                                     let mut form = form;
                                     if let Some(model) = &config.default_model {
-                                        // Whisper model to use (e.g., "base", "small", "medium", "large")
                                         form = form.text("model", model.clone());
                                     }
                                     if let Some(language) = &config.default_language {
-                                        // Language code for forced language detection (e.g., "en", "es", "fr")
                                         form = form.text("language", language.clone());
                                     }
                                     if let Some(temperature) = config.temperature {
-                                        // Temperature for sampling (0.0-1.0, lower = more deterministic)
                                         form = form.text("temperature", temperature.to_string());
                                     }
                                     if let Some(vad_filter) = config.vad_filter {
-                                        // Voice Activity Detection filter to remove silence
                                         form = form.text("vad_filter", vad_filter.to_string());
                                     }
                                     if let Some(word_timestamps) = config.word_timestamps {
-                                        // Include word-level timestamps in the response
                                         form = form.text("word_timestamps", word_timestamps.to_string());
                                     }
                                     if let Some(initial_prompt) = &config.initial_prompt {
-                                        // Initial prompt to guide the transcription context
                                         form = form.text("initial_prompt", initial_prompt.clone());
                                     }
 
-                                    // Clone necessary objects for the async task
                                     let http_client_clone = Arc::clone(&http_client);
                                     let transcription_broadcaster = transcription_tx.clone();
 
-                                    // Send the transcription request asynchronously to avoid blocking the main service loop
-                                    // This allows the service to continue processing other commands while waiting for Whisper response
                                     tokio::spawn(async move {
                                         match http_client_clone
                                             .post(&api_url)
@@ -491,15 +453,11 @@ impl SpeechService {
                                         {
                                             Ok(response) => {
                                                 if response.status().is_success() {
-                                                    // Parse the JSON response from Whisper API
                                                     match response.json::<serde_json::Value>().await {
                                                         Ok(json) => {
-                                                            // Extract the transcription text from the "text" field
-                                                            // Whisper-WebUI-Backend returns JSON with format: {"text": "transcribed text"}
                                                             if let Some(text) = json.get("text").and_then(|t| t.as_str()) {
                                                                 if !text.trim().is_empty() {
                                                                     debug!("Whisper transcription: {}", text);
-                                                                    // Broadcast the transcription to all subscribers
                                                                     let _ = transcription_broadcaster.send(text.to_string());
                                                                 }
                                                             } else {
@@ -511,14 +469,12 @@ impl SpeechService {
                                                         }
                                                     }
                                                 } else {
-                                                    // Handle HTTP error responses from Whisper API
                                                     let status = response.status();
                                                     let error_text = response.text().await.unwrap_or_default();
                                                     error!("Whisper API error {}: {}", status, error_text);
                                                 }
                                             }
                                             Err(e) => {
-                                                // Handle network/connection errors to Whisper API
                                                 error!("Failed to connect to Whisper API: {}", e);
                                             }
                                         }
@@ -529,15 +485,13 @@ impl SpeechService {
                             },
                             STTProvider::OpenAI => {
                                 debug!("OpenAI STT audio processing not implemented");
-                                // TODO: Implement OpenAI STT processing using their Whisper API
-                                // This would use OpenAI's hosted Whisper service instead of local deployment
+                                // TODO: Implement OpenAI STT processing
                             }
                         }
                     }
                 }
             }
-}
-        }); // Removed semicolon
+        });
     }
 
     pub async fn initialize(&self) -> Result<(), Box<dyn Error>> {

@@ -65,8 +65,8 @@ COPY nginx.dev.conf /etc/nginx/nginx.conf
 RUN cargo update
 
 # Build Rust with GPU features
-# RUN cargo build --features gpu && \
-#    cp target/debug/webxr /app/webxr
+ RUN cargo build --features gpu && \
+    cp target/debug/webxr /app/webxr
 
 # PTX compilation - now happens during container build
 COPY scripts/compile_ptx.sh ./scripts/
