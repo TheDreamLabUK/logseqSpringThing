@@ -1,4 +1,4 @@
-FROM nvidia/cuda:12.8.1-devel-ubuntu22.04
+FROM nvidia/cuda:12.4.1-devel-ubuntu22.04
 
 ENV DEBIAN_FRONTEND=noninteractive \
     RUST_LOG=warn \
@@ -61,9 +61,12 @@ WORKDIR /app
 # Copy Nginx config
 COPY nginx.dev.conf /etc/nginx/nginx.conf
 
+# Update dependencies
+RUN cargo update
+
 # Build Rust with GPU features
-RUN cargo build --features gpu && \
-    cp target/debug/webxr /app/webxr
+# RUN cargo build --features gpu && \
+#    cp target/debug/webxr /app/webxr
 
 # PTX compilation - now happens during container build
 COPY scripts/compile_ptx.sh ./scripts/

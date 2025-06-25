@@ -372,10 +372,11 @@ impl SpeechService {
                                         }
                                     }
                                 }
+                            } else {
+                                error!("Kokoro configuration not found");
                             }
                         }
-                        // info!("TextToSpeech arm commented out for debugging delimiter issue."); // This line can be removed now
-                    }
+                    },
                     SpeechCommand::SetSTTProvider(provider) => {
                         let mut current_provider = stt_provider.write().await;
                         *current_provider = provider.clone();

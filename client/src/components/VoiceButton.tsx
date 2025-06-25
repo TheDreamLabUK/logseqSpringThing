@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useVoiceInteraction } from '../hooks/useVoiceInteraction';
+import { VoiceWebSocketService } from '../services/VoiceWebSocketService';
 
 // Simple icon components to avoid lucide-react import issues
 const MicIcon = ({ className }: { className?: string }) => (
@@ -51,9 +52,7 @@ export const VoiceButton: React.FC<VoiceButtonProps> = ({
 
   // Get audio level from VoiceWebSocketService directly for visual feedback
   useEffect(() => {
-    const { VoiceWebSocketService } = require('../services/VoiceWebSocketService');
     const voiceService = VoiceWebSocketService.getInstance();
-
     const handleAudioLevel = (level: number) => setAudioLevel(level);
     const audioInput = voiceService.getAudioInput();
 

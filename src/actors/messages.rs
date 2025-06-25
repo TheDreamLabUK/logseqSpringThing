@@ -1,6 +1,5 @@
 //! Message definitions for actor system communication
 
-use std::sync::Arc;
 use actix::prelude::*;
 use glam::Vec3;
 use serde_json::Value;

@@ -67,7 +67,7 @@ impl SpeechSocket {
             transcription_rx,
         }
     }
-    
+
     // Helper method to handle heartbeat
     fn start_heartbeat(&self, ctx: &mut ws::WebsocketContext<Self>) {
         ctx.run_interval(HEARTBEAT_INTERVAL, |act, ctx| {
@@ -79,7 +79,7 @@ impl SpeechSocket {
             ctx.ping(b"");
         });
     }
-    
+
     // Process text-to-speech request
     async fn process_tts_request(app_state: Arc<AppState>, req: TextToSpeechRequest) -> Result<(), String> {
         if let Some(speech_service) = &app_state.speech_service {
@@ -93,14 +93,14 @@ impl SpeechSocket {
             let default_voice = kokoro_config.and_then(|k| k.default_voice.clone()).unwrap_or_else(|| "default_voice_placeholder".to_string()); // Provide a sensible default
             let default_speed = kokoro_config.and_then(|k| k.default_speed).unwrap_or(1.0);
             let default_stream = kokoro_config.and_then(|k| k.stream).unwrap_or(true); // Default to streaming?
-            
+
             // Create options with defaults or provided values
             let options = SpeechOptions {
                 voice: req.voice.unwrap_or(default_voice),
                 speed: req.speed.unwrap_or(default_speed),
                 stream: req.stream.unwrap_or(default_stream),
             };
-            
+
             // Send request to TTS service
             match speech_service.text_to_speech(req.text, options).await {
                 Ok(_) => Ok(()),
@@ -117,22 +117,22 @@ impl Actor for SpeechSocket {
 
     fn started(&mut self, ctx: &mut Self::Context) {
         info!("[SpeechSocket] Client connected: {}", self.id);
-        
+
         // Start heartbeat
         self.start_heartbeat(ctx);
-        
+
         // Send welcome message
         let welcome = json!({
             "type": "connected",
             "message": "Connected to speech service"
         });
-        
+
         ctx.text(welcome.to_string());
-        
+
         // Start listening for audio data
         if let Some(mut rx) = self.audio_rx.take() {
             let addr = ctx.address();
-            
+
             ctx.spawn(Box::pin(async move {
                 while let Ok(audio_data) = rx.recv().await {
                     // Send audio data to the client
@@ -142,11 +142,11 @@ impl Actor for SpeechSocket {
                 }
             }.into_actor(self)));
         }
-        
+
         // Start listening for transcription data
         if let Some(mut rx) = self.transcription_rx.take() {
             let addr = ctx.address();
-            
+
             ctx.spawn(Box::pin(async move {
                 while let Ok(transcription_text) = rx.recv().await {
                     // Send transcription to the client
@@ -202,6 +202,22 @@ impl Handler<TranscriptionMessage> for SpeechSocket {
     }
 }
 
+// Message type for error data
+struct ErrorMessage(String);
+
+impl Message for ErrorMessage {
+    type Result = ();
+}
+
+impl Handler<ErrorMessage> for SpeechSocket {
+    type Result = ();
+
+    fn handle(&mut self, msg: ErrorMessage, ctx: &mut Self::Context) -> Self::Result {
+        // Send error message to the client
+        ctx.text(msg.0);
+    }
+}
+
 impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SpeechSocket {
     fn handle(&mut self, msg: Result<ws::Message, ws::ProtocolError>, ctx: &mut Self::Context) {
         match msg {
@@ -215,7 +231,7 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SpeechSocket {
             Ok(ws::Message::Text(text)) => {
                 debug!("[SpeechSocket] Received text: {}", text);
                 self.heartbeat = Instant::now();
-                
+
                 // Parse the message
                 match serde_json::from_str::<serde_json::Value>(&text) {
                     Ok(msg) => {
@@ -227,16 +243,17 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SpeechSocket {
                                 if let Ok(tts_req) = serde_json::from_value::<TextToSpeechRequest>(msg) {
                                     // Process TTS request
                                     let app_state = self.app_state.clone();
-                                    let fut = Self::process_tts_request(app_state, tts_req).boxed().into_actor(self);
-                                    ctx.spawn(fut.map(|result, _, ctx| {
-                                        if let Err(e) = result {
+                                    let addr = ctx.address();
+                                    let fut = async move {
+                                        if let Err(e) = Self::process_tts_request(app_state, tts_req).await {
                                             let error_msg = json!({
                                                 "type": "error",
                                                 "message": e
                                             });
-                                            ctx.text(error_msg.to_string());
+                                            let _ = addr.try_send(ErrorMessage(error_msg.to_string()));
                                         }
-                                    }));
+                                    };
+                                    ctx.spawn(fut.into_actor(self));
                                 } else {
                                     ctx.text(json!({"type": "error", "message": "Invalid TTS request format"}).to_string());
                                 }
@@ -254,45 +271,53 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SpeechSocket {
                                                     temperature: None,
                                                     stream: true,
                                                 };
-                                                
-                                                let fut = speech_service.start_transcription(options).boxed().into_actor(self);
-                                                ctx.spawn(fut.map(|result, _, ctx| {
-                                                    match result {
+
+                                                let speech_service = speech_service.clone();
+                                                let addr = ctx.address();
+                                                let fut = async move {
+                                                    match speech_service.start_transcription(options).await {
                                                         Ok(_) => {
-                                                            ctx.text(json!({
+                                                            let msg = json!({
                                                                 "type": "stt_started",
                                                                 "message": "Transcription started"
-                                                            }).to_string());
+                                                            }).to_string();
+                                                            let _ = addr.try_send(ErrorMessage(msg));
                                                         },
                                                         Err(e) => {
-                                                            ctx.text(json!({
+                                                            let msg = json!({
                                                                 "type": "error",
                                                                 "message": format!("Failed to start transcription: {}", e)
-                                                            }).to_string());
+                                                            }).to_string();
+                                                            let _ = addr.try_send(ErrorMessage(msg));
                                                         }
                                                     }
-                                                }));
+                                                };
+                                                ctx.spawn(fut.into_actor(self));
                                             }
                                         },
                                         "stop" => {
                                             if let Some(speech_service) = &self.app_state.speech_service {
-                                                let fut = speech_service.stop_transcription().boxed().into_actor(self);
-                                                ctx.spawn(fut.map(|result, _, ctx| {
-                                                    match result {
+                                                let speech_service = speech_service.clone();
+                                                let addr = ctx.address();
+                                                let fut = async move {
+                                                    match speech_service.stop_transcription().await {
                                                         Ok(_) => {
-                                                            ctx.text(json!({
+                                                            let msg = json!({
                                                                 "type": "stt_stopped",
                                                                 "message": "Transcription stopped"
-                                                            }).to_string());
+                                                            }).to_string();
+                                                            let _ = addr.try_send(ErrorMessage(msg));
                                                         },
                                                         Err(e) => {
-                                                            ctx.text(json!({
+                                                            let msg = json!({
                                                                 "type": "error",
                                                                 "message": format!("Failed to stop transcription: {}", e)
-                                                            }).to_string());
+                                                            }).to_string();
+                                                            let _ = addr.try_send(ErrorMessage(msg));
                                                         }
                                                     }
-                                                }));
+                                                };
+                                                ctx.spawn(fut.into_actor(self));
                                             }
                                         },
                                         _ => {
@@ -316,19 +341,19 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SpeechSocket {
             Ok(ws::Message::Binary(bin)) => {
                 debug!("[SpeechSocket] Received binary audio data: {} bytes", bin.len());
                 self.heartbeat = Instant::now();
-                
+
                 // Process audio chunk for STT
                 if let Some(speech_service) = &self.app_state.speech_service {
                     let audio_data = bin.to_vec();
-                    
-                    // Send to speech service for processing
-                    let app_state = self.app_state.clone();
+
+                    // Clone the speech service Arc to move into the future
+                    let speech_service = speech_service.clone();
                     let fut = async move {
                         if let Err(e) = speech_service.process_audio_chunk(audio_data).await {
                             error!("Failed to process audio chunk: {}", e);
                         }
                     }.boxed().into_actor(self);
-                    
+
                     ctx.spawn(fut);
                 }
             }
@@ -350,7 +375,7 @@ pub async fn speech_socket_handler(
 ) -> Result<HttpResponse, Error> {
     let socket_id = format!("speech_{}", uuid::Uuid::new_v4());
     let socket = SpeechSocket::new(socket_id, app_state.into_inner());
-    
+
     match ws::start(socket, &req, stream) {
         Ok(response) => {
             info!("[SpeechSocket] WebSocket connection established");

@@ -286,6 +286,7 @@ pub async fn get_setting(
         perplexity: settings.perplexity.clone(),
         openai: settings.openai.clone(),
         kokoro: settings.kokoro.clone(),
+        whisper: settings.whisper.clone(),
     };
 
     match get_setting_value(&converted_settings, &category, &setting) {
@@ -369,6 +370,7 @@ pub async fn update_setting(
         perplexity: settings.perplexity.clone(),
         openai: settings.openai.clone(),
         kokoro: settings.kokoro.clone(),
+        whisper: settings.whisper.clone(),
     };
 
     match update_setting_value(&mut converted_settings, &category, &setting, &value) {
@@ -489,6 +491,7 @@ pub async fn get_category_settings(
         perplexity: settings.perplexity.clone(),
         openai: settings.openai.clone(),
         kokoro: settings.kokoro.clone(),
+        whisper: settings.whisper.clone(),
     };
 
     let _settings_value = serde_json::to_value(&converted_settings)
