@@ -4,6 +4,8 @@ import RightPaneControlPanel from './components/RightPaneControlPanel';
 // import MarkdownDisplayPanel from './components/MarkdownDisplayPanel'; // Remove this
 import ConversationPane from './components/ConversationPane'; // Add this
 import NarrativeGoldminePanel from './components/NarrativeGoldminePanel';
+import { VoiceButton } from '../components/VoiceButton';
+import { VoiceIndicator } from '../components/VoiceIndicator';
 
 const TwoPaneLayout: React.FC = () => {
   // Initialize leftPaneWidth to 80% of window width, or a fallback.
@@ -385,6 +387,25 @@ const TwoPaneLayout: React.FC = () => {
       <button onClick={toggleRightPaneDock} style={dockButtonStyle} title={isRightPaneDocked ? "Expand Right Pane" : "Collapse Right Pane"}>
         {isRightPaneDocked ? '>' : '<'}
       </button>
+
+      {/* Voice Interaction Components - Floating UI */}
+      <div style={{
+        position: 'fixed',
+        bottom: '20px',
+        left: '20px',
+        zIndex: 1000,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '12px',
+        alignItems: 'flex-start'
+      }}>
+        <VoiceButton size="lg" variant="primary" />
+        <VoiceIndicator
+          className="max-w-md"
+          showTranscription={true}
+          showStatus={true}
+        />
+      </div>
     </div>
   );
 };
