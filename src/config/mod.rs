@@ -450,6 +450,20 @@ pub struct KokoroSettings { // Client-facing
     #[serde(default)] pub sample_rate: Option<u32>,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+// #[serde(rename_all = "camelCase")] // Reverted
+pub struct WhisperSettings { // Client-facing
+    #[serde(default)] pub api_url: Option<String>,
+    #[serde(default)] pub default_model: Option<String>,
+    #[serde(default)] pub default_language: Option<String>,
+    #[serde(default)] pub timeout: Option<u64>,
+    #[serde(default)] pub temperature: Option<f32>,
+    #[serde(default)] pub return_timestamps: Option<bool>,
+    #[serde(default)] pub vad_filter: Option<bool>,
+    #[serde(default)] pub word_timestamps: Option<bool>,
+    #[serde(default)] pub initial_prompt: Option<String>,
+}
+
 // --- Client-Facing Settings Struct (for JSON deserialization) ---
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
 #[serde(rename_all = "camelCase")]
@@ -462,6 +476,7 @@ pub struct Settings { // Renamed to ClientFacingSettings conceptually
     #[serde(default)] pub perplexity: Option<PerplexitySettings>,
     #[serde(default)] pub openai: Option<OpenAISettings>,
     #[serde(default)] pub kokoro: Option<KokoroSettings>,
+    #[serde(default)] pub whisper: Option<WhisperSettings>,
 }
 
 // --- Full App Settings Struct (for server state, loaded from YAML) ---
@@ -476,6 +491,7 @@ pub struct AppFullSettings {
     #[serde(default)] pub perplexity: Option<PerplexitySettings>,
     #[serde(default)] pub openai: Option<OpenAISettings>,
     #[serde(default)] pub kokoro: Option<KokoroSettings>,
+    #[serde(default)] pub whisper: Option<WhisperSettings>,
 }
 
 // Manual Serialize implementation for AppFullSettings to ensure snake_case YAML output
@@ -495,6 +511,7 @@ impl Serialize for AppFullSettings {
             perplexity: &'a Option<PerplexitySettings>,
             openai: &'a Option<OpenAISettings>,
             kokoro: &'a Option<KokoroSettings>,
+            whisper: &'a Option<WhisperSettings>,
         }
 
         let helper = AppFullSettingsHelper {
@@ -506,6 +523,7 @@ impl Serialize for AppFullSettings {
             perplexity: &self.perplexity,
             openai: &self.openai,
             kokoro: &self.kokoro,
+            whisper: &self.whisper,
         };
 
         // Convert the helper to a serde_json::Value. This avoids recursive serialization.
