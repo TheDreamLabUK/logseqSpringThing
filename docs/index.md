@@ -45,3 +45,7 @@ Welcome to the project documentation. This documentation provides comprehensive 
 ### Technical Deep Dives
 - [Architecture](architecture/system-overview.md)
 - [Decoupled Graph Architecture](technical/decoupled-graph-architecture.md)
+- [Voice System Integration](voice-system.md)
+
+### Reference
+- [Glossary](glossary.md) - Terminology and definitions used throughout the documentation

@@ -58,12 +58,12 @@ The binary protocol is used for efficient transmission of node position updates.
 The primary binary message format is for node position and velocity updates.
 
 -   **Format per node:**
-    -   Node ID: `uint16` (2 bytes)
+    -   Node ID: `uint32` (4 bytes)
     -   Position (X, Y, Z): 3 x `float32` (12 bytes)
     -   Velocity (VX, VY, VZ): 3 x `float32` (12 bytes)
--   **Total per node: 26 bytes.**
+-   **Total per node: 28 bytes.**
 -   A single binary WebSocket message can contain data for multiple nodes, packed consecutively.
--   **Important Clarification:** The server-side `BinaryNodeData` struct (in `src/utils/socket_flow_messages.rs`) includes additional fields like `mass`, `flags`, and `padding`. These are used for the server's internal physics simulation but are **not** part of the 26-byte wire format sent to the client. The client-side `BinaryNodeData` type in [`client/src/types/binaryProtocol.ts`](../../client/src/types/binaryProtocol.ts) correctly reflects the 26-byte structure (nodeId, position, velocity).
+-   **Important Clarification:** The server-side `BinaryNodeData` struct (in `src/utils/socket_flow_messages.rs`) includes additional fields like `mass`, `flags`, and `padding`. These are used for the server's internal physics simulation but are **not** part of the 28-byte wire format sent to the client. The client-side binary protocol handling correctly reflects the 28-byte structure (nodeId as uint32, position, velocity).
 -   Server-side compression (zlib) is applied if the total binary message size exceeds `system.websocket.compressionThreshold` (default 512 bytes). Client-side decompression is handled by [`client/src/utils/binaryUtils.ts`](../../client/src/utils/binaryUtils.ts).
 
 ### Processing Flow

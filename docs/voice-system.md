@@ -16,10 +16,11 @@ The voice system consists of three main components:
    - `/ws/speech` WebSocket endpoint for audio streaming
    - `SpeechService`: Orchestrates TTS and STT operations
    - Support for multiple providers (Kokoro TTS, Whisper STT)
+   - Default providers: Kokoro for TTS, Whisper for STT
 
 3. **External Services**
    - Kokoro TTS API (containerized)
-   - Whisper STT API (to be deployed)
+   - Whisper STT API (fully integrated and operational at configurable endpoint)
 
 ## Audio Flow Diagram
 
@@ -179,7 +180,7 @@ default_format = "mp3"
 stream = true
 
 [whisper]
-api_url = "http://whisper-service:8000"  // To be configured
+api_url = "http://whisper-service:8000"  // Configurable endpoint
 model = "whisper-1"
 default_language = "en"
 ```
@@ -198,7 +199,7 @@ services:
     networks:
       - ragflow
       
-  whisper:  # To be added
+  whisper:
     image: openai/whisper:latest
     ports:
       - "8000:8000"
@@ -210,16 +211,17 @@ services:
 
 ### ✅ Completed
 - TTS Backend with Kokoro integration
+- STT Backend with Whisper integration
 - WebSocket endpoint (`/ws/speech`)
 - Audio streaming infrastructure
 - Client-side audio services
 - Voice UI components
-- Basic STT backend structure
+- Full speech service architecture with provider switching
 
 ### 🚧 In Progress
-- Whisper STT service integration
-- Full duplex audio communication
+- Full duplex audio communication optimization
 - Voice activity detection (VAD)
+- Enhanced error recovery for streaming
 
 ### 📋 Planned
 - Multiple language support

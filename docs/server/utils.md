@@ -162,6 +162,125 @@ Generic helper functions for tasks like string manipulation or common data trans
 - Specific data conversion or formatting utilities might be found within individual service or model files.
 - The plan's mention of `sanitize_filename`, `generate_slug`, etc., as not being present is accurate for a generic `utils` module; such specific helpers would be within relevant services.
 
+## Binary Protocol
+
+### Overview
+The binary protocol module (`src/utils/binary_protocol.rs`) provides efficient binary serialization for real-time node position updates over WebSocket connections.
+
+### WireNodeDataItem Structure
+```rust
+#[repr(C)]
+#[derive(Debug, Clone, Copy, Pod, Zeroable)]
+pub struct WireNodeDataItem {
+    pub id: u32,            // 4 bytes - Node identifier
+    pub position: Vec3Data, // 12 bytes - X, Y, Z coordinates
+    pub velocity: Vec3Data, // 12 bytes - Velocity vector
+    // Total: 28 bytes per node
+}
+```
+
+### Binary Encoding
+```rust
+pub fn encode_node_data(nodes: &[(u32, BinaryNodeData)]) -> Vec<u8> {
+    // Efficient binary packing of node data
+    // Converts server-side BinaryNodeData to wire format
+    // Returns byte vector ready for WebSocket transmission
+}
+```
+
+### Key Features
+- Fixed 28-byte wire format per node for predictable parsing
+- Zero-copy serialization using `bytemuck`
+- Compile-time size assertions for safety
+- Optimized for high-frequency position updates
+
+## Socket Flow Constants
+
+### Overview
+The socket flow constants module (`src/utils/socket_flow_constants.rs`) defines critical parameters for WebSocket communication and graph visualization.
+
+### Node and Graph Constants
+```rust
+pub const NODE_SIZE: f32 = 1.0;      // Base node size in world units
+pub const EDGE_WIDTH: f32 = 0.1;     // Base edge width
+pub const MIN_DISTANCE: f32 = 0.75;  // Minimum distance between nodes
+pub const MAX_DISTANCE: f32 = 10.0;  // Maximum distance from center
+```
+
+### WebSocket Configuration
+```rust
+pub const HEARTBEAT_INTERVAL: u64 = 30;        // Seconds - matches nginx proxy_connect_timeout
+pub const CLIENT_TIMEOUT: u64 = 60;            // Seconds - double heartbeat for safety
+pub const MAX_CLIENT_TIMEOUT: u64 = 3600;      // Seconds - matches nginx proxy_read_timeout
+pub const MAX_MESSAGE_SIZE: usize = 100 * 1024 * 1024; // 100MB max message size
+pub const BINARY_CHUNK_SIZE: usize = 64 * 1024;        // 64KB chunks
+```
+
+### Update Rates
+```rust
+pub const POSITION_UPDATE_RATE: u32 = 5;  // Hz - matches client MAX_UPDATES_PER_SECOND
+pub const METADATA_UPDATE_RATE: u32 = 1;  // Hz - for metadata refresh
+```
+
+### Compression Settings
+```rust
+pub const COMPRESSION_THRESHOLD: usize = 1024; // 1KB minimum for compression
+pub const ENABLE_COMPRESSION: bool = true;     // Global compression flag
+```
+
+## Audio Processor
+
+### Overview
+The audio processor module (`src/utils/audio_processor.rs`) handles processing of audio data from AI services, including base64 decoding and JSON response parsing.
+
+### AudioProcessor Structure
+```rust
+pub struct AudioProcessor {
+    settings: Arc<RwLock<Settings>>,
+}
+```
+
+### Key Methods
+```rust
+impl AudioProcessor {
+    pub async fn process_json_response(&self, response_data: &[u8]) 
+        -> Result<(String, Vec<u8>), String> {
+        // Parses JSON response from AI services
+        // Extracts text answer and audio data
+        // Decodes base64-encoded audio
+        // Returns tuple of (text, audio_bytes)
+    }
+}
+```
+
+### Response Processing
+- Handles multiple JSON response formats
+- Extracts audio from `data.audio` or root `audio` field
+- Validates and decodes base64 audio data
+- Provides detailed error logging
+
+## Edge Data
+
+### Overview
+The edge data module (`src/utils/edge_data.rs`) defines the data structure for graph edges used in GPU computation.
+
+### EdgeData Structure
+```rust
+#[repr(C)]
+#[derive(Debug, Clone, Copy, Pod, Zeroable)]
+pub struct EdgeData {
+    pub source_idx: i32,  // Source node index
+    pub target_idx: i32,  // Target node index
+    pub weight: f32,      // Edge weight/strength
+}
+```
+
+### GPU Compatibility
+- `#[repr(C)]` ensures C-compatible memory layout
+- Implements `DeviceRepr` for CUDA compatibility
+- Implements `ValidAsZeroBits` for safe GPU memory initialization
+- Used by `GPUCompute` for force calculations
+
 ## Error Handling
 
 ### Custom Errors

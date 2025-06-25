@@ -27,6 +27,19 @@ pub struct Vec3Data {
     pub z: f32,
 }
 
+impl Vec3Data {
+    pub fn new(x: f32, y: f32, z: f32) -> Self;
+    pub fn zero() -> Self;
+    pub fn as_array(&self) -> [f32; 3];
+    pub fn as_vec3(&self) -> Vec3;  // Converts to glam::Vec3
+}
+
+// Conversion implementations
+impl From<Vec3> for Vec3Data;      // From glam::Vec3
+impl From<Vec3Data> for Vec3;      // To glam::Vec3
+impl From<[f32; 3]> for Vec3Data;  // From array
+impl From<Vec3Data> for [f32; 3];  // To array
+
 // From src/utils/socket_flow_messages.rs - Server-side version for physics and binary protocol
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, Pod, Zeroable, Default)] // Pod, Zeroable from bytemuck
