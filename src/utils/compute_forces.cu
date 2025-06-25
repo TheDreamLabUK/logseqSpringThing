@@ -14,11 +14,11 @@ extern "C" {
         // Now using Vec3Data structs instead of arrays to match Rust memory layout
         Vec3Data position;    // 12 bytes - matches Rust Vec3Data struct
         Vec3Data velocity;    // 12 bytes - matches Rust Vec3Data struct
-        
+
         // These fields remain unchanged and are still
         // used internally but not transmitted over the wire
         // The binary_protocol.rs still sets default values when decoding
-        
+
         unsigned char mass;   // 1 byte  - matches Rust u8
         unsigned char flags;  // 1 byte  - matches Rust u8
         unsigned char padding[2]; // 2 bytes - matches Rust padding
@@ -41,20 +41,20 @@ extern "C" {
         const float MAX_FORCE = 3.0f; // Reduced maximum force magnitude
         const float MAX_VELOCITY = 0.02f; // Stricter velocity cap to prevent momentum buildup
         const float MIN_DISTANCE = 0.15f; // Slightly increased minimum distance
-        
+
         // Progressive force application parameters
         // First 100 iterations use a ramp-up factor
         const int WARMUP_ITERATIONS = 100;
         float ramp_up_factor = 1.0f;
-        
+
         if (iteration_count < WARMUP_ITERATIONS) {
             // Gradually increase from 0.01 to 1.0 over WARMUP_ITERATIONS
             ramp_up_factor = 0.01f + (iteration_count / (float)WARMUP_ITERATIONS) * 0.99f;
-            
+
             // Also use higher damping in initial iterations to stabilize the system
             damping = fmaxf(damping, 0.9f - 0.4f * (iteration_count / (float)WARMUP_ITERATIONS));
         }
-        
+
         float3 total_force = make_float3(0.0f, 0.0f, 0.0f);
         float3 pos = make_float3(nodes[idx].position.x, nodes[idx].position.y, nodes[idx].position.z);
         float3 vel = make_float3(nodes[idx].velocity.x, nodes[idx].velocity.y, nodes[idx].velocity.z);
@@ -63,7 +63,7 @@ extern "C" {
         if (iteration_count < 5) {
             vel = make_float3(0.0f, 0.0f, 0.0f);
         }
-        
+
         // Convert mass from u8 to float (approximately 0-1 range)
         float mass;
         if (nodes[idx].mass == 0) {
@@ -71,33 +71,33 @@ extern "C" {
         } else {
             mass = (nodes[idx].mass + 1.0f) / 256.0f; // Add 1 to avoid zero mass
         }
-        
+
         bool is_active = true; // All nodes are active by default
-        
+
         if (!is_active) return; // Skip inactive nodes
-        
+
         // Process all node interactions
         for (int j = 0; j < num_nodes; j++) {
             if (j == idx) continue;
-            
+
             // All nodes are considered active by default
             // We no longer check the flags since all nodes are treated as active
-            
+
             // Handle other node's mass the same way
             float other_mass = (nodes[j].mass == 0) ? 0.5f : (nodes[j].mass + 1.0f) / 256.0f;
-            
+
             float3 other_pos = make_float3(
                 nodes[j].position.x,
                 nodes[j].position.y,
                 nodes[j].position.z
             );
-            
+
             float3 diff = make_float3(
                 other_pos.x - pos.x,
                 other_pos.y - pos.y,
                 other_pos.z - pos.z
             );
-            
+
             float dist = sqrtf(diff.x * diff.x + diff.y * diff.y + diff.z * diff.z);
             // Only process if nodes are at a meaningful distance apart
             if (dist > MIN_DISTANCE) {
@@ -106,25 +106,25 @@ extern "C" {
                     diff.y / dist,
                     diff.z / dist
                 );
-                
+
                 // Apply spring forces to all nodes by default
                 {
                     // Use natural length of 1.0 to match world units
                     float natural_length = 1.0f;
-                    
+
                     // Progressive spring forces - stronger when further apart
                     // Apply the ramp_up_factor to gradually increase spring forces
                     float spring_force = -spring_k * ramp_up_factor * (dist - natural_length);
-                    
+
                     // Apply progressively stronger springs for very distant nodes
                     if (dist > natural_length * 3.0f) {
                         spring_force *= (1.0f + (dist - natural_length * 3.0f) * 0.1f);
                     }
-                    
-                    
+
+
                     float spring_scale = mass * other_mass;
                     float force_magnitude = spring_force * spring_scale;
-                    
+
                     // Repulsion forces - only apply at close distances
                     if (dist < max_repulsion_dist) {
                         float repel_scale = repel_k * mass * other_mass;
@@ -145,7 +145,7 @@ extern "C" {
                 }
             }
         }
-        
+
         // Stronger center gravity to prevent nodes from drifting too far
         float center_strength = 0.015f * mass * ramp_up_factor; // Apply ramp_up to center gravity too
         float center_dist = sqrtf(pos.x*pos.x + pos.y*pos.y + pos.z*pos.z);
@@ -158,17 +158,17 @@ extern "C" {
 
         // Calculate total force magnitude
         float force_magnitude = sqrtf(
-            total_force.x*total_force.x + 
-            total_force.y*total_force.y + 
+            total_force.x*total_force.x +
+            total_force.y*total_force.y +
             total_force.z*total_force.z);
-        
+
         // Scale down excessive forces to prevent explosion
         if (force_magnitude > MAX_FORCE) {
             float scale_factor = MAX_FORCE / force_magnitude;
             total_force.x *= scale_factor;
             total_force.y *= scale_factor;
             total_force.z *= scale_factor;
-            
+
             // Additional logging to help debug extreme forces after randomization
             // if (idx == 0 && iteration_count < 5)
             //     printf("Force clamped from %f to %f (iteration %d)\n", force_magnitude, MAX_FORCE, iteration_count);
@@ -178,7 +178,7 @@ extern "C" {
         vel.x = vel.x * (1.0f - damping) + fminf(MAX_FORCE, fmaxf(-MAX_FORCE, total_force.x)) * dt;
         vel.y = vel.y * (1.0f - damping) + fminf(MAX_FORCE, fmaxf(-MAX_FORCE, total_force.y)) * dt;
         vel.z = vel.z * (1.0f - damping) + fminf(MAX_FORCE, fmaxf(-MAX_FORCE, total_force.z)) * dt;
-        
+
         // Apply STRICT velocity cap to prevent runaway momentum
         float vel_magnitude = sqrtf(vel.x*vel.x + vel.y*vel.y + vel.z*vel.z);
         if (vel_magnitude > MAX_VELOCITY) {
@@ -187,7 +187,7 @@ extern "C" {
             vel.y *= scale_factor;
             vel.z *= scale_factor;
         }
-        
+
         // Update position
         pos.x += vel.x * dt;
         pos.y += vel.y * dt;
@@ -233,7 +233,7 @@ extern "C" {
         //         idx, force_mag,
         //         pos.x, pos.y, pos.z,
         //         vel.x, vel.y, vel.z);
-                
+
         //     // More detailed logging during initialization
         //     if (iteration_count < WARMUP_ITERATIONS)
         //         printf("Node %d: iteration=%d, ramp_up=%f, damping=%f\n", idx, iteration_count, ramp_up_factor, damping);
