@@ -84,7 +84,7 @@ graph TD
 - [Rendering System](docs/client/rendering.md)
 - [State Management](docs/client/state.md)
 - [Type Definitions](docs/client/types.md)
-- [Visualisation](docs/client/visualisation.md)
+- [Visualisation](docs/client/rendering.md) (Technical Rendering Details)
 - [WebSocket Communication](docs/client/websocket.md)
 - [WebXR Integration](docs/client/xr.md)
 
@@ -115,9 +115,10 @@ graph TD
         direction LR
         AppInit[AppInitializer]
         TwoPane[TwoPaneLayout]
-        GraphView[GraphViewport]
+        GraphView[GraphViewport (Container for 3D Scene)]
+        GraphCanvas[GraphCanvas (Three.js Canvas)]
         RightCtlPanel[RightPaneControlPanel]
-        SettingsUI[SettingsPanelRedesign]
+        SettingsUI[SettingsPanelRedesignOptimized]
         ConvoPane[ConversationPane]
         NarrativePane[NarrativeGoldminePanel]
         SettingsMgr[settingsStore]
@@ -227,9 +228,57 @@ graph TD
     PerplexitySvc_Srv --> PerplexityAI_Ext
     RAGFlowSvc_Srv --> RAGFlow_Ext
 
-    style ClientApp fill:#lightgrey,stroke:#333,stroke-width:2px
-    style ServerApp fill:#lightblue,stroke:#333,stroke-width:2px
-    style External_Srv fill:#lightgreen,stroke:#333,stroke-width:2px
+    style ClientApp fill:#282C34,stroke:#61DAFB,stroke-width:2px,color:#FFFFFF
+    style ServerApp fill:#282C34,stroke:#A2AAAD,stroke-width:2px,color:#FFFFFF
+    style External_Srv fill:#282C34,stroke:#F7DF1E,stroke-width:2px,color:#FFFFFF
+    style AppInit fill:#3A3F47,stroke:#61DAFB,color:#FFFFFF
+    style TwoPane fill:#3A3F47,stroke:#61DAFB,color:#FFFFFF
+    style GraphView fill:#3A3F47,stroke:#61DAFB,color:#FFFFFF
+    style GraphCanvas fill:#3A3F47,stroke:#61DAFB,color:#FFFFFF
+    style RightCtlPanel fill:#3A3F47,stroke:#61DAFB,color:#FFFFFF
+    style SettingsUI fill:#3A3F47,stroke:#61DAFB,color:#FFFFFF
+    style ConvoPane fill:#3A3F47,stroke:#61DAFB,color:#FFFFFF
+    style NarrativePane fill:#3A3F47,stroke:#61DAFB,color:#FFFFFF
+    style SettingsMgr fill:#3A3F47,stroke:#61DAFB,color:#FFFFFF
+    style GraphDataMgr fill:#3A3F47,stroke:#61DAFB,color:#FFFFFF
+    style RenderEngine fill:#3A3F47,stroke:#61DAFB,color:#FFFFFF
+    style WebSocketSvc fill:#3A3F47,stroke:#61DAFB,color:#FFFFFF
+    style APISvc fill:#3A3F47,stroke:#61DAFB,color:#FFFFFF
+    style NostrAuthSvcClient fill:#3A3F47,stroke:#61DAFB,color:#FFFFFF
+    style XRController fill:#3A3F47,stroke:#61DAFB,color:#FFFFFF
+
+    style Actix fill:#3A3F47,stroke:#A2AAAD,color:#FFFFFF
+    style Handlers_Srv fill:#3A3F47,stroke:#A2AAAD,color:#FFFFFF
+    style SettingsH fill:#3A3F47,stroke:#A2AAAD,color:#FFFFFF
+    style NostrAuthH fill:#3A3F47,stroke:#A2AAAD,color:#FFFFFF
+    style GraphAPI_H fill:#3A3F47,stroke:#A2AAAD,color:#FFFFFF
+    style FilesAPI_H fill:#3A3F47,stroke:#A2AAAD,color:#FFFFFF
+    style RAGFlowH_Srv fill:#3A3F47,stroke:#A2AAAD,color:#FFFFFF
+    style SocketFlowH fill:#3A3F47,stroke:#A2AAAD,color:#FFFFFF
+    style SpeechSocketH fill:#3A3F47,stroke:#A2AAAD,color:#FFFFFF
+    style HealthH fill:#3A3F47,stroke:#A2AAAD,color:#FFFFFF
+    style Services_Srv fill:#3A3F47,stroke:#A2AAAD,color:#FFFFFF
+    style GraphSvc_Srv fill:#3A3F47,stroke:#A2AAAD,color:#FFFFFF
+    style FileSvc_Srv fill:#3A3F47,stroke:#A2AAAD,color:#FFFFFF
+    style NostrSvc_Srv fill:#3A3F47,stroke:#A2AAAD,color:#FFFFFF
+    style SpeechSvc_Srv fill:#3A3F47,stroke:#A2AAAD,color:#FFFFFF
+    style RAGFlowSvc_Srv fill:#3A3F47,stroke:#A2AAAD,color:#FFFFFF
+    style PerplexitySvc_Srv fill:#3A3F47,stroke:#A2AAAD,color:#FFFFFF
+    style Actors_Srv fill:#3A3F47,stroke:#A2AAAD,color:#FFFFFF
+    style GraphServiceActor fill:#3A3F47,stroke:#A2AAAD,color:#FFFFFF
+    style SettingsActor fill:#3A3F47,stroke:#A2AAAD,color:#FFFFFF
+    style MetadataActor fill:#3A3F47,stroke:#A2AAAD,color:#FFFFFF
+    style ClientManagerActor fill:#3A3F47,stroke:#A2AAAD,color:#FFFFFF
+    style GPUComputeActor fill:#3A3F47,stroke:#A2AAAD,color:#FFFFFF
+    style ProtectedSettingsActor fill:#3A3F47,stroke:#A2AAAD,color:#FFFFFF
+    style AppState_Srv fill:#3A3F47,stroke:#A2AAAD,color:#FFFFFF
+
+    style GitHub fill:#3A3F47,stroke:#F7DF1E,color:#FFFFFF
+    style NostrRelays_Ext fill:#3A3F47,stroke:#F7DF1E,color:#FFFFFF
+    style OpenAI fill:#3A3F47,stroke:#F7DF1E,color:#FFFFFF
+    style PerplexityAI_Ext fill:#3A3F47,stroke:#F7DF1E,color:#FFFFFF
+    style RAGFlow_Ext fill:#3A3F47,stroke:#F7DF1E,color:#FFFFFF
+    style Kokoro_Ext fill:#3A3F47,stroke:#F7DF1E,color:#FFFFFF
 ```
 
 ### Class Diagram
@@ -282,18 +331,25 @@ classDiagram
     %% Backend Classes
     class AppState {
         <<Struct>>
-        +graph_service_addr: Addr_GraphServiceActor
-        +settings_addr: Addr_SettingsActor
-        +metadata_addr: Addr_MetadataActor
-        +client_manager_addr: Addr_ClientManagerActor
-        +gpu_compute_addr: Option_Addr_GPUComputeActor
-        +protected_settings_addr: Addr_ProtectedSettingsActor
+        +graph_service_addr: Addr<GraphServiceActor>
+        +gpu_compute_addr: Option<Addr<GPUComputeActor>>
+        +settings_addr: Addr<SettingsActor>
+        +protected_settings_addr: Addr<ProtectedSettingsActor>
+        +metadata_addr: Addr<MetadataActor>
+        +client_manager_addr: Addr<ClientManagerActor>
+        +github_client: Arc<GitHubClient>
+        +content_api: Arc<ContentAPI>
+        +perplexity_service: Option<Arc<PerplexityService>>
+        +ragflow_service: Option<Arc<RAGFlowService>>
+        +speech_service: Option<Arc<SpeechService>>
+        +nostr_service: Option<Arc<NostrService>>
     }
-    class GraphService {
-        <<Struct>>
-        +graph_data: Arc_RwLock_GraphData
-        +start_simulation_loop()
-        +broadcast_updates()
+    class GraphServiceActor {
+        <<Actor>>
+        +handle_UpdateGraphData()
+        +handle_InitializeGPU()
+        +handle_SimulationStep()
+        +handle_UpdateNodePosition()
     }
     class PerplexityService {
         <<Struct>>
@@ -314,25 +370,30 @@ classDiagram
         +validate_session()
         +manage_user_api_keys()
     }
-    class GPUCompute {
-        <<Struct>>
-        +run_simulation_step()
+    class GPUComputeActor {
+        <<Actor>>
+        +handle_InitializeGPU()
+        +handle_UpdateGPUGraphData()
+        +handle_UpdateSimulationParams()
+        +handle_ComputeForces()
+        +handle_GetNodeData()
+        +handle_GetGPUStatus()
     }
     class FileService {
         <<Struct>>
         +fetch_and_process_content()
         +update_metadata_store()
     }
-    AppState --> GraphService : holds_Addr
-    AppState --> NostrService : holds_Addr
-    AppState --> PerplexityService : holds_Addr
-    AppState --> RagFlowService : holds_Addr
-    AppState --> SpeechService : holds_Addr
-    AppState --> GPUCompute : holds_Addr
-    AppState --> FileService : holds_Addr
+    AppState --> GraphServiceActor : holds_Addr
+    AppState --> NostrService : holds_Arc
+    AppState --> PerplexityService : holds_Arc
+    AppState --> RagFlowService : holds_Arc
+    AppState --> SpeechService : holds_Arc
+    AppState --> GPUComputeActor : holds_Option_Addr
+    AppState --> FileService : holds_Arc
 
     WebSocketService ..> GraphServiceActor : sends_UpdateNodePositions
-    GraphService ..> GPUCompute : uses_optional
+    GraphServiceActor ..> GPUComputeActor : uses_optional
     NostrService ..> ProtectedSettingsActor : uses
 ```
 
@@ -583,7 +644,7 @@ graph TD
 The client's user interface for settings and controls is structured as follows:
 -   **Main Layout**: [`client/src/app/TwoPaneLayout.tsx`](client/src/app/TwoPaneLayout.tsx:1) divides the screen.
 -   **Right Pane Host**: [`client/src/app/components/RightPaneControlPanel.tsx`](client/src/app/components/RightPaneControlPanel.tsx:1) hosts various panels within the right-hand side.
--   **Settings UI Core**: [`client/src/features/settings/components/panels/SettingsPanelRedesign.tsx`](client/src/features/settings/components/panels/SettingsPanelRedesign.tsx:1) provides the tabbed interface for different setting categories (Visualisation, System, AI, XR).
+-   **Settings UI Core**: [`client/src/features/settings/components/panels/SettingsPanelRedesignOptimized.tsx`](client/src/features/settings/components/panels/SettingsPanelRedesignOptimized.tsx:1) provides the tabbed interface for different setting categories (Visualisation, System, AI, XR).
     -   **Tabs Component**: Uses a generic [`client/src/ui/Tabs.tsx`](client/src/ui/Tabs.tsx:1) component for tab navigation.
     -   **Settings Sections**: Each tab within `SettingsPanelRedesign.tsx` renders one or more [`SettingsSection.tsx`](client/src/features/settings/components/SettingsSection.tsx:1) components to group related settings. These sections can be collapsible.
     -   **Individual Controls**: Each [`SettingsSection.tsx`](client/src/features/settings/components/SettingsSection.tsx:1) uses multiple [`SettingControlComponent.tsx`](client/src/features/settings/components/SettingControlComponent.tsx:1) instances to render the actual UI controls (sliders, toggles, inputs, etc.) for each setting.

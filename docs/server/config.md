@@ -16,11 +16,11 @@ pub struct AppFullSettings {
     pub xr: XRSettings,
     pub auth: AuthSettings,
     // Optional AI Service Configurations
-    pub ragflow: Option<RAGFlowConfig>, // Note: Name might be RAGFlowConfig or similar
-    pub perplexity: Option<PerplexityConfig>,
-    pub openai: Option<OpenAIConfig>,
-    pub kokoro: Option<KokoroConfig>,
-    pub whisper: Option<WhisperConfig>,
+    pub ragflow: Option<RagFlowSettings>,
+    pub perplexity: Option<PerplexitySettings>,
+    pub openai: Option<OpenAISettings>,
+    pub kokoro: Option<KokoroSettings>,
+    pub whisper: Option<WhisperSettings>,
 }
 ```
 
@@ -39,7 +39,7 @@ pub struct AppFullSettings {
     -   `openai: Option<OpenAIConfig>` (may include API keys for various OpenAI services like TTS, STT/Whisper)
     -   `kokoro: Option<KokoroConfig>`
 
-Note: `whisper` is not a top-level configuration in `AppFullSettings`. Whisper STT functionality, if used via OpenAI, would typically have its API key configured within `OpenAIConfig`.
+Note: `whisper` settings are now included as `Option<WhisperSettings>` within `AppFullSettings`.
 
 ### Environment Loading
 Settings are loaded from a YAML file (defaulting to `/app/settings.yaml`) and can be overridden by environment variables. The `config` crate is used for this hierarchical loading.
@@ -59,7 +59,8 @@ impl AppFullSettings {
                     .separator("_") // e.g., SYSTEM_NETWORK_PORT
                     .list_separator(",")
             );
-        builder.build()?.try_deserialize()
+        let config = builder.build()?;
+        config.try_deserialize()
     }
 }
 ```
@@ -132,7 +133,7 @@ Settings are validated during deserialization by the `config` crate. Custom vali
 The current implementation does not support hot reloading of configuration. Changes to `settings.yaml` or environment variables require a server restart to take effect.
 
 ### Saving Settings
-`AppFullSettings` implements a `save(&self, path: &Path) -> Result<(), ConfigError>` method to persist the current settings state back to the specified YAML file (typically `settings.yaml`). This serialization is done using `serde_yaml` and handles converting the Rust struct (usually in snake_case or as defined by `serde` attributes) to YAML format. This method is invoked when power users modify global settings that need to be persisted.
+`AppFullSettings` implements a `save(&self) -> Result<(), String>` method to persist the current settings state back to the specified YAML file (typically `settings.yaml`). This serialization is done using `serde_yaml` and handles converting the Rust struct (usually in snake_case or as defined by `serde` attributes) to YAML format. This method is invoked when power users modify global settings that need to be persisted.
 The `AppFullSettings` struct itself derives `Serialize` and `Deserialize` from `serde` for this purpose.
 
 ## Client Settings Integration
@@ -178,7 +179,7 @@ Users with `settings_sync` permission can store and retrieve their settings acro
 - `PERPLEXITY_ENABLED_PUBKEYS` - Users with Perplexity AI access
 - `OPENAI_ENABLED_PUBKEYS` - Users with OpenAI/Kokoro access
 - `RAGFLOW_ENABLED_PUBKEYS` - Users with RAGFlow chat access
-- `POWER_USER_PUBKEYS` - Administrative users
+- `POWER_USER_PUBKEYS` - Comma-separated list of administrative users
 - `SETTINGS_SYNC_ENABLED_PUBKEYS` - Users who can sync settings
 
 ### AI Service Keys

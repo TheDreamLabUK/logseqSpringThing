@@ -10,7 +10,7 @@ This section covers all security-related aspects of LogseqSpringThing, including
 Comprehensive guide to the Nostr-based authentication system, including:
 - NIP-07 browser extension integration
 - Session management
-- API key handling
+- API key handling (for regular users)
 - Role-based access control (RBAC)
 
 ### Binary Protocol Security

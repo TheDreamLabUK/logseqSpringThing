@@ -11,25 +11,25 @@ These types define the fundamental elements of the knowledge graph.
 Represents a node in the graph, typically corresponding to a file or a concept.
 
 ```typescript
-// Primarily defined and used within client/src/features/graph/managers/graphDataManager.ts
+// Defined in client/src/features/graph/workers/graph.worker.ts
 export interface Node {
-  id: string; // Unique identifier for the node (often numeric, but treated as string)
+  id: string; // Unique identifier for the node (string representation of a u32 from Rust)
   label: string; // Display name of the node
-  position: { x: number; y: number; z: number }; // Current 3D position
-  metadata: Record<string, any>; // Arbitrary metadata (e.g., file type, size, custom tags)
-  // Optional properties that might be populated:
-  // velocity?: { x: number; y: number; z: number }; // Current velocity (if tracked client-side)
-  // mass?: number;
-  // fixed?: boolean; // If the node position is fixed
+  position: {
+    x: number;
+    y: number;
+    z: number;
+  };
+  metadata?: Record<string, any>; // Arbitrary metadata (e.g., file type, size, custom tags)
 }
 ```
-Note: The `data: BinaryNodeData` field mentioned in previous docs, which mirrored the server-side `BinaryNodeData` (with mass, flags etc.), is not directly part of the primary client-side `Node` interface in `graphDataManager.ts`. The client-side `Node` directly holds `position`. The separate `BinaryNodeData` type below is specifically for WebSocket communication.
+Note: The `data: BinaryNodeData` field mentioned in previous docs, which mirrored the server-side `BinaryNodeData` (with mass, flags etc.), is not directly part of the primary client-side `Node` interface. The client-side `Node` directly holds `position`. The separate `BinaryNodeData` type below is specifically for WebSocket communication.
 
 ```typescript
 // From client/src/types/binaryProtocol.ts
-// This structure is for WebSocket binary messages.
+// This structure is for WebSocket binary messages, mirroring the server's WireNodeDataItem.
 export interface BinaryNodeData {
-  nodeId: number; // Typically the numeric part of the Node's 'id' string
+  nodeId: number; // The numeric ID of the Node (u32 from Rust)
   position: { x: number; y: number; z: number };
   velocity: { x: number; y: number; z: number };
 }
@@ -40,7 +40,7 @@ export interface BinaryNodeData {
 Represents a link or relationship between two nodes.
 
 ```typescript
-// Primarily defined and used within client/src/features/graph/managers/graphDataManager.ts
+// Defined in client/src/features/graph/workers/graph.worker.ts
 export interface Edge {
   id: string; // Unique identifier for the edge (e.g., "sourceId_targetId")
   source: string; // ID of the source node
@@ -57,7 +57,7 @@ export interface Edge {
 The primary container for all nodes and edges that constitute the graph.
 
 ```typescript
-// Primarily defined and used within client/src/features/graph/managers/graphDataManager.ts
+// Defined in client/src/features/graph/workers/graph.worker.ts
 export interface GraphData {
   nodes: Node[];
   edges: Edge[];
@@ -130,8 +130,8 @@ export interface Settings {
   perplexity?: { /* PerplexitySettings */ }; // Optional
   openai?: { /* OpenAISettings */ }; // Optional
   kokoro?: { /* KokoroSettings */ }; // Optional
+  // Note: 'whisper' settings are present in the server's AppFullSettings but not directly exposed in this client-side Settings interface.
 }
-```
 **Important:** The above is a simplified representation. The definitive source for the `Settings` interface and all its nested types is [`client/src/features/settings/config/settings.ts`](../../client/src/features/settings/config/settings.ts). Please refer to this file for the complete and accurate structure.
 
 ## RAGFlow Specific Types
@@ -178,14 +178,13 @@ This file contains types and constants related to the custom binary protocol use
 Many features have their own dedicated `types.ts` or `*.types.ts` files.
 
 -   **Settings UI Types**:
-    -   [`client/src/features/settings/types/settingsTypes.ts`](../../client/src/features/settings/types/settingsTypes.ts): This file appears to contain older or more generic UI-related type definitions like `SettingControlProps`, `SettingsSectionProps`.
-    -   The primary types driving the current settings UI are `UISettingDefinition` and related types from [`client/src/features/settings/config/settingsUIDefinition.ts`](../../client/src/features/settings/config/settingsUIDefinition.ts). This documentation should clarify that `settingsUIDefinition.ts` is more central for the *current* settings panel structure.
+    -   The primary types driving the current settings UI are `UISettingDefinition` and related types from [`client/src/features/settings/config/settingsUIDefinition.ts`](../../client/src/features/settings/config/settingsUIDefinition.ts).
 
 -   **XR Types**:
-    -   [`client/src/features/xr/types/xr.ts`](../../client/src/features/xr/types/xr.ts): Defines types specific to WebXR interactions, controller states, hand tracking data, and XR session management.
+    -   [`client/src/features/xr/types/xr.ts`](../../client/src/features/xr/types/xr.ts): Defines basic types specific to WebXR interactions, controller states, and hand tracking data. Note that the comprehensive XR settings used by the application are defined in the main `Settings` interface in [`client/src/features/settings/config/settings.ts`](../../client/src/features/settings/config/settings.ts).
 
 -   **Visualisation Types**:
-    -   [`client/src/features/visualisation/types/visualisationTypes.ts`](../../client/src/features/visualisation/types/visualisationTypes.ts): This file defines a very simple `VisualisationSettings` interface. It's important to note that the comprehensive and detailed visualisation settings are part of the main `Settings` interface in [`client/src/features/settings/config/settings.ts`](../../client/src/features/settings/config/settings.ts) under the `visualisation` key. This `visualisationTypes.ts` might be for a different, more specific concept or could be outdated/less relevant for global settings.
+    -   The comprehensive and detailed visualisation settings are part of the main `Settings` interface in [`client/src/features/settings/config/settings.ts`](../../client/src/features/settings/config/settings.ts) under the `visualisation` key.
 
 These feature-specific type files help in modularizing the codebase and ensuring type safety within their respective domains.
 

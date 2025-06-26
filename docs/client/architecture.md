@@ -15,7 +15,7 @@ graph TB
             TwoPaneLayout[TwoPaneLayout.tsx]
             GraphViewportUI[GraphViewport.tsx]
             RightPaneControlPanel[RightPaneControlPanel.tsx]
-            SettingsPanelRedesign[SettingsPanelRedesign.tsx]
+            SettingsPanelRedesignOptimized[SettingsPanelRedesignOptimized.tsx]
             ConversationPane[ConversationPane.tsx]
             NarrativeGoldminePanel[NarrativeGoldminePanel.tsx]
         end
@@ -47,9 +47,9 @@ graph TB
         TwoPaneLayout --> RightPaneControlPanel
         TwoPaneLayout --> ConversationPane
         TwoPaneLayout --> NarrativeGoldminePanel
-        RightPaneControlPanel --> SettingsPanelRedesign
+        RightPaneControlPanel --> SettingsPanelRedesignOptimized
 
-        SettingsPanelRedesign --> SettingsStore
+        SettingsPanelRedesignOptimized --> SettingsStore
         ConversationPane --> APIService
         NarrativeGoldminePanel --> APIService
 
@@ -76,6 +76,30 @@ graph TB
         NostrAuthService --> AuthHandler
         APIService --> AuthHandler
     end
+
+    style Client Architecture fill:#282C34,stroke:#61DAFB,stroke-width:2px,color:#FFFFFF
+    style UILayer fill:#3A3F47,stroke:#61DAFB,color:#FFFFFF
+    style StateManagement fill:#3A3F47,stroke:#61DAFB,color:#FFFFFF
+    style APILayer fill:#3A3F47,stroke:#61DAFB,color:#FFFFFF
+    style AppInitializer fill:#3A3F47,stroke:#61DAFB,color:#FFFFFF
+    style TwoPaneLayout fill:#3A3F47,stroke:#61DAFB,color:#FFFFFF
+    style GraphViewportUI fill:#3A3F47,stroke:#61DAFB,color:#FFFFFF
+    style RightPaneControlPanel fill:#3A3F47,stroke:#61DAFB,color:#FFFFFF
+    style SettingsPanelRedesignOptimized fill:#3A3F47,stroke:#61DAFB,color:#FFFFFF
+    style ConversationPane fill:#3A3F47,stroke:#61DAFB,color:#FFFFFF
+    style NarrativeGoldminePanel fill:#3A3F47,stroke:#61DAFB,color:#FFFFFF
+    style SettingsStore fill:#3A3F47,stroke:#61DAFB,color:#FFFFFF
+    style GraphDataManager fill:#3A3F47,stroke:#61DAFB,color:#FFFFFF
+    style NostrAuthService fill:#3A3F47,stroke:#61DAFB,color:#FFFFFF
+    style APIService fill:#3A3F47,stroke:#61DAFB,color:#FFFFFF
+    style Rendering fill:#3A3F47,stroke:#61DAFB,color:#FFFFFF
+    style WebSocketClient fill:#3A3F47,stroke:#61DAFB,color:#FFFFFF
+    style XRModule fill:#3A3F47,stroke:#61DAFB,color:#FFFFFF
+
+    style ServerInterface fill:#282C34,stroke:#A2AAAD,stroke-width:2px,color:#FFFFFF
+    style RESTAPI fill:#3A3F47,stroke:#A2AAAD,color:#FFFFFF
+    style WebSocketServer fill:#3A3F47,stroke:#A2AAAD,color:#FFFFFF
+    style AuthHandler fill:#3A3F47,stroke:#A2AAAD,color:#FFFFFF
 ```
 
 ## Key Components
@@ -83,7 +107,7 @@ graph TB
 ### User Interface Layer
 The UI layer is built with React and TypeScript.
 - [`TwoPaneLayout.tsx`](../../client/src/app/TwoPaneLayout.tsx) serves as the primary layout, dividing the screen into a main visualisation area and a control panel area.
-- [`RightPaneControlPanel.tsx`](../../client/src/app/components/RightPaneControlPanel.tsx) hosts the authentication UI and the main settings panel: `SettingsPanelRedesign.tsx`. The `ConversationPane` and `NarrativeGoldminePanel` are rendered alongside it within the main `TwoPaneLayout`.
+- [`RightPaneControlPanel.tsx`](../../client/src/app/components/RightPaneControlPanel.tsx) hosts the authentication UI and the main settings panel: [`SettingsPanelRedesignOptimized.tsx`](../../client/src/features/settings/components/panels/SettingsPanelRedesignOptimized.tsx). The `ConversationPane` and `NarrativeGoldminePanel` are rendered alongside it within the main `TwoPaneLayout`.
 - [`GraphViewport.tsx`](../../client/src/features/graph/components/GraphViewport.tsx) is responsible for the main 3D graph visualisation area.
 
 ### State Management
@@ -263,5 +287,6 @@ Settings are validated on both client and server sides, with automatic type conv
 
 - [Components](components.md) - Detailed component relationships
 - [State Management](state.md) - State management approach
+- [Rendering System](rendering.md) - Technical rendering details
 - [WebSocket Communication](websocket.md) - WebSocket protocol details
 - [XR Integration](xr.md) - WebXR implementation details

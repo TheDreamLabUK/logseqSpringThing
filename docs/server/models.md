@@ -13,20 +13,21 @@ Defines parameters for the physics-based graph layout simulation.
 pub struct SimulationParams {
     pub iterations: u32,
     pub spring_strength: f32,
-    pub repulsion_strength: f32, // Note: field name might be repulsion_strength
+    pub repulsion_strength: f32,
     pub damping: f32,
+    pub time_step: f32,
     pub max_repulsion_distance: f32,
-    // pub viewport_bounds: f32, // This specific field might not exist; bounds are often implicitly handled or part of PhysicsSettings
     pub mass_scale: f32,
     pub boundary_damping: f32,
-    pub enable_bounds: bool, // This is usually part of PhysicsSettings in AppFullSettings
-    pub time_step: f32,
-    // pub phase: SimulationPhase, // If used, SimulationPhase would be an enum
-    // pub mode: SimulationMode,   // If used, SimulationMode would be an enum
-    // Other fields like collision_radius, max_velocity, repulsion_distance might be here or in PhysicsSettings
+    pub enable_bounds: bool,
+    pub viewport_bounds: f32,
+    pub collision_radius: f32,
+    pub max_velocity: f32,
+    pub phase: SimulationPhase,
+    pub mode: SimulationMode,
 }
 ```
-Note: Some physics parameters like `gravity_strength` and `center_attraction_strength` are part of `PhysicsSettings` within the main `AppFullSettings` and are used to influence the `SimulationParams` at runtime, but are not direct fields of this struct.
+Note: Some physics parameters like `gravity_strength` and `center_attraction_strength` are part of `PhysicsSettings` within the main `AppFullSettings` and are used to influence the `SimulationParams` at runtime, but are not direct fields of this struct. The `viewport_bounds`, `collision_radius`, `max_velocity`, `enable_bounds` fields are directly part of `SimulationParams` in `src/models/simulation_params.rs` and are influenced by `PhysicsSettings`.
 
 ### Usage
 -   Configuring the physics engine for graph layout.
@@ -49,10 +50,10 @@ The server defines two main structures for managing UI-related settings:
     }
     ```
 
-2.  **`UISettings`** (from [`src/models/ui_settings.rs`](../../src/models/ui_settings.rs)): This structure represents the actual set of UI configurations that are sent to the client (serialized as camelCase JSON). It's derived from the global `AppFullSettings` for public/default views or from a specific user's `UserSettings`.
+2.  **`UISettings`** (from [`src/config/mod.rs`](../../src/config/mod.rs)): This structure represents the actual set of UI configurations that are sent to the client (serialized as camelCase JSON). It's derived from the global `AppFullSettings` for public/default views or from a specific user's `UserSettings`.
 
     ```rust
-    // In src/models/ui_settings.rs
+    // In src/config/mod.rs
     #[derive(Debug, Clone, Serialize, Deserialize, Default)]
     #[serde(rename_all = "camelCase")]
     pub struct UISettings {

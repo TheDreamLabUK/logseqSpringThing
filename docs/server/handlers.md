@@ -27,52 +27,38 @@ This module configures the main REST API routes under the base scope `/api`.
 // In src/handlers/api_handler/mod.rs
 pub fn config(cfg: &mut web::ServiceConfig) {
     cfg.service(
-        web::scope("/api")
-            // Files API routes (e.g., /process, /get_content/{filename})
+        web::scope("") // Base scope for /api
+            // Files API routes (e.g., /files/process, /files/get_content/{filename})
             .configure(files::config)
-            // Graph API routes (e.g., /data, /data/paginated, /update, /refresh)
+            // Graph API routes (e.g., /graph/data, /graph/data/paginated, /graph/update, /graph/refresh)
             .configure(graph::config)
-            // Visualisation settings routes (e.g., /settings/{category}, /get_settings/{category})
-            .configure(visualisation::config)
             // Nostr authentication routes (e.g., /auth/nostr, /auth/nostr/verify, /auth/nostr/api-keys)
             .service(web::scope("/auth/nostr").configure(crate::handlers::nostr_handler::config))
             // User settings routes (e.g., /user-settings, /user-settings/sync)
-            .service(web::scope("/user-settings").configure(crate::handlers::settings_handler::config_public))
+            .service(web::scope("/user-settings").configure(crate::handlers::settings_handler::config))
             // RAGFlow chat route
             .service(web::scope("/ragflow").configure(crate::handlers::ragflow_handler::config))
             // Health check routes
             .service(web::scope("/health").configure(crate::handlers::health_handler::config))
             // Static pages/assets (if served via /api/pages)
             .service(web::scope("/pages").configure(crate::handlers::pages_handler::config))
-            // Perplexity AI service
-            .service(web::scope("/perplexity").configure(crate::handlers::perplexity_handler::config))
     );
 }
 ```
 -   Organizes REST API endpoints into logical sub-scopes:
     -   `/api/files` - File processing and content retrieval
     -   `/api/graph` - Graph data operations (CRUD, pagination, refresh)
-    -   `/api/visualisation` - Visualization settings management
     -   `/api/auth/nostr` - Nostr authentication and authorization
     -   `/api/user-settings` - User settings storage and synchronization
     -   `/api/ragflow` - RAGFlow AI chat integration
-    -   `/api/perplexity` - Perplexity AI service integration
 -   Handles request validation, deserialization, calls appropriate services, and serializes responses.
 
-### File Handler ([`src/handlers/file_handler.rs`](../../src/handlers/file_handler.rs))
-Handles file processing and content retrieval operations.
--   **Key Functions:**
-    -   `fetch_and_process_files` - Processes public markdown files and updates graph data
-    -   `get_file_content` - Retrieves content of specific files
--   **Features:**
-    -   Optimized file processing with metadata caching
-    -   Integration with GraphService for automatic graph updates
-    -   GPU compute integration for node position calculations
+
 
 ### WebSocket Handler ([`src/handlers/socket_flow_handler.rs`](../../src/handlers/socket_flow_handler.rs))
 Manages WebSocket connections for real-time graph data updates.
 -   **Path:** `/wss` (or as configured in `main.rs` or `docker-compose.yml` via Nginx proxy)
--   **Function:** `socket_flow_handler(req: HttpRequest, stream: web::Payload, srv: web::Data<Arc<ClientManager>>)`
+-   **Function:** `socket_flow_handler(req: HttpRequest, stream: web::Payload, app_state_data: web::Data<AppState>, pre_read_ws_settings: web::Data<PreReadSocketSettings>)`
 -   Handles client connections, disconnections, and messages:
     -   `ping` - Keep-alive messages
     -   `requestInitialData` - Initial graph data request
@@ -94,15 +80,7 @@ Serves static frontend assets and the main `index.html` page.
 -   Handles routing for client-side application entry points
 -   Serves static files using `actix_files`
 
-### Perplexity Handler ([`src/handlers/perplexity_handler.rs`](../../src/handlers/perplexity_handler.rs))
-Provides integration with Perplexity AI service.
--   **Base Path:** `/api/perplexity`
--   **Endpoints:**
-    -   `POST /api/perplexity` - Send query to Perplexity AI
--   **Request/Response:**
-    -   Request: `PerplexityRequest` with `query` and optional `conversation_id`
-    -   Response: `PerplexityResponse` with `answer` and `conversation_id`
--   Handles service availability checks and error responses
+
 
 ### RAGFlow Handler ([`src/handlers/ragflow_handler.rs`](../../src/handlers/ragflow_handler.rs))
 Manages RAGFlow AI chat service integration.
@@ -165,13 +143,7 @@ Manages WebSocket connections specifically for speech-related functionalities (S
     -   Integration with Kokoro voice service
 -   Interacts with `SpeechService` to process audio streams and broadcast responses
 
-### Visualization Handler ([`src/handlers/visualization_handler.rs`](../../src/handlers/visualization_handler.rs))
-Manages visualization-specific settings and configurations.
--   **Features:**
-    -   Category-based settings management
-    -   Snake case to camel case conversion for client compatibility
-    -   Setting validation and error handling
--   Works with the visualization settings actor for state management
+
 
 ## Middleware Integration
 

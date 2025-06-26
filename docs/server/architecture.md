@@ -17,7 +17,15 @@ pub struct AppState {
     pub protected_settings_addr: Addr<ProtectedSettingsActor>,
     pub metadata_addr: Addr<MetadataActor>,
     pub client_manager_addr: Addr<ClientManagerActor>,
-    // ... other non-actor state like clients and services
+    pub github_client: Arc<GitHubClient>,
+    pub content_api: Arc<ContentAPI>,
+    pub perplexity_service: Option<Arc<PerplexityService>>,
+    pub ragflow_service: Option<Arc<RAGFlowService>>,
+    pub speech_service: Option<Arc<SpeechService>>,
+    pub nostr_service: Option<web::Data<NostrService>>,
+    pub feature_access: web::Data<FeatureAccess>,
+    pub ragflow_session_id: String,
+    pub active_connections: Arc<AtomicUsize>,
 }
 ```
 
@@ -32,13 +40,12 @@ The `AppState::new` constructor is responsible for setting up all services and l
 ```rust
 impl AppState {
     pub async fn new(
-        settings: Arc<RwLock<AppFullSettings>>,
+        settings: AppFullSettings,
         github_client: Arc<GitHubClient>,
         content_api: Arc<ContentAPI>,
         perplexity_service: Option<Arc<PerplexityService>>,
         ragflow_service: Option<Arc<RAGFlowService>>,
         speech_service: Option<Arc<SpeechService>>,
-        gpu_compute: Option<Arc<RwLock<GPUCompute>>>,
         ragflow_session_id: String,
     ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>>
 }
@@ -58,13 +65,12 @@ impl AppState {
 ## State Management
 
 ### Thread Safety
-`AppState` and its contained mutable data are wrapped in `Arc<RwLock<T>>` to ensure safe concurrent access across multiple threads and asynchronous tasks.
+
+`AppState` primarily manages shared mutable state through **Actix actors** and asynchronous message passing. While some services within `AppState` might still use `Arc<RwLock<T>>` for internal concurrency, the recommended pattern for interacting with shared application state is by sending messages to the appropriate actor addresses held by `AppState`.
 
 ```rust
-pub type SafeAppState = Arc<AppState>; // This type alias might not be explicitly defined but represents Arc<AppState>
-pub type SafeSettings = Arc<RwLock<AppFullSettings>>;
-pub type SafeProtectedSettings = Arc<RwLock<ProtectedSettings>>;
-pub type SafeMetadataStore = Arc<RwLock<MetadataStore>>;
+pub type AppState = web::Data<crate::AppState>; // In handlers, AppState is typically wrapped in web::Data
+// Individual actors manage their own internal state with thread-safe primitives (e.g., Arc<RwLock<T>>)
 ```
 
 ### Access Patterns
@@ -83,10 +89,10 @@ Services and handlers access state by sending messages to the actors via their a
 ## Service Integration
 
 ### Graph Service ([`src/services/graph_service.rs`](../../src/services/graph_service.rs))
-Manages the in-memory graph data (`GraphData`), runs the physics simulation (CPU or GPU via `GPUCompute`), calculates layout, and broadcasts updates to connected clients via the static `APP_CLIENT_MANAGER`. It's typically started as a long-running task.
+Manages the in-memory graph data (`GraphData`), runs the physics simulation (CPU or GPU via `GPUComputeActor`), calculates layout, and broadcasts updates to connected clients via the `ClientManagerActor`. It's typically started as a long-running task.
 
 ### File Service ([`src/services/file_service.rs`](../../src/services/file_service.rs))
-This service, often referred to as `FileService` in the codebase, handles reading/writing local files, fetching content (e.g., from GitHub via `GitHubService` or a direct `GitHubClient`), and managing the `MetadataStore`. It effectively *is* the `ContentAPI` for local data.
+This service, often referred to as `FileService` in the codebase, handles reading/writing local files, fetching content (e.g., from GitHub via `GitHubClient`), and managing the `MetadataStore`. It interacts with `ContentAPI` for GitHub operations.
 
 ### AI Services
 Provides interfaces for interacting with various AI models (Perplexity, RAGFlow, OpenAI TTS via `SpeechService`).
@@ -132,7 +138,7 @@ flowchart TB
         ContentAPI["ContentAPI"]
         MetadataStore["MetadataStore"]
         GraphService["GraphService"]
-        GPUCompute["GPUCompute"]
+        GPUComputeActor["GPUComputeActor"]
     end
 
     subgraph Output
@@ -146,10 +152,24 @@ flowchart TB
     ContentAPI --> MetadataStore
     UserUpdates --> MetadataStore
     MetadataStore --> GraphService
-    GraphService --> GPUCompute
-    GPUCompute --> GraphService
+    GraphService --> GPUComputeActor
+    GPUComputeActor --> GraphService
     GraphService --> ClientUpdates
     MetadataStore --> PersistedMetadata
+
+    style Input fill:#3A3F47,stroke:#61DAFB,color:#FFFFFF
+    style Processing fill:#3A3F47,stroke:#A2AAAD,color:#FFFFFF
+    style Output fill:#3A3F47,stroke:#F7DF1E,color:#FFFFFF
+    style MarkdownFiles fill:#3A3F47,stroke:#61DAFB,color:#FFFFFF
+    style UserUpdates fill:#3A3F47,stroke:#61DAFB,color:#FFFFFF
+    style GitHubContent fill:#3A3F47,stroke:#61DAFB,color:#FFFFFF
+    style ContentAPI fill:#3A3F47,stroke:#A2AAAD,color:#FFFFFF
+    style MetadataStore fill:#3A3F47,stroke:#A2AAAD,color:#FFFFFF
+    style GraphService fill:#3A3F47,stroke:#A2AAAD,color:#FFFFFF
+    style GPUComputeActor fill:#3A3F47,stroke:#A2AAAD,color:#FFFFFF
+    style GraphData fill:#3A3F47,stroke:#F7DF1E,color:#FFFFFF
+    style ClientUpdates fill:#3A3F47,stroke:#F7DF1E,color:#FFFFFF
+    style PersistedMetadata fill:#3A3F47,stroke:#F7DF1E,color:#FFFFFF
 ```
 
 ### Optimization Strategies
@@ -169,7 +189,7 @@ The service layer provides high-level operations and business logic, abstracting
 2.  **Content API (File Service)**: Handles content management, file system operations, and integration with external sources like GitHub.
 3.  **Nostr Service**: Manages Nostr authentication, user sessions, and API key storage.
 4.  **AI Services (Perplexity, RAGFlow, Speech)**: Provide interfaces for various AI capabilities. `SpeechService` handles TTS and STT, potentially interacting with other AI services.
-5.  **GPU Compute**: Manages GPU resources and executes CUDA kernels for physics simulation.
+5. **GPU Compute Actor**: Manages GPU resources and executes CUDA kernels for physics simulation.
 
 ### Service Communication Sequence Diagram - Speech Service
 
@@ -180,9 +200,9 @@ sequenceDiagram
     participant ClientApp as "Client Application"
     participant SpeechWSHandler as "Speech WebSocket Handler (/speech)"
     participant SpeechSvc as "SpeechService"
-    participant STTProvider as "STT Provider (e.g., OpenAI Whisper)"
+    participant ExternalSTT as "External STT Provider (e.g., OpenAI Whisper)"
     participant RAGFlowSvc as "RAGFlowService (Optional)"
-    participant TTSProvider as "TTS Provider (e.g., Kokoro/OpenAI)"
+    participant ExternalTTS as "External TTS Provider (e.g., Kokoro/OpenAI)"
 
     ClientApp->>SpeechWSHandler: WebSocket Connect to /speech
     SpeechWSHandler-->>ClientApp: Connection Established
@@ -190,20 +210,27 @@ sequenceDiagram
     ClientApp->>SpeechWSHandler: Send Audio Stream (e.g., for STT)
     SpeechWSHandler->>SpeechSvc: Forward Audio Data / Command
 
-    SpeechSvc->>STTProvider: Process Audio for STT
-    STTProvider-->>SpeechSvc: Transcription Result (Text)
+    SpeechSvc->>ExternalSTT: Process Audio for STT
+    ExternalSTT-->>SpeechSvc: Transcription Result (Text)
 
     alt If RAGFlow interaction is triggered
         SpeechSvc->>RAGFlowSvc: Send Transcription as Query
         RAGFlowSvc-->>SpeechSvc: RAGFlow Response (Text)
-        SpeechSvc->>TTSProvider: Convert RAGFlow Text to Speech
+        SpeechSvc->>ExternalTTS: Convert RAGFlow Text to Speech
     else Else (Direct TTS of transcription or other command)
-        SpeechSvc->>TTSProvider: Convert Original Transcription/Text to Speech
+        SpeechSvc->>ExternalTTS: Convert Original Transcription/Text to Speech
     end
 
-    TTSProvider-->>SpeechSvc: TTS Audio Data (Stream/Buffer)
+    ExternalTTS-->>SpeechSvc: TTS Audio Data (Stream/Buffer)
     SpeechSvc->>SpeechWSHandler: Broadcast TTS Audio Data (via tokio::sync::broadcast)
     SpeechWSHandler-->>ClientApp: Stream TTS Audio Data
+
+    style ClientApp fill:#3A3F47,stroke:#61DAFB,color:#FFFFFF
+    style SpeechWSHandler fill:#3A3F47,stroke:#A2AAAD,color:#FFFFFF
+    style SpeechSvc fill:#3A3F47,stroke:#A2AAAD,color:#FFFFFF
+    style ExternalSTT fill:#3A3F47,stroke:#F7DF1E,color:#FFFFFF
+    style RAGFlowSvc fill:#3A3F47,stroke:#A2AAAD,color:#FFFFFF
+    style ExternalTTS fill:#3A3F47,stroke:#F7DF1E,color:#FFFFFF
 ```
 
 ## Next Steps

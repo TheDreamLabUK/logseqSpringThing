@@ -17,12 +17,12 @@ graph TB
     SA[SettingsActor] --> GS
     PSA[ProtectedSettingsActor] --> SA
     
-    style CM fill:#f9f,stroke:#333,stroke-width:2px
-    style GS fill:#bbf,stroke:#333,stroke-width:2px
-    style GPU fill:#fbf,stroke:#333,stroke-width:2px
-    style MA fill:#bfb,stroke:#333,stroke-width:2px
-    style SA fill:#ffb,stroke:#333,stroke-width:2px
-    style PSA fill:#fbb,stroke:#333,stroke-width:2px
+    style CM fill:#3A3F47,stroke:#61DAFB,color:#FFFFFF
+    style GS fill:#3A3F47,stroke:#61DAFB,color:#FFFFFF
+    style GPU fill:#3A3F47,stroke:#61DAFB,color:#FFFFFF
+    style MA fill:#3A3F47,stroke:#61DAFB,color:#FFFFFF
+    style SA fill:#3A3F47,stroke:#61DAFB,color:#FFFFFF
+    style PSA fill:#3A3F47,stroke:#61DAFB,color:#FFFFFF
 ```
 
 ## Actor Descriptions
@@ -42,11 +42,12 @@ The central actor managing the graph data structure, including nodes and edges.
 
 **Key Messages**:
 - `GetGraphData` - Retrieve the complete graph
-- `UpdateNodePositions` - Update multiple node positions
+- `UpdateGraphData` - Update the entire graph structure
+- `UpdateNodePosition` - Update a single node's position
+- `SimulationStep` - Trigger a single physics simulation step
 - `AddNode`/`RemoveNode` - Modify nodes
 - `AddEdge`/`RemoveEdge` - Modify edges
 - `BuildGraphFromMetadata` - Initialize graph from metadata
-- `StartSimulation`/`StopSimulation` - Control physics simulation
 
 ### ClientManagerActor
 
@@ -115,7 +116,7 @@ Manages graph metadata and layout information.
 - Loads metadata from JSON files
 - Provides metadata for graph construction
 - Handles metadata refresh operations
-- Stores node and edge metadata
+- Stores and manages node and edge metadata (via `MetadataStore` which is a `HashMap`)
 
 **Key Messages**:
 - `GetMetadata` - Retrieve complete metadata
@@ -135,8 +136,14 @@ Manages protected settings like API keys.
 - Integrates with authentication system
 
 **Key Messages**:
-- Similar to SettingsActor but for protected data
-- Access controlled based on authentication
+- `GetApiKeys` - Retrieve API keys for a specific user
+- `ValidateClientToken` - Validate a client's session token
+- `StoreClientToken` - Store a new client session token
+- `UpdateUserApiKeys` - Update a user's API keys
+- `CleanupExpiredTokens` - Trigger cleanup of expired session tokens
+- `MergeSettings` - Merge new settings into protected settings
+- `SaveSettings` - Persist protected settings to file
+- `GetUser` - Retrieve a specific user's protected data
 
 ## Message Flow Examples
 
@@ -146,19 +153,19 @@ Manages protected settings like API keys.
 sequenceDiagram
     participant Client
     participant WebSocket
-    participant ClientManager
-    participant GraphService
-    participant GPU
+    participant ClientManagerActor
+    participant GraphServiceActor
+    participant GPUComputeActor
     
     Client->>WebSocket: Connect
-    WebSocket->>ClientManager: RegisterClient
-    ClientManager-->>WebSocket: client_id
+    WebSocket->>ClientManagerActor: RegisterClient
+    ClientManagerActor-->>WebSocket: client_id
     
     loop Simulation Loop
-        GraphService->>GPU: ComputeForces
-        GPU-->>GraphService: positions
-        GraphService->>ClientManager: BroadcastNodePositions
-        ClientManager->>WebSocket: Binary update
+        GraphServiceActor->>GPUComputeActor: ComputeForces
+        GPUComputeActor-->>GraphServiceActor: positions
+        GraphServiceActor->>ClientManagerActor: BroadcastNodePositions
+        ClientManagerActor->>WebSocket: Binary update
         WebSocket->>Client: Node positions
     end
 ```
@@ -169,18 +176,18 @@ sequenceDiagram
 sequenceDiagram
     participant Client
     participant Handler
-    participant Settings
-    participant Protected
+    participant SettingsActor
+    participant ProtectedSettingsActor
     
     Client->>Handler: Update setting
-    Handler->>Settings: SetSettingByPath
+    Handler->>SettingsActor: SetSettingByPath
     
     alt Protected setting
-        Settings->>Protected: Update protected
-        Protected-->>Settings: OK
+        SettingsActor->>ProtectedSettingsActor: Update protected
+        ProtectedSettingsActor-->>SettingsActor: OK
     end
     
-    Settings-->>Handler: Success
+    SettingsActor-->>Handler: Success
     Handler-->>Client: Updated
 ```
 

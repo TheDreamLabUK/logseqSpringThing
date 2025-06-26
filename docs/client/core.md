@@ -17,8 +17,9 @@ Provides a centralized logging mechanism for the client application. It allows f
 
 **Usage Example:**
 ```typescript
-import { logger } from './logger';
+import { createLogger } from '@/utils/logger'; // Assuming alias or direct path
 
+const logger = createLogger('MyComponent');
 logger.info('Application started successfully.');
 logger.debug('Processing data:', { data: someObject });
 logger.error('Failed to fetch graph data:', error);
@@ -48,7 +49,7 @@ A small utility for conditionally joining CSS class names, often used with Tailw
 
 **Usage Example:**
 ```typescript
-import { cn } from './cn';
+import { cn } from '@/utils/cn'; // Assuming alias or direct path
 
 const isActive = true;
 const buttonClasses = cn('btn', isActive && 'btn-active', 'px-4');

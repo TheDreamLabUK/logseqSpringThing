@@ -14,7 +14,7 @@ graph TD
         UIMain --> RightPane["RightPaneControlPanel.tsx"]
         UIMain --> ConversationPane["ConversationPane.tsx"]
         UIMain --> NarrativeGoldmine["NarrativeGoldminePanel.tsx"]
-        RightPane --> SettingsPanel["SettingsPanelRedesign.tsx"]
+        RightPane --> SettingsPanel["SettingsPanelRedesignOptimized.tsx"]
 
         SettingsPanel --> SettingsStore["settingsStore.ts"]
         GraphViewport --> RenderingEngine["GraphCanvas_and_GraphManager"]

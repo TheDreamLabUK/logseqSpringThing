@@ -29,7 +29,7 @@ flowchart TB
     end
 
     subgraph SettingsUI [Settings UI Components]
-        SettingsPanelRedesign[SettingsPanelRedesign.tsx]
+        SettingsPanelRedesignOptimized[SettingsPanelRedesignOptimized.tsx]
         TabsUI["Tabs.tsx"]
         SettingsSection[SettingsSection.tsx]
         SettingControlComp[SettingControlComponent.tsx]
@@ -88,9 +88,9 @@ flowchart TB
     TwoPaneLayout --> NarrativeGoldminePanel
 
     RightPaneCtrlPanel --> NostrAuthSection
-    RightPaneCtrlPanel --> SettingsPanelRedesign
+    RightPaneCtrlPanel --> SettingsPanelRedesignOptimized
 
-    SettingsPanelRedesign --> TabsUI
+    SettingsPanelRedesignOptimized --> TabsUI
     TabsUI --> SettingsSection
     SettingsSection --> SettingControlComp
 
@@ -134,6 +134,52 @@ flowchart TB
     Logger -.-> XRController
     Utils -.-> SettingsStore
     Utils -.-> GraphDataMgr
+
+    style CoreServices fill:#3A3F47,stroke:#61DAFB,color:#FFFFFF
+    style AppInit fill:#3A3F47,stroke:#61DAFB,color:#FFFFFF
+    style MainUILayout fill:#3A3F47,stroke:#61DAFB,color:#FFFFFF
+    style SettingsUI fill:#3A3F47,stroke:#61DAFB,color:#FFFFFF
+    style AuthUI fill:#3A3F47,stroke:#61DAFB,color:#FFFFFF
+    style RenderingEngine fill:#3A3F47,stroke:#61DAFB,color:#FFFFFF
+    style Network fill:#3A3F47,stroke:#61DAFB,color:#FFFFFF
+    style XRModule fill:#3A3F47,stroke:#61DAFB,color:#FFFFFF
+    style GenericUI fill:#3A3F47,stroke:#61DAFB,color:#FFFFFF
+
+    style APIService fill:#3A3F47,stroke:#61DAFB,color:#FFFFFF
+    style SettingsStore fill:#3A3F47,stroke:#61DAFB,color:#FFFFFF
+    style NostrAuthSvc fill:#3A3F47,stroke:#61DAFB,color:#FFFFFF
+    style Logger fill:#3A3F47,stroke:#61DAFB,color:#FFFFFF
+    style Utils fill:#3A3F47,stroke:#61DAFB,color:#FFFFFF
+    style AppInitializer fill:#3A3F47,stroke:#61DAFB,color:#FFFFFF
+    style Main fill:#3A3F47,stroke:#61DAFB,color:#FFFFFF
+    style TwoPaneLayout fill:#3A3F47,stroke:#61DAFB,color:#FFFFFF
+    style RightPaneCtrlPanel fill:#3A3F47,stroke:#61DAFB,color:#FFFFFF
+    style ConversationPane fill:#3A3F47,stroke:#61DAFB,color:#FFFFFF
+    style NarrativeGoldminePanel fill:#3A3F47,stroke:#61DAFB,color:#FFFFFF
+    style SettingsPanelRedesignOptimized fill:#3A3F47,stroke:#61DAFB,color:#FFFFFF
+    style TabsUI fill:#3A3F47,stroke:#61DAFB,color:#FFFFFF
+    style SettingsSection fill:#3A3F47,stroke:#61DAFB,color:#FFFFFF
+    style SettingControlComp fill:#3A3F47,stroke:#61DAFB,color:#FFFFFF
+    style AuthUIHandler fill:#3A3F47,stroke:#61DAFB,color:#FFFFFF
+    style NostrAuthSection fill:#3A3F47,stroke:#61DAFB,color:#FFFFFF
+    style GraphCanvas fill:#3A3F47,stroke:#61DAFB,color:#FFFFFF
+    style GraphManager fill:#3A3F47,stroke:#61DAFB,color:#FFFFFF
+    style GraphViewport fill:#3A3F47,stroke:#61DAFB,color:#FFFFFF
+    style CameraController fill:#3A3F47,stroke:#61DAFB,color:#FFFFFF
+    style TextRenderer fill:#3A3F47,stroke:#61DAFB,color:#FFFFFF
+    style MetadataVisualizer fill:#3A3F47,stroke:#61DAFB,color:#FFFFFF
+    style HologramManager fill:#3A3F47,stroke:#61DAFB,color:#FFFFFF
+    style WebSocketSvc fill:#3A3F47,stroke:#61DAFB,color:#FFFFFF
+    style GraphDataMgr fill:#3A3F47,stroke:#61DAFB,color:#FFFFFF
+    style XRController fill:#3A3F47,stroke:#61DAFB,color:#FFFFFF
+    style XRScene fill:#3A3F47,stroke:#61DAFB,color:#FFFFFF
+    style XRVisualisationConnector fill:#3A3F47,stroke:#61DAFB,color:#FFFFFF
+    style HandInteractionSystem fill:#3A3F47,stroke:#61DAFB,color:#FFFFFF
+    style XRInitializer fill:#3A3F47,stroke:#61DAFB,color:#FFFFFF
+    style XRSessionManager fill:#3A3F47,stroke:#61DAFB,color:#FFFFFF
+    style MarkdownRenderer fill:#3A3F47,stroke:#61DAFB,color:#FFFFFF
+    style Button fill:#3A3F47,stroke:#61DAFB,color:#FFFFFF
+    style Input fill:#3A3F47,stroke:#61DAFB,color:#FFFFFF
 ```
 
 ## Core Components
@@ -239,7 +285,7 @@ Provides a safe context for WebXR hooks and components, handling browser compati
 ### Right Pane Control Panel ([`client/src/app/components/RightPaneControlPanel.tsx`](../../client/src/app/components/RightPaneControlPanel.tsx))
 Manages the content displayed in the right pane of the main application layout, including settings, authentication, and feature panels.
 
-### Settings Panel Redesign ([`client/src/features/settings/components/panels/SettingsPanelRedesign.tsx`](../../client/src/features/settings/components/panels/SettingsPanelRedesign.tsx))
+### Settings Panel Redesign ([`client/src/features/settings/components/panels/SettingsPanelRedesignOptimized.tsx`](../../client/src/features/settings/components/panels/SettingsPanelRedesignOptimized.tsx))
 Provides the tabbed interface for organizing different categories of settings (Visualisation, System, AI, XR) within the right pane, utilizing [`client/src/ui/Tabs.tsx`](../../client/src/ui/Tabs.tsx).
 
 ### Settings Sections ([`client/src/features/settings/components/SettingsSection.tsx`](../../client/src/features/settings/components/SettingsSection.tsx))

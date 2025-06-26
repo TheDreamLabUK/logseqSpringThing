@@ -15,10 +15,10 @@ LogseqSpringThing implements a comprehensive authentication system using Nostr (
    - Session cleanup and expiration
 
 2. **Nostr Handler** (`src/handlers/nostr_handler.rs`)
-   - HTTP endpoints for authentication operations
-   - Session validation and refresh
-   - API key management
-   - Feature access control
+   - HTTP endpoints for authentication operations, delegating core logic to `NostrService`.
+   - Handles session validation and refresh requests.
+   - Manages API key updates by interacting with `NostrService`.
+   - Controls feature access by querying `FeatureAccess`.
 
 3. **Client Authentication Service** (`client/src/services/nostrAuthService.ts`)
    - NIP-07 browser extension integration
@@ -151,6 +151,12 @@ pub async fn verify_auth_event(&self, event: AuthEvent) -> Result<NostrUser, Nos
     if let Err(e) = nostr_event.verify() {
         return Err(NostrError::InvalidSignature);
     }
+
+    // Register new user if not already registered
+    let mut feature_access = self.feature_access.write().await;
+    if feature_access.register_new_user(&event.pubkey) {
+        info!("Registered new user with basic access: {}", event.pubkey);
+    }
     
     // Create/update user session
     let session_token = Uuid::new_v4().to_string();
@@ -173,7 +179,7 @@ pub async fn verify_auth_event(&self, event: AuthEvent) -> Result<NostrUser, Nos
 - Generated using UUID v4 for uniqueness
 - Stored in memory with user data
 - Configurable expiration (default: 1 hour)
-- Automatically cleaned up after 24 hours of inactivity
+- Automatically cleaned up after 24 hours of inactivity (via `cleanup_sessions` method, which needs to be explicitly called or scheduled)
 
 ### Session Storage
 
@@ -265,22 +271,13 @@ async fn check_feature_access(
 API keys are stored differently based on user type:
 
 ```rust
-pub fn get_api_keys(&self, pubkey: &str) -> ApiKeys {
-    if let Some(user) = self.users.get(pubkey) {
-        if user.is_power_user {
-            // Power users get environment-based keys
-            ApiKeys {
-                perplexity: std::env::var("PERPLEXITY_API_KEY").ok(),
-                openai: std::env::var("OPENAI_API_KEY").ok(),
-                ragflow: std::env::var("RAGFLOW_API_KEY").ok(),
-            }
-        } else {
-            // Normal users get their stored keys
-            user.api_keys.clone()
+pub async fn get_api_keys(protected_settings_addr: Addr<ProtectedSettingsActor>, pubkey: &str) -> ApiKeys {
+    match protected_settings_addr.send(GetApiKeys { pubkey: pubkey.to_string() }).await {
+        Ok(api_keys) => api_keys,
+        Err(e) => {
+            error!("Failed to get API keys from ProtectedSettingsActor: {}", e);
+            ApiKeys::default() // Return default if actor call fails
         }
-    } else {
-        // Default keys for unauthenticated users
-        self.default_api_keys.clone()
     }
 }
 ```
@@ -292,7 +289,7 @@ Only non-power users can update their API keys:
 ```rust
 async fn update_api_keys(
     req: web::Json<ApiKeysRequest>,
-    nostr_service: web::Data<NostrService>,
+    app_state: web::Data<AppState>,
     pubkey: web::Path<String>,
 ) -> Result<HttpResponse, Error> {
     let api_keys = ApiKeys {
@@ -301,14 +298,17 @@ async fn update_api_keys(
         ragflow: req.ragflow.clone(),
     };
     
-    match nostr_service.update_user_api_keys(&pubkey, api_keys).await {
+    match app_state.update_nostr_user_api_keys(&pubkey, api_keys).await {
         Ok(user) => Ok(HttpResponse::Ok().json(user)),
-        Err(NostrError::PowerUserOperation) => {
-            Ok(HttpResponse::Forbidden().json(json!({
-                "error": "Cannot update API keys for power users"
-            })))
+        Err(e) => {
+            // Handle specific errors from update_nostr_user_api_keys
+            let error_response = match e.as_str() {
+                "Power user operation" => HttpResponse::Forbidden().json(json!({ "error": "Cannot update API keys for power users" })),
+                "User not found" => HttpResponse::NotFound().json(json!({ "error": "User not found" })),
+                _ => HttpResponse::InternalServerError().json(json!({ "error": format!("Failed to update API keys: {}", e) })),
+            };
+            Ok(error_response)
         }
-        // ... other error cases
     }
 }
 ```

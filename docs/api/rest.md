@@ -134,8 +134,8 @@ GET /api/graph/data/paginated
   "metadata": {},
   "totalPages": 0,
   "currentPage": 1,
-  "totalItems": 0,
-  "pageSize": 100
+  "total_nodes": 0,
+  "page_size": 100
 }
 
 ### Update Graph

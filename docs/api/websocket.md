@@ -144,7 +144,7 @@ The `socket_flow_handler.rs` primarily handles the following JSON messages:
 **Client -> Server:**
 - `{"type": "ping"}`
 - `{"type": "requestInitialData"}`: This message implicitly starts the binary update stream if the server is ready.
-- `{"type": "subscribe_position_updates", "binary": true, "interval": <number>}`: While not a distinct message type in the server's `Message` enum (`src/utils/socket_flow_messages.rs`), the `requestInitialData` handler in `socket_flow_handler.rs` implicitly starts the binary update stream. The client can send a `subscribe_position_updates` message to configure the stream, but the server's primary trigger is `requestInitialData`.
+- `{"type": "subscribe_position_updates", "binary": true, "interval": <number>}`: The client sends this message to the server to request real-time binary position updates. The `interval` parameter suggests the desired update frequency. The server will then begin sending binary position updates according to its capabilities and the requested parameters.
 - `{"type": "enableRandomization", "enabled": <boolean>}`: This message is acknowledged by the server, but server-side randomization has been removed. The client is responsible for any randomization effects.
 
 ## Optimization Features

@@ -196,7 +196,7 @@ UI component for theme selection.
 
 ### Specialized Components
 
-#### MarkdownRenderer ([`client/src/ui/markdown/MarkdownRenderer.tsx`](../../client/src/ui/markdown/MarkdownRenderer.tsx))
+#### MarkdownRenderer ([`client/src/features/design-system/patterns/MarkdownRenderer.tsx`](../../client/src/features/design-system/patterns/MarkdownRenderer.tsx))
 Renders markdown content with custom styling.
 - **Features**: 
   - Syntax highlighting for code blocks
@@ -235,12 +235,7 @@ Chat interface for AI interactions.
   - Loading states during AI responses
   - Support for different AI providers (RAGFlow, Perplexity)
 
-### MarkdownDisplayPanel ([`client/src/app/components/MarkdownDisplayPanel.tsx`](../../client/src/app/components/MarkdownDisplayPanel.tsx))
-Panel for displaying markdown content from selected nodes.
-- **Features**:
-  - File content display
-  - Metadata visualization
-  - Scroll synchronization
+
 
 ### NarrativeGoldminePanel ([`client/src/app/components/NarrativeGoldminePanel.tsx`](../../client/src/app/components/NarrativeGoldminePanel.tsx))
 Specialized panel for narrative exploration features.
