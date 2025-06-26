@@ -70,6 +70,7 @@ graph TD
 ## Quick Links
 
 - [Project Overview](docs/index.md)
+- [Repository Map](docs/repo-map.md)
 - [Development Setup](docs/development/setup.md)
 - [API Documentation](docs/api/index.md)
 - [Contributing Guidelines](docs/contributing.md)
